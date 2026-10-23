@@ -85,6 +85,16 @@ type Claims struct {
 	// checked.
 	CredentialID   uint   `json:"-"`
 	CredentialKind string `json:"-"`
+	// APIKeyPermissions are what a request made with an API key may do, on
+	// top of its account's live grants: the request may use a capability at
+	// a scope only where both allow it. Empty, it may do nothing. Set only
+	// with CredentialKind CredentialKindAPIKey, never part of a token.
+	APIKeyPermissions []ScopedPermission `json:"-"`
+}
+
+// IsAPIKey reports whether the request was made with an API key.
+func (c *Claims) IsAPIKey() bool {
+	return c.CredentialKind == CredentialKindAPIKey
 }
 
 // HasAMR reports whether the session signed in with method.

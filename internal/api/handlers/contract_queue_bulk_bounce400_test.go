@@ -112,7 +112,11 @@ func TestBulkBounceQueue400_Spec(t *testing.T) {
 	if !op.RequestBody.Required || op.RequestBody.Content["application/json"].Schema.Ref != "#/components/schemas/BulkQueueRequest" {
 		t.Error("request body must remain required and use BulkQueueRequest")
 	}
-	wantSecurity := []map[string][]string{{"CookieAuth": {"queue:manage"}}, {"BearerAuth": {"queue:manage"}}}
+	wantSecurity := []map[string][]string{
+		{"CookieAuth": {"queue:manage"}},
+		{"BearerAuth": {"queue:manage"}},
+		{"APIKeyAuth": {"queue:manage"}},
+	}
 	if !reflect.DeepEqual(op.Security, wantSecurity) {
 		t.Errorf("security %v, want %v", op.Security, wantSecurity)
 	}

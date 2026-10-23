@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/restmail/restmail/internal/auth"
 )
 
 // Credential kinds: everything an account signs in with (#341, Decided 4).
@@ -24,6 +26,12 @@ const (
 	// automation (#344), never taken at the interactive sign-in. SecretHash is
 	// the hex SHA-256 of its secret.
 	CredentialKindAppPassword = "app_password"
+	// CredentialKindAPIKey is a named key an automation calls the REST API
+	// with (#341), sent as Authorization: Bearer and never taken at the
+	// interactive sign-in or by the protocol gateways. SecretHash is the hex
+	// SHA-256 of its secret; Scope.Permissions is what it may do, within its
+	// account's live grants.
+	CredentialKindAPIKey = auth.CredentialKindAPIKey
 )
 
 // The capabilities an app password's scope holds on its account's mailbox.
@@ -75,10 +83,13 @@ func (c *Credential) Usable(now time.Time) bool {
 }
 
 // CredentialScope is what a credential may reach: one mailbox, and the
-// capabilities it holds there.
+// capabilities it holds there; or, for an API key, its permissions.
 type CredentialScope struct {
 	MailboxID    uint     `json:"mailbox_id"`
 	Capabilities []string `json:"capabilities"`
+	// Permissions are an API key's: each capability it may use, at a scope.
+	// Empty for every other kind.
+	Permissions []auth.ScopedPermission `json:"permissions,omitempty"`
 }
 
 func (s CredentialScope) Value() (driver.Value, error) {

@@ -147,6 +147,12 @@ func TestLinkFixtureRequiresTheDisposableDomain(t *testing.T) {
 	}
 }
 
+func TestAPIKeyFixtureRequiresTheDisposableDomain(t *testing.T) {
+	if _, err := prepareAPIKeyFixture(nil, "production.example"); err == nil {
+		t.Fatal("API key fixture accepted a different domain")
+	}
+}
+
 func TestLinkFixtureSupportsUnmodifiedGeneratedProof(t *testing.T) {
 	db := fixtureDB(t)
 	if err := db.AutoMigrate(&models.Mailbox{}, &models.Credential{}); err != nil {
