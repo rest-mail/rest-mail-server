@@ -184,10 +184,8 @@ func (h *DomainHandler) list(r *http.Request, in listDomainsRequest) (endpoint.L
 	}, nil
 }
 
-// sendingPolicyInvalid is the validation message for a sending policy a domain may not have:
-// one is transactional, bulk, or empty for none (#144).
-const sendingPolicyInvalid = "must be 'transactional', 'bulk' or empty"
-
+// createDomainRequest creates a domain. Its sending policy is transactional, bulk, or empty
+// for none (#144).
 type createDomainRequest struct {
 	Name string `json:"name" minLength:"1" message:"required"`
 	// ServerType is restmail (the server keeps the mail) or traditional, the default when it
