@@ -44,7 +44,7 @@ func (h *MTASTSHandler) getPolicy(_ *http.Request, in domainPath) (MTASTSPolicy,
 
 // setPolicy creates or updates the MTA-STS policy for a domain.
 // PUT /api/v1/admin/domains/{id}/mta-sts
-func (h *MTASTSHandler) setPolicy(_ *http.Request, in setMTASTSInput) (endpoint.Upsert[MTASTSPolicy], error) {
+func (h *MTASTSHandler) setPolicy(_ *http.Request, in setMTASTSInput) (endpoint.Status[MTASTSPolicy], error) {
 	domainID := in.ID
 
 	// The body is checked before the domain is looked up: a refused request
@@ -54,7 +54,7 @@ func (h *MTASTSHandler) setPolicy(_ *http.Request, in setMTASTSInput) (endpoint.
 	// Verify domain exists
 	var domain models.Domain
 	if err := h.db.First(&domain, domainID).Error; err != nil {
-		return endpoint.Upsert[MTASTSPolicy]{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Domain not found")
+		return endpoint.Status[MTASTSPolicy]{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Domain not found")
 	}
 
 	// Upsert: find existing or create new
@@ -62,7 +62,7 @@ func (h *MTASTSHandler) setPolicy(_ *http.Request, in setMTASTSInput) (endpoint.
 	result := h.db.Where("domain_id = ?", domainID).First(&policy)
 	created := errors.Is(result.Error, gorm.ErrRecordNotFound)
 	if result.Error != nil && !created {
-		return endpoint.Upsert[MTASTSPolicy]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to save MTA-STS policy")
+		return endpoint.Status[MTASTSPolicy]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to save MTA-STS policy")
 	}
 
 	if created {
@@ -95,10 +95,14 @@ func (h *MTASTSHandler) setPolicy(_ *http.Request, in setMTASTSInput) (endpoint.
 		saveErr = h.db.Save(&policy).Error
 	}
 	if saveErr != nil {
-		return endpoint.Upsert[MTASTSPolicy]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to save MTA-STS policy")
+		return endpoint.Status[MTASTSPolicy]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to save MTA-STS policy")
 	}
 
-	return endpoint.Upsert[MTASTSPolicy]{Data: mtaSTSPolicyOf(policy), Created: created}, nil
+	status := http.StatusOK
+	if created {
+		status = http.StatusCreated
+	}
+	return endpoint.Status[MTASTSPolicy]{Code: status, Value: mtaSTSPolicyOf(policy)}, nil
 }
 
 // Non-nil pointers preserve explicit zero/false instead of GORM replacing

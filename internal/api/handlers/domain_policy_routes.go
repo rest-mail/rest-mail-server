@@ -88,6 +88,7 @@ func (h *MTASTSHandler) Register(rs endpoint.Routes, checks DomainPolicyRouteChe
 		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsRead)}}, h.getPolicy)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPut, Path: "/api/v1/admin/domains/{id}/mta-sts",
 		OperationID: "setMtaStsPolicy", Summary: "Create or update the MTA-STS policy for a domain", Tags: []string{"Admin: Domain mail policy"}, Errors: []int{http.StatusNotFound},
+		Status: http.StatusOK, SuccessStatuses: []int{http.StatusCreated},
 		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsWrite)}}, h.setPolicy)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/admin/domains/{id}/mta-sts",
 		OperationID: "deleteMtaStsPolicy", Summary: "Delete the MTA-STS policy for a domain", Tags: []string{"Admin: Domain mail policy"}, Status: http.StatusNoContent, Errors: []int{http.StatusNotFound},

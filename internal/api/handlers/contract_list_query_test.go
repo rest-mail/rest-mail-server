@@ -102,16 +102,19 @@ func TestListQueryIntegerContractProbes(t *testing.T) {
 		"listPipelineLogs":  pipeline.ListPipelineLogs,
 		"listMessages":      NewMessageHandler(tx, nil, nil, "", nil).ListMessages,
 		"listGrants":        NewGrantHandler(tx, nil, "").List,
-		"listQueue":         NewQueueHandler(tx).ListQueue,
-		"listBans":          NewBanHandler(tx).ListBans,
+		"listQueue": func(w http.ResponseWriter, r *http.Request) {
+			r.URL.Path = "/api/v1/admin/queue"
+			queueRoutes(NewQueueHandler(tx)).ServeHTTP(w, r)
+		},
+		"listBans": banRoutes(NewBanHandler(tx)).ServeHTTP,
 		"listTlsReports": func(w http.ResponseWriter, r *http.Request) {
 			r.URL.Path = "/api/v1/admin/tls-reports"
 			r.URL.RawPath = ""
 			policyRoutes(NewTLSReportHandler(tx)).ServeHTTP(w, r)
 		},
-		"listAuditEntries": NewAuditHandler(tx).List,
+		"listAuditEntries": auditRoutes(NewAuditHandler(tx)).ServeHTTP,
 		"searchMessages":   NewSearchHandler(tx).Search,
-		"getDeliveryLogs":  NewLogHandler(tx).DeliveryLog,
+		"getDeliveryLogs":  logRoutes(NewLogHandler(tx)).ServeHTTP,
 	}
 	ops := listQueryOperations(t)
 	for op, handler := range handlers {
@@ -137,8 +140,20 @@ func TestListQueryIntegerContractProbes(t *testing.T) {
 								want = http.StatusUnprocessableEntity
 							}
 						}
+						if value == "" && (op == "listBans" || op == "getDeliveryLogs" || op == "listAuditEntries") {
+							want = http.StatusUnprocessableEntity
+						}
 						query := url.Values{param.Name: []string{value}}
-						req := authzRequest(http.MethodGet, "/?"+query.Encode(), fx.mailbox.ID, map[string]string{"id": uintToStr(fx.mailbox.ID), "folder": "INBOX"}, "")
+						path := "/"
+						switch op {
+						case "listBans":
+							path = "/api/v1/admin/bans"
+						case "getDeliveryLogs":
+							path = "/api/v1/admin/logs/delivery"
+						case "listAuditEntries":
+							path = "/api/v1/admin/audit"
+						}
+						req := authzRequest(http.MethodGet, path+"?"+query.Encode(), fx.mailbox.ID, map[string]string{"id": uintToStr(fx.mailbox.ID), "folder": "INBOX"}, "")
 						rr := httptest.NewRecorder()
 						handler(rr, req)
 						if rr.Code != want {
@@ -195,7 +210,7 @@ func TestListQueryTypedContractProbes(t *testing.T) {
 	handlers := map[string]http.HandlerFunc{
 		"listContacts":    NewContactHandler(tx).ListContacts,
 		"searchMessages":  NewSearchHandler(tx).Search,
-		"getDeliveryLogs": NewLogHandler(tx).DeliveryLog,
+		"getDeliveryLogs": logRoutes(NewLogHandler(tx)).ServeHTTP,
 	}
 	ops := listQueryOperations(t)
 	for op, handler := range handlers {
@@ -223,7 +238,16 @@ func TestListQueryTypedContractProbes(t *testing.T) {
 					}
 					t.Run(param.Name+"="+value, func(t *testing.T) {
 						query := url.Values{param.Name: []string{value}}
-						req := authzRequest(http.MethodGet, "/?"+query.Encode(), fx.mailbox.ID, map[string]string{"id": uintToStr(fx.mailbox.ID)}, "")
+						path := "/"
+						switch op {
+						case "listBans":
+							path = "/api/v1/admin/bans"
+						case "getDeliveryLogs":
+							path = "/api/v1/admin/logs/delivery"
+						case "listAuditEntries":
+							path = "/api/v1/admin/audit"
+						}
+						req := authzRequest(http.MethodGet, path+"?"+query.Encode(), fx.mailbox.ID, map[string]string{"id": uintToStr(fx.mailbox.ID)}, "")
 						rr := httptest.NewRecorder()
 						handler(rr, req)
 						if rr.Code != want {

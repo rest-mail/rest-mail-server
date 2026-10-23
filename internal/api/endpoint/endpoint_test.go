@@ -314,17 +314,22 @@ func TestMiddlewareDescribesItself(t *testing.T) {
 	}
 }
 
-// Upsert keeps the response envelope identical on creation and replacement, and describes
-// both with the resource type. A refusal and binding failure still use the normal path.
+// A create-or-replace keeps the response envelope identical on creation and replacement,
+// each status declared. A refusal and binding failure still use the normal path.
 func TestRegisterUpsertResponse(t *testing.T) {
 	r := chi.NewRouter()
 	reg := NewRegistry()
-	Register(Routes{Router: r, Registry: reg}, Operation{Method: http.MethodPut, Path: "/widgets", OperationID: "saveWidget", Errors: []int{http.StatusNotFound}},
-		func(_ *http.Request, in createWidget) (Upsert[widget], error) {
+	Register(Routes{Router: r, Registry: reg}, Operation{Method: http.MethodPut, Path: "/widgets", OperationID: "saveWidget",
+		Errors: []int{http.StatusNotFound}, Status: http.StatusOK, SuccessStatuses: []int{http.StatusCreated}},
+		func(_ *http.Request, in createWidget) (Status[widget], error) {
 			if in.Name == "missing" {
-				return Upsert[widget]{}, Refuse(http.StatusNotFound, "not_found", "Widget not found")
+				return Status[widget]{}, Refuse(http.StatusNotFound, "not_found", "Widget not found")
 			}
-			return Upsert[widget]{Data: widget{ID: 7, Name: in.Name}, Created: in.Name == "new"}, nil
+			code := http.StatusOK
+			if in.Name == "new" {
+				code = http.StatusCreated
+			}
+			return Status[widget]{Code: code, Value: widget{ID: 7, Name: in.Name}}, nil
 		})
 	for _, tc := range []struct {
 		body   string

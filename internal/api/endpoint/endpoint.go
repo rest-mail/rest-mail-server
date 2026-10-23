@@ -49,6 +49,9 @@ type Operation struct {
 	// over the size cap when it has a body, and 500 always.
 	Errors []int
 
+	// SuccessStatuses are additional success statuses carrying the same response type.
+	SuccessStatuses []int
+
 	// Security is the operation's own requirement, when it differs from what its middleware
 	// enforces: alternatives of schemes, each with the roles held there. nil leaves it to the
 	// middleware and the document's default; oapifly.Public needs no credential.
@@ -121,27 +124,21 @@ type listResponse interface{ listEnvelope() }
 
 func (List[T]) listEnvelope() {}
 
-// Upsert answers with Data in the usual envelope: 201 when Created, otherwise 200.
-// Register describes both statuses using T, without exposing this status selector in JSON.
-type Upsert[T any] struct {
-	Data    T
-	Created bool
+// Status carries a success value whose status depends on the handler's result.
+// Each possible status is declared in Operation.Status or SuccessStatuses.
+type Status[T any] struct {
+	Code  int
+	Value T
 }
 
-type upsertResponse interface {
-	responseTypes() (reflect.Type, reflect.Type)
-	response() (int, interface{})
-}
+func (s Status[T]) responseStatus() (int, interface{}) { return s.Code, s.Value }
+func (Status[T]) responseType() reflect.Type           { return reflect.TypeOf((*T)(nil)).Elem() }
+func (Status[T]) responseEnvelope() reflect.Type       { return reflect.TypeOf((*Data[T])(nil)).Elem() }
 
-func (Upsert[T]) responseTypes() (reflect.Type, reflect.Type) {
-	return reflect.TypeOf((*T)(nil)).Elem(), reflect.TypeOf(Data[T]{})
-}
-
-func (u Upsert[T]) response() (int, interface{}) {
-	if u.Created {
-		return http.StatusCreated, u.Data
-	}
-	return http.StatusOK, u.Data
+type statusResponse interface {
+	responseStatus() (int, interface{})
+	responseType() reflect.Type
+	responseEnvelope() reflect.Type
 }
 
 // Empty is the response type of an operation that answers with no body.
@@ -207,6 +204,17 @@ func Register[Req, Resp any](rs Routes, op Operation, handler func(*http.Request
 			writeError(w, err)
 			return
 		}
+		if reply, ok := any(out).(statusResponse); ok {
+			status, _ := reply.responseStatus()
+			declared := status == op.Status
+			for _, additional := range op.SuccessStatuses {
+				declared = declared || status == additional
+			}
+			if !declared {
+				writeError(w, fmt.Errorf("endpoint: undeclared success status %d", status))
+				return
+			}
+		}
 		write(w, op.Status, out)
 	}))
 }
@@ -218,15 +226,13 @@ func (reg *Registry) record(applied []oapifly.Middleware, op Operation, reqType,
 	}
 	reg.routes[key] = true
 
-	var responses []oapifly.EndpointResponse
-	if u, ok := reflect.Zero(respType).Interface().(upsertResponse); ok {
-		respType, envelope = u.responseTypes()
-		responses = []oapifly.EndpointResponse{
-			successResponse(http.StatusOK, respType, envelope),
-			successResponse(http.StatusCreated, respType, envelope),
-		}
-	} else {
-		responses = []oapifly.EndpointResponse{successResponse(op.Status, respType, envelope)}
+	if respType.Implements(reflect.TypeOf((*statusResponse)(nil)).Elem()) {
+		reply := reflect.Zero(respType).Interface().(statusResponse)
+		respType, envelope = reply.responseType(), reply.responseEnvelope()
+	}
+	responses := []oapifly.EndpointResponse{successResponse(op.Status, respType, envelope)}
+	for _, status := range op.SuccessStatuses {
+		responses = append(responses, successResponse(status, respType, envelope))
 	}
 	errorStatuses := map[int]bool{http.StatusInternalServerError: true}
 	if shape.binds {
@@ -299,8 +305,8 @@ func documentedPath(path string) string {
 }
 
 func write(w http.ResponseWriter, status int, out interface{}) {
-	if u, ok := out.(upsertResponse); ok {
-		status, out = u.response()
+	if reply, ok := out.(statusResponse); ok {
+		status, out = reply.responseStatus()
 	}
 	if status == http.StatusNoContent {
 		w.WriteHeader(status)
@@ -401,9 +407,56 @@ func bind(r *http.Request, dst interface{}, s shape) error {
 	case err == nil:
 		return nil
 	case errors.As(err, &violations):
+		missingMessages(reflect.TypeOf(dst).Elem(), "", violations)
 		return Invalid(violations)
 	case errors.Is(err, oapifly.ErrMalformedBody):
 		return Refuse(http.StatusBadRequest, "bad_request", "Invalid request body")
 	}
 	return err
+}
+
+// missingMessages gives a missing field the wording its missing tag documents.
+// Bind reports a missing field as "required", whatever its message tag says: the
+// message tag words a broken rule, and a field that is not there broke none.
+func missingMessages(t reflect.Type, prefix string, violations oapifly.Violations) {
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Struct {
+		return
+	}
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		if f.PkgPath != "" {
+			continue
+		}
+		if _, body := f.Tag.Lookup("body"); body {
+			missingMessages(f.Type, prefix, violations)
+			continue
+		}
+		name := strings.Split(f.Tag.Get("json"), ",")[0]
+		for _, in := range []string{"path", "query", "header"} {
+			if param := f.Tag.Get(in); param != "" {
+				name = strings.Split(param, ",")[0]
+				break
+			}
+		}
+		if name == "-" {
+			continue
+		}
+		if name == "" {
+			name = f.Name
+		}
+		key := prefix + name
+		if message := f.Tag.Get("missing"); message != "" && violations[key] == "required" {
+			violations[key] = message
+		}
+		// Recurse only for a reported nested field, avoiding recursive types.
+		for field := range violations {
+			if strings.HasPrefix(field, key+".") {
+				missingMessages(f.Type, key+".", violations)
+				break
+			}
+		}
+	}
 }

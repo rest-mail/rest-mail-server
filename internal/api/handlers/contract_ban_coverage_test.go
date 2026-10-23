@@ -74,13 +74,13 @@ func TestCreateBan_ContractProbes(t *testing.T) {
 		{"ip missing", `{"created_by":"x","protocol":"smtp"}`, 422},
 		{"protocol missing", `{"created_by":"x","ip":"x"}`, 422},
 		{"created_by empty", `{"created_by":"","ip":"x","protocol":"smtp"}`, 200},
-		{"created_by wrong type", `{"created_by":12345,"ip":"x","protocol":"smtp"}`, 400},
+		{"created_by wrong type", `{"created_by":12345,"ip":"x","protocol":"smtp"}`, 422},
 		{"duration empty", `{"created_by":"x","duration":"","ip":"x","protocol":"smtp"}`, 422},
 		{"duration shape", `{"created_by":"x","duration":"0","ip":"x","protocol":"smtp"}`, 200},
 		{"duration invalid pattern", `{"created_by":"x","duration":"vertrag does not match","ip":"x","protocol":"smtp"}`, 422},
-		{"duration wrong type", `{"created_by":"x","duration":12345,"ip":"x","protocol":"smtp"}`, 400},
+		{"duration wrong type", `{"created_by":"x","duration":12345,"ip":"x","protocol":"smtp"}`, 422},
 		{"ip empty", `{"created_by":"x","ip":"","protocol":"smtp"}`, 422},
-		{"ip wrong type", `{"created_by":"x","ip":12345,"protocol":"smtp"}`, 400},
+		{"ip wrong type", `{"created_by":"x","ip":12345,"protocol":"smtp"}`, 422},
 		{"smtp", `{"created_by":"x","ip":"x","protocol":"smtp"}`, 200},
 		{"imap", `{"created_by":"x","ip":"x","protocol":"imap"}`, 200},
 		{"pop3", `{"created_by":"x","ip":"x","protocol":"pop3"}`, 200},
@@ -88,12 +88,12 @@ func TestCreateBan_ContractProbes(t *testing.T) {
 		{"protocol invalid enum", `{"created_by":"x","ip":"x","protocol":"vertrag-not-in-enum"}`, 422},
 		{"protocol empty", `{"created_by":"x","ip":"x","protocol":""}`, 422},
 		{"reason empty", `{"created_by":"x","ip":"x","protocol":"smtp","reason":""}`, 200},
-		{"reason wrong type", `{"created_by":"x","ip":"x","protocol":"smtp","reason":12345}`, 400},
+		{"reason wrong type", `{"created_by":"x","ip":"x","protocol":"smtp","reason":12345}`, 422},
 	}
 	for _, probe := range probes {
 		t.Run(probe.name, func(t *testing.T) {
 			response := httptest.NewRecorder()
-			h.CreateBan(response, httptest.NewRequest("POST", "/api/v1/admin/bans", strings.NewReader(probe.body)))
+			banRoutes(h).ServeHTTP(response, httptest.NewRequest("POST", "/api/v1/admin/bans", strings.NewReader(probe.body)))
 			if response.Code != probe.want {
 				t.Fatalf("status %d, want %d: %s", response.Code, probe.want, response.Body)
 			}

@@ -749,9 +749,6 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 			return middleware.RequireCapability(held, capability, handlers.AliasScopeOf(db))
 		}
 
-		// Dashboard stats — every admin role holds domains:read
-		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/stats", statsH.GetDashboardStats)
-
 		// Roles and capabilities, for granting
 		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/roles", grantH.ListRoles)
 		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/capabilities", grantH.ListCapabilities)
@@ -780,6 +777,9 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		// adds to each of them (#669).
 		admin := endpoint.Routes{Router: r, Registry: registry}.
 			Describing(describedAdminSession, describedSetupDone, describedCSRF, describedBodyCap)
+
+		// Dashboard stats — every admin role holds domains:read
+		statsH.Register(admin, describedCapability(needs))
 
 		// Domains
 		domainH.Register(admin, handlers.DomainRouteChecks{
@@ -832,15 +832,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.With(needs(middleware.CapPipelinesWrite), pipelineTestThrottle).Post("/api/v1/admin/custom-filters/{id}/test", pipelineH.TestCustomFilter)
 
 		// Queue management
-		r.With(needs(middleware.CapQueueRead)).Get("/api/v1/admin/queue", queueH.ListQueue)
-		r.With(needs(middleware.CapQueueRead)).Get("/api/v1/admin/queue/stats", queueH.QueueStats)
-		r.With(needs(middleware.CapQueueManage)).Post("/api/v1/admin/queue/bulk-retry", queueH.BulkRetry)
-		r.With(needs(middleware.CapQueueManage)).Post("/api/v1/admin/queue/bulk-bounce", queueH.BulkBounce)
-		r.With(needs(middleware.CapQueueManage)).Delete("/api/v1/admin/queue/bulk-delete", queueH.BulkDelete)
-		r.With(needs(middleware.CapQueueRead)).Get("/api/v1/admin/queue/{id}", queueH.GetQueueEntry)
-		r.With(needs(middleware.CapQueueManage)).Post("/api/v1/admin/queue/{id}/retry", queueH.RetryQueueEntry)
-		r.With(needs(middleware.CapQueueManage)).Post("/api/v1/admin/queue/{id}/bounce", queueH.BounceQueueEntry)
-		r.With(needs(middleware.CapQueueManage)).Delete("/api/v1/admin/queue/{id}", queueH.DeleteQueueEntry)
+		queueH.Register(admin, handlers.QueueRouteChecks{At: describedCapability(needs)})
 
 		policyChecks := handlers.DomainPolicyRouteChecks{
 			OnDomain: describedCapability(needsOnDomain),
@@ -859,18 +851,17 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		certH.Register(admin, handlers.CertificateRouteChecks{At: describedCapability(needs)})
 
 		// Ban management
-		r.With(needs(middleware.CapBansRead)).Get("/api/v1/admin/bans", banH.ListBans)
-		r.With(needs(middleware.CapBansWrite)).Post("/api/v1/admin/bans", banH.CreateBan)
-		r.With(needs(middleware.CapBansDelete)).Delete("/api/v1/admin/bans/{id}", banH.DeleteBan)
-		r.With(needs(middleware.CapBansDelete)).Delete("/api/v1/admin/bans/ip/{ip}", banH.UnbanIP)
+		banH.Register(admin, describedCapability(needs))
 
 		// Logs
-		r.With(needs(middleware.CapMessagesRead)).Get("/api/v1/admin/logs/delivery", logH.DeliveryLog)
+		logH.Register(admin, describedCapability(needs))
 
 		// Audit log (#343): reading it is itself audited, including a read the
 		// capability check refuses.
-		r.With(auditLog("audit.read"), needs(middleware.CapAuditRead)).Get("/api/v1/admin/audit", auditH.List)
-		r.With(auditLog("audit.read"), needs(middleware.CapAuditRead)).Get("/api/v1/admin/audit/verify", auditH.Verify)
+		auditH.Register(admin, handlers.AdminLogRouteChecks{
+			At:        describedCapability(needs),
+			AuditRead: describedAuditRead(auditLog("audit.read")),
+		})
 
 		// Test endpoints (non-production only): "*" itself
 		r.With(needs(grants.Wildcard)).Post("/api/v1/admin/test/send", testH.SendTestEmail)
