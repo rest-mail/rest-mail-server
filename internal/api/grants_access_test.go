@@ -481,7 +481,8 @@ func grantErrorCode(rr *httptest.ResponseRecorder) string {
 }
 
 // A domain admin on domain:a.test reaches a.test and its mailboxes, and is
-// refused on b.test, on lists (which want "*"), and on anything else.
+// refused on b.test and on anything else. The domain and mailbox lists answer
+// it with what a.test holds and nothing more.
 func TestGrants_DomainAdminIsBoundedByItsDomain(t *testing.T) {
 	f := newGrantsFixture(t, fixtureAdmin{name: "dom"})
 	owner := f.token(t, "owner")
@@ -510,14 +511,32 @@ func TestGrants_DomainAdminIsBoundedByItsDomain(t *testing.T) {
 		{"GET", "/api/v1/admin/mailboxes/" + id(f.mb.ID), "", false},
 		{"DELETE", "/api/v1/admin/mailboxes/" + id(f.mb.ID), "", false},
 		{"GET", "/api/v1/admin/domains/999999", "", false},
-		{"GET", "/api/v1/admin/domains", "", false},
-		{"GET", "/api/v1/admin/mailboxes", "", false},
+		{"GET", "/api/v1/admin/domains", "", true},
+		{"GET", "/api/v1/admin/mailboxes", "", true},
 		{"GET", "/api/v1/admin/queue", "", false},
 	}
 	for _, c := range cases {
 		rr := doRequest(f.router, c.method, c.path, s.AccessToken, c.body)
 		if reached := !refusedForAccess(rr); reached != c.reached {
 			t.Errorf("%s %s: reached=%v (%d %s), want %v", c.method, c.path, reached, rr.Code, rr.Body.String(), c.reached)
+		}
+	}
+	// The lists it reaches hold a.test's and nothing of b.test's.
+	for path, want := range map[string]uint{
+		"/api/v1/admin/domains":   f.a.ID,
+		"/api/v1/admin/mailboxes": f.ma.ID,
+	} {
+		rr := doRequest(f.router, "GET", path, s.AccessToken, "")
+		var page struct {
+			Data []struct {
+				ID uint `json:"id"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(rr.Body.Bytes(), &page); err != nil {
+			t.Fatalf("GET %s: %v (%s)", path, err, rr.Body.String())
+		}
+		if len(page.Data) != 1 || page.Data[0].ID != want {
+			t.Errorf("GET %s = %s, want only id %d", path, rr.Body.String(), want)
 		}
 	}
 	// b.test is still there.
