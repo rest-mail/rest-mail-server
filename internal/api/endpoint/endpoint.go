@@ -351,11 +351,10 @@ func bind(r *http.Request, dst interface{}, s shape) error {
 			v := chi.URLParam(r, name)
 			return v, v != ""
 		case "query":
-			values, ok := r.URL.Query()[name]
-			if !ok || len(values) == 0 {
-				return "", false
-			}
-			return values[0], true
+			// A blank value is an omitted one, as url.Values.Get has always read it:
+			// ?domain_id= lists every domain's entries.
+			v := r.URL.Query().Get(name)
+			return v, v != ""
 		}
 		v := r.Header.Get(name)
 		return v, v != ""
