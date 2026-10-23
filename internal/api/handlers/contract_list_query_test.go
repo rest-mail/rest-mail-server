@@ -95,13 +95,16 @@ func TestListQueryIntegerContractProbes(t *testing.T) {
 	fx := seedMsgDeleteFixture(t, tx, 0)
 	pipeline := NewPipelineHandler(tx, nil, filters.JSSidecar{})
 	handlers := map[string]http.HandlerFunc{
-		"listAliases":       NewAliasHandler(tx).List,
-		"listMailboxes":     NewMailboxHandler(tx, nil, nil).List,
+		"listAliases":       aliasRoutes(NewAliasHandler(tx)).ServeHTTP,
+		"listMailboxes":     mailboxRoutes(NewMailboxHandler(tx, nil, nil)).ServeHTTP,
 		"listPipelines":     pipelineRoute(pipeline, "/api/v1/admin/pipelines"),
 		"listCustomFilters": pipelineRoute(pipeline, "/api/v1/admin/custom-filters"),
 		"listPipelineLogs":  pipelineRoute(pipeline, "/api/v1/admin/pipelines/logs"),
 		"listMessages":      NewMessageHandler(tx, nil, nil, "", nil).ListMessages,
-		"listGrants":        NewGrantHandler(tx, nil, "").List,
+		"listGrants": func(w http.ResponseWriter, r *http.Request) {
+			r.URL.Path = "/api/v1/admin/grants"
+			grantRoutes(NewGrantHandler(tx, nil, "")).ServeHTTP(w, r)
+		},
 		"listQueue": func(w http.ResponseWriter, r *http.Request) {
 			r.URL.Path = "/api/v1/admin/queue"
 			queueRoutes(NewQueueHandler(tx)).ServeHTTP(w, r)
@@ -139,9 +142,6 @@ func TestListQueryIntegerContractProbes(t *testing.T) {
 								}
 							}
 						}
-						if value == "" && (op == "listBans" || op == "getDeliveryLogs" || op == "listAuditEntries" || op == "listPipelines" || op == "listCustomFilters" || op == "listPipelineLogs") {
-							want = http.StatusUnprocessableEntity
-						}
 						query := url.Values{param.Name: []string{value}}
 						path := "/"
 						switch op {
@@ -154,6 +154,12 @@ func TestListQueryIntegerContractProbes(t *testing.T) {
 						}
 						req := authzRequest(http.MethodGet, path+"?"+query.Encode(), fx.mailbox.ID, map[string]string{"id": uintToStr(fx.mailbox.ID), "folder": "INBOX"}, "")
 						rr := httptest.NewRecorder()
+						if op == "listAliases" {
+							req.URL.Path = "/api/v1/admin/aliases"
+						}
+						if op == "listMailboxes" {
+							req.URL.Path = "/api/v1/admin/mailboxes"
+						}
 						handler(rr, req)
 						if rr.Code != want {
 							t.Fatalf("status = %d, want %d; body %s", rr.Code, want, rr.Body.String())
@@ -236,9 +242,6 @@ func TestListQueryTypedContractProbes(t *testing.T) {
 						want = http.StatusUnprocessableEntity
 					}
 					t.Run(param.Name+"="+value, func(t *testing.T) {
-						if value == "" && (op == "listPipelines" || op == "listCustomFilters" || op == "listPipelineLogs") {
-							want = http.StatusUnprocessableEntity
-						}
 						query := url.Values{param.Name: []string{value}}
 						path := "/"
 						switch op {

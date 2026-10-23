@@ -1,15 +1,14 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
-	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
 	"github.com/restmail/restmail/internal/grants"
@@ -28,8 +27,8 @@ const maxReasonLength = 500
 
 type activationResponse struct {
 	ID          uint   `json:"id"`
-	ActivatedAt string `json:"activated_at"`
-	ExpiresAt   string `json:"expires_at"`
+	ActivatedAt string `json:"activated_at" format:"date-time"`
+	ExpiresAt   string `json:"expires_at" format:"date-time"`
 	Reason      string `json:"reason"`
 	SecondsLeft int64  `json:"seconds_left"`
 }
@@ -56,57 +55,46 @@ type escalationResponse struct {
 	ScopedCapabilities []grants.Entry `json:"scoped_capabilities"`
 }
 
-// Mine lists the caller's own grants, each with its mode and any activation
+// mine lists the caller's own grants, each with its mode and any activation
 // running now, so a client can offer to switch an eligible one on.
 // GET /api/v1/admin/grants/mine
-func (h *GrantHandler) Mine(w http.ResponseWriter, r *http.Request) {
+func (h *GrantHandler) mine(r *http.Request, _ struct{}) ([]grantResponse, error) {
 	claims := middleware.GetClaims(r)
 	now := time.Now()
 	// Activations that ran out are recorded when noticed: here as well as by
 	// the sweeper.
 	if _, err := grants.EndExpired(h.db, now); err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to fetch grants")
-		return
+		return nil, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to fetch grants")
 	}
 	var rows []models.Grant
 	err := h.db.Preload("Role").
 		Where("holder_kind = ? AND holder_id = ?", models.GrantHolderAccount, claims.AccountID).
 		Order("id").Find(&rows).Error
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to fetch grants")
-		return
+		return nil, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to fetch grants")
 	}
 	out, err := toGrantResponses(h.db, rows, now)
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to fetch grants")
-		return
+		return nil, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to fetch grants")
 	}
-	respond.Data(w, http.StatusOK, out)
+	return out, nil
 }
 
 type activateRequest struct {
-	Reason string `json:"reason"`
+	Reason string `json:"reason,omitempty"`
 	// Minutes is how long it stays on: 60 when omitted, at most 240.
-	Minutes *int `json:"minutes"`
+	Minutes *int `json:"minutes,omitempty"`
 	// A fresh second factor: a current code from the authenticator, or an
 	// unused recovery code. The session's own second factor is not enough.
-	TOTPCode     string `json:"totp_code"`
-	RecoveryCode string `json:"recovery_code"`
+	TOTPCode     string `json:"totp_code,omitempty"`
+	RecoveryCode string `json:"recovery_code,omitempty"`
 }
 
-// Activate switches one of the caller's eligible grants on.
+// activate switches one of the caller's eligible grants on.
 // POST /api/v1/admin/grants/{id}/activate {"reason":"…","minutes":60,"totp_code":"123456"}
-func (h *GrantHandler) Activate(w http.ResponseWriter, r *http.Request) {
+func (h *GrantHandler) activate(r *http.Request, in activateGrantRequest) (escalationResponse, error) {
 	claims := middleware.GetClaims(r)
-	id, ok := grantIDParam(w, r)
-	if !ok {
-		return
-	}
-	var req activateRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
+	req := in.Body
 	problems := map[string]string{}
 	reason := strings.TrimSpace(req.Reason)
 	if reason == "" {
@@ -123,8 +111,7 @@ func (h *GrantHandler) Activate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(problems) > 0 {
-		respond.ValidationError(w, problems)
-		return
+		return escalationResponse{}, endpoint.Invalid(problems)
 	}
 
 	var g models.Grant
@@ -136,70 +123,58 @@ func (h *GrantHandler) Activate(w http.ResponseWriter, r *http.Request) {
 		if err := grants.Lock(tx); err != nil {
 			return err
 		}
-		if err := ownGrant(tx, claims.AccountID, id, &g); err != nil {
+		if err := ownGrant(tx, claims.AccountID, uint64(in.ID), &g); err != nil {
 			return err
 		}
 		var err error
 		a, err = grants.Activate(tx, &g, length, reason, middleware.RequestEntry(r, grants.ActionActivate, http.StatusCreated))
 		return err
 	})
-	if escalationFailed(w, err) {
-		return
+	if err != nil {
+		return escalationResponse{}, escalationError(err)
 	}
 	h.cache.Invalidate()
-	h.respondEscalation(w, http.StatusCreated, claims.AccountID, &g, a)
+	return h.escalation(claims.AccountID, &g, a)
 }
 
-// Deactivate switches one of the caller's grants off before its activation
+// deactivate switches one of the caller's grants off before its activation
 // runs out. It needs no second factor: it only takes access away.
 // POST /api/v1/admin/grants/{id}/deactivate
-func (h *GrantHandler) Deactivate(w http.ResponseWriter, r *http.Request) {
+func (h *GrantHandler) deactivate(r *http.Request, in grantPath) (escalationResponse, error) {
 	claims := middleware.GetClaims(r)
-	id, ok := grantIDParam(w, r)
-	if !ok {
-		return
-	}
 	var g models.Grant
 	err := h.db.Transaction(func(tx *gorm.DB) error {
 		if err := grants.Lock(tx); err != nil {
 			return err
 		}
-		if err := ownGrant(tx, claims.AccountID, id, &g); err != nil {
+		if err := ownGrant(tx, claims.AccountID, uint64(in.ID), &g); err != nil {
 			return err
 		}
 		_, err := grants.Deactivate(tx, &g, middleware.RequestEntry(r, grants.ActionDeactivate, http.StatusOK))
 		return err
 	})
-	if escalationFailed(w, err) {
-		return
+	if err != nil {
+		return escalationResponse{}, escalationError(err)
 	}
 	h.cache.Invalidate()
-	h.respondEscalation(w, http.StatusOK, claims.AccountID, &g, nil)
+	return h.escalation(claims.AccountID, &g, nil)
 }
 
 type secondFactorRequest struct {
-	TOTPCode     string `json:"totp_code"`
-	RecoveryCode string `json:"recovery_code"`
+	TOTPCode     string `json:"totp_code,omitempty"`
+	RecoveryCode string `json:"recovery_code,omitempty"`
 }
 
-// MakeEligible turns one of the caller's active grants eligible: from then on
+// makeEligible turns one of the caller's active grants eligible: from then on
 // it gives nothing until switched on. This is how an admin who holds
 // superadmin always (the owner of a server set up before escalation existed)
 // chooses to hold it only when needed. Like switching on, it needs a fresh
 // second factor, so that nobody makes a grant eligible without being able to
 // switch it on again.
 // POST /api/v1/admin/grants/{id}/make-eligible {"totp_code":"123456"}
-func (h *GrantHandler) MakeEligible(w http.ResponseWriter, r *http.Request) {
+func (h *GrantHandler) makeEligible(r *http.Request, in eligibleGrantRequest) (escalationResponse, error) {
 	claims := middleware.GetClaims(r)
-	id, ok := grantIDParam(w, r)
-	if !ok {
-		return
-	}
-	var req secondFactorRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
+	req := in.Body
 	var g models.Grant
 	err := h.db.Transaction(func(tx *gorm.DB) error {
 		if err := h.freshSecondFactor(tx, claims.AccountID, req.TOTPCode, req.RecoveryCode); err != nil {
@@ -208,24 +183,23 @@ func (h *GrantHandler) MakeEligible(w http.ResponseWriter, r *http.Request) {
 		if err := grants.Lock(tx); err != nil {
 			return err
 		}
-		if err := ownGrant(tx, claims.AccountID, id, &g); err != nil {
+		if err := ownGrant(tx, claims.AccountID, uint64(in.ID), &g); err != nil {
 			return err
 		}
 		return grants.MakeEligible(tx, &g, middleware.RequestEntry(r, grants.ActionMakeEligible, http.StatusOK))
 	})
-	if escalationFailed(w, err) {
-		return
+	if err != nil {
+		return escalationResponse{}, escalationError(err)
 	}
 	h.cache.Invalidate()
-	h.respondEscalation(w, http.StatusOK, claims.AccountID, &g, nil)
+	return h.escalation(claims.AccountID, &g, nil)
 }
 
-func (h *GrantHandler) respondEscalation(w http.ResponseWriter, status int, accountID uint, g *models.Grant, a *models.GrantActivation) {
+func (h *GrantHandler) escalation(accountID uint, g *models.Grant, a *models.GrantActivation) (escalationResponse, error) {
 	now := time.Now()
 	held, err := grants.Load(h.db, accountID, now)
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to load user capabilities")
-		return
+		return escalationResponse{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to load user capabilities")
 	}
 	resp := escalationResponse{Grant: toGrantResponse(g), Capabilities: held.Capabilities(), ScopedCapabilities: held.ScopedCapabilities()}
 	if resp.Capabilities == nil {
@@ -234,7 +208,7 @@ func (h *GrantHandler) respondEscalation(w http.ResponseWriter, status int, acco
 	if a != nil {
 		resp.Grant.Activation = toActivationResponse(a, now)
 	}
-	respond.Data(w, status, resp)
+	return resp, nil
 }
 
 var (
@@ -279,42 +253,32 @@ func ownGrant(tx *gorm.DB, accountID uint, id uint64, g *models.Grant) error {
 	return nil
 }
 
-func grantIDParam(w http.ResponseWriter, r *http.Request) (uint64, bool) {
-	id, err := pathID(r, "id")
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "invalid_id", "Invalid grant ID")
-		return 0, false
-	}
-	return id, true
-}
-
-// escalationFailed answers for a step of escalation that did not happen, and
-// says whether it did not. A refused code is 403, not 401: the session is
-// fine, and a client must not take it as signed out.
-func escalationFailed(w http.ResponseWriter, err error) bool {
+// escalationError is the refusal for a step of escalation that did not happen.
+// A refused code is 403, not 401: the session is fine, and a client must not
+// take it as signed out.
+func escalationError(err error) error {
 	switch {
 	case err == nil:
-		return false
+		return nil
 	case errors.Is(err, errNoSecondFactor):
-		respond.Error(w, http.StatusForbidden, "two_factor_required",
+		return endpoint.Refuse(http.StatusForbidden, "two_factor_required",
 			"Switching a grant on, or making it eligible, needs two-factor authentication: enroll an authenticator first")
 	case errors.Is(err, errFreshCodeRequired):
-		respond.Error(w, http.StatusForbidden, "totp_required",
+		return endpoint.Refuse(http.StatusForbidden, "totp_required",
 			"A code from your authenticator (totp_code), or a recovery code (recovery_code), is required: the session's own sign-in is not enough")
 	case errors.Is(err, errFreshCodeInvalid):
-		respond.Error(w, http.StatusForbidden, "invalid_totp", "Invalid two-factor authentication code")
+		return endpoint.Refuse(http.StatusForbidden, "invalid_totp", "Invalid two-factor authentication code")
 	case errors.Is(err, grants.ErrNotEligible):
-		respond.Error(w, http.StatusConflict, "not_eligible", err.Error())
+		return endpoint.Refuse(http.StatusConflict, "not_eligible", err.Error())
 	case errors.Is(err, grants.ErrAlreadySwitchedOn):
-		respond.Error(w, http.StatusConflict, "already_active", err.Error())
+		return endpoint.Refuse(http.StatusConflict, "already_active", err.Error())
 	case errors.Is(err, grants.ErrNotSwitchedOn):
-		respond.Error(w, http.StatusConflict, "not_active", err.Error())
+		return endpoint.Refuse(http.StatusConflict, "not_active", err.Error())
 	case errors.Is(err, grants.ErrGrantExpired):
-		respond.Error(w, http.StatusConflict, "grant_expired", err.Error())
+		return endpoint.Refuse(http.StatusConflict, "grant_expired", err.Error())
 	case errors.Is(err, grants.ErrAlreadyEligible):
-		respond.Error(w, http.StatusConflict, "already_eligible", err.Error())
+		return endpoint.Refuse(http.StatusConflict, "already_eligible", err.Error())
 	default:
-		return grantChangeFailed(w, err)
+		return grantChangeError(err)
 	}
-	return true
 }

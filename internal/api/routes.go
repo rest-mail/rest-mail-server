@@ -744,34 +744,17 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 			return middleware.RequireCapability(held, capability, handlers.AliasScopeOf(db))
 		}
 
-		// Roles and capabilities, for granting
-		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/roles", grantH.ListRoles)
-		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/capabilities", grantH.ListCapabilities)
-
-		// Grants (#345): which account holds which role at which scope; what
-		// makes an account an admin. Changing them needs users:write; the
-		// handler adds that the session signed in with 2FA and that the caller
-		// holds everything it grants or removes, and records each change in the
-		// audit log in the change's own transaction.
-		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/grants", grantH.List)
-		r.With(middleware.SessionOnly, needs(middleware.CapUsersWrite)).Post("/api/v1/admin/grants", grantH.Create)
-		r.With(middleware.SessionOnly, needs(middleware.CapUsersWrite)).Delete("/api/v1/admin/grants/{id}", grantH.Delete)
-
-		// Escalation (#346): every admin sees its own grants, and switches its
-		// own eligible ones on for a while. Holding the eligible grant is what
-		// allows it, so no capability is checked here; the handler answers 404
-		// for anyone else's grant. Switching on, and making a grant eligible,
-		// check a fresh second factor in the body, so they share login's
-		// throttle: they are a way to guess codes too.
-		r.With(middleware.SessionOnly).Get("/api/v1/admin/grants/mine", grantH.Mine)
-		r.With(middleware.SessionOnly, authThrottle).Post("/api/v1/admin/grants/{id}/activate", grantH.Activate)
-		r.With(middleware.SessionOnly).Post("/api/v1/admin/grants/{id}/deactivate", grantH.Deactivate)
-		r.With(middleware.SessionOnly, authThrottle).Post("/api/v1/admin/grants/{id}/make-eligible", grantH.MakeEligible)
-
 		// The routes registered with their types, and what this group's middleware
 		// adds to each of them (#669).
 		admin := endpoint.Routes{Router: r, Registry: registry}.
 			Describing(describedAdminSession, describedSetupDone, describedCSRF, describedBodyCap)
+
+		// Roles, capabilities, grants and escalation (#644).
+		grantH.Register(admin, handlers.GrantRouteChecks{
+			At:           describedCapability(needs),
+			SessionOnly:  endpoint.Middleware{Wrap: middleware.SessionOnly, Describes: describedSessionOnly},
+			AuthThrottle: endpoint.Middleware{Wrap: authThrottle, Describes: describedAuthThrottle},
+		})
 
 		// Dashboard stats — every admin role holds domains:read
 		statsH.Register(admin, describedCapability(needs))
@@ -785,20 +768,12 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 
 		// Accounts (mailboxes). Creating one is POST /api/v1/accounts, the same
 		// for everyone; deleting one removes its grants under the grants rules.
-		r.With(needsOnList(middleware.CapMailboxesRead)).Get("/api/v1/admin/mailboxes", mailboxH.List)
-		r.With(needsOnMailbox(middleware.CapMailboxesRead)).Get("/api/v1/admin/mailboxes/{id}", mailboxH.Get)
-		r.With(needsOnMailbox(middleware.CapMailboxesWrite)).Patch("/api/v1/admin/mailboxes/{id}", mailboxH.Update)
-		r.With(needsOnMailbox(middleware.CapMailboxesDel)).Delete("/api/v1/admin/mailboxes/{id}", mailboxH.Delete)
-		// Signing an account out everywhere is a change to it, like a new
-		// password: mailboxes:write on it.
-		r.With(needsOnMailbox(middleware.CapMailboxesWrite)).Delete("/api/v1/admin/mailboxes/{id}/sessions", mailboxH.EndSessions)
-
-		// Aliases (mailbox routing config → mailboxes:* capabilities)
-		r.With(needsOnList(middleware.CapMailboxesRead)).Get("/api/v1/admin/aliases", aliasH.List)
-		r.With(needsOnList(middleware.CapMailboxesWrite)).Post("/api/v1/admin/aliases", aliasH.Create)
-		r.With(needsOnAlias(middleware.CapMailboxesRead)).Get("/api/v1/admin/aliases/{id}", aliasH.Get)
-		r.With(needsOnAlias(middleware.CapMailboxesWrite)).Patch("/api/v1/admin/aliases/{id}", aliasH.Update)
-		r.With(needsOnAlias(middleware.CapMailboxesDel)).Delete("/api/v1/admin/aliases/{id}", aliasH.Delete)
+		mailboxH.Register(admin, handlers.MailboxRouteChecks{
+			OnList: describedCapability(needsOnList), OnMailbox: describedMailboxCapability(needsOnMailbox),
+		})
+		aliasH.Register(admin, handlers.AliasRouteChecks{
+			OnList: describedCapability(needsOnList), OnAlias: describedAliasCapability(needsOnAlias),
+		})
 
 		// Pipelines
 		pipelineH.Register(admin, handlers.PipelineRouteChecks{At: describedCapability(needs), TestThrottle: endpoint.Middleware{Wrap: pipelineTestThrottle, Describes: describedPipelineTestThrottle}})

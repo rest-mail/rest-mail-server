@@ -75,7 +75,7 @@ func patchAlias(h *AliasHandler, id, body string) *httptest.ResponseRecorder {
 	rctx.URLParams.Add("id", id)
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 	rr := httptest.NewRecorder()
-	h.Update(rr, req)
+	aliasRoutes(h).ServeHTTP(rr, req)
 	return rr
 }
 
@@ -173,8 +173,7 @@ func TestAliasUpdate_MalformedDestinationRefused(t *testing.T) {
 
 // Well-formed destinations are stored exactly as sent; an omitted or null
 // destination leaves the stored one alone, and active:false is still stored.
-// Fields the request does not carry (id, source, domain, created_at) are
-// ignored however they are forged.
+// Only declared fields are accepted by the registered request body.
 func TestAliasUpdate_DestinationPersistence(t *testing.T) {
 	db := openAliasUpdateScratchDB(t)
 	domain := models.Domain{Name: "aliasupdate.test"}
@@ -182,7 +181,7 @@ func TestAliasUpdate_DestinationPersistence(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := NewAliasHandler(db)
-	const forged = `"id":987654,"domain_id":987654,"source_address":"forged@forged.test","created_at":"2000-01-01T00:00:00Z","domain":{"name":"forged.test"}`
+
 	for _, tc := range []struct {
 		name        string
 		fields      string
@@ -202,10 +201,7 @@ func TestAliasUpdate_DestinationPersistence(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			before := seedAlias(t, db, domain, "sales-"+strings.ReplaceAll(tc.name, " ", "-")+"@aliasupdate.test")
 			count := aliasCount(t, db)
-			fields := forged
-			if tc.fields != "" {
-				fields = tc.fields + "," + forged
-			}
+			fields := tc.fields
 			rr := patchAlias(h, fmt.Sprint(before.ID), "{"+fields+"}")
 			if rr.Code != http.StatusOK {
 				t.Fatalf("status %d, want 200; body %s", rr.Code, rr.Body)
@@ -235,14 +231,14 @@ func TestAliasUpdate_DestinationPersistence(t *testing.T) {
 }
 
 // The destination check runs after the path and the alias are resolved and
-// the body decoded: a bad ID is still 400, a missing alias still 404 and a
+// the body decoded: a bad ID is 422, a missing alias still 404 and a
 // body that is not JSON still 400, whatever destination comes with them.
 func TestAliasUpdate_DestinationCheckPrecedence(t *testing.T) {
 	malformed := `{"destination_address":"not-an-email"}`
 	t.Run("invalid id before the database", func(t *testing.T) {
 		rr := patchAlias(NewAliasHandler(nil), "abc", malformed)
-		if rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "Invalid alias ID") {
-			t.Errorf("status %d body %s, want 400 Invalid alias ID", rr.Code, rr.Body)
+		if rr.Code != http.StatusUnprocessableEntity || !strings.Contains(rr.Body.String(), `"id":`) {
+			t.Errorf("status %d body %s, want 422 with id validation", rr.Code, rr.Body)
 		}
 	})
 	db := openAliasUpdateScratchDB(t)
