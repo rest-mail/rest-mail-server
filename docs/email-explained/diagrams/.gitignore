@@ -1,0 +1,10 @@
+# Archify writes the interactive page and its check receipts next to the
+# source. They are built from the *.json sources here, never edited, so only
+# the sources and the static PNGs are committed.
+*.html
+*.browser-check.json
+*.delivery.json
+*.finalize.json
+*.finalize-summary.json
+review-*/
+visual-check/
