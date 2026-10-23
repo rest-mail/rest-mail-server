@@ -102,7 +102,7 @@ func TestReset_HandsTheServerOverAndLocksOutWhoeverSetItUp(t *testing.T) {
 	// was holding, which has not expired. The reset wiped the authenticator; if
 	// that token still worked, the agent could enroll its own before the owner
 	// does and own the account again.
-	if rr := f.call(agent.AccessToken, http.HandlerFunc(f.twofa.Enroll), nil); rr.Code != http.StatusUnauthorized {
+	if rr := f.call(agent.AccessToken, "/api/v1/auth/2fa/enroll", twoFactorRoutes(f.twofa), nil); rr.Code != http.StatusUnauthorized {
 		t.Errorf("agent's unexpired access token enrolling an authenticator = %d %s, want 401", rr.Code, rr.Body)
 	}
 	if rr := f.adminAPI(agent.AccessToken); rr.Code != http.StatusUnauthorized {

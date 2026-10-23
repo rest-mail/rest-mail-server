@@ -281,13 +281,15 @@ func (h *QueueHandler) bulkDelete(_ *http.Request, req bulkQueueRequest) (BulkQu
 	if len(req.IDs) == 0 && req.Filter == nil {
 		return BulkQueueResult{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "ids or filter required")
 	}
-	// An empty filter names no entries, so it deletes none: emptying the whole
-	// queue is never one request with nothing in it.
+	query := h.buildBulkQuery(req)
+	// An empty filter has no conditions, so it selects every entry, as the
+	// description says and as retry and bounce read it. GORM refuses a delete
+	// with no WHERE clause unless it is told the whole table is meant.
 	if f := req.Filter; len(req.IDs) == 0 && f.Status == "" && f.Domain == "" && f.Sender == "" && f.Recipient == "" {
-		return BulkQueueResult{}, nil
+		query = query.Session(&gorm.Session{AllowGlobalUpdate: true})
 	}
 
-	result := h.buildBulkQuery(req).Delete(&models.OutboundQueue{})
+	result := query.Delete(&models.OutboundQueue{})
 
 	if result.Error != nil {
 		return BulkQueueResult{}, result.Error

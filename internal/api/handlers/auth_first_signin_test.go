@@ -119,10 +119,10 @@ func (f *firstSignIn) refresh(refreshToken string) (*httptest.ResponseRecorder, 
 	return rr, sessionFrom(rr)
 }
 
-// call runs handler behind JWT auth, as the routes do, with a JSON body.
-func (f *firstSignIn) call(token string, handler http.Handler, body any) *httptest.ResponseRecorder {
+// call posts to path on handler behind JWT auth, as the routes do, with a JSON body.
+func (f *firstSignIn) call(token, path string, handler http.Handler, body any) *httptest.ResponseRecorder {
 	b, _ := json.Marshal(body)
-	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(b))
+	req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
 	rr := httptest.NewRecorder()
@@ -138,18 +138,18 @@ var reached = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.
 // adminAPI is any route past setup: an admin route, the mail routes, or
 // creating an account.
 func (f *firstSignIn) adminAPI(token string) *httptest.ResponseRecorder {
-	return f.call(token, middleware.SetupDone(reached), nil)
+	return f.call(token, "/", middleware.SetupDone(reached), nil)
 }
 
 func (f *firstSignIn) changePassword(token, current, next string) *httptest.ResponseRecorder {
-	return f.call(token, http.HandlerFunc(f.auth.ChangePassword),
+	return f.call(token, "/api/v1/auth/password", passwordChangeRoutes(f.auth),
 		map[string]string{"current_password": current, "new_password": next})
 }
 
 // enrollTOTP runs enroll then confirm and returns the authenticator's secret.
 func (f *firstSignIn) enrollTOTP(t *testing.T, token string) string {
 	t.Helper()
-	rr := f.call(token, http.HandlerFunc(f.twofa.Enroll), nil)
+	rr := f.call(token, "/api/v1/auth/2fa/enroll", twoFactorRoutes(f.twofa), nil)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("2fa enroll = %d %s", rr.Code, rr.Body)
 	}
@@ -163,7 +163,7 @@ func (f *firstSignIn) enrollTOTP(t *testing.T, token string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rr := f.call(token, http.HandlerFunc(f.twofa.Confirm), map[string]string{"totp_code": code}); rr.Code != http.StatusNoContent {
+	if rr := f.call(token, "/api/v1/auth/2fa/confirm", twoFactorRoutes(f.twofa), map[string]string{"totp_code": code}); rr.Code != http.StatusNoContent {
 		t.Fatalf("2fa confirm = %d %s", rr.Code, rr.Body)
 	}
 	return env.Data.Secret
@@ -277,7 +277,7 @@ func TestFirstSignIn_PasswordAndAuthenticatorUnlockTheAccount(t *testing.T) {
 	}
 
 	// And 2FA stays: a required authenticator cannot be switched off.
-	if rr := f.call(done.AccessToken, http.HandlerFunc(f.twofa.Disable), map[string]string{"totp_code": totpNow(t, secret)}); rr.Code != http.StatusForbidden {
+	if rr := f.call(done.AccessToken, "/api/v1/auth/2fa/disable", twoFactorRoutes(f.twofa), map[string]string{"totp_code": totpNow(t, secret)}); rr.Code != http.StatusForbidden {
 		t.Errorf("disable required 2FA = %d %s, want 403", rr.Code, rr.Body)
 	}
 }
