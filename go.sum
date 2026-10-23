@@ -1,7 +1,7 @@
 github.com/MakeNowJust/heredoc v1.0.0 h1:cXCdzVdstXyiTqTvfqk9SDHpKNjxuom+DOlyEeQ4pzQ=
 github.com/MakeNowJust/heredoc v1.0.0/go.mod h1:mG5amYoWBHf8vpLOuehzbGGw0EHxpZZ6lCpQ4fNJ8LE=
-github.com/antimatter-studios/go-oapifly v0.16.1-0.20261023123129-1ee4f4e4469c h1:AlakCn38geZMnEgPKdMGo7V8YYMNZaw0qix0Nh9ApT8=
-github.com/antimatter-studios/go-oapifly v0.16.1-0.20261023123129-1ee4f4e4469c/go.mod h1:yvCHSjTx7QCO0BeZLPjN1Sm9zSixvwHvjbcfWX3dhnU=
+github.com/antimatter-studios/go-oapifly v0.16.1-0.20261023125040-5f58cfd3133c h1:x3p6sRrz6nDj4fQWkfDs8RNRmd+KekVI8kRg4L5nGjw=
+github.com/antimatter-studios/go-oapifly v0.16.1-0.20261023125040-5f58cfd3133c/go.mod h1:oqtU2rubIFFkV/OOOLPTP1RKH7Cnt5LXljsyNBinIqU=
 github.com/atotto/clipboard v0.1.4 h1:EH0zSVneZPSuFR11BlR9YppQTVDbh5+16AmcJi4g1z4=
 github.com/atotto/clipboard v0.1.4/go.mod h1:ZY9tmq7sm5xIbd9bOK4onWV4S6X0u6GY7Vn0Yu86PYI=
 github.com/aws/aws-sdk-go-v2 v1.47.3 h1:HRoT/MkNi3bjO5xF4dCzLzvVmkvRGHj3/cLINDnJejk=

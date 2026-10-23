@@ -1,9 +1,9 @@
 module github.com/restmail/restmail
 
-go 1.26.1
+go 1.25.0
 
 require (
-	github.com/antimatter-studios/go-oapifly v0.16.1-0.20261023123129-1ee4f4e4469c
+	github.com/antimatter-studios/go-oapifly v0.16.1-0.20261023125040-5f58cfd3133c
 	github.com/aws/aws-sdk-go-v2 v1.47.3
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.9
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.3
