@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/restmail/restmail/internal/api/respond"
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
@@ -45,31 +45,11 @@ func (h *TestHandler) productionLocked() bool {
 	return h.cfg.IsProduction()
 }
 
-// SendTestEmail sends a test email from one mailbox to another.
+// sendTestEmail sends a test email from one mailbox to another.
 // POST /api/v1/admin/test/send
-func (h *TestHandler) SendTestEmail(w http.ResponseWriter, r *http.Request) {
+func (h *TestHandler) sendTestEmail(_ *http.Request, req sendTestEmailRequest) (TestEmailSent, error) {
 	if h.productionLocked() {
-		respond.Error(w, http.StatusForbidden, "forbidden", "test endpoints disabled in production")
-		return
-	}
-
-	var req struct {
-		From    string `json:"from"`
-		To      string `json:"to"`
-		Subject string `json:"subject"`
-		Body    string `json:"body"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "invalid_json", "malformed request body")
-		return
-	}
-
-	if req.From == "" || req.To == "" {
-		respond.ValidationError(w, map[string]string{
-			"from": "sender address required",
-			"to":   "recipient address required",
-		})
-		return
+		return TestEmailSent{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "test endpoints disabled in production")
 	}
 
 	if req.Subject == "" {
@@ -82,15 +62,13 @@ func (h *TestHandler) SendTestEmail(w http.ResponseWriter, r *http.Request) {
 	// Look up sender mailbox
 	var senderMb models.Mailbox
 	if err := h.db.Where("address = ?", req.From).First(&senderMb).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "sender mailbox not found")
-		return
+		return TestEmailSent{}, endpoint.Refuse(http.StatusNotFound, "not_found", "sender mailbox not found")
 	}
 
 	// Look up recipient mailbox
 	var recipientMb models.Mailbox
 	if err := h.db.Where("address = ?", req.To).First(&recipientMb).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "recipient mailbox not found")
-		return
+		return TestEmailSent{}, endpoint.Refuse(http.StatusNotFound, "not_found", "recipient mailbox not found")
 	}
 
 	messageID := rmail.GenerateMessageID(rmail.DomainFromAddress(req.From))
@@ -111,8 +89,7 @@ func (h *TestHandler) SendTestEmail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.db.Create(&msg).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal", "failed to create test message")
-		return
+		return TestEmailSent{}, endpoint.Refuse(http.StatusInternalServerError, "internal", "failed to create test message")
 	}
 
 	// Also save a copy in the sender's Sent folder
@@ -132,32 +109,17 @@ func (h *TestHandler) SendTestEmail(w http.ResponseWriter, r *http.Request) {
 	}
 	h.db.Create(&sent)
 
-	respond.Data(w, http.StatusCreated, map[string]any{
-		"message_id": msg.ID,
-		"msg_id":     messageID,
-		"from":       req.From,
-		"to":         req.To,
-		"subject":    req.Subject,
-	})
+	return TestEmailSent{MessageID: msg.ID, MsgID: messageID, From: req.From, To: req.To, Subject: req.Subject}, nil
 }
 
-// VerifyDelivery checks whether a message matching the given criteria was delivered.
+// verifyDelivery checks whether a message matching the given criteria was delivered.
 // GET /api/v1/admin/test/verify?to=alice@mail1.test&subject=Test&timeout=5s
-func (h *TestHandler) VerifyDelivery(w http.ResponseWriter, r *http.Request) {
+func (h *TestHandler) verifyDelivery(_ *http.Request, in verifyDeliveryRequest) (TestDelivery, error) {
 	if h.productionLocked() {
-		respond.Error(w, http.StatusForbidden, "forbidden", "test endpoints disabled in production")
-		return
+		return TestDelivery{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "test endpoints disabled in production")
 	}
 
-	to := r.URL.Query().Get("to")
-	subject := r.URL.Query().Get("subject")
-	messageID := r.URL.Query().Get("message_id")
-	timeoutStr := r.URL.Query().Get("timeout")
-
-	if to == "" {
-		respond.ValidationError(w, map[string]string{"to": "recipient address required"})
-		return
-	}
+	to, subject, messageID, timeoutStr := in.To, in.Subject, in.MessageID, in.Timeout
 
 	timeout := 5 * time.Second
 	if timeoutStr != "" {
@@ -174,14 +136,9 @@ func (h *TestHandler) VerifyDelivery(w http.ResponseWriter, r *http.Request) {
 	var mailbox models.Mailbox
 	if err := h.db.Where("address = ?", to).First(&mailbox).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			respond.Data(w, http.StatusOK, map[string]any{
-				"found":   false,
-				"message": "no mailbox at that address",
-			})
-			return
+			return TestDelivery{Message: "no mailbox at that address"}, nil
 		}
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to look up the recipient mailbox")
-		return
+		return TestDelivery{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to look up the recipient mailbox")
 	}
 
 	deadline := time.Now().Add(timeout)
@@ -196,23 +153,11 @@ func (h *TestHandler) VerifyDelivery(w http.ResponseWriter, r *http.Request) {
 
 		var msg models.Message
 		if err := query.Order("received_at DESC").First(&msg).Error; err == nil {
-			respond.Data(w, http.StatusOK, map[string]any{
-				"found":       true,
-				"message_id":  msg.ID,
-				"msg_id":      msg.MsgID,
-				"subject":     msg.Subject,
-				"sender":      msg.Sender,
-				"received_at": msg.ReceivedAt,
-			})
-			return
+			return TestDelivery{Found: true, MessageID: &msg.ID, MsgID: &msg.MsgID, Subject: &msg.Subject, Sender: &msg.Sender, ReceivedAt: &msg.ReceivedAt}, nil
 		}
 
 		if time.Now().After(deadline) {
-			respond.Data(w, http.StatusOK, map[string]any{
-				"found":   false,
-				"message": "no matching message found within timeout",
-			})
-			return
+			return TestDelivery{Message: "no matching message found within timeout"}, nil
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
@@ -223,30 +168,18 @@ var probeableServices = map[string]bool{
 	"smtp": true, "smtp_submission": true, "imap": true, "pop3": true, "dns": true, "db": true,
 }
 
-// ProbeServices checks connectivity to SMTP, IMAP, POP3, and DNS services.
+// probeServices checks connectivity to SMTP, IMAP, POP3, and DNS services.
 // POST /api/v1/admin/test/probe
-func (h *TestHandler) ProbeServices(w http.ResponseWriter, r *http.Request) {
+func (h *TestHandler) probeServices(_ *http.Request, req probeServicesRequest) (TestProbeResults, error) {
 	if h.productionLocked() {
-		respond.Error(w, http.StatusForbidden, "forbidden", "test endpoints disabled in production")
-		return
-	}
-
-	var req struct {
-		Services []string `json:"services"` // smtp, imap, pop3, dns, api, db
-		Host     string   `json:"host"`
-		Timeout  string   `json:"timeout"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "invalid_json", "malformed request body")
-		return
+		return TestProbeResults{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "test endpoints disabled in production")
 	}
 
 	for _, svc := range req.Services {
 		if !probeableServices[strings.ToLower(svc)] {
-			respond.ValidationError(w, map[string]string{
+			return TestProbeResults{}, endpoint.Invalid(map[string]string{
 				"services": fmt.Sprintf("unknown service %q: want smtp, smtp_submission, imap, pop3, dns or db", svc),
 			})
-			return
 		}
 	}
 	if len(req.Services) == 0 {
@@ -263,7 +196,7 @@ func (h *TestHandler) ProbeServices(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	results := make(map[string]any)
+	results := TestProbeResults{}
 
 	for _, svc := range req.Services {
 		switch strings.ToLower(svc) {
@@ -272,131 +205,114 @@ func (h *TestHandler) ProbeServices(w http.ResponseWriter, r *http.Request) {
 		// 587, 143 or 110 to reach. `smtp` is inbound relay on 25, the one listener a
 		// plain TCP probe still describes accurately.
 		case "smtp":
-			results["smtp"] = probeTCP(req.Host, h.cfg.SMTPPortInbound, timeout)
+			results.SMTP = probePtr(probeTCP(req.Host, h.cfg.SMTPPortInbound, timeout))
 		case "smtp_submission":
-			results["smtp_submission"] = probeTCP(req.Host, h.cfg.SMTPPortSubmissionTLS, timeout)
+			results.SMTPSubmission = probePtr(probeTCP(req.Host, h.cfg.SMTPPortSubmissionTLS, timeout))
 		case "imap":
-			results["imap"] = probeTCP(req.Host, h.cfg.IMAPTLSPort, timeout)
+			results.IMAP = probePtr(probeTCP(req.Host, h.cfg.IMAPTLSPort, timeout))
 		case "pop3":
-			results["pop3"] = probeTCP(req.Host, h.cfg.POP3TLSPort, timeout)
+			results.POP3 = probePtr(probeTCP(req.Host, h.cfg.POP3TLSPort, timeout))
 		case "dns":
-			results["dns"] = probeDNS("mail1.test", timeout)
+			results.DNS = probePtr(probeDNS("mail1.test", timeout))
 		case "db":
-			results["db"] = probeDB(h.db)
+			results.DB = probePtr(probeDB(h.db))
 		}
 	}
 
-	respond.Data(w, http.StatusOK, results)
+	return results, nil
 }
 
-// ResetTestData wipes all data and re-seeds with default test data.
+// resetTestData wipes all data and re-seeds with default test data.
 // POST /api/v1/admin/test/reset
-func (h *TestHandler) ResetTestData(w http.ResponseWriter, r *http.Request) {
+func (h *TestHandler) resetTestData(_ *http.Request, _ endpoint.Empty) (TestDataStatus, error) {
 	if h.productionLocked() {
-		respond.Error(w, http.StatusForbidden, "forbidden", "test endpoints disabled in production")
-		return
+		return TestDataStatus{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "test endpoints disabled in production")
 	}
 
 	slog.Warn("test: resetting all data")
 
 	err := h.db.Transaction(clearTestData)
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal", "failed to reset data: "+err.Error())
-		return
+		return TestDataStatus{}, endpoint.Refuse(http.StatusInternalServerError, "internal", "failed to reset data: "+err.Error())
 	}
 
 	// Re-seed
 	if err := seedTestData(h.db); err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal", "failed to seed data: "+err.Error())
-		return
+		return TestDataStatus{}, endpoint.Refuse(http.StatusInternalServerError, "internal", "failed to seed data: "+err.Error())
 	}
 
-	respond.Data(w, http.StatusOK, map[string]string{"status": "reset_complete"})
+	return TestDataStatus{Status: "reset_complete"}, nil
 }
 
-// SeedTestData creates default test domains, mailboxes, aliases, and accounts.
+// seedTestData creates default test domains, mailboxes, aliases, and accounts.
 // POST /api/v1/admin/test/seed
-func (h *TestHandler) SeedTestData(w http.ResponseWriter, r *http.Request) {
+func (h *TestHandler) seedTestData(_ *http.Request, _ endpoint.Empty) (TestDataStatus, error) {
 	if h.productionLocked() {
-		respond.Error(w, http.StatusForbidden, "forbidden", "test endpoints disabled in production")
-		return
+		return TestDataStatus{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "test endpoints disabled in production")
 	}
 
 	if err := seedTestData(h.db); err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal", "failed to seed data: "+err.Error())
-		return
+		return TestDataStatus{}, endpoint.Refuse(http.StatusInternalServerError, "internal", "failed to seed data: "+err.Error())
 	}
 
-	respond.Data(w, http.StatusOK, map[string]string{"status": "seed_complete"})
+	return TestDataStatus{Status: "seed_complete"}, nil
 }
 
-// Snapshot captures the current database state as JSON.
+// snapshot captures the current database state as JSON.
 // POST /api/v1/admin/test/snapshot
-func (h *TestHandler) Snapshot(w http.ResponseWriter, r *http.Request) {
+func (h *TestHandler) snapshot(_ *http.Request, _ endpoint.Empty) (TestSnapshot, error) {
 	if h.productionLocked() {
-		respond.Error(w, http.StatusForbidden, "forbidden", "test endpoints disabled in production")
-		return
+		return TestSnapshot{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "test endpoints disabled in production")
 	}
 
-	snap := make(map[string]any)
+	snap := testSnapshotModels{}
 
 	var domains []models.Domain
 	h.db.Find(&domains)
-	snap["domains"] = domains
+	snap.Domains = domains
 
 	var mailboxes []models.Mailbox
 	h.db.Find(&mailboxes)
-	snap["mailboxes"] = mailboxes
+	snap.Mailboxes = mailboxes
 
 	var aliases []models.Alias
 	h.db.Find(&aliases)
-	snap["aliases"] = aliases
+	snap.Aliases = aliases
 
 	var messages []models.Message
 	h.db.Find(&messages)
-	snap["messages"] = messages
+	snap.Messages = messages
 
 	var queue []models.OutboundQueue
 	h.db.Find(&queue)
-	snap["queue"] = queue
+	snap.Queue = queue
 
 	var pipelines []models.Pipeline
 	h.db.Find(&pipelines)
-	snap["pipelines"] = pipelines
+	snap.Pipelines = pipelines
 
 	var bans []models.Ban
 	h.db.Find(&bans)
-	snap["bans"] = bans
+	snap.Bans = bans
 
-	snap["snapshot_at"] = time.Now()
+	snap.SnapshotAt = time.Now()
 
-	respond.Data(w, http.StatusOK, snap)
+	return snapshotJSON[TestSnapshot](snap)
 }
 
-// RestoreSnapshot restores database state from a previously captured snapshot.
+// restoreSnapshot restores database state from a previously captured snapshot.
 // POST /api/v1/admin/test/snapshot/restore
-func (h *TestHandler) RestoreSnapshot(w http.ResponseWriter, r *http.Request) {
+func (h *TestHandler) restoreSnapshot(_ *http.Request, in RestoreTestSnapshot) (TestDataStatus, error) {
 	if h.productionLocked() {
-		respond.Error(w, http.StatusForbidden, "forbidden", "test endpoints disabled in production")
-		return
+		return TestDataStatus{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "test endpoints disabled in production")
 	}
 
-	var snap struct {
-		Domains   []models.Domain        `json:"domains"`
-		Mailboxes []models.Mailbox       `json:"mailboxes"`
-		Aliases   []models.Alias         `json:"aliases"`
-		Messages  []models.Message       `json:"messages"`
-		Queue     []models.OutboundQueue `json:"queue"`
-		Pipelines []models.Pipeline      `json:"pipelines"`
-		Bans      []models.Ban           `json:"bans"`
+	snap, err := snapshotJSON[testSnapshotModels](in)
+	if err != nil {
+		return TestDataStatus{}, err
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&snap); err != nil {
-		respond.Error(w, http.StatusBadRequest, "invalid_json", "malformed snapshot data")
-		return
-	}
-
-	err := h.db.Transaction(func(tx *gorm.DB) error {
+	err = h.db.Transaction(func(tx *gorm.DB) error {
 		// Clear existing data, sparing the admins.
 		if err := clearTestData(tx); err != nil {
 			return err
@@ -443,11 +359,10 @@ func (h *TestHandler) RestoreSnapshot(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal", "restore failed: "+err.Error())
-		return
+		return TestDataStatus{}, endpoint.Refuse(http.StatusInternalServerError, "internal", "restore failed: "+err.Error())
 	}
 
-	respond.Data(w, http.StatusOK, map[string]string{"status": "restore_complete"})
+	return TestDataStatus{Status: "restore_complete"}, nil
 }
 
 // testDataAdmins are the accounts the test endpoints never clear: those
@@ -483,28 +398,28 @@ func clearTestData(tx *gorm.DB) error {
 
 // --- helpers ---
 
-func probeTCP(host string, port int, timeout time.Duration) map[string]any {
+func probeTCP(host string, port int, timeout time.Duration) TestProbeResult {
 	addr := net.JoinHostPort(host, fmt.Sprintf("%d", port))
 	start := time.Now()
 	conn, err := net.DialTimeout("tcp", addr, timeout)
 	latency := time.Since(start)
 	if err != nil {
-		return map[string]any{
-			"status":  "down",
-			"address": addr,
-			"error":   err.Error(),
-			"latency": latency.String(),
+		return TestProbeResult{
+			Status:  "down",
+			Address: addr,
+			Error:   err.Error(),
+			Latency: latency.String(),
 		}
 	}
 	conn.Close()
-	return map[string]any{
-		"status":  "up",
-		"address": addr,
-		"latency": latency.String(),
+	return TestProbeResult{
+		Status:  "up",
+		Address: addr,
+		Latency: latency.String(),
 	}
 }
 
-func probeDNS(domain string, timeout time.Duration) map[string]any {
+func probeDNS(domain string, timeout time.Duration) TestProbeResult {
 	resolver := &net.Resolver{}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -512,35 +427,35 @@ func probeDNS(domain string, timeout time.Duration) map[string]any {
 	records, err := resolver.LookupMX(ctx, domain)
 	latency := time.Since(start)
 	if err != nil {
-		return map[string]any{
-			"status":  "error",
-			"domain":  domain,
-			"error":   err.Error(),
-			"latency": latency.String(),
+		return TestProbeResult{
+			Status:  "error",
+			Domain:  domain,
+			Error:   err.Error(),
+			Latency: latency.String(),
 		}
 	}
 	mxs := make([]string, len(records))
 	for i, mx := range records {
 		mxs[i] = fmt.Sprintf("%s (pref %d)", mx.Host, mx.Pref)
 	}
-	return map[string]any{
-		"status":     "ok",
-		"domain":     domain,
-		"mx_records": mxs,
-		"latency":    latency.String(),
+	return TestProbeResult{
+		Status:    "ok",
+		Domain:    domain,
+		MXRecords: &mxs,
+		Latency:   latency.String(),
 	}
 }
 
-func probeDB(db *gorm.DB) map[string]any {
+func probeDB(db *gorm.DB) TestProbeResult {
 	start := time.Now()
 	sqlDB, err := db.DB()
 	if err != nil {
-		return map[string]any{"status": "error", "error": err.Error()}
+		return TestProbeResult{Status: "error", Error: err.Error()}
 	}
 	if err := sqlDB.Ping(); err != nil {
-		return map[string]any{"status": "error", "error": err.Error(), "latency": time.Since(start).String()}
+		return TestProbeResult{Status: "error", Error: err.Error(), Latency: time.Since(start).String()}
 	}
-	return map[string]any{"status": "ok", "latency": time.Since(start).String()}
+	return TestProbeResult{Status: "ok", Latency: time.Since(start).String()}
 }
 
 // seedTestData creates the standard test domains, accounts (each with the
@@ -598,4 +513,27 @@ func seedTestData(database *gorm.DB) error {
 func mustJSON(v any) []byte {
 	b, _ := json.Marshal(v)
 	return b
+}
+
+// testSnapshotModels is the database fixture format, used only for conversion;
+// the generated endpoint types retain exactly its exported JSON fields.
+type testSnapshotModels struct {
+	Domains    []models.Domain        `json:"domains"`
+	Mailboxes  []models.Mailbox       `json:"mailboxes"`
+	Aliases    []models.Alias         `json:"aliases"`
+	Messages   []models.Message       `json:"messages"`
+	Queue      []models.OutboundQueue `json:"queue"`
+	Pipelines  []models.Pipeline      `json:"pipelines"`
+	Bans       []models.Ban           `json:"bans"`
+	SnapshotAt time.Time              `json:"snapshot_at"`
+}
+
+func snapshotJSON[T any](in any) (T, error) {
+	var out T
+	data, err := json.Marshal(in)
+	if err != nil {
+		return out, err
+	}
+	err = json.Unmarshal(data, &out)
+	return out, err
 }
