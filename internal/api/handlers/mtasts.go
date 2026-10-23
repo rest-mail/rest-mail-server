@@ -57,13 +57,8 @@ func (h *MTASTSHandler) SetPolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify domain exists
-	var domain models.Domain
-	if err := h.db.First(&domain, domainID).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "Domain not found")
-		return
-	}
-
+	// The body is checked before the domain is looked up: a refused request
+	// reaches nothing (#386).
 	var req struct {
 		Mode    string `json:"mode"`
 		MXHosts string `json:"mx_hosts"`
@@ -93,6 +88,13 @@ func (h *MTASTSHandler) SetPolicy(w http.ResponseWriter, r *http.Request) {
 		respond.ValidationError(w, map[string]string{
 			"max_age": "Must be a non-negative integer (seconds)",
 		})
+		return
+	}
+
+	// Verify domain exists
+	var domain models.Domain
+	if err := h.db.First(&domain, domainID).Error; err != nil {
+		respond.Error(w, http.StatusNotFound, "not_found", "Domain not found")
 		return
 	}
 
