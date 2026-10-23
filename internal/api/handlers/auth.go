@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/auth"
@@ -651,71 +652,74 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 // password asks the same of it.
 const minChosenPasswordLength = bootstrap.MinChosenPasswordLength
 
-// changePasswordRequest is the body of POST /api/v1/auth/password.
+// RegisterPasswordChange registers an account replacing its own password, which a session
+// still in setup reaches. It checks a password, so it is throttled like login.
+func (h *AuthHandler) RegisterPasswordChange(rs endpoint.Routes, checks SessionRouteChecks) {
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/auth/password",
+		OperationID: "changeOwnPassword", Summary: "Replace your own password", Tags: []string{"Auth"},
+		Errors:     []int{http.StatusForbidden},
+		Middleware: []endpoint.Middleware{checks.Throttle, checks.Audit("auth.password_change")}}, h.changePassword)
+}
+
+// changePasswordRequest is the body of POST /api/v1/auth/password. The new
+// password's length is counted in bytes, as bootstrap counts it, and only once
+// the current password is proven, so it is the handler's to check.
 type changePasswordRequest struct {
 	CurrentPassword string `json:"current_password"`
 	NewPassword     string `json:"new_password"`
 }
 
-// ChangePassword lets a signed-in account replace its own password, and is
+// passwordChanged is the answer to a changed password: sign in again.
+type passwordChanged struct {
+	Message string `json:"message"`
+}
+
+// changePassword lets a signed-in account replace its own password, and is
 // the one thing a session flagged password_change_required may do besides
 // enrolling 2FA. It needs the current password even then, so a stolen access
 // token alone cannot take the account. Success clears the flag, revokes every
 // app password (whoever knew the old password could have made one) and every
 // session of the account, including this one: the next sign-in gets the
 // account's real capabilities.
-func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+// POST /api/v1/auth/password
+func (h *AuthHandler) changePassword(r *http.Request, req changePasswordRequest) (passwordChanged, error) {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
-	}
-
-	var req changePasswordRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
+		return passwordChanged{}, errAuthenticationRequired
 	}
 	if req.CurrentPassword == "" || req.NewPassword == "" {
-		respond.ValidationError(w, map[string]string{
+		return passwordChanged{}, endpoint.Invalid(map[string]string{
 			"current_password": "required",
 			"new_password":     "required",
 		})
-		return
 	}
 
 	var account models.Mailbox
 	if err := h.db.First(&account, claims.AccountID).Error; err != nil || !account.Active {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid or expired session")
-		return
+		return passwordChanged{}, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Invalid or expired session")
 	}
 	now := time.Now()
 	cred, err := repositories.NewCredentialRepository(h.db).MatchPassword(account.ID, req.CurrentPassword, now)
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to verify the password")
-		return
+		return passwordChanged{}, fmt.Errorf("verify the password: %w", err)
 	}
 	if cred == nil {
 		// 403, never 401: the session is still good, only the password is wrong.
-		respond.Error(w, http.StatusForbidden, "invalid_password", "Current password is incorrect")
-		return
+		return passwordChanged{}, endpoint.Refuse(http.StatusForbidden, "invalid_password", "Current password is incorrect")
 	}
 	if len(req.NewPassword) < minChosenPasswordLength {
-		respond.ValidationError(w, map[string]string{
+		return passwordChanged{}, endpoint.Invalid(map[string]string{
 			"new_password": fmt.Sprintf("must be at least %d characters", minChosenPasswordLength),
 		})
-		return
 	}
 	// The point of a forced change is a credential nobody else has seen.
 	if req.NewPassword == req.CurrentPassword {
-		respond.ValidationError(w, map[string]string{"new_password": "must differ from the current password"})
-		return
+		return passwordChanged{}, endpoint.Invalid(map[string]string{"new_password": "must differ from the current password"})
 	}
 
 	hash, err := hashPassword(req.NewPassword)
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to set password")
-		return
+		return passwordChanged{}, fmt.Errorf("hash the password: %w", err)
 	}
 	err = h.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&models.Mailbox{}).Where("id = ?", account.ID).Updates(map[string]interface{}{
@@ -730,11 +734,10 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return setAccountPassword(tx, r, account.ID, hash, &account.ID, now)
 	})
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to set password")
-		return
+		return passwordChanged{}, fmt.Errorf("set the password: %w", err)
 	}
 	h.sessions.Forget(account.ID)
-	respond.Data(w, http.StatusOK, map[string]string{"message": "Password changed. Sign in again with the new password."})
+	return passwordChanged{Message: "Password changed. Sign in again with the new password."}, nil
 }
 
 // setAccountPassword makes hash the account's one password, in tx: its other
