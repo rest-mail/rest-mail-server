@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
@@ -844,35 +844,109 @@ func (h *PipelineHandler) ValidateCustomFilter(w http.ResponseWriter, r *http.Re
 
 // ── Quarantine ───────────────────────────────────────────────────────
 
-// ListQuarantine returns quarantined messages for a mailbox.
-// resolveMailboxID resolves the account ID from the URL to a mailbox ID,
-// verifying that the session may reach the account (its own, or one it holds
-// a mail grant on). Quarantine rows are per-mailbox
-// confidential mail; without this check the {id} path segment was trusted as a
-// raw mailbox ID and quarantine rows were released/deleted by row ID with no
-// owner check, letting any authenticated caller view/release/delete another
-// mailbox's quarantined mail (IDOR).
-func (h *PipelineHandler) resolveMailboxID(r *http.Request, accountIDStr string) (uint, error) {
-	claims := middleware.GetClaims(r)
-	if claims == nil {
-		return 0, fmt.Errorf("no claims")
-	}
-
-	accountID, err := strconv.ParseUint(accountIDStr, 10, 32)
-	if err != nil {
-		return 0, err
-	}
-	return resolveAccountMailbox(h.db, uint(accountID), claims, mailCapabilityFor(r))
+// QuarantinedMessage is a message the account's filters held back from the inbox. Its raw
+// source is never answered.
+type QuarantinedMessage struct {
+	ID               uint      `json:"id"`
+	MailboxID        uint      `json:"mailbox_id"`
+	Sender           string    `json:"sender"`
+	Subject          string    `json:"subject"`
+	BodyPreview      string    `json:"body_preview"`
+	SpamScore        *float32  `json:"spam_score,omitempty"`
+	QuarantineReason string    `json:"quarantine_reason"`
+	ReceivedAt       time.Time `json:"received_at"`
+	ExpiresAt        time.Time `json:"expires_at"`
+	Released         bool      `json:"released"`
 }
 
-func (h *PipelineHandler) ListQuarantine(w http.ResponseWriter, r *http.Request) {
-	mailboxID, err := h.resolveMailboxID(r, chi.URLParam(r, "id"))
+func quarantinedMessageOf(m models.Quarantine) QuarantinedMessage {
+	return QuarantinedMessage{
+		ID:               m.ID,
+		MailboxID:        m.MailboxID,
+		Sender:           m.Sender,
+		Subject:          m.Subject,
+		BodyPreview:      m.BodyPreview,
+		SpamScore:        m.SpamScore,
+		QuarantineReason: m.QuarantineReason,
+		ReceivedAt:       m.ReceivedAt,
+		ExpiresAt:        m.ExpiresAt,
+		Released:         m.Released,
+	}
+}
+
+// QuarantineReleased is the answer to releasing a held message: the id of the inbox message
+// it became, as a string, as it has always been written.
+type QuarantineReleased struct {
+	MessageID string `json:"message_id"`
+	Status    string `json:"status" enums:"released"`
+}
+
+// QuarantineDeleted is the answer to deleting a held message.
+type QuarantineDeleted struct {
+	Status string `json:"status" enums:"deleted"`
+}
+
+type quarantineListRequest struct {
+	ID     uint32 `path:"id" minimum:"1"`
+	Limit  *int   `query:"limit"`
+	Offset *int   `query:"offset"`
+}
+
+// quarantinePath names a held message by its account and its own id.
+type quarantinePath struct {
+	ID  uint32 `path:"id" minimum:"1"`
+	MID uint32 `path:"mid" minimum:"1"`
+}
+
+// RegisterQuarantine mounts the account's quarantine. Its routes take what the mail routes
+// take; the handler checks the account is reachable with mail:read to list and mail:write to
+// release or delete, and answers 403 forbidden when it is not.
+func (h *PipelineHandler) RegisterQuarantine(rs endpoint.Routes) {
+	schemes := []string{"CookieAuth", "BearerAuth", "APIKeyAuth", "BasicAuth"}
+	tags := []string{"Quarantine"}
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/quarantine",
+		OperationID: "listQuarantine", Summary: "List quarantined messages", Tags: tags,
+		Errors: []int{http.StatusForbidden}, Security: handlerChecked(models.CapMailRead, schemes...)}, h.listQuarantine)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/quarantine/{mid}/release",
+		OperationID: "releaseQuarantine", Summary: "Release a quarantined message to inbox", Tags: tags,
+		Errors:   []int{http.StatusForbidden, http.StatusNotFound},
+		Security: handlerChecked(models.CapMailWrite, schemes...)}, h.releaseQuarantine)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/accounts/{id}/quarantine/{mid}",
+		OperationID: "deleteQuarantine", Summary: "Permanently delete a quarantined message", Tags: tags,
+		Errors:   []int{http.StatusForbidden, http.StatusNotFound},
+		Security: handlerChecked(models.CapMailWrite, schemes...)}, h.deleteQuarantine)
+}
+
+var (
+	errQuarantineAccess   = endpoint.Refuse(http.StatusForbidden, "forbidden", "Access denied")
+	errQuarantineNotFound = endpoint.Refuse(http.StatusNotFound, "not_found", "Quarantined message not found")
+)
+
+// quarantineMailbox resolves the account the path names to its mailbox, verifying that the
+// session may reach it (its own, or one it holds a mail grant on). Quarantine rows are
+// confidential mail: without this check the {id} path segment was trusted as a raw mailbox ID
+// and rows were released or deleted by row ID with no owner check, letting any caller view,
+// release or delete another mailbox's quarantined mail (IDOR).
+func (h *PipelineHandler) quarantineMailbox(r *http.Request, accountID uint32) (uint, error) {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		return 0, errQuarantineAccess
+	}
+	mailboxID, err := resolveAccountMailbox(h.db, uint(accountID), claims, mailCapabilityFor(r))
 	if err != nil {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
+		return 0, errQuarantineAccess
+	}
+	return mailboxID, nil
+}
+
+// listQuarantine returns the account's held messages that are not released, newest first.
+func (h *PipelineHandler) listQuarantine(r *http.Request, in quarantineListRequest) (endpoint.List[QuarantinedMessage], error) {
+	mailboxID, err := h.quarantineMailbox(r, in.ID)
+	if err != nil {
+		return endpoint.List[QuarantinedMessage]{}, err
 	}
 
-	limit, offset := parsePagination(r, defaultListLimit, maxListLimit)
+	limit, offset := pagination(in.Limit, in.Offset, defaultListLimit, maxListLimit)
 
 	query := h.db.Model(&models.Quarantine{}).Where("mailbox_id = ? AND released = false", mailboxID)
 
@@ -882,29 +956,25 @@ func (h *PipelineHandler) ListQuarantine(w http.ResponseWriter, r *http.Request)
 	var items []models.Quarantine
 	query.Order("received_at DESC").Limit(limit).Offset(offset).Find(&items)
 
-	respond.List(w, items, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
+	out := make([]QuarantinedMessage, len(items))
+	for i, item := range items {
+		out[i] = quarantinedMessageOf(item)
+	}
+	return endpoint.List[QuarantinedMessage]{Data: out, Pagination: &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total}}, nil
 }
 
-// ReleaseQuarantine releases a quarantined message to the inbox.
-func (h *PipelineHandler) ReleaseQuarantine(w http.ResponseWriter, r *http.Request) {
-	mailboxID, err := h.resolveMailboxID(r, chi.URLParam(r, "id"))
+// releaseQuarantine releases a quarantined message to the inbox.
+func (h *PipelineHandler) releaseQuarantine(r *http.Request, in quarantinePath) (QuarantineReleased, error) {
+	mailboxID, err := h.quarantineMailbox(r, in.ID)
 	if err != nil {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
-	}
-
-	mid, err := pathID(r, "mid")
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid message ID")
-		return
+		return QuarantineReleased{}, err
 	}
 
 	// Scope the lookup to the caller's mailbox so a quarantine row belonging to
 	// another mailbox is indistinguishable from a non-existent one (404, no leak).
 	var item models.Quarantine
-	if err := h.db.Where("id = ? AND mailbox_id = ?", mid, mailboxID).First(&item).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "Quarantined message not found")
-		return
+	if err := h.db.Where("id = ? AND mailbox_id = ?", in.MID, mailboxID).First(&item).Error; err != nil {
+		return QuarantineReleased{}, errQuarantineNotFound
 	}
 
 	item.Released = true
@@ -935,42 +1005,32 @@ func (h *PipelineHandler) ReleaseQuarantine(w http.ResponseWriter, r *http.Reque
 		RawSize:    len(item.RawMessage), // exact stored-raw octet count for IMAP/POP3 size reporting
 	}
 	if err := h.db.Create(&msg).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to deliver released message")
-		return
+		return QuarantineReleased{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to deliver released message")
 	}
 
 	// Update quota
 	h.db.Model(&models.Mailbox{}).Where("id = ?", item.MailboxID).
 		Update("quota_used_bytes", gorm.Expr("quota_used_bytes + ?", msg.SizeBytes))
 
-	respond.Data(w, http.StatusOK, map[string]string{"status": "released", "message_id": strconv.FormatUint(uint64(msg.ID), 10)})
+	return QuarantineReleased{MessageID: strconv.FormatUint(uint64(msg.ID), 10), Status: "released"}, nil
 }
 
-// DeleteQuarantine permanently deletes a quarantined message.
-func (h *PipelineHandler) DeleteQuarantine(w http.ResponseWriter, r *http.Request) {
-	mailboxID, err := h.resolveMailboxID(r, chi.URLParam(r, "id"))
+// deleteQuarantine permanently deletes a quarantined message.
+func (h *PipelineHandler) deleteQuarantine(r *http.Request, in quarantinePath) (QuarantineDeleted, error) {
+	mailboxID, err := h.quarantineMailbox(r, in.ID)
 	if err != nil {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
-	}
-
-	mid, err := pathID(r, "mid")
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid message ID")
-		return
+		return QuarantineDeleted{}, err
 	}
 
 	// Delete only when the row belongs to the caller's mailbox; a mismatch
 	// affects zero rows and returns 404 rather than deleting another user's mail.
-	res := h.db.Where("id = ? AND mailbox_id = ?", mid, mailboxID).Delete(&models.Quarantine{})
+	res := h.db.Where("id = ? AND mailbox_id = ?", in.MID, mailboxID).Delete(&models.Quarantine{})
 	if res.Error != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to delete")
-		return
+		return QuarantineDeleted{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to delete")
 	}
 	if res.RowsAffected == 0 {
-		respond.Error(w, http.StatusNotFound, "not_found", "Quarantined message not found")
-		return
+		return QuarantineDeleted{}, errQuarantineNotFound
 	}
 
-	respond.Data(w, http.StatusOK, map[string]string{"status": "deleted"})
+	return QuarantineDeleted{Status: "deleted"}, nil
 }

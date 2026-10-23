@@ -693,9 +693,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.Get("/api/v1/accounts/{id}/search", searchH.Search)
 
 		// Quarantine
-		r.Get("/api/v1/accounts/{id}/quarantine", pipelineH.ListQuarantine)
-		r.Post("/api/v1/accounts/{id}/quarantine/{mid}/release", pipelineH.ReleaseQuarantine)
-		r.Delete("/api/v1/accounts/{id}/quarantine/{mid}", pipelineH.DeleteQuarantine)
+		pipelineH.RegisterQuarantine(endpoint.Routes{Router: r, Registry: registry}.
+			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap))
 	})
 
 	// ═══════════════════════════════════════════════════════════════

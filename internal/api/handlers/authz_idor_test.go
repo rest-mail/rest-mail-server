@@ -189,12 +189,11 @@ func TestQuarantineIDOR_OwnershipEnforced(t *testing.T) {
 		t.Fatalf("seed quarantine: %v", err)
 	}
 
-	h := NewPipelineHandler(tx, nil, filters.JSSidecar{})
-	ownerAcct := map[string]string{"id": uintToStr(fx.ownerMailbox.ID)}
+	routes := quarantineRoutes(NewPipelineHandler(tx, nil, filters.JSSidecar{}))
 
 	// Owner LIST → 200 with the one row.
 	rr := httptest.NewRecorder()
-	h.ListQuarantine(rr, authzRequest(http.MethodGet, "/quarantine", fx.ownerMailbox.ID, ownerAcct, ""))
+	routes.ServeHTTP(rr, quarantineRequest(http.MethodGet, fx.ownerMailbox.ID, quarantinePathOf(fx.ownerMailbox.ID, 0, "")))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("owner LIST: expected 200, got %d (%s)", rr.Code, rr.Body.String())
 	}
@@ -204,15 +203,14 @@ func TestQuarantineIDOR_OwnershipEnforced(t *testing.T) {
 
 	// Attacker LIST on the owner's account id → 403 (account not owned).
 	rr = httptest.NewRecorder()
-	h.ListQuarantine(rr, authzRequest(http.MethodGet, "/quarantine", fx.attackerMailbox.ID, ownerAcct, ""))
+	routes.ServeHTTP(rr, quarantineRequest(http.MethodGet, fx.attackerMailbox.ID, quarantinePathOf(fx.ownerMailbox.ID, 0, "")))
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("attacker LIST (foreign account): expected 403, got %d", rr.Code)
 	}
 
 	// Attacker RELEASE targeting the owner's account id → 403.
 	rr = httptest.NewRecorder()
-	h.ReleaseQuarantine(rr, authzRequest(http.MethodPost, "/quarantine/release", fx.attackerMailbox.ID,
-		map[string]string{"id": uintToStr(fx.ownerMailbox.ID), "mid": uintToStr(q.ID)}, ""))
+	routes.ServeHTTP(rr, quarantineRequest(http.MethodPost, fx.attackerMailbox.ID, quarantinePathOf(fx.ownerMailbox.ID, q.ID, "/release")))
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("attacker RELEASE (foreign account): expected 403, got %d", rr.Code)
 	}
@@ -220,8 +218,7 @@ func TestQuarantineIDOR_OwnershipEnforced(t *testing.T) {
 	// Attacker RELEASE using their OWN valid account but the owner's row id → 404,
 	// and the row must remain un-released (the cross-mailbox-by-row-id vector).
 	rr = httptest.NewRecorder()
-	h.ReleaseQuarantine(rr, authzRequest(http.MethodPost, "/quarantine/release", fx.attackerMailbox.ID,
-		map[string]string{"id": uintToStr(fx.attackerMailbox.ID), "mid": uintToStr(q.ID)}, ""))
+	routes.ServeHTTP(rr, quarantineRequest(http.MethodPost, fx.attackerMailbox.ID, quarantinePathOf(fx.attackerMailbox.ID, q.ID, "/release")))
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("attacker RELEASE (foreign row via own account): expected 404, got %d", rr.Code)
 	}
@@ -236,8 +233,7 @@ func TestQuarantineIDOR_OwnershipEnforced(t *testing.T) {
 	// Attacker DELETE using their OWN account but the owner's row id → 404, and
 	// the row must still exist.
 	rr = httptest.NewRecorder()
-	h.DeleteQuarantine(rr, authzRequest(http.MethodDelete, "/quarantine", fx.attackerMailbox.ID,
-		map[string]string{"id": uintToStr(fx.attackerMailbox.ID), "mid": uintToStr(q.ID)}, ""))
+	routes.ServeHTTP(rr, quarantineRequest(http.MethodDelete, fx.attackerMailbox.ID, quarantinePathOf(fx.attackerMailbox.ID, q.ID, "")))
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("attacker DELETE (foreign row via own account): expected 404, got %d", rr.Code)
 	}
@@ -249,8 +245,7 @@ func TestQuarantineIDOR_OwnershipEnforced(t *testing.T) {
 
 	// Owner RELEASE → 200 and the row is marked released (legitimate path works).
 	rr = httptest.NewRecorder()
-	h.ReleaseQuarantine(rr, authzRequest(http.MethodPost, "/quarantine/release", fx.ownerMailbox.ID,
-		map[string]string{"id": uintToStr(fx.ownerMailbox.ID), "mid": uintToStr(q.ID)}, ""))
+	routes.ServeHTTP(rr, quarantineRequest(http.MethodPost, fx.ownerMailbox.ID, quarantinePathOf(fx.ownerMailbox.ID, q.ID, "/release")))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("owner RELEASE: expected 200, got %d (%s)", rr.Code, rr.Body.String())
 	}
