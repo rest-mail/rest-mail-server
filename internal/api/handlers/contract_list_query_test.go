@@ -97,9 +97,9 @@ func TestListQueryIntegerContractProbes(t *testing.T) {
 	handlers := map[string]http.HandlerFunc{
 		"listAliases":       NewAliasHandler(tx).List,
 		"listMailboxes":     NewMailboxHandler(tx, nil, nil).List,
-		"listPipelines":     pipeline.ListPipelines,
-		"listCustomFilters": pipeline.ListCustomFilters,
-		"listPipelineLogs":  pipeline.ListPipelineLogs,
+		"listPipelines":     pipelineRoute(pipeline, "/api/v1/admin/pipelines"),
+		"listCustomFilters": pipelineRoute(pipeline, "/api/v1/admin/custom-filters"),
+		"listPipelineLogs":  pipelineRoute(pipeline, "/api/v1/admin/pipelines/logs"),
 		"listMessages":      NewMessageHandler(tx, nil, nil, "", nil).ListMessages,
 		"listGrants":        NewGrantHandler(tx, nil, "").List,
 		"listQueue":         NewQueueHandler(tx).ListQueue,
@@ -135,6 +135,9 @@ func TestListQueryIntegerContractProbes(t *testing.T) {
 									want = http.StatusBadRequest
 								}
 							}
+						}
+						if value == "" && (op == "listPipelines" || op == "listCustomFilters" || op == "listPipelineLogs") {
+							want = http.StatusUnprocessableEntity
 						}
 						query := url.Values{param.Name: []string{value}}
 						req := authzRequest(http.MethodGet, "/?"+query.Encode(), fx.mailbox.ID, map[string]string{"id": uintToStr(fx.mailbox.ID), "folder": "INBOX"}, "")
@@ -221,6 +224,9 @@ func TestListQueryTypedContractProbes(t *testing.T) {
 						want = http.StatusUnprocessableEntity
 					}
 					t.Run(param.Name+"="+value, func(t *testing.T) {
+						if value == "" && (op == "listPipelines" || op == "listCustomFilters" || op == "listPipelineLogs") {
+							want = http.StatusUnprocessableEntity
+						}
 						query := url.Values{param.Name: []string{value}}
 						req := authzRequest(http.MethodGet, "/?"+query.Encode(), fx.mailbox.ID, map[string]string{"id": uintToStr(fx.mailbox.ID)}, "")
 						rr := httptest.NewRecorder()

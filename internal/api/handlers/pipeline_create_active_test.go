@@ -75,7 +75,7 @@ func TestPipelineCreate_ActivePersistence(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			body := `{"domain_id":1,"direction":"inbound","filters":[]` + tc.active + `}`
 			rr := httptest.NewRecorder()
-			h.CreatePipeline(rr, httptest.NewRequest(http.MethodPost, "/api/v1/admin/pipelines", strings.NewReader(body)))
+			pipelineRoutes(h).ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/admin/pipelines", strings.NewReader(body)))
 			if rr.Code != http.StatusCreated {
 				t.Fatalf("status = %d, want 201: %s", rr.Code, rr.Body.String())
 			}
@@ -131,7 +131,7 @@ func TestPipelineCreate_ActivePersistence(t *testing.T) {
 		}
 		rr := httptest.NewRecorder()
 		body := `{"domain_id":1,"direction":"outbound","filters":[],"active":false}`
-		h.CreatePipeline(rr, httptest.NewRequest(http.MethodPost, "/api/v1/admin/pipelines", strings.NewReader(body)))
+		pipelineRoutes(h).ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/admin/pipelines", strings.NewReader(body)))
 		if rr.Code != http.StatusInternalServerError || !strings.Contains(rr.Body.String(), `"code":"internal_error"`) {
 			t.Errorf("failed create = %d %s, want internal_error/500", rr.Code, rr.Body.String())
 		}

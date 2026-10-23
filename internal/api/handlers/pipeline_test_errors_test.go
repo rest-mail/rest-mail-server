@@ -30,7 +30,7 @@ func testPipelineNoDB(t *testing.T, body string) *httptest.ResponseRecorder {
 				t.Fatalf("%s reached the database before it was refused: %v", body, r)
 			}
 		}()
-		h.TestPipeline(rr, req)
+		pipelineRoutes(h).ServeHTTP(rr, req)
 	}()
 	return rr
 }
@@ -65,7 +65,18 @@ func TestPipelineTestErrorContract_NotJSONIs400(t *testing.T) {
 		"array body":           `[]`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			checkTestPipelineRefusal(t, body, http.StatusBadRequest, want)
+			status, expected := http.StatusBadRequest, want
+			fieldTypes := map[string]map[string]string{
+				"pipeline_id string":   {"pipeline_id": "must be a non-negative integer"},
+				"pipeline_id negative": {"pipeline_id": "must be a non-negative integer"},
+				"email string":         {"email": "must be an object"},
+				"email array":          {"email": "must be an object"},
+			}
+			if fields := fieldTypes[name]; fields != nil {
+				status = http.StatusUnprocessableEntity
+				expected = pipelineValidation(fields)
+			}
+			checkTestPipelineRefusal(t, body, status, expected)
 		})
 	}
 }

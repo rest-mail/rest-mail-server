@@ -124,7 +124,7 @@ func TestPipelineUpdate_DocumentedExamples(t *testing.T) {
 		rctx.URLParams.Add("id", id)
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 		rr := httptest.NewRecorder()
-		h.UpdatePipeline(rr, req)
+		pipelineRoutes(h).ServeHTTP(rr, req)
 		return rr
 	}
 	row := func(t *testing.T) models.Pipeline {

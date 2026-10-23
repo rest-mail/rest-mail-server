@@ -93,8 +93,8 @@ func TestPathID(t *testing.T) {
 func TestDeleteByIDZeroRefused(t *testing.T) {
 	handlers := map[string]http.HandlerFunc{
 		"deleteBan":          (&BanHandler{}).DeleteBan,
-		"deletePipeline":     (&PipelineHandler{}).DeletePipeline,
-		"deleteCustomFilter": (&PipelineHandler{}).DeleteCustomFilter,
+		"deletePipeline":     pipelineRoute(&PipelineHandler{}, "/api/v1/admin/pipelines/{id}"),
+		"deleteCustomFilter": pipelineRoute(&PipelineHandler{}, "/api/v1/admin/custom-filters/{id}"),
 		"deleteQueueEntry":   (&QueueHandler{}).DeleteQueueEntry,
 	}
 	for name, h := range handlers {
@@ -106,8 +106,12 @@ func TestDeleteByIDZeroRefused(t *testing.T) {
 			rec := httptest.NewRecorder()
 
 			h(rec, req)
-			if rec.Code != http.StatusBadRequest {
-				t.Errorf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+			want := http.StatusBadRequest
+			if name == "deletePipeline" || name == "deleteCustomFilter" {
+				want = http.StatusUnprocessableEntity
+			}
+			if rec.Code != want {
+				t.Errorf("status = %d, want %d; body %s", rec.Code, want, rec.Body)
 			}
 		})
 	}

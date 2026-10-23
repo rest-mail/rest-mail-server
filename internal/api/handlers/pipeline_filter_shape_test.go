@@ -34,12 +34,12 @@ func createPipelineNoDB(t *testing.T, body string) (rr *httptest.ResponseRecorde
 			}
 			stack := string(debug.Stack())
 			if !strings.Contains(stack, "gorm.io/gorm.(*DB).Create(") ||
-				!strings.Contains(stack, "handlers.(*PipelineHandler).CreatePipeline(") {
+				!strings.Contains(stack, "handlers.(*PipelineHandler).createPipeline(") {
 				t.Fatalf("%s: panicked outside gorm's Create: %v\n%s", body, r, stack)
 			}
 			reached = true
 		}()
-		h.CreatePipeline(rr, req)
+		pipelineRoutes(h).ServeHTTP(rr, req)
 	}()
 	return rr, reached
 }

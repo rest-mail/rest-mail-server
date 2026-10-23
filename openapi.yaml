@@ -4944,6 +4944,12 @@ paths:
               # before any field is read (#388).
               body_array:
                 value: []
+              active_wrong_type:
+                value: {domain_id: 1, direction: inbound, filters: [], active: "yes"}
+
+              null_body:
+                value: null
+
       responses:
         "201":
           description: Pipeline created
@@ -4981,9 +4987,9 @@ paths:
           description: >-
             `bad_request` when the body does not decode as the request: not
             JSON, an array, a string, a number or a boolean rather than an
-            object, or a field of the wrong JSON type. It is refused before any
-            field is validated; a `null` body decodes as an empty one and gets
-            the 422. Filters that pass validation are also refused with a 400:
+            object (including `null`). Field types and unknown fields are
+            checked by binding and answer 422 `validation_failed` with field
+            details. Filters that pass validation are also refused with a 400:
             `invalid_sieve` for a Sieve script that does not install,
             `unsupported_filter` for a filter configured in a way it does not
             support.
@@ -4997,6 +5003,12 @@ paths:
                     error:
                       code: bad_request
                       message: Invalid request body
+                null_body:
+                  value:
+                    error:
+                      code: bad_request
+                      message: Invalid request body
+
         "422":
           description: Request body failed validation
           content:
@@ -5020,6 +5032,15 @@ paths:
                       details:
                         fields:
                           filters: must be an array of filter objects
+
+                active_wrong_type:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          active: must be a boolean
 
   /api/v1/admin/pipelines/{id}:
     parameters:
@@ -5159,6 +5180,9 @@ paths:
               email_missing:
                 value:
                   pipeline_id: 1
+              pipeline_id_wrong_type:
+                value: {pipeline_id: "1", email: {}}
+
       responses:
         "200":
           description: Pipeline execution result
@@ -5219,6 +5243,15 @@ paths:
                         fields:
                           email: required
 
+                pipeline_id_wrong_type:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          pipeline_id: must be a non-negative integer
+
   /api/v1/admin/pipelines/test-filter:
     post:
       operationId: testFilter
@@ -5274,6 +5307,9 @@ paths:
               # JSON but not a request object: refused before any filter is made.
               invalid_body:
                 value: []
+              filter_name_wrong_type:
+                value: {filter_name: 1, config: {}, email: {}}
+
       responses:
         "200":
           description: Filter execution result
@@ -5313,14 +5349,23 @@ paths:
                         fields:
                           filter_name: required
                           email: required
+                filter_name_wrong_type:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          filter_name: must be a string
+
         "400":
           description: >-
             `bad_request` when the body does not decode as the request: empty,
             not JSON, an array, a string, a number or a boolean rather than an
-            object, or a `filter_name` or `email` of the wrong JSON type. It is
-            refused before the required fields are checked and before any
-            filter is made; `{}` and a `null` body decode as empty ones and get
-            a 422 instead. A body that decodes is also refused with a 400,
+            object (including `null`). A field of the wrong JSON type or an
+            unknown field answers 422 `validation_failed` with field details.
+            An empty object also gets 422 for the missing fields before any
+            filter is made. A body that decodes is also refused with a 400,
             `filter_error`, when the named filter cannot be made from its
             config or fails on the email.
           content:
@@ -5480,6 +5525,9 @@ paths:
                         return { action: "continue" };
                       }
                   enabled: false
+              enabled_wrong_type:
+                value: {domain_id: 1, name: test, filter_type: action, direction: inbound, config: {}, enabled: "false"}
+
       responses:
         "201":
           description: Custom filter created
@@ -5537,6 +5585,15 @@ paths:
                       details:
                         fields:
                           filter_type: must be action or transform
+
+                enabled_wrong_type:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          enabled: must be a boolean
 
   /api/v1/admin/custom-filters/validate:
     post:

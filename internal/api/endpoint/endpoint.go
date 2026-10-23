@@ -49,6 +49,10 @@ type Operation struct {
 	// over the size cap when it has a body, and 500 always.
 	Errors []int
 
+	// Responses overrides individual response bodies when the answer belongs to an upstream
+	// service (for example, a sidecar error beside the API's own binding errors).
+	Responses []oapifly.EndpointResponse
+
 	// Security is the operation's own requirement, when it differs from what its middleware
 	// enforces: alternatives of schemes, each with the roles held there. nil leaves it to the
 	// middleware and the document's default; oapifly.Public needs no credential.
@@ -220,6 +224,20 @@ func (reg *Registry) record(applied []oapifly.Middleware, op Operation, reqType,
 		responses = append(responses, oapifly.EndpointResponse{Status: status, Type: body})
 	}
 
+	for _, override := range op.Responses {
+		replaced := false
+		for i := range responses {
+			if responses[i].Status == override.Status {
+				responses[i] = override
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			responses = append(responses, override)
+		}
+	}
+
 	var request reflect.Type
 	if shape.binds {
 		request = reqType
@@ -250,6 +268,9 @@ func described(applied []oapifly.Middleware, own []Middleware) []oapifly.Middlew
 // successResponse describes the success answer in the envelope write puts it in: a List as
 // itself, anything else as Data[Resp], the {"data": ...} body respond.Data writes.
 func successResponse(status int, respType, envelope reflect.Type) oapifly.EndpointResponse {
+	if raw, ok := reflect.Zero(respType).Interface().(forwardedResponse); ok {
+		return oapifly.EndpointResponse{Status: status, Type: raw.responseType()}
+	}
 	if status == http.StatusNoContent || respType == reflect.TypeOf(Empty{}) {
 		return oapifly.EndpointResponse{Status: status}
 	}
@@ -267,6 +288,10 @@ func documentedPath(path string) string {
 }
 
 func write(w http.ResponseWriter, status int, out interface{}) {
+	if raw, ok := out.(forwardedResponse); ok {
+		raw.writeResponse(w)
+		return
+	}
 	if status == http.StatusNoContent {
 		w.WriteHeader(status)
 		return

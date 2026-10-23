@@ -83,3 +83,8 @@ func (rt *Routers) Description(version string) (map[string]interface{}, []string
 	g.Register(rt.Registry.Endpoints()...)
 	return g.Generate(), g.Warnings
 }
+
+// The preview limit applies per IP before binding or running the engine.
+var describedPipelineTestThrottle = oapifly.Middleware{Responses: []oapifly.EndpointResponse{
+	{Status: http.StatusTooManyRequests, Description: "rate_limited: pipeline preview limit exceeded", Type: errorBody, Headers: map[string]oapifly.ResponseHeader{"Retry-After": {Description: "Seconds until another preview is allowed", Required: true, Type: oapifly.TypeOf[int]()}}},
+}}
