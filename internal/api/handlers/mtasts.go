@@ -1,14 +1,13 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"strings"
 
-	"github.com/restmail/restmail/internal/api/respond"
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/db/models"
 	rmail "github.com/restmail/restmail/internal/mail"
 	"gorm.io/gorm"
@@ -24,79 +23,38 @@ func NewMTASTSHandler(db *gorm.DB) *MTASTSHandler {
 	return &MTASTSHandler{db: db}
 }
 
-// GetPolicy returns the MTA-STS policy for a domain.
+// getPolicy returns the MTA-STS policy for a domain.
 // GET /api/v1/admin/domains/{id}/mta-sts
-func (h *MTASTSHandler) GetPolicy(w http.ResponseWriter, r *http.Request) {
-	domainID, err := pathID(r, "id")
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
-		return
-	}
+func (h *MTASTSHandler) getPolicy(_ *http.Request, in domainPath) (MTASTSPolicy, error) {
+	domainID := in.ID
 
 	// Verify domain exists
 	var domain models.Domain
 	if err := h.db.First(&domain, domainID).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "Domain not found")
-		return
+		return MTASTSPolicy{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Domain not found")
 	}
 
 	var policy models.MTASTSPolicy
 	if err := h.db.Where("domain_id = ?", domainID).First(&policy).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "No MTA-STS policy found for this domain")
-		return
+		return MTASTSPolicy{}, endpoint.Refuse(http.StatusNotFound, "not_found", "No MTA-STS policy found for this domain")
 	}
 
-	respond.Data(w, http.StatusOK, policy)
+	return mtaSTSPolicyOf(policy), nil
 }
 
-// SetPolicy creates or updates the MTA-STS policy for a domain.
+// setPolicy creates or updates the MTA-STS policy for a domain.
 // PUT /api/v1/admin/domains/{id}/mta-sts
-func (h *MTASTSHandler) SetPolicy(w http.ResponseWriter, r *http.Request) {
-	domainID, err := pathID(r, "id")
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
-		return
-	}
+func (h *MTASTSHandler) setPolicy(_ *http.Request, in setMTASTSInput) (endpoint.Upsert[MTASTSPolicy], error) {
+	domainID := in.ID
 
 	// The body is checked before the domain is looked up: a refused request
 	// reaches nothing (#386).
-	var req struct {
-		Mode    string `json:"mode"`
-		MXHosts string `json:"mx_hosts"`
-		MaxAge  *int   `json:"max_age"`
-		Active  *bool  `json:"active"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
-
-	// Validate mode
-	if req.Mode != "" {
-		switch req.Mode {
-		case "none", "testing", "enforce":
-			// valid
-		default:
-			respond.ValidationError(w, map[string]string{
-				"mode": "Must be one of: none, testing, enforce",
-			})
-			return
-		}
-	}
-
-	// Validate max_age
-	if req.MaxAge != nil && *req.MaxAge < 0 {
-		respond.ValidationError(w, map[string]string{
-			"max_age": "Must be a non-negative integer (seconds)",
-		})
-		return
-	}
+	req := in.Body
 
 	// Verify domain exists
 	var domain models.Domain
 	if err := h.db.First(&domain, domainID).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "Domain not found")
-		return
+		return endpoint.Upsert[MTASTSPolicy]{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Domain not found")
 	}
 
 	// Upsert: find existing or create new
@@ -104,8 +62,7 @@ func (h *MTASTSHandler) SetPolicy(w http.ResponseWriter, r *http.Request) {
 	result := h.db.Where("domain_id = ?", domainID).First(&policy)
 	created := errors.Is(result.Error, gorm.ErrRecordNotFound)
 	if result.Error != nil && !created {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to save MTA-STS policy")
-		return
+		return endpoint.Upsert[MTASTSPolicy]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to save MTA-STS policy")
 	}
 
 	if created {
@@ -138,15 +95,10 @@ func (h *MTASTSHandler) SetPolicy(w http.ResponseWriter, r *http.Request) {
 		saveErr = h.db.Save(&policy).Error
 	}
 	if saveErr != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to save MTA-STS policy")
-		return
+		return endpoint.Upsert[MTASTSPolicy]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to save MTA-STS policy")
 	}
 
-	status := http.StatusOK
-	if created {
-		status = http.StatusCreated
-	}
-	respond.Data(w, status, policy)
+	return endpoint.Upsert[MTASTSPolicy]{Data: mtaSTSPolicyOf(policy), Created: created}, nil
 }
 
 // Non-nil pointers preserve explicit zero/false instead of GORM replacing
@@ -164,22 +116,17 @@ func insertMTASTSPolicy(db *gorm.DB, policy *models.MTASTSPolicy) error {
 	return err
 }
 
-// DeletePolicy removes the MTA-STS policy for a domain.
+// deletePolicy removes the MTA-STS policy for a domain.
 // DELETE /api/v1/admin/domains/{id}/mta-sts
-func (h *MTASTSHandler) DeletePolicy(w http.ResponseWriter, r *http.Request) {
-	domainID, err := pathID(r, "id")
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
-		return
-	}
+func (h *MTASTSHandler) deletePolicy(_ *http.Request, in domainPath) (endpoint.Empty, error) {
+	domainID := in.ID
 
 	result := h.db.Where("domain_id = ?", domainID).Delete(&models.MTASTSPolicy{})
 	if result.RowsAffected == 0 {
-		respond.Error(w, http.StatusNotFound, "not_found", "No MTA-STS policy found for this domain")
-		return
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "No MTA-STS policy found for this domain")
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	return endpoint.Empty{}, nil
 }
 
 // ServePolicy serves the MTA-STS policy file at /.well-known/mta-sts.txt.

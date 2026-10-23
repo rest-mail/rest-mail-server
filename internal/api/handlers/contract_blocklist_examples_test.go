@@ -1,12 +1,10 @@
 package handlers
 
 import (
-	"context"
 	"net/http"
 	"reflect"
+	"strings"
 	"testing"
-
-	"github.com/go-chi/chi/v5"
 )
 
 const blocklistPath = "/api/v1/admin/domains/{id}/blocklist"
@@ -16,11 +14,11 @@ const blocklistPath = "/api/v1/admin/domains/{id}/blocklist"
 // stored: the handler has no database. The route gives it a valid domain ID,
 // as the router would, so the body is the only reason it is refused.
 func TestBlocklistAdd_DocumentedRefusals(t *testing.T) {
-	add := NewSenderRuleHandler(nil).AddToBlocklist
+	add := policyRoutes(NewSenderRuleHandler(nil))
 	documentedRefusals(t, blocklistPath, "addToBlocklist", func(w http.ResponseWriter, r *http.Request) {
-		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("id", "1")
-		add(w, r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx)))
+		r.URL.Path = strings.ReplaceAll(blocklistPath, "{id}", "1")
+		r.URL.RawPath = ""
+		add.ServeHTTP(w, r)
 	})
 }
 

@@ -121,6 +121,29 @@ type listResponse interface{ listEnvelope() }
 
 func (List[T]) listEnvelope() {}
 
+// Upsert answers with Data in the usual envelope: 201 when Created, otherwise 200.
+// Register describes both statuses using T, without exposing this status selector in JSON.
+type Upsert[T any] struct {
+	Data    T
+	Created bool
+}
+
+type upsertResponse interface {
+	responseTypes() (reflect.Type, reflect.Type)
+	response() (int, interface{})
+}
+
+func (Upsert[T]) responseTypes() (reflect.Type, reflect.Type) {
+	return reflect.TypeOf((*T)(nil)).Elem(), reflect.TypeOf(Data[T]{})
+}
+
+func (u Upsert[T]) response() (int, interface{}) {
+	if u.Created {
+		return http.StatusCreated, u.Data
+	}
+	return http.StatusOK, u.Data
+}
+
 // Empty is the response type of an operation that answers with no body.
 type Empty struct{}
 
@@ -195,7 +218,16 @@ func (reg *Registry) record(applied []oapifly.Middleware, op Operation, reqType,
 	}
 	reg.routes[key] = true
 
-	responses := []oapifly.EndpointResponse{successResponse(op.Status, respType, envelope)}
+	var responses []oapifly.EndpointResponse
+	if u, ok := reflect.Zero(respType).Interface().(upsertResponse); ok {
+		respType, envelope = u.responseTypes()
+		responses = []oapifly.EndpointResponse{
+			successResponse(http.StatusOK, respType, envelope),
+			successResponse(http.StatusCreated, respType, envelope),
+		}
+	} else {
+		responses = []oapifly.EndpointResponse{successResponse(op.Status, respType, envelope)}
+	}
 	errorStatuses := map[int]bool{http.StatusInternalServerError: true}
 	if shape.binds {
 		errorStatuses[http.StatusUnprocessableEntity] = true
@@ -267,6 +299,9 @@ func documentedPath(path string) string {
 }
 
 func write(w http.ResponseWriter, status int, out interface{}) {
+	if u, ok := out.(upsertResponse); ok {
+		status, out = u.response()
+	}
 	if status == http.StatusNoContent {
 		w.WriteHeader(status)
 		return

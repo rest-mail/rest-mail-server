@@ -104,10 +104,14 @@ func TestListQueryIntegerContractProbes(t *testing.T) {
 		"listGrants":        NewGrantHandler(tx, nil, "").List,
 		"listQueue":         NewQueueHandler(tx).ListQueue,
 		"listBans":          NewBanHandler(tx).ListBans,
-		"listTlsReports":    NewTLSReportHandler(tx).ListReports,
-		"listAuditEntries":  NewAuditHandler(tx).List,
-		"searchMessages":    NewSearchHandler(tx).Search,
-		"getDeliveryLogs":   NewLogHandler(tx).DeliveryLog,
+		"listTlsReports": func(w http.ResponseWriter, r *http.Request) {
+			r.URL.Path = "/api/v1/admin/tls-reports"
+			r.URL.RawPath = ""
+			policyRoutes(NewTLSReportHandler(tx)).ServeHTTP(w, r)
+		},
+		"listAuditEntries": NewAuditHandler(tx).List,
+		"searchMessages":   NewSearchHandler(tx).Search,
+		"getDeliveryLogs":  NewLogHandler(tx).DeliveryLog,
 	}
 	ops := listQueryOperations(t)
 	for op, handler := range handlers {
@@ -131,9 +135,6 @@ func TestListQueryIntegerContractProbes(t *testing.T) {
 							n, err := strconv.ParseInt(value, 10, 64)
 							if err != nil || (param.Schema.Minimum != nil && n < *param.Schema.Minimum) || (param.Schema.Maximum != nil && n > *param.Schema.Maximum) {
 								want = http.StatusUnprocessableEntity
-								if op == "listTlsReports" && param.Name == "domain_id" {
-									want = http.StatusBadRequest
-								}
 							}
 						}
 						query := url.Values{param.Name: []string{value}}

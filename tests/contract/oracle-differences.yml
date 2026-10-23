@@ -85,3 +85,163 @@
   reason: >-
     A body that is not JSON, or not an object, is the 400 bad_request. openapi.yaml documents
     the 422 only.
+
+# Domain mail policy (#646)
+
+- operation: addToAllowlist
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON or is not an object is refused as 400 bad_request before the handler
+    runs; the oracle omits that answer.
+- operation: addToAllowlist
+  difference: "response 404: generated only"
+  reason: >-
+    Adding a sender rule first checks that its domain exists and refuses a missing domain with 404
+    domain_not_found; the oracle omits that answer.
+- operation: addToBlocklist
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON or is not an object is refused as 400 bad_request before the handler
+    runs; the oracle omits that answer.
+- operation: addToBlocklist
+  difference: "response 404: generated only"
+  reason: >-
+    Adding a sender rule first checks that its domain exists and refuses a missing domain with 404
+    domain_not_found; the oracle omits that answer.
+- operation: getMtaStsPolicy
+  difference: "response 200 application/json.properties.data.properties.domain: openapi.yaml absent, generated *"
+  reason: >-
+    The existing MTA-STS and TLS report JSON includes its domain association, even when it is the
+    zero-valued domain because no association was loaded. Preserve that wire field; the oracle omits
+    it.
+- operation: getMtaStsPolicy
+  difference: "response 200 application/json.properties.data.required: openapi.yaml [\"active\",\"domain_id\",\"id\",\"max_age\",\"mode\"], generated [\"active\",\"created_at\",\"domain_id\",\"id\",\"max_age\",\"mode\",\"mx_hosts\",\"updated_at\"]"
+  reason: >-
+    Policy JSON always includes mx_hosts, created_at and updated_at, including their zero values;
+    the oracle incorrectly marks them optional.
+- operation: listAllowlist
+  difference: "response 200 application/json.properties.pagination: openapi.yaml absent, generated *"
+  reason: >-
+    The shared endpoint.List type describes optional pagination. These unpaginated lists leave the
+    pointer nil and omit it, exactly as respond.List did; the oracle leaves the property out
+    entirely.
+- operation: listBlocklist
+  difference: "response 200 application/json.properties.pagination: openapi.yaml absent, generated *"
+  reason: >-
+    The shared endpoint.List type describes optional pagination. These unpaginated lists leave the
+    pointer nil and omit it, exactly as respond.List did; the oracle leaves the property out
+    entirely.
+- operation: listSuppressions
+  difference: "response 200 application/json.properties.data.items.required: openapi.yaml [\"address\",\"created_at\",\"domain_id\",\"expires_at\",\"failure_category\",\"id\",\"reason\",\"updated_at\"], generated [\"address\",\"created_at\",\"domain_id\",\"expires_at\",\"failure_category\",\"id\",\"last_error\",\"message_id\",\"reason\",\"updated_at\"]"
+  reason: >-
+    A suppression always includes last_error and message_id, with null for an absent message ID; the
+    existing JSON does not omit either field.
+- operation: listSuppressions
+  difference: "response 200 application/json.properties.pagination: openapi.yaml absent, generated *"
+  reason: >-
+    The shared endpoint.List type describes optional pagination. These unpaginated lists leave the
+    pointer nil and omit it, exactly as respond.List did; the oracle leaves the property out
+    entirely.
+- operation: listTlsReports
+  difference: "parameter query limit schema.default: openapi.yaml 50, generated absent"
+  reason: >-
+    go-oapifly does not describe query defaults yet. The handler still defaults limit to 50 and
+    offset to 0.
+- operation: listTlsReports
+  difference: "parameter query offset schema.default: openapi.yaml 0, generated absent"
+  reason: >-
+    go-oapifly does not describe query defaults yet. The handler still defaults limit to 50 and
+    offset to 0.
+- operation: listTlsReports
+  difference: "response 200 application/json.properties.data.items.properties.domain: openapi.yaml absent, generated *"
+  reason: >-
+    The existing MTA-STS and TLS report JSON includes its domain association, even when it is the
+    zero-valued domain because no association was loaded. Preserve that wire field; the oracle omits
+    it.
+- operation: listTlsReports
+  difference: "response 200 application/json.properties.data.items.properties.failure_details.oneOf: openapi.yaml [{\"type\":\"object\"},{\"type\":\"array\"},{\"type\":\"null\"}], generated absent"
+  reason: >-
+    failure_details remains json.RawMessage so stored JSON is returned unchanged. go-oapifly
+    describes raw JSON as an unconstrained value rather than the oracle’s object/array/null union.
+- operation: listTlsReports
+  difference: "response 200 application/json.properties.data.items.required: openapi.yaml [\"domain_id\",\"end_date\",\"id\",\"policy_domain\",\"policy_type\",\"received_at\",\"reporting_org\",\"start_date\"], generated [\"created_at\",\"domain_id\",\"end_date\",\"id\",\"policy_domain\",\"policy_type\",\"received_at\",\"reporting_org\",\"start_date\",\"total_failure\",\"total_successful\"]"
+  reason: >-
+    TLS report JSON always includes created_at, total_failure and total_successful, even when zero;
+    the oracle marks those fields optional.
+- operation: listTlsReports
+  difference: "response 200 application/json.properties.pagination.required: openapi.yaml absent, generated [\"has_more\"]"
+  reason: >-
+    When pagination is present, has_more is always written by respond.Pagination. The oracle’s
+    Pagination schema does not require it.
+- operation: listTlsReports
+  difference: "response 200 application/json.properties.pagination.type: openapi.yaml \"object\", generated [\"null\",\"object\"]"
+  reason: >-
+    The shared endpoint.List type uses an optional pagination pointer, so the generator permits
+    null. This paginated handler always supplies the pointer and preserves the existing object
+    response.
+- operation: setDomainRelay
+  difference: "request body application/json.anyOf: openapi.yaml [{\"properties\":{\"transport\":{\"enum\":[\"direct\"]}}},{\"properties\":{\"transport\":{\"enum\":[\"relay\"]}},\"required\":[\"host\",\"port\",\"tls_mode\"]}], generated absent"
+  reason: >-
+    Relay host, port and tls_mode are required conditionally when transport is relay. The typed body
+    describes each field; the existing handler enforces that cross-field rule and credential
+    pairing, which struct tags cannot express.
+- operation: setDomainRelay
+  difference: "request body application/json.properties.password.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    Null port and tls_mode mean unset, and null password keeps the existing credential, just as the
+    old pointer-based decoder did. Direct transport ignores unset relay fields; relay transport
+    still requires port and tls_mode.
+- operation: setDomainRelay
+  difference: "request body application/json.properties.password.writeOnly: openapi.yaml true, generated absent"
+  reason: >-
+    go-oapifly does not emit writeOnly from a field tag. The password exists only in setRelayBody;
+    the separate relayView response type has neither plaintext nor encrypted password, and
+    regression tests enforce that boundary.
+- operation: setDomainRelay
+  difference: "request body application/json.properties.port.type: openapi.yaml \"integer\", generated [\"integer\",\"null\"]"
+  reason: >-
+    Null port and tls_mode mean unset, and null password keeps the existing credential, just as the
+    old pointer-based decoder did. Direct transport ignores unset relay fields; relay transport
+    still requires port and tls_mode.
+- operation: setDomainRelay
+  difference: "request body application/json.properties.tls_mode.enum: openapi.yaml [\"implicit\",\"starttls\"], generated [\"implicit\",\"starttls\",null]"
+  reason: >-
+    Null tls_mode means unset, as the existing pointer field did. The handler still requires a mode
+    when transport is relay.
+- operation: setDomainRelay
+  difference: "request body application/json.properties.tls_mode.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    Null port and tls_mode mean unset, and null password keeps the existing credential, just as the
+    old pointer-based decoder did. Direct transport ignores unset relay fields; relay transport
+    still requires port and tls_mode.
+- operation: setMtaStsPolicy
+  difference: "request body application/json.properties.active.type: openapi.yaml \"boolean\", generated [\"boolean\",\"null\"]"
+  reason: >-
+    Null active or max_age leaves an existing value unchanged and selects the established default on
+    creation, preserving the old pointer-based decoder.
+- operation: setMtaStsPolicy
+  difference: "request body application/json.properties.max_age.type: openapi.yaml \"integer\", generated [\"integer\",\"null\"]"
+  reason: >-
+    Null active or max_age leaves an existing value unchanged and selects the established default on
+    creation, preserving the old pointer-based decoder.
+- operation: setMtaStsPolicy
+  difference: "request body application/json.properties.mode.enum: openapi.yaml [\"enforce\",\"none\",\"testing\"], generated [\"\",\"enforce\",\"none\",\"testing\"]"
+  reason: >-
+    An empty mode has always meant unchanged on update or testing on creation; the oracle’s enum
+    omits that accepted value.
+- operation: setMtaStsPolicy
+  difference: "response 20* application/json.properties.data.properties.domain: openapi.yaml absent, generated *"
+  reason: >-
+    The existing MTA-STS and TLS report JSON includes its domain association, even when it is the
+    zero-valued domain because no association was loaded. Preserve that wire field; the oracle omits
+    it.
+- operation: setMtaStsPolicy
+  difference: "response 20* application/json.properties.data.required: openapi.yaml [\"active\",\"domain_id\",\"id\",\"max_age\",\"mode\"], generated [\"active\",\"created_at\",\"domain_id\",\"id\",\"max_age\",\"mode\",\"mx_hosts\",\"updated_at\"]"
+  reason: >-
+    Policy JSON always includes mx_hosts, created_at and updated_at, including their zero values;
+    the oracle incorrectly marks them optional.
+- operation: setMtaStsPolicy
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON or is not an object is refused as 400 bad_request before the handler
+    runs; the oracle omits that answer.

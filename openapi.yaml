@@ -8765,14 +8765,12 @@ paths:
             type: integer
             default: 0
       responses:
-        "400":
-          description: Invalid domain_id
+        "422":
+          description: Request query failed validation, including a malformed domain_id
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "422":
-          $ref: "#/components/responses/ValidationError"
+                $ref: "#/components/schemas/ValidationErrorResponse"
         "200":
           description: TLS-RPT reports
           content:

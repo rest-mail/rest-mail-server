@@ -313,3 +313,49 @@ func TestMiddlewareDescribesItself(t *testing.T) {
 		t.Errorf("an operation's own security wins: %s", got)
 	}
 }
+
+// Upsert keeps the response envelope identical on creation and replacement, and describes
+// both with the resource type. A refusal and binding failure still use the normal path.
+func TestRegisterUpsertResponse(t *testing.T) {
+	r := chi.NewRouter()
+	reg := NewRegistry()
+	Register(Routes{Router: r, Registry: reg}, Operation{Method: http.MethodPut, Path: "/widgets", OperationID: "saveWidget", Errors: []int{http.StatusNotFound}},
+		func(_ *http.Request, in createWidget) (Upsert[widget], error) {
+			if in.Name == "missing" {
+				return Upsert[widget]{}, Refuse(http.StatusNotFound, "not_found", "Widget not found")
+			}
+			return Upsert[widget]{Data: widget{ID: 7, Name: in.Name}, Created: in.Name == "new"}, nil
+		})
+	for _, tc := range []struct {
+		body   string
+		status int
+		want   string
+	}{
+		{`{"name":"new"}`, http.StatusCreated, `{"data":{"id":7,"name":"new"}}`},
+		{`{"name":"old"}`, http.StatusOK, `{"data":{"id":7,"name":"old"}}`},
+		{`{"name":"missing"}`, http.StatusNotFound, `{"error":{"code":"not_found","message":"Widget not found"}}`},
+		{`{"name":"too long name"}`, http.StatusUnprocessableEntity, ""},
+	} {
+		t.Run(tc.body, func(t *testing.T) {
+			rr := httptest.NewRecorder()
+			r.ServeHTTP(rr, httptest.NewRequest(http.MethodPut, "/widgets", strings.NewReader(tc.body)))
+			if rr.Code != tc.status || (tc.want != "" && strings.TrimSpace(rr.Body.String()) != tc.want) {
+				t.Fatalf("got %d %s, want %d %s", rr.Code, rr.Body, tc.status, tc.want)
+			}
+		})
+	}
+	for _, status := range []int{http.StatusOK, http.StatusCreated} {
+		found := false
+		for _, response := range reg.Endpoints()[0].Responses {
+			if response.Status == status {
+				found = true
+				if response.Type != oapifly.TypeOf[Data[widget]]() {
+					t.Fatalf("%d response type = %v", status, response.Type)
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("%d success is not described", status)
+		}
+	}
+}
