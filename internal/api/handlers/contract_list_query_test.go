@@ -105,7 +105,10 @@ func TestListQueryIntegerContractProbes(t *testing.T) {
 			r.URL.Path = "/api/v1/admin/grants"
 			grantRoutes(NewGrantHandler(tx, nil, "")).ServeHTTP(w, r)
 		},
-		"listQueue":        NewQueueHandler(tx).ListQueue,
+		"listQueue": func(w http.ResponseWriter, r *http.Request) {
+			r.URL.Path = "/api/v1/admin/queue"
+			queueRoutes(NewQueueHandler(tx)).ServeHTTP(w, r)
+		},
 		"listBans":         NewBanHandler(tx).ListBans,
 		"listTlsReports":   NewTLSReportHandler(tx).ListReports,
 		"listAuditEntries": NewAuditHandler(tx).List,

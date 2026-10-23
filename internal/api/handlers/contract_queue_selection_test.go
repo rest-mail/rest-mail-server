@@ -71,9 +71,7 @@ func TestBulkQueue_SelectionBoundaries(t *testing.T) {
 	}
 	t.Cleanup(func() { tx.Rollback() })
 	h := NewQueueHandler(tx)
-	for action, handle := range map[string]http.HandlerFunc{
-		"retry": h.BulkRetry, "bounce": h.BulkBounce, "delete": h.BulkDelete,
-	} {
+	for _, action := range []string{"retry", "bounce", "delete"} {
 		for _, tc := range []struct {
 			name, body string
 			status     int
@@ -81,14 +79,14 @@ func TestBulkQueue_SelectionBoundaries(t *testing.T) {
 			{"missing_selection", `{}`, 400},
 			{"empty_ids", `{"ids":[]}`, 400},
 			{"null_filter", `{"filter":null}`, 400},
-			{"negative_id", `{"ids":[-1]}`, 400},
+			{"negative_id", `{"ids":[-1]}`, 422},
 			{"zero_id", `{"ids":[0]}`, 200},
 			{"empty_filter", `{"filter":{}}`, 200},
 			{"empty_ids_with_filter", `{"ids":[],"filter":{}}`, 200},
 			{"ids_with_filter", `{"ids":[0],"filter":{}}`, 200},
 			{"1000_ids", bulkSelectionIDs(t, 1000, false), 200},
-			{"1001_ids", bulkSelectionIDs(t, 1001, false), 400},
-			{"1001_ids_with_filter", bulkSelectionIDs(t, 1001, true), 400},
+			{"1001_ids", bulkSelectionIDs(t, 1001, false), 422},
+			{"1001_ids_with_filter", bulkSelectionIDs(t, 1001, true), 422},
 		} {
 			t.Run(action+"/"+tc.name, func(t *testing.T) {
 				method := http.MethodPost
@@ -96,7 +94,7 @@ func TestBulkQueue_SelectionBoundaries(t *testing.T) {
 					method = http.MethodDelete
 				}
 				rr := httptest.NewRecorder()
-				handle(rr, httptest.NewRequest(method, "/api/v1/admin/queue/bulk-"+action, strings.NewReader(tc.body)))
+				queueRoutes(h).ServeHTTP(rr, httptest.NewRequest(method, "/api/v1/admin/queue/bulk-"+action, strings.NewReader(tc.body)))
 				if rr.Code != tc.status {
 					t.Fatalf("want %d, got %d: %s", tc.status, rr.Code, rr.Body)
 				}
