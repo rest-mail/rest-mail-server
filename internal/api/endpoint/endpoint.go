@@ -110,6 +110,17 @@ func (reg *Registry) Endpoints() []oapifly.Endpoint {
 	return append([]oapifly.Endpoint(nil), reg.endpoints...)
 }
 
+// Routes returns every registered route as "METHOD pattern", with the pattern as it was
+// mounted on the router, sorted.
+func (reg *Registry) Routes() []string {
+	out := make([]string, 0, len(reg.routes))
+	for route := range reg.routes {
+		out = append(out, route)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // Has reports whether method and path were registered, so a check can find a route that
 // was mounted without a registration.
 func (reg *Registry) Has(method, path string) bool {
