@@ -744,34 +744,17 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 			return middleware.RequireCapability(held, capability, handlers.AliasScopeOf(db))
 		}
 
-		// Roles and capabilities, for granting
-		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/roles", grantH.ListRoles)
-		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/capabilities", grantH.ListCapabilities)
-
-		// Grants (#345): which account holds which role at which scope; what
-		// makes an account an admin. Changing them needs users:write; the
-		// handler adds that the session signed in with 2FA and that the caller
-		// holds everything it grants or removes, and records each change in the
-		// audit log in the change's own transaction.
-		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/grants", grantH.List)
-		r.With(middleware.SessionOnly, needs(middleware.CapUsersWrite)).Post("/api/v1/admin/grants", grantH.Create)
-		r.With(middleware.SessionOnly, needs(middleware.CapUsersWrite)).Delete("/api/v1/admin/grants/{id}", grantH.Delete)
-
-		// Escalation (#346): every admin sees its own grants, and switches its
-		// own eligible ones on for a while. Holding the eligible grant is what
-		// allows it, so no capability is checked here; the handler answers 404
-		// for anyone else's grant. Switching on, and making a grant eligible,
-		// check a fresh second factor in the body, so they share login's
-		// throttle: they are a way to guess codes too.
-		r.With(middleware.SessionOnly).Get("/api/v1/admin/grants/mine", grantH.Mine)
-		r.With(middleware.SessionOnly, authThrottle).Post("/api/v1/admin/grants/{id}/activate", grantH.Activate)
-		r.With(middleware.SessionOnly).Post("/api/v1/admin/grants/{id}/deactivate", grantH.Deactivate)
-		r.With(middleware.SessionOnly, authThrottle).Post("/api/v1/admin/grants/{id}/make-eligible", grantH.MakeEligible)
-
 		// The routes registered with their types, and what this group's middleware
 		// adds to each of them (#669).
 		admin := endpoint.Routes{Router: r, Registry: registry}.
 			Describing(describedAdminSession, describedSetupDone, describedCSRF, describedBodyCap)
+
+		// Roles, capabilities, grants and escalation (#644).
+		grantH.Register(admin, handlers.GrantRouteChecks{
+			At:           describedCapability(needs),
+			SessionOnly:  endpoint.Middleware{Wrap: middleware.SessionOnly, Describes: describedSessionOnly},
+			AuthThrottle: endpoint.Middleware{Wrap: authThrottle, Describes: describedAuthThrottle},
+		})
 
 		// Dashboard stats — every admin role holds domains:read
 		statsH.Register(admin, describedCapability(needs))
