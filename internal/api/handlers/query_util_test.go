@@ -92,7 +92,7 @@ func TestPathID(t *testing.T) {
 // handlers have none here), as the schema's minimum of 1 says.
 func TestDeleteByIDZeroRefused(t *testing.T) {
 	handlers := map[string]http.HandlerFunc{
-		"deleteBan":          (&BanHandler{}).DeleteBan,
+		"deleteBan":          banRoutes(&BanHandler{}).ServeHTTP,
 		"deletePipeline":     pipelineRoute(&PipelineHandler{}, "/api/v1/admin/pipelines/{id}"),
 		"deleteCustomFilter": pipelineRoute(&PipelineHandler{}, "/api/v1/admin/custom-filters/{id}"),
 	}
@@ -100,13 +100,17 @@ func TestDeleteByIDZeroRefused(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			rctx := chi.NewRouteContext()
 			rctx.URLParams.Add("id", "0")
-			req := httptest.NewRequest("DELETE", "/x/0", nil)
+			path := "/x/0"
+			if name == "deleteBan" {
+				path = "/api/v1/admin/bans/0"
+			}
+			req := httptest.NewRequest("DELETE", path, nil)
 			req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 			rec := httptest.NewRecorder()
 
 			h(rec, req)
 			want := http.StatusBadRequest
-			if name == "deletePipeline" || name == "deleteCustomFilter" {
+			if name == "deleteBan" || name == "deletePipeline" || name == "deleteCustomFilter" {
 				want = http.StatusUnprocessableEntity
 			}
 			if rec.Code != want {

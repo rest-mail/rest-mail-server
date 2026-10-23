@@ -584,6 +584,139 @@
   reason: >-
     Execute forwards the sidecar's bare error as well as answering its own API error envelope. The 400 response permits both shapes without rewriting either upstream bytes or API validation errors.
 
+# Admin bans, delivery log, audit log and dashboard (#651)
+
+- operation: createBan
+  difference: "request body application/json.properties.duration.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    An omitted or null duration means a permanent ban, as the handler has always accepted. A non-null duration must satisfy the Go duration pattern and parse within its range.
+- operation: createBan
+  difference: "response 200: generated only"
+  reason: >-
+    Creating a ban for an already banned IP replaces its reason, protocol, creator and expiry and returns 200; a newly inserted ban returns 201. Both existing statuses are preserved.
+- operation: createBan
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON or is not an object is refused as 400 bad_request before binding its fields. The oracle only documents validation failures.
+- operation: deleteBan
+  difference: "response 404: openapi.yaml only"
+  reason: >-
+    Deleting a nonexistent ban ID is idempotent and returns 204. The handler does not check RowsAffected and has no reachable 404.
+- operation: getDashboardStats
+  difference: "response 200 application/json.properties.data.properties.inboundTransportSecurity.properties.plaintextPercent.format: openapi.yaml absent, generated \"double\""
+  reason: >-
+    The percentages are float64 values, described as double. Their JSON remains a number with the existing camelCase field names.
+- operation: getDashboardStats
+  difference: "response 200 application/json.properties.data.properties.inboundTransportSecurity.properties.tlsPercent.format: openapi.yaml absent, generated \"double\""
+  reason: >-
+    The percentages are float64 values, described as double. Their JSON remains a number with the existing camelCase field names.
+- operation: getDashboardStats
+  difference: "response 200 application/json.properties.data.properties.inboundTransportSecurity.required: openapi.yaml absent, generated [\"overTLS\",\"plaintext\",\"plaintextAuthFail\",\"plaintextAuthPass\",\"plaintextPercent\",\"tlsPercent\",\"totalInboundMX\"]"
+  reason: >-
+    The dashboard always serializes every field of this object, including zero counts and empty strings. The oracle leaves these nested fields optional.
+- operation: getDashboardStats
+  difference: "response 200 application/json.properties.data.properties.messageVolume.items.required: openapi.yaml absent, generated [\"count\",\"date\"]"
+  reason: >-
+    The dashboard always serializes every field of this object, including zero counts and empty strings. The oracle leaves these nested fields optional.
+- operation: getDashboardStats
+  difference: "response 200 application/json.properties.data.properties.recentActivity.items.required: openapi.yaml absent, generated [\"description\",\"id\",\"timestamp\",\"type\"]"
+  reason: >-
+    The dashboard always serializes every field of this object, including zero counts and empty strings. The oracle leaves these nested fields optional.
+- operation: getDeliveryLogs
+  difference: "parameter query limit schema.default: openapi.yaml 50, generated absent"
+  reason: >-
+    go-oapifly does not describe defaults yet. The handler retains its existing default of 50 entries.
+- operation: getDeliveryLogs
+  difference: "parameter query offset schema.default: openapi.yaml 0, generated absent"
+  reason: >-
+    go-oapifly does not describe defaults yet. The handler retains its existing default of 0 for offset.
+- operation: getDeliveryLogs
+  difference: "response 200 application/json.properties.data.items.properties.body_type: openapi.yaml absent, generated {\"type\":\"string\"}"
+  reason: >-
+    The delivery log already writes body_type, the SMTP BODY parameter persisted on each queue entry. The oracle omits this existing field; raw_message remains private.
+- operation: getDeliveryLogs
+  difference: "response 200 application/json.properties.data.items.required: openapi.yaml [\"attempts\",\"created_at\",\"domain\",\"expires_at\",\"id\",\"max_retries\",\"next_attempt\",\"recipient\",\"sender\",\"status\"], generated [\"attempts\",\"body_type\",\"created_at\",\"domain\",\"expires_at\",\"failure_category\",\"id\",\"last_attempt\",\"last_error\",\"last_error_code\",\"max_retries\",\"message_id\",\"next_attempt\",\"recipient\",\"sender\",\"status\"]"
+  reason: >-
+    The delivery log already emits body_type, failure_category, last_attempt, last_error, last_error_code and message_id on every item; nullable ids and times are explicit null. The API type retains the original JSON tags.
+- operation: getDeliveryLogs
+  difference: "response 200 application/json.properties.pagination.required: openapi.yaml absent, generated [\"has_more\"]"
+  reason: >-
+    Pagination always writes has_more, including false; cursor and total retain their existing omitempty behavior.
+- operation: getDeliveryLogs
+  difference: "response 200 application/json.properties.pagination.type: openapi.yaml \"object\", generated [\"null\",\"object\"]"
+  reason: >-
+    The shared endpoint.List envelope has an optional pointer to pagination and therefore describes it as nullable and optional. This handler always supplies its pagination object, preserving the existing response.
+- operation: listAuditEntries
+  difference: "parameter query actor_kind schema.enum: openapi.yaml [\"account\",\"anonymous\",\"system\"], generated [\"\",\"account\",\"anonymous\",\"system\"]"
+  reason: >-
+    An empty actor_kind or outcome has always meant no filter. The request type explicitly permits it alongside the documented nonempty values.
+- operation: listAuditEntries
+  difference: "parameter query limit schema.default: openapi.yaml 50, generated absent"
+  reason: >-
+    go-oapifly does not describe defaults yet. The handler retains its existing default of 50 entries.
+- operation: listAuditEntries
+  difference: "parameter query outcome schema.enum: openapi.yaml [\"denied\",\"error\",\"failed\",\"success\"], generated [\"\",\"denied\",\"error\",\"failed\",\"success\"]"
+  reason: >-
+    An empty actor_kind or outcome has always meant no filter. The request type explicitly permits it alongside the documented nonempty values.
+- operation: listAuditEntries
+  difference: "response 200 application/json.properties.pagination.required: openapi.yaml absent, generated [\"has_more\"]"
+  reason: >-
+    Pagination always writes has_more, including false; cursor and total retain their existing omitempty behavior.
+- operation: listAuditEntries
+  difference: "response 200 application/json.properties.pagination.type: openapi.yaml \"object\", generated [\"null\",\"object\"]"
+  reason: >-
+    The shared endpoint.List envelope has an optional pointer to pagination and therefore describes it as nullable and optional. This handler always supplies its pagination object, preserving the existing response.
+- operation: listAuditEntries
+  difference: "response 200 application/json.required: openapi.yaml [\"data\",\"pagination\"], generated [\"data\"]"
+  reason: >-
+    The shared endpoint.List envelope has an optional pointer to pagination and therefore describes it as nullable and optional. This handler always supplies its pagination object, preserving the existing response.
+- operation: listBans
+  difference: "parameter query active schema.enum: openapi.yaml absent, generated [\"false\",\"true\"]"
+  reason: >-
+    The query accepts exactly the strings true and false, refusing other spellings and empty values. A string enum preserves that existing rule instead of Go boolean parsing, which also accepts 1, TRUE and other forms.
+- operation: listBans
+  difference: "parameter query active schema.type: openapi.yaml \"boolean\", generated \"string\""
+  reason: >-
+    The query accepts exactly the strings true and false, refusing other spellings and empty values. A string enum preserves that existing rule instead of Go boolean parsing, which also accepts 1, TRUE and other forms.
+- operation: listBans
+  difference: "parameter query limit schema.default: openapi.yaml 50, generated absent"
+  reason: >-
+    go-oapifly does not describe defaults yet. The handler retains its existing default of 50 entries.
+- operation: listBans
+  difference: "parameter query offset schema.default: openapi.yaml 0, generated absent"
+  reason: >-
+    go-oapifly does not describe defaults yet. The handler retains its existing default of 0 for offset.
+- operation: listBans
+  difference: "response 200 application/json.properties.pagination.required: openapi.yaml absent, generated [\"has_more\"]"
+  reason: >-
+    Pagination always writes has_more, including false; cursor and total retain their existing omitempty behavior.
+- operation: listBans
+  difference: "response 200 application/json.properties.pagination.type: openapi.yaml \"object\", generated [\"null\",\"object\"]"
+  reason: >-
+    The shared endpoint.List envelope has an optional pointer to pagination and therefore describes it as nullable and optional. This handler always supplies its pagination object, preserving the existing response.
+- operation: unbanIP
+  difference: "parameter path ip schema.minLength: openapi.yaml absent, generated 1"
+  reason: >-
+    The IP path segment must be nonempty. Binding now states and enforces the existing required-address rule with a field-specific 422.
+- operation: verifyAuditLog
+  difference: "parameter query anchor schema.pattern: openapi.yaml \"^[1-9][0-9]{0,17}:[0-9a-fA-F]{64}$\", generated \"^$|^[1-9][0-9]{0,17}:[0-9a-fA-F]{64}$\""
+  reason: >-
+    An empty anchor has always meant an unanchored chain check. The type explicitly permits empty, while preserving the positive sequence and 64 hexadecimal digit constraint for a supplied anchor.
+- operation: verifyAuditLog
+  difference: "response 200 application/json.properties.data.properties.anchor.type: openapi.yaml \"object\", generated [\"null\",\"object\"]"
+  reason: >-
+    The audit verification result uses optional pointer fields. go-oapifly describes their nullable Go types; the existing omitempty tags omit them when unset.
+- operation: verifyAuditLog
+  difference: "response 200 application/json.properties.data.properties.broken_at_seq.type: openapi.yaml \"integer\", generated [\"integer\",\"null\"]"
+  reason: >-
+    The audit verification result uses optional pointer fields. go-oapifly describes their nullable Go types; the existing omitempty tags omit them when unset.
+- operation: getDashboardStats
+  difference: 'response 200 application/json.properties.data.properties.recentActivity.type: openapi.yaml "array", generated ["array","null"]'
+  reason: >-
+    With no recent activity the dashboard has always written null. A pointer to the
+    slice preserves that response through endpoint registration; populated activity
+    remains an array and all camelCase names remain unchanged.
+
 # Outbound queue (#650)
 
 - operation: bulkBounceQueue
@@ -715,3 +848,133 @@
 - operation: listDKIMKeys
   difference: "response 200 application/json.properties.pagination: openapi.yaml absent, generated {\"additionalProperties\":false,\"properties\":{\"cursor\":{\"type\":\"string\"},\"has_more\":{\"type\":\"boolean\"},\"total\":{\"format\":\"int64\",\"type\":\"integer\"}},\"required\":[\"has_more\"],\"type\":[\"null\",\"object\"]}"
   reason: The shared typed list envelope describes optional pagination. DKIM listing leaves it nil and continues to omit it in JSON.
+
+# Accounts, app passwords and API keys (#635, #618)
+
+- operation: "*"
+  difference: "response 2* application/json.properties.data*address.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    An account's address is the stored mailbox address, which may be internationalised
+    (EAI). The API's account type does not claim the email format for it.
+- operation: createAccount
+  difference: "request body application/json.properties.address.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    The handler checks the address with REST Mail's own mailbox-address rule (EAI local parts
+    included) and answers the documented 422 on address; binding's email format would refuse
+    addresses the server accepts.
+- operation: createAccount
+  difference: "request body application/json.properties.password.minLength: openapi.yaml 12, generated absent"
+  reason: >-
+    An empty password means the account has none (#341), so the handler checks the length of
+    a password that is given and answers 422 on password.
+- operation: linkAccount
+  difference: "request body application/json.properties.address.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    A wrong address is refused like a wrong password (403 invalid_credentials) so that linking
+    says nothing about which addresses exist.
+- operation: "*"
+  difference: "request body application/json.properties.password.format: openapi.yaml \"password\", generated absent"
+  reason: >-
+    The password fields are plain strings to the code; the password format is a hint for
+    documentation and clients only.
+- operation: "*"
+  difference: "request body application/json.properties.password.writeOnly: openapi.yaml true, generated absent"
+  reason: The current password is a request field only; no response type has one to mark.
+- operation: createAccount
+  difference: "response 400: generated only"
+  reason: Binding answers 400 bad_request for a body that is not JSON or not an object, as the handler did.
+- operation: linkAccount
+  difference: "response 400: generated only"
+  reason: Binding answers 400 bad_request for a body that is not JSON or not an object, as the handler did.
+- operation: createAppPassword
+  difference: "response 400: generated only"
+  reason: Binding answers 400 bad_request for a body that is not JSON or not an object, as the handler did.
+- operation: "*"
+  difference: "response 4* application/json: generated only"
+  reason: >-
+    Every refusal carries the error envelope; openapi.yaml describes some of these responses
+    by their code without the body.
+- operation: "*"
+  difference: "response 429 header Retry-After: generated only"
+  reason: >-
+    Login's throttle, and the mail routes' throttle on refused HTTP Basic credentials, write
+    Retry-After on every 429. openapi.yaml does not state it for these operations.
+- operation: getAccount
+  difference: "response 429: generated only"
+  reason: The mail routes throttle refused HTTP Basic credentials at login's rate (429 rate_limited).
+- operation: listAccounts
+  difference: "response 429: generated only"
+  reason: The mail routes throttle refused HTTP Basic credentials at login's rate (429 rate_limited).
+- operation: listAccounts
+  difference: "response 404: generated only"
+  reason: The session's own account was deleted under a live session (404 not_found).
+- operation: "*"
+  difference: "request body application/json.properties.expires_at.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: An expires_at of null means no expiry (an app password) or the default (an API key), as it always did.
+- operation: "*"
+  difference: "request body application/json.properties.name.maxLength: openapi.yaml 100, generated absent"
+  reason: >-
+    The handler trims the name before counting its characters, so a name of 100 characters
+    with surrounding blanks is accepted; it answers the documented 422 on name.
+- operation: createAppPassword
+  difference: "request body application/json.required: openapi.yaml [\"name\",\"password\"], generated [\"name\"]"
+  reason: >-
+    A missing current password is the documented 403 reauth_required, a refusal of the request
+    rather than a malformed body, which the mobile app shows as such.
+- operation: createAPIKey
+  difference: "request body application/json.required: openapi.yaml [\"name\",\"password\",\"permissions\"], generated [\"name\"]"
+  reason: >-
+    A missing current password is the documented 403 reauth_required, and missing permissions
+    the 422 on permissions with the rule they break, as the handler answered them.
+- operation: createAPIKey
+  difference: "request body application/json.properties.permissions.minItems: openapi.yaml 1, generated absent"
+  reason: The handler answers the 422 on permissions with the 1-to-64 rule, together with the other fields at fault.
+- operation: createAPIKey
+  difference: "request body application/json.properties.permissions.maxItems: openapi.yaml 64, generated absent"
+  reason: The handler answers the 422 on permissions with the 1-to-64 rule, together with the other fields at fault.
+- operation: createAPIKey
+  difference: "request body application/json.properties.permissions.items.required: openapi.yaml [\"capability\",\"scope\"], generated absent"
+  reason: >-
+    A permission without a capability or scope is the 422 on permissions ("each permission
+    needs a named capability and a valid scope"), as the handler answered it.
+- operation: "*"
+  difference: "response 201 application/json.properties.data.allOf: openapi.yaml *, generated absent"
+  reason: >-
+    The created credential embeds the listed one, which Go writes as one flat object;
+    the generated description states that object, openapi.yaml composes it with allOf.
+- operation: "*"
+  difference: "response 201 application/json.properties.data.properties: openapi.yaml absent, generated *"
+  reason: The created credential described as one flat object, not allOf (see above).
+- operation: "*"
+  difference: "response 201 application/json.properties.data.required: openapi.yaml absent, generated *"
+  reason: The created credential described as one flat object, not allOf (see above).
+- operation: "*"
+  difference: "response 201 application/json.properties.data.type: openapi.yaml absent, generated \"object\""
+  reason: The created credential described as one flat object, not allOf (see above).
+- operation: listCredentials
+  difference: "response 200 application/json.properties.data.items.properties.kind.enum: openapi.yaml [\"app_password\"], generated absent"
+  reason: App passwords and API keys share one credential type, whose kind is either.
+- operation: listAPIKeys
+  difference: "response 200 application/json.properties.data.items.properties.kind.enum: openapi.yaml [\"api_key\"], generated absent"
+  reason: App passwords and API keys share one credential type, whose kind is either.
+- operation: "*"
+  difference: "response 200 application/json.properties.pagination: openapi.yaml absent, generated {\"additionalProperties\":false,\"properties\":{\"cursor\":{\"type\":\"string\"},\"has_more\":{\"type\":\"boolean\"},\"total\":{\"format\":\"int64\",\"type\":\"integer\"}},\"required\":[\"has_more\"],\"type\":[\"null\",\"object\"]}"
+  reason: >-
+    Every list is described with the API's list envelope, whose pagination is omitted when
+    the list is whole, as it is for these lists.
+- operation: "*"
+  difference: "response 2* header Cache-Control: openapi.yaml only"
+  reason: >-
+    The API key routes' no-store middleware writes Cache-Control: no-store on every answer;
+    a middleware cannot yet describe a header it adds to the success response.
+- operation: linkAccount
+  difference: "request body application/json.required: openapi.yaml [\"address\",\"password\"], generated absent"
+  reason: >-
+    The handler checks address and password together and answers the documented 422 naming
+    both when either is missing or blank, after the session check.
+- operation: createAPIKey
+  difference: 'response 422 application/json.properties.error.properties.details.properties: openapi.yaml absent, generated {"fields":{"additionalProperties":{"type":"string"},"type":"object"}}'
+  reason: Binding always names the invalid fields in details.fields, whereas the oracle uses the general error envelope.
+- operation: createAppPassword
+  difference: 'response 422 application/json.properties.error.properties.details.properties: openapi.yaml absent, generated {"fields":{"additionalProperties":{"type":"string"},"type":"object"}}'
+  reason: Binding always names the invalid fields in details.fields, whereas the oracle uses the general error envelope.

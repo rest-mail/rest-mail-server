@@ -1,12 +1,11 @@
 package handlers
 
 import (
-	"encoding/json"
+	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
@@ -21,44 +20,37 @@ func NewBanHandler(db *gorm.DB) *BanHandler {
 	return &BanHandler{db: db}
 }
 
-// ListBans returns all active bans with optional filtering.
+// listBansRequest filters active bans by default.
 // GET /api/v1/admin/bans?protocol=smtp&active=true&limit=50&offset=0
-func (h *BanHandler) ListBans(w http.ResponseWriter, r *http.Request) {
-	if !validateIntegerQuery(w, r, 0, "limit", "offset") {
-		return
+type listBansRequest struct {
+	Limit    *int    `query:"limit"`
+	Offset   *int    `query:"offset"`
+	Protocol *string `query:"protocol" enums:"smtp,imap,pop3,all" message:"protocol must be one of smtp, imap, pop3, all"`
+	Active   *string `query:"active" enums:"true,false" message:"must be true or false"`
+	IP       string  `query:"ip"`
+}
+
+func (h *BanHandler) list(_ *http.Request, in listBansRequest) (endpoint.List[Ban], error) {
+	// Preserve the ban list's default for limits outside 1..200.
+	limit, offset := 50, 0
+	if in.Limit != nil && *in.Limit > 0 && *in.Limit <= 200 {
+		limit = *in.Limit
 	}
-	params := r.URL.Query()
-	if params.Has("protocol") {
-		switch params.Get("protocol") {
-		case "smtp", "imap", "pop3", "all":
-		default:
-			respond.ValidationError(w, map[string]string{"protocol": "protocol must be one of smtp, imap, pop3, all"})
-			return
-		}
-	}
-	if params.Has("active") && params.Get("active") != "true" && params.Get("active") != "false" {
-		respond.ValidationError(w, map[string]string{"active": "must be true or false"})
-		return
-	}
-	limit := 50
-	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 && l <= 200 {
-		limit = l
-	}
-	offset := 0
-	if o, err := strconv.Atoi(r.URL.Query().Get("offset")); err == nil && o >= 0 {
-		offset = o
+	if in.Offset != nil && *in.Offset >= 0 {
+		offset = *in.Offset
 	}
 
 	query := h.db.Model(&models.Ban{})
 
-	if protocol := r.URL.Query().Get("protocol"); protocol != "" {
+	if in.Protocol != nil {
+		protocol := *in.Protocol
 		query = query.Where("protocol = ? OR protocol = 'all'", protocol)
 	}
-	if ip := r.URL.Query().Get("ip"); ip != "" {
+	if ip := in.IP; ip != "" {
 		query = query.Where("ip = ?", ip)
 	}
 	// Default: only show active (non-expired) bans
-	if active := r.URL.Query().Get("active"); active != "false" {
+	if in.Active == nil || *in.Active != "false" {
 		query = query.Where("expires_at IS NULL OR expires_at > ?", time.Now())
 	}
 
@@ -67,54 +59,38 @@ func (h *BanHandler) ListBans(w http.ResponseWriter, r *http.Request) {
 
 	var bans []models.Ban
 	if err := query.Order("created_at DESC").Limit(limit).Offset(offset).Find(&bans).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list bans")
-		return
+		return endpoint.List[Ban]{}, fmt.Errorf("list bans: %w", err)
 	}
 
-	respond.List(w, bans, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
+	out := make([]Ban, len(bans))
+	for i, row := range bans {
+		out[i] = banOf(row)
+	}
+	return endpoint.List[Ban]{Data: out, Pagination: &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total}}, nil
 }
 
-// CreateBan adds a new IP ban.
+// createBanRequest adds or replaces an IP ban.
 // POST /api/v1/admin/bans
-func (h *BanHandler) CreateBan(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		IP        string  `json:"ip"`
-		Reason    string  `json:"reason"`
-		Protocol  string  `json:"protocol"` // "smtp", "imap", "pop3", "all"
-		Duration  *string `json:"duration"` // e.g. "24h", "168h"; nil = permanent
-		CreatedBy *string `json:"created_by"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
-	if req.IP == "" {
-		respond.ValidationError(w, map[string]string{"ip": "IP address is required"})
-		return
-	}
-	if req.CreatedBy == nil {
-		respond.ValidationError(w, map[string]string{"created_by": "required"})
-		return
-	}
-	switch req.Protocol {
-	case "smtp", "imap", "pop3", "all":
-	default:
-		respond.ValidationError(w, map[string]string{"protocol": "protocol must be one of smtp, imap, pop3, all"})
-		return
-	}
+type createBanRequest struct {
+	IP        string  `json:"ip" minLength:"1" message:"IP address is required" missing:"IP address is required"`
+	Reason    string  `json:"reason,omitempty"`
+	Protocol  string  `json:"protocol" enums:"smtp,imap,pop3,all" message:"protocol must be one of smtp, imap, pop3, all" missing:"protocol must be one of smtp, imap, pop3, all"`
+	Duration  *string `json:"duration,omitempty" pattern:"^[+-]?(0|(([0-9]+(\\.[0-9]*)?|\\.[0-9]+)(ns|us|µs|μs|ms|s|m|h))+)$" message:"invalid duration format (e.g. 24h, 168h)"`
+	CreatedBy string  `json:"created_by" message:"required"`
+}
 
+func (h *BanHandler) create(_ *http.Request, req createBanRequest) (endpoint.Status[Ban], error) {
 	ban := models.Ban{
 		IP:        req.IP,
 		Reason:    req.Reason,
 		Protocol:  req.Protocol,
-		CreatedBy: *req.CreatedBy,
+		CreatedBy: req.CreatedBy,
 	}
 
 	if req.Duration != nil {
 		d, err := time.ParseDuration(*req.Duration)
 		if err != nil {
-			respond.ValidationError(w, map[string]string{"duration": "invalid duration format (e.g. 24h, 168h)"})
-			return
+			return endpoint.Status[Ban]{}, endpoint.Invalid(map[string]string{"duration": "invalid duration format (e.g. 24h, 168h)"})
 		}
 		exp := time.Now().Add(d)
 		ban.ExpiresAt = &exp
@@ -133,49 +109,45 @@ func (h *BanHandler) CreateBan(w http.ResponseWriter, r *http.Request) {
 		existing.Protocol = ban.Protocol
 		existing.CreatedBy = ban.CreatedBy
 		existing.ExpiresAt = ban.ExpiresAt
-		respond.Data(w, http.StatusOK, existing)
-		return
+		return endpoint.Status[Ban]{Code: http.StatusOK, Value: banOf(existing)}, nil
 	}
 
 	if err := h.db.Create(&ban).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to create ban")
-		return
+		return endpoint.Status[Ban]{}, fmt.Errorf("create ban: %w", err)
 	}
 
-	respond.Data(w, http.StatusCreated, ban)
+	return endpoint.Status[Ban]{Code: http.StatusCreated, Value: banOf(ban)}, nil
 }
 
-// DeleteBan removes a ban by ID (unbans the IP).
+// banPath names the ban to delete.
 // DELETE /api/v1/admin/bans/{id}
-func (h *BanHandler) DeleteBan(w http.ResponseWriter, r *http.Request) {
-	id, err := pathID(r, "id")
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid ban ID")
-		return
-	}
+type banPath struct {
+	ID uint32 `path:"id" minimum:"1"`
+}
+
+func (h *BanHandler) delete(_ *http.Request, in banPath) (endpoint.Empty, error) {
+	id := in.ID
 
 	if err := h.db.Delete(&models.Ban{}, id).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to delete ban")
-		return
+		return endpoint.Empty{}, fmt.Errorf("delete ban: %w", err)
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	return endpoint.Empty{}, nil
 }
 
-// UnbanIP removes a ban by IP address.
+// unbanIPRequest names the address to unban.
 // DELETE /api/v1/admin/bans/ip/{ip}
-func (h *BanHandler) UnbanIP(w http.ResponseWriter, r *http.Request) {
-	ip := chi.URLParam(r, "ip")
-	if ip == "" {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "IP address required")
-		return
-	}
+type unbanIPRequest struct {
+	IP string `path:"ip" minLength:"1" message:"IP address required" missing:"IP address required"`
+}
+
+func (h *BanHandler) unbanIP(_ *http.Request, in unbanIPRequest) (endpoint.Empty, error) {
+	ip := in.IP
 
 	result := h.db.Where("ip = ?", ip).Delete(&models.Ban{})
 	if result.RowsAffected == 0 {
-		respond.Error(w, http.StatusNotFound, "not_found", "No ban found for this IP")
-		return
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "No ban found for this IP")
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	return endpoint.Empty{}, nil
 }
