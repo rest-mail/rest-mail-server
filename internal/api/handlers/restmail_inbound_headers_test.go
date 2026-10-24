@@ -37,6 +37,7 @@ func TestBuildInboundEmail_PopulatesRawHeaders(t *testing.T) {
 	email := buildInboundEmail(
 		parsed,
 		"sender@remote.test",
+		"sender@remote.test",
 		[]string{"user@local.test"},
 		"Hi", "", "<abc@remote.test>",
 		"hello body", "",
@@ -78,6 +79,7 @@ func TestBuildInboundEmail_FallsBackWhenNoRaw(t *testing.T) {
 	email := buildInboundEmail(
 		nil,
 		"sender@remote.test",
+		"sender@remote.test",
 		[]string{"user@local.test"},
 		"Hi", "", "<abc@remote.test>",
 		"hello body", "",
@@ -113,4 +115,27 @@ func hasRawHeader(m map[string][]string, key string) bool {
 		}
 	}
 	return false
+}
+
+// A bounce delivered over RESTMAIL comes with no from, and a From: header of
+// its own. The envelope keeps the null reverse path, so the vacation filter
+// sees a bounce and does not answer it (#716); the header stays the header.
+func TestBuildInboundEmail_NullEnvelopeSenderStaysNull(t *testing.T) {
+	raw := "From: postmaster@remote.test\r\n" +
+		"To: user@local.test\r\n" +
+		"Subject: Undelivered Mail Returned to Sender\r\n" +
+		"\r\n" +
+		"It bounced.\r\n"
+	parsed, err := rmime.Parse([]byte(raw))
+	if err != nil {
+		t.Fatalf("parse raw: %v", err)
+	}
+	email := buildInboundEmail(parsed, "", "postmaster@remote.test", []string{"user@local.test"},
+		"", "", "", "", "", raw, "203.0.113.9")
+	if email.Envelope.MailFrom != "" {
+		t.Errorf("Envelope.MailFrom = %q, want the null reverse path", email.Envelope.MailFrom)
+	}
+	if len(email.Headers.From) == 0 || email.Headers.From[0].Address != "postmaster@remote.test" {
+		t.Errorf("From: = %+v, want the message's own header", email.Headers.From)
+	}
 }

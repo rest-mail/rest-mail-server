@@ -5,18 +5,16 @@ import (
 	"fmt"
 	"math"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 	"github.com/restmail/restmail/internal/gateway/rawmsg"
+	rmail "github.com/restmail/restmail/internal/mail"
 	rmime "github.com/restmail/restmail/internal/mime"
 )
 
-// maxFolderNameLen bounds an IMAP folder (mailbox) name. The messages.folder
-// column is size:255, so a longer name can never match a stored row anyway;
-// rejecting it at the gateway keeps oversized, attacker-chosen names out of the
-// downstream API request entirely.
-const maxFolderNameLen = 255
+// maxFolderNameLen bounds an IMAP folder (mailbox) name: the API's rule, so an
+// oversized, attacker-chosen name never reaches the downstream API request.
+const maxFolderNameLen = rmail.MaxFolderNameLen
 
 // validateFolder is the gateway's object-level authorization guard for
 // folder-scoped IMAP operations (OSI-9). Every folder name a client supplies —
@@ -27,36 +25,18 @@ const maxFolderNameLen = 255
 // mailbox (resolveAccountMailbox), so this is defense in depth: it rejects
 // names that could smuggle control characters or CR/LF into the downstream
 // request (header/JSON injection), traverse outside the intended path, or blow
-// past the storage column width. It mirrors the control-character/newline
-// rejection already applied to operator-supplied identifiers elsewhere in the
-// codebase (e.g. the dnsmasq record writer).
+// past the storage column width.
 //
-// The check is an allow-by-shape rule: a non-empty name, no longer than
-// maxFolderNameLen bytes, valid UTF-8, with no control characters (which
-// includes NUL, TAB, CR and LF) and no NUL or path-traversal ("..") sequence.
+// The rule is the one the API applies when a folder is created or renamed
+// (rmail.FolderNameProblem): valid UTF-8 of at most maxFolderNameLen bytes, not
+// blank and not beginning or ending with a space, with no control characters
+// (which includes NUL, TAB, CR and LF) and no path-traversal ("..") sequence.
 // Ordinary hierarchical names ("INBOX", "Sent", "Work/Projects",
 // "[Gmail]/All Mail") are accepted; only structurally dangerous names are
 // refused.
 func validateFolder(folder string) error {
-	if folder == "" {
-		return fmt.Errorf("imap: empty folder name")
-	}
-	if len(folder) > maxFolderNameLen {
-		return fmt.Errorf("imap: folder name too long (%d > %d bytes)", len(folder), maxFolderNameLen)
-	}
-	if !utf8.ValidString(folder) {
-		return fmt.Errorf("imap: folder name is not valid UTF-8")
-	}
-	for _, r := range folder {
-		// Reject C0/C1 control characters and DEL. This covers NUL, TAB, CR and
-		// LF, the characters usable to inject into the downstream HTTP request
-		// line or JSON body.
-		if r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) {
-			return fmt.Errorf("imap: folder name contains a control character")
-		}
-	}
-	if strings.Contains(folder, "..") {
-		return fmt.Errorf("imap: folder name contains a path-traversal sequence")
+	if problem := rmail.FolderNameProblem(folder); problem != "" {
+		return fmt.Errorf("imap: folder name %s", problem)
 	}
 	return nil
 }

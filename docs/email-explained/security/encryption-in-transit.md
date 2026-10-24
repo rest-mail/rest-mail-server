@@ -157,10 +157,12 @@ host name the MX record gives.
   clear alongside `STARTTLS` is read as if it had been encrypted
   ([`rest-mail/go-smtp`](https://github.com/rest-mail/go-smtp)).
 - **Sending:** REST Mail uses STARTTLS whenever the receiver offers it, and
-  enforces a recipient's MTA-STS policy. Today it also insists on a valid
-  certificate when there is no policy, and so fails to deliver at all to the
-  many servers whose certificate does not verify; making it opportunistic, as
-  RFC 7435 and Postfix are, is [#723](https://github.com/rest-mail/rest-mail-server/issues/723).
+  enforces a recipient's MTA-STS policy. With no policy it is opportunistic, as
+  RFC 7435 and Postfix are: it encrypts whatever the certificate, checks it, and
+  records each delivery as authenticated, encrypted or cleartext
+  (`restmail_outbound_transport_total`), never calling an unverified
+  certificate authenticated. A handshake that fails is retried on a new
+  connection without TLS ([`internal/gateway/queue/worker.go`](../../../internal/gateway/queue/worker.go), #723).
 - **REQUIRETLS** is not supported yet:
   [#724](https://github.com/rest-mail/rest-mail-server/issues/724).
 
