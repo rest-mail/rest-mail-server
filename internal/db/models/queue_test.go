@@ -17,11 +17,11 @@ func TestOutboundQueueBeforeCreateDefaults(t *testing.T) {
 	if q.ExpiresAt.IsZero() {
 		t.Error("ExpiresAt still zero — worker claim query would skip this row forever")
 	}
-	if !q.ExpiresAt.After(time.Now().Add(24 * time.Hour)) {
-		t.Errorf("ExpiresAt = %s, want well in the future", q.ExpiresAt)
+	if !q.ExpiresAt.After(time.Now().Add(QueueLifetime - time.Minute)) {
+		t.Errorf("ExpiresAt = %s, want the queue's lifetime, %s, from now", q.ExpiresAt, QueueLifetime)
 	}
-	if q.MaxRetries != 30 {
-		t.Errorf("MaxRetries = %d, want 30", q.MaxRetries)
+	if q.MaxRetries != DefaultMaxRetries {
+		t.Errorf("MaxRetries = %d, want %d", q.MaxRetries, DefaultMaxRetries)
 	}
 
 	// Explicit values must be preserved.

@@ -47,7 +47,7 @@ func TestFolderCreate_DocumentedExamples(t *testing.T) {
 	}
 	t.Cleanup(func() { tx.Rollback() })
 	fx := seedMsgDeleteFixture(t, tx, 0)
-	h := NewMessageHandler(tx, nil, nil, "", nil)
+	routes := folderRoutes(NewMessageHandler(tx, nil, nil, "", nil))
 	requests, responses := postExamples(t, foldersPath, "createFolder")
 
 	for status, examples := range responses {
@@ -58,10 +58,10 @@ func TestFolderCreate_DocumentedExamples(t *testing.T) {
 					t.Fatalf("response %s/%s has no matching request", status, name)
 				}
 				before := countMessages(t, tx, fx.mailbox.ID)
-				r := authzRequest(http.MethodPost, foldersPath, fx.mailbox.ID,
+				r := authzRequest(http.MethodPost, accountFoldersPath(fx.mailbox.ID), fx.mailbox.ID,
 					map[string]string{"id": uintToStr(fx.mailbox.ID)}, string(mustJSON(body)))
 				rr := httptest.NewRecorder()
-				h.CreateFolder(rr, r)
+				routes.ServeHTTP(rr, r)
 				if status != strconv.Itoa(rr.Code) {
 					t.Fatalf("%s: status %d, want %s; body %s", name, rr.Code, status, rr.Body)
 				}

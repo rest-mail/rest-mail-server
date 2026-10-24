@@ -2152,7 +2152,7 @@ paths:
                       message: Request body failed validation
                       details:
                         fields:
-                          name: required
+                          name: must be a string
 
   /api/v1/accounts/{id}/folders/{folder}:
     parameters:

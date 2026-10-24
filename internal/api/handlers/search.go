@@ -2,10 +2,9 @@ package handlers
 
 import (
 	"net/http"
-	"strconv"
 	"time"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
@@ -20,69 +19,76 @@ func NewSearchHandler(db *gorm.DB) *SearchHandler {
 	return &SearchHandler{db: db}
 }
 
-// Search performs full-text search across messages for an account.
+// searchRequest filters an account's messages: q searches subject and body, from the
+// sender, after and before the time it was received, has_attachment those with any.
+type searchRequest struct {
+	ID            uint32     `path:"id" minimum:"1"`
+	Q             string     `query:"q"`
+	Folder        string     `query:"folder"`
+	From          string     `query:"from"`
+	After         *time.Time `query:"after" message:"must be an RFC 3339 date-time"`
+	Before        *time.Time `query:"before" message:"must be an RFC 3339 date-time"`
+	HasAttachment string     `query:"has_attachment" enums:",true,false" message:"must be true or false"`
+	Limit         *int       `query:"limit" description:"1 to 100; 50 otherwise"`
+}
+
+// Register mounts searching an account's messages. Its route takes what the mail routes take;
+// an account the session cannot reach with mail:read is 404 not_found.
+func (h *SearchHandler) Register(rs endpoint.Routes) {
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/search",
+		OperationID: "searchMessages", Summary: "Search messages", Tags: []string{"Search"},
+		Errors:   []int{http.StatusNotFound},
+		Security: handlerChecked(models.CapMailRead, "CookieAuth", "BearerAuth", "APIKeyAuth", "BasicAuth")}, h.search)
+}
+
+// search performs full-text search across messages for an account.
 // GET /api/v1/accounts/:id/search?q=...&folder=...&from=...&after=...&before=...
-func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
+func (h *SearchHandler) search(r *http.Request, in searchRequest) (endpoint.List[Message], error) {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
+		return endpoint.List[Message]{}, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Authentication required")
 	}
 
-	accountID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	mailboxID, err := resolveAccountMailbox(h.db, uint(in.ID), claims, models.CapMailRead)
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
-		return
-	}
-	if !validateIntegerQuery(w, r, 0, "limit") || !validateBooleanQuery(w, r, "has_attachment") || !validateDateTimeQuery(w, r, "after", "before") {
-		return
-	}
-
-	mailboxID, err := resolveAccountMailbox(h.db, uint(accountID), claims, models.CapMailRead)
-	if err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "Account not found")
-		return
+		return endpoint.List[Message]{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Account not found")
 	}
 
 	query := h.db.Model(&models.Message{}).Where("mailbox_id = ? AND is_deleted = false", mailboxID)
 
 	// Full-text search
-	if q := r.URL.Query().Get("q"); q != "" {
+	if in.Q != "" {
 		query = query.Where(
-			"to_tsvector('english', coalesce(subject, '') || ' ' || coalesce(body_text, '')) @@ plainto_tsquery('english', ?)", q,
+			"to_tsvector('english', coalesce(subject, '') || ' ' || coalesce(body_text, '')) @@ plainto_tsquery('english', ?)", in.Q,
 		)
 	}
 
 	// Folder filter
-	if folder := r.URL.Query().Get("folder"); folder != "" {
-		query = query.Where("folder = ?", folder)
+	if in.Folder != "" {
+		query = query.Where("folder = ?", in.Folder)
 	}
 
 	// From filter (LIKE metacharacters escaped so they match literally)
-	if from := r.URL.Query().Get("from"); from != "" {
-		query = query.Where("sender ILIKE ? ESCAPE '\\'", "%"+escapeLike(from)+"%")
+	if in.From != "" {
+		query = query.Where("sender ILIKE ? ESCAPE '\\'", "%"+escapeLike(in.From)+"%")
 	}
 
 	// Date filters
-	if after := r.URL.Query().Get("after"); after != "" {
-		t, _ := time.Parse(time.RFC3339, after)
-		query = query.Where("received_at >= ?", t)
+	if in.After != nil {
+		query = query.Where("received_at >= ?", *in.After)
 	}
-	if before := r.URL.Query().Get("before"); before != "" {
-		t, _ := time.Parse(time.RFC3339, before)
-		query = query.Where("received_at <= ?", t)
+	if in.Before != nil {
+		query = query.Where("received_at <= ?", *in.Before)
 	}
 
 	// Has attachment filter
-	if r.URL.Query().Get("has_attachment") == "true" {
+	if in.HasAttachment == "true" {
 		query = query.Where("has_attachments = true")
 	}
 
 	limit := 50
-	if l := r.URL.Query().Get("limit"); l != "" {
-		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 100 {
-			limit = parsed
-		}
+	if in.Limit != nil && *in.Limit > 0 && *in.Limit <= 100 {
+		limit = *in.Limit
 	}
 
 	var messages []models.Message
@@ -91,8 +97,8 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 	query.Count(&total)
 	query.Order("received_at DESC").Limit(limit).Find(&messages)
 
-	respond.List(w, messages, &respond.Pagination{
+	return endpoint.List[Message]{Data: messagesOf(messages), Pagination: &respond.Pagination{
 		HasMore: int64(limit) < total,
 		Total:   total,
-	})
+	}}, nil
 }

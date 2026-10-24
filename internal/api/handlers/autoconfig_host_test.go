@@ -50,7 +50,7 @@ func TestAutoconfig_NamesTheMailHost(t *testing.T) {
 	for _, p := range ad.Response.Account.Protocol {
 		names = append(names, p.Server)
 	}
-	for _, r := range dns.MailRecords(domain, host, "", "", "") {
+	for _, r := range dns.MailRecords(domain, host, "", "", "", dns.ClientPorts{Submission: 465, IMAP: 993}) {
 		if r.Type == "MX" {
 			names = append(names, r.Value)
 		}

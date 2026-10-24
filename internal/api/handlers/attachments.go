@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/attachmentstore"
@@ -170,36 +170,39 @@ func (h *AttachmentHandler) getS3Attachment(w http.ResponseWriter, r *http.Reque
 	http.ServeContent(w, r, att.Filename, file.Modified, file)
 }
 
-// ListAttachments returns attachment metadata for a message.
+// RegisterList mounts listing a message's attachments. Its route takes what the mail routes
+// take; a message in an account the session cannot read is 404, as one that is not there.
+func (h *AttachmentHandler) RegisterList(rs endpoint.Routes) {
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/messages/{id}/attachments",
+		OperationID: "listAttachments", Summary: "List a message's attachments", Tags: []string{"Attachments"},
+		Errors:   []int{http.StatusNotFound},
+		Security: handlerChecked(models.CapMailRead, "CookieAuth", "BearerAuth", "APIKeyAuth", "BasicAuth")}, h.listAttachments)
+}
+
+// listAttachments returns attachment metadata for a message.
 // GET /api/v1/messages/{id}/attachments
-func (h *AttachmentHandler) ListAttachments(w http.ResponseWriter, r *http.Request) {
+func (h *AttachmentHandler) listAttachments(r *http.Request, in messagePath) (endpoint.List[MessageAttachment], error) {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
+		return endpoint.List[MessageAttachment]{}, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Authentication required")
 	}
-
-	messageID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid message ID")
-		return
-	}
+	notFound := endpoint.Refuse(http.StatusNotFound, "not_found", "Message not found")
 
 	var msg models.Message
-	if err := h.db.First(&msg, messageID).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "Message not found")
-		return
+	if err := h.db.First(&msg, in.ID).Error; err != nil {
+		return endpoint.List[MessageAttachment]{}, notFound
 	}
 	// Mailbox-scoped: the message must be in a mailbox the caller may read.
-	_, err = mayReach(h.db, claims, msg.MailboxID, models.CapMailRead)
-	owned := err == nil
-	if !owned {
-		respond.Error(w, http.StatusNotFound, "not_found", "Message not found")
-		return
+	if _, err := mayReach(h.db, claims, msg.MailboxID, models.CapMailRead); err != nil {
+		return endpoint.List[MessageAttachment]{}, notFound
 	}
 
-	var attachments []models.Attachment
-	h.db.Where("message_id = ?", messageID).Order("id ASC").Find(&attachments)
+	var rows []models.Attachment
+	h.db.Where("message_id = ?", in.ID).Order("id ASC").Find(&rows)
 
-	respond.List(w, attachments, nil)
+	out := make([]MessageAttachment, len(rows))
+	for i, row := range rows {
+		out[i] = attachmentOf(row)
+	}
+	return endpoint.List[MessageAttachment]{Data: out}, nil
 }
