@@ -5,8 +5,10 @@ import (
 	"strings"
 	"testing"
 
+	dkim "github.com/rest-mail/go-dkim"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/dns"
+	"github.com/restmail/restmail/internal/outbound"
 )
 
 // An internationalized domain's records are published and checked under its
@@ -78,5 +80,40 @@ func TestAddMTASTSRecord(t *testing.T) {
 	addMTASTSRecord(&broken, models.Domain{Name: "example.org"}, models.MTASTSPolicy{Mode: "enforce", MXHosts: "bad_.example", MaxAge: 1})
 	if len(broken.Records) != 0 || !strings.Contains(broken.Problem, "no DKIM key") || !strings.Contains(broken.Problem, "MTA-STS policy cannot be served") {
 		t.Fatalf("records %+v, problem %q", broken.Records, broken.Problem)
+	}
+}
+
+// A rotation's keys join the records to publish: the staged key before signing moves to it,
+// and the previous key until it retires, under the A-label name and the DKIM TTL. A key this
+// server cannot read is left out (#728).
+func TestRotationRecords_StagedAndPreviousKeys(t *testing.T) {
+	private, public, err := dkim.GenerateKey(outbound.MinDKIMRSABits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := models.EncryptDKIMPrivateKey(private, "rotation-records-master-key-0123456789")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := dkim.RecordValue(public)
+	if err != nil {
+		t.Fatal(err)
+	}
+	records := rotationRecords(models.Domain{Name: "bücher.example"}, []models.DKIMRotationKey{
+		{Slot: models.DKIMRotationPrevious, Selector: "default", PrivateKey: stored},
+		{Slot: models.DKIMRotationStaged, Selector: "restmail-1", PrivateKey: stored},
+		{Slot: models.DKIMRotationStaged, Selector: "restmail-9", PrivateKey: "dkim:v1:unreadable"},
+	}, "rotation-records-master-key-0123456789")
+	if len(records) != 2 {
+		t.Fatalf("records = %+v, want the two readable keys", records)
+	}
+	for i, selector := range []string{"default", "restmail-1"} {
+		r := records[i]
+		if r.Type != "TXT" || r.Name != selector+"._domainkey.xn--bcher-kva.example" || r.Value != want || r.TTL != 3600 {
+			t.Errorf("record %d = %+v", i, r)
+		}
+	}
+	if got := rotationRecords(models.Domain{Name: "bad_name.example"}, []models.DKIMRotationKey{{Selector: "x", PrivateKey: stored}}, ""); got != nil {
+		t.Errorf("a name DNS cannot hold published %+v", got)
 	}
 }

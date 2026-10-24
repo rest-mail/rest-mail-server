@@ -8,6 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/db/models"
 )
 
@@ -26,7 +29,7 @@ func TestServePolicy_IDN(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/.well-known/mta-sts.txt", nil)
 		req.Host = host
 		rec := httptest.NewRecorder()
-		h.ServePolicy(rec, req)
+		policyFile(h)(rec, req)
 		return rec
 	}
 
@@ -96,4 +99,23 @@ func TestServePolicy_IDN(t *testing.T) {
 			t.Errorf("got %d %q, want 500 and no policy", rec.Code, rec.Body.String())
 		}
 	})
+}
+
+// policyFile is the MTA-STS policy file through its registration.
+func policyFile(h *MTASTSHandler) http.HandlerFunc {
+	routes := chi.NewRouter()
+	h.RegisterPolicyFile(endpoint.Routes{Router: routes, Registry: endpoint.NewRegistry()})
+	return routes.ServeHTTP
+}
+
+// A Host that is not a domain is 404 before any domain is looked up, in the API's error
+// envelope: a sending MTA reads any answer but 200 as no policy.
+func TestServePolicy_HostNotADomain(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/.well-known/mta-sts.txt", nil)
+	req.Host = "not a domain"
+	rec := httptest.NewRecorder()
+	policyFile(NewMTASTSHandler(nil))(rec, req)
+	if rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), `"not_found"`) {
+		t.Fatalf("want 404 not_found, got %d %s", rec.Code, rec.Body)
+	}
 }

@@ -27,8 +27,8 @@ type DKIMRotationKey struct {
 	// InstalledAt preserves the previous key's Domain.DKIMCreatedAt, including
 	// NULL for legacy keys; a staged key has not been installed yet.
 	InstalledAt *time.Time `json:"installed_at"`
-	// PublishedAt is recorded only after a successful DNS provider operation.
-	// NULL means publication has not been recorded, not that it propagated.
+	// PublishedAt is when the rotation worker first saw the key's record
+	// resolve. NULL means it has not been seen yet.
 	PublishedAt *time.Time `json:"published_at"`
 	// TTLSeconds is the DNS TTL to wait after publication or a signing switch.
 	// RFC 2181 bounds a TTL to 31 bits. Require a positive value here so

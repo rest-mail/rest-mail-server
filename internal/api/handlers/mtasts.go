@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	oapifly "github.com/antimatter-studios/go-oapifly"
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/db/models"
 	rmail "github.com/restmail/restmail/internal/mail"
@@ -132,11 +133,21 @@ func (h *MTASTSHandler) deletePolicy(_ *http.Request, in domainPath) (endpoint.E
 	return endpoint.Empty{}, nil
 }
 
-// ServePolicy serves the MTA-STS policy file at /.well-known/mta-sts.txt.
+// RegisterPolicyFile mounts the MTA-STS policy file, which any MTA may fetch (RFC 8461 §3.3).
+func (h *MTASTSHandler) RegisterPolicyFile(rs endpoint.Routes) {
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/.well-known/mta-sts.txt",
+		OperationID: "mtaStsPolicyFile", Summary: "MTA-STS policy file (RFC 8461)", Tags: []string{"System"},
+		Description: "Served to external MTAs from mta-sts.<domain>: the domain is the Host's, without its mta-sts. " +
+			"label. 404 for a domain not hosted here or without an active policy; a sending MTA then keeps " +
+			"the policy it has cached.",
+		MediaType: "text/plain", Security: oapifly.Public, Errors: []int{http.StatusNotFound}}, h.servePolicy)
+}
+
+// servePolicy serves the MTA-STS policy file at /.well-known/mta-sts.txt.
 // It extracts the domain from the Host header and returns the appropriate
 // text/plain policy file per RFC 8461.
 // GET /.well-known/mta-sts.txt
-func (h *MTASTSHandler) ServePolicy(w http.ResponseWriter, r *http.Request) {
+func (h *MTASTSHandler) servePolicy(r *http.Request, _ endpoint.Empty) (endpoint.Document, error) {
 	host := r.Host
 	if name, _, err := net.SplitHostPort(host); err == nil {
 		host = name
@@ -147,8 +158,7 @@ func (h *MTASTSHandler) ServePolicy(w http.ResponseWriter, r *http.Request) {
 	// it was entered with, so the name is matched in both forms.
 	ascii, err := rmail.DomainASCII(strings.TrimSuffix(host, "."))
 	if err != nil {
-		http.Error(w, "domain not found", http.StatusNotFound)
-		return
+		return endpoint.Document{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Domain not found")
 	}
 	// MTA-STS policies are served from mta-sts.<domain>, so strip that prefix
 	ascii = strings.TrimPrefix(ascii, "mta-sts.")
@@ -160,25 +170,22 @@ func (h *MTASTSHandler) ServePolicy(w http.ResponseWriter, r *http.Request) {
 	// Look up the domain
 	var domain models.Domain
 	if err := h.db.Where("name IN ?", names).First(&domain).Error; err != nil {
-		http.Error(w, "domain not found", http.StatusNotFound)
-		return
+		return endpoint.Document{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Domain not found")
 	}
 
 	// Look up the MTA-STS policy
 	var policy models.MTASTSPolicy
 	if err := h.db.Where("domain_id = ? AND active = ?", domain.ID, true).First(&policy).Error; err != nil {
-		http.Error(w, "no MTA-STS policy configured", http.StatusNotFound)
-		return
+		return endpoint.Document{}, endpoint.Refuse(http.StatusNotFound, "not_found", "No MTA-STS policy configured")
 	}
 
-	// The policy file, as the _mta-sts record's id is derived from it.
+	// The policy file, as the _mta-sts record's id is derived from it. One whose
+	// mx host is not a valid name fails the fetch rather than serve a policy that
+	// silently allows fewer hosts: a sending MTA then keeps the policy it has
+	// cached.
 	text, err := policy.Text()
 	if err != nil {
-		http.Error(w, "MTA-STS policy has an invalid mx host", http.StatusInternalServerError)
-		return
+		return endpoint.Document{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "MTA-STS policy has an invalid mx host")
 	}
-
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(text))
+	return endpoint.Document{ContentType: "text/plain; charset=utf-8", Body: []byte(text)}, nil
 }

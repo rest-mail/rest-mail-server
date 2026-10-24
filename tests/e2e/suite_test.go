@@ -534,7 +534,8 @@ const e2eInboundFilters = `[
  {"name":"header_validate","type":"action","enabled":true,"config":{}},
  {"name":"recipient_check","type":"action","enabled":true,"config":{}},
  {"name":"extract_attachments","type":"transform","enabled":true,"config":{"storage_path":"/attachments"}},
- {"name":"sieve","type":"transform","enabled":true,"config":{}}
+ {"name":"sieve","type":"transform","enabled":true,"config":{}},
+ {"name":"vacation","type":"action","enabled":true,"config":{"days":7}}
 ]`
 
 // ensureE2EPipeline installs (or updates) restmail.test's inbound pipeline

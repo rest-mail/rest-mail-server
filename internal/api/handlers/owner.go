@@ -2,13 +2,14 @@ package handlers
 
 import (
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
 	"time"
 
-	"github.com/restmail/restmail/internal/api/respond"
+	oapifly "github.com/antimatter-studios/go-oapifly"
+	"github.com/restmail/restmail/internal/api/endpoint"
+	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/bootstrap"
 	"github.com/restmail/restmail/internal/version"
 	"gorm.io/gorm"
@@ -35,79 +36,112 @@ func NewOwnerHandler(db *gorm.DB, statusKeys *bootstrap.StatusKeys, serverSecret
 	return &OwnerHandler{db: db, statusKeys: statusKeys, challengeKey: bootstrap.ChallengeKey(serverSecret)}
 }
 
-func (h *OwnerHandler) ownerKeys(w http.ResponseWriter, r *http.Request) (*bootstrap.OwnerKeys, bool) {
+// Register mounts the owner endpoints behind throttle, a bucket of their own at login's rate:
+// the CLI's requests must not use up the budget the owner then needs to sign in. A token
+// minted and a status read are recorded with audit.
+func (h *OwnerHandler) Register(rs endpoint.Routes, throttle endpoint.Middleware, audit func(string, ...middleware.AuditOption) endpoint.Middleware) {
+	tags := []string{"Auth"}
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/auth/owner/challenge",
+		OperationID: "ownerChallenge", Summary: "A challenge for an owner key to sign", Tags: tags,
+		Description: "The first half of proving ownership with a key in the owner registry (restmail reset-admin), or of " +
+			"reading the status with a key in RESTMAIL_STATUS_KEYS (restmail status --key). Stateless, valid two " +
+			"minutes, answered once. 409 no_owner_keys when the server lists neither.",
+		Security: oapifly.Public, Errors: []int{http.StatusConflict},
+		Middleware: []endpoint.Middleware{throttle}}, h.challenge)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/auth/owner/token",
+		OperationID: "ownerToken", Summary: "Trade a signed challenge for a reset-admin token", Tags: tags,
+		Description: "signature is the SSH wire-format signature (base64), by the private half of public_key, over " +
+			`"restmail-owner-v1\n" + purpose + "\n" + address + "\n" + challenge. The key must be in the owner registry; ` +
+			"a status key is refused. The token is redeemed at /api/v1/auth/reset.",
+		Security:   oapifly.Public,
+		Errors:     []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusConflict},
+		Middleware: []endpoint.Middleware{throttle, audit("auth.owner_token", middleware.AuditSignIn())}}, h.token)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/auth/owner/status",
+		OperationID: "ownerStatus", Summary: "Trade a signed challenge for what the server runs", Tags: tags,
+		Description: "How a deploy is confirmed from outside (restmail status --key): the owner scheme with the purpose " +
+			"status and no address, by a key in RESTMAIL_STATUS_KEYS or the owner registry. The challenge is spent.",
+		Security:   oapifly.Public,
+		Errors:     []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusConflict},
+		Middleware: []endpoint.Middleware{throttle, audit("auth.owner_status")}}, h.status)
+}
+
+func (h *OwnerHandler) ownerKeys(r *http.Request) (*bootstrap.OwnerKeys, error) {
 	keys, err := bootstrap.LoadOwnerKeys(h.db.WithContext(r.Context()))
 	if err != nil {
 		slog.Error("reading owner key registry failed", "error", err)
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to read owner key registry")
-		return nil, false
+		return nil, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to read owner key registry")
 	}
-	return keys, true
+	return keys, nil
 }
 
-// Challenge checks the current registry and issues a challenge to sign. Issuing
-// the challenge stores nothing; only a verified answer spends it.
-func (h *OwnerHandler) Challenge(w http.ResponseWriter, r *http.Request) {
-	keys, ok := h.ownerKeys(w, r)
-	if !ok {
-		return
+// OwnerChallenge is a challenge for an owner or status key to sign, and when it stops being
+// answerable.
+type OwnerChallenge struct {
+	Challenge string    `json:"challenge"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+// challenge checks the current registry and issues a challenge to sign. Issuing the challenge
+// stores nothing; only a verified answer spends it.
+func (h *OwnerHandler) challenge(r *http.Request, _ endpoint.Empty) (OwnerChallenge, error) {
+	keys, err := h.ownerKeys(r)
+	if err != nil {
+		return OwnerChallenge{}, err
 	}
 	if keys.Len() == 0 && h.statusKeys.Len() == 0 {
 		// no_owner_keys still, though status keys would do: it is the code a
 		// reset-admin from before status keys knows.
-		respond.Error(w, http.StatusConflict, "no_owner_keys", bootstrap.ErrNoStatusKeys.Error())
-		return
+		return OwnerChallenge{}, endpoint.Refuse(http.StatusConflict, "no_owner_keys", bootstrap.ErrNoStatusKeys.Error())
 	}
 	challenge, expires, err := bootstrap.NewChallenge(h.challengeKey, time.Now())
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to issue a challenge")
-		return
+		return OwnerChallenge{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to issue a challenge")
 	}
-	respond.Data(w, http.StatusOK, map[string]string{
-		"challenge":  challenge,
-		"expires_at": expires.UTC().Format(time.RFC3339),
-	})
+	return OwnerChallenge{Challenge: challenge, ExpiresAt: wholeSecondUTC(expires)}, nil
 }
 
-// ownerTokenRequest is the body of POST /api/v1/auth/owner/token.
+// wholeSecondUTC is t as the answers write it: UTC, to the second.
+func wholeSecondUTC(t time.Time) time.Time { return t.UTC().Truncate(time.Second) }
+
+// ownerTokenRequest is the body of POST /api/v1/auth/owner/token. Every field is checked in
+// the handler or as the signed message, with the refusals it always gave.
 type ownerTokenRequest struct {
-	Challenge       string `json:"challenge"`
-	PublicKey       string `json:"public_key"`
-	Signature       string `json:"signature"` // base64 of the ssh wire-format signature
-	Purpose         string `json:"purpose"`   // reset-admin, the only one
+	Challenge       string `json:"challenge,omitempty"`
+	PublicKey       string `json:"public_key,omitempty"`
+	Signature       string `json:"signature,omitempty"` // base64 of the ssh wire-format signature
+	Purpose         string `json:"purpose,omitempty"`   // reset-admin, the only one
 	Address         string `json:"address,omitempty"`
 	LifetimeSeconds int    `json:"lifetime_seconds,omitempty"`
 }
 
-// Token checks a signed challenge and answers with a single-use reset-admin
-// token: redeem it at /api/v1/auth/reset.
-func (h *OwnerHandler) Token(w http.ResponseWriter, r *http.Request) {
-	var req ownerTokenRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
+// OwnerToken is a single-use token for an owner's purpose, reset-admin, and when it expires.
+// Its fields are in the order the map it replaced was written in, so the bytes are unchanged.
+type OwnerToken struct {
+	ExpiresAt time.Time `json:"expires_at"`
+	Purpose   string    `json:"purpose"`
+	Token     string    `json:"token"`
+}
+
+// token checks a signed challenge and answers with a single-use reset-admin token: redeem it
+// at /api/v1/auth/reset.
+func (h *OwnerHandler) token(r *http.Request, req ownerTokenRequest) (OwnerToken, error) {
 	if req.Purpose != "reset-admin" {
-		respond.ValidationError(w, map[string]string{"purpose": `must be "reset-admin"`})
-		return
+		return OwnerToken{}, endpoint.Invalid(map[string]string{"purpose": `must be "reset-admin"`})
 	}
 	if req.Address == "" {
-		respond.ValidationError(w, map[string]string{"address": "required for reset-admin: the account to reset"})
-		return
+		return OwnerToken{}, endpoint.Invalid(map[string]string{"address": "required for reset-admin: the account to reset"})
 	}
 	lifetime := time.Duration(req.LifetimeSeconds) * time.Second
 	if req.LifetimeSeconds < 0 || lifetime > 24*time.Hour {
-		respond.ValidationError(w, map[string]string{"lifetime_seconds": "must be between 0 (the default, 15 minutes) and 86400"})
-		return
+		return OwnerToken{}, endpoint.Invalid(map[string]string{"lifetime_seconds": "must be between 0 (the default, 15 minutes) and 86400"})
 	}
 	sig, err := base64.StdEncoding.DecodeString(req.Signature)
 	if err != nil {
-		respond.ValidationError(w, map[string]string{"signature": "must be base64"})
-		return
+		return OwnerToken{}, endpoint.Invalid(map[string]string{"signature": "must be base64"})
 	}
-	keys, ok := h.ownerKeys(w, r)
-	if !ok {
-		return
+	keys, err := h.ownerKeys(r)
+	if err != nil {
+		return OwnerToken{}, err
 	}
 	token, expires, err := bootstrap.MintForOwner(h.db, keys, h.challengeKey, bootstrap.OwnerRequest{
 		Challenge: req.Challenge,
@@ -119,59 +153,47 @@ func (h *OwnerHandler) Token(w http.ResponseWriter, r *http.Request) {
 	}, time.Now())
 	switch {
 	case errors.Is(err, bootstrap.ErrNoOwnerKeys):
-		respond.Error(w, http.StatusConflict, "no_owner_keys", err.Error())
+		return OwnerToken{}, endpoint.Refuse(http.StatusConflict, "no_owner_keys", err.Error())
 	case errors.Is(err, bootstrap.ErrChallengeInvalid):
-		respond.Error(w, http.StatusUnauthorized, "invalid_challenge", err.Error())
+		return OwnerToken{}, endpoint.Refuse(http.StatusUnauthorized, "invalid_challenge", err.Error())
 	case errors.Is(err, bootstrap.ErrNotOwner):
-		respond.Error(w, http.StatusForbidden, "not_owner", err.Error())
+		return OwnerToken{}, endpoint.Refuse(http.StatusForbidden, "not_owner", err.Error())
 	case errors.Is(err, bootstrap.ErrNoSuchAdmin):
-		respond.Error(w, http.StatusNotFound, "no_such_account", err.Error())
+		return OwnerToken{}, endpoint.Refuse(http.StatusNotFound, "no_such_account", err.Error())
 	case err != nil:
 		slog.Error("minting a token for an owner failed", "error", err)
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to mint the token")
-	default:
-		respond.Data(w, http.StatusOK, map[string]string{
-			"purpose":    req.Purpose,
-			"token":      token,
-			"expires_at": expires.UTC().Format(time.RFC3339),
-		})
+		return OwnerToken{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to mint the token")
 	}
+	return OwnerToken{ExpiresAt: wholeSecondUTC(expires), Purpose: req.Purpose, Token: token}, nil
 }
 
-// ownerStatusRequest is the body of POST /api/v1/auth/owner/status. The
-// purpose, "status", is the endpoint's own; it is still part of what is signed.
+// ownerStatusRequest is the body of POST /api/v1/auth/owner/status. The purpose, "status",
+// is the endpoint's own; it is still part of what is signed. Every field is checked as the
+// signed message, with the refusals it always gave.
 type ownerStatusRequest struct {
-	Challenge string `json:"challenge"`
-	PublicKey string `json:"public_key"`
-	Signature string `json:"signature"` // base64 of the ssh wire-format signature
+	Challenge string `json:"challenge,omitempty"`
+	PublicKey string `json:"public_key,omitempty"`
+	Signature string `json:"signature,omitempty"` // base64 of the ssh wire-format signature
 }
 
-// serverStatus is the answer of POST /api/v1/auth/owner/status: what runs, and
-// since when. No secrets, no configuration.
-type serverStatus struct {
-	Version   string `json:"version"`
-	Commit    string `json:"commit"`
-	BuiltAt   string `json:"built_at"`
-	StartedAt string `json:"started_at"`
+// ServerStatus is what a server runs, and since when. No secrets, no configuration.
+type ServerStatus struct {
+	Version   string    `json:"version"`
+	Commit    string    `json:"commit"`
+	BuiltAt   string    `json:"built_at"`
+	StartedAt time.Time `json:"started_at"`
 }
 
-// Status checks a challenge signed for "status" by a status key or an owner
-// key, and answers with what the server runs and since when: how a deploy is
-// confirmed from outside.
-func (h *OwnerHandler) Status(w http.ResponseWriter, r *http.Request) {
-	var req ownerStatusRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
+// status checks a challenge signed for "status" by a status key or an owner key, and answers
+// with what the server runs and since when: how a deploy is confirmed from outside.
+func (h *OwnerHandler) status(r *http.Request, req ownerStatusRequest) (ServerStatus, error) {
 	sig, err := base64.StdEncoding.DecodeString(req.Signature)
 	if err != nil {
-		respond.ValidationError(w, map[string]string{"signature": "must be base64"})
-		return
+		return ServerStatus{}, endpoint.Invalid(map[string]string{"signature": "must be base64"})
 	}
-	keys, ok := h.ownerKeys(w, r)
-	if !ok {
-		return
+	keys, err := h.ownerKeys(r)
+	if err != nil {
+		return ServerStatus{}, err
 	}
 	err = bootstrap.CheckStatus(h.db, h.statusKeys, keys, h.challengeKey, bootstrap.StatusRequest{
 		Challenge: req.Challenge,
@@ -180,20 +202,19 @@ func (h *OwnerHandler) Status(w http.ResponseWriter, r *http.Request) {
 	}, time.Now())
 	switch {
 	case errors.Is(err, bootstrap.ErrNoStatusKeys):
-		respond.Error(w, http.StatusConflict, "no_status_keys", err.Error())
+		return ServerStatus{}, endpoint.Refuse(http.StatusConflict, "no_status_keys", err.Error())
 	case errors.Is(err, bootstrap.ErrChallengeInvalid):
-		respond.Error(w, http.StatusUnauthorized, "invalid_challenge", err.Error())
+		return ServerStatus{}, endpoint.Refuse(http.StatusUnauthorized, "invalid_challenge", err.Error())
 	case errors.Is(err, bootstrap.ErrNotStatusKey):
-		respond.Error(w, http.StatusForbidden, "not_status_key", err.Error())
+		return ServerStatus{}, endpoint.Refuse(http.StatusForbidden, "not_status_key", err.Error())
 	case err != nil:
 		slog.Error("checking a status request failed", "error", err)
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to check the request")
-	default:
-		respond.Data(w, http.StatusOK, serverStatus{
-			Version:   version.Version,
-			Commit:    version.Commit,
-			BuiltAt:   version.BuildDate,
-			StartedAt: version.Started.UTC().Format(time.RFC3339),
-		})
+		return ServerStatus{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to check the request")
 	}
+	return ServerStatus{
+		Version:   version.Version,
+		Commit:    version.Commit,
+		BuiltAt:   version.BuildDate,
+		StartedAt: wholeSecondUTC(version.Started),
+	}, nil
 }

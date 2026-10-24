@@ -74,15 +74,37 @@ class ContractSetupAuthTests(unittest.TestCase):
             with self.subTest(headers=headers):
                 transaction = self.transaction("folders/old", {"name": "renamed"}, headers)
                 original = copy.deepcopy(transaction["request"])
-                self.responses = [({}, 201)]
+                self.responses = [({}, 201), (None, 204)]
                 self.module.give_each_rename_probe_a_folder(transaction)
                 self.assertEqual(transaction["request"], original)
                 self.assertEqual(transaction["fullPath"],
                                  "/api/v1/accounts/7/folders/contract-rename-%d" % index)
-                setup = self.calls[-1]
+                setup, cleanup = self.calls[-2:]
                 self.assertEqual(setup.full_url, "http://fixture.test:8080/api/v1/accounts/7/folders")
                 self.assertEqual(json.loads(setup.data), {"name": "contract-rename-%d" % index})
+                # The previous probe's destination goes, or this rename is 409.
+                self.assertEqual(cleanup.get_method(), "DELETE")
+                self.assertEqual(cleanup.full_url, "http://fixture.test:8080/api/v1/accounts/7/folders/renamed")
         self.assertEqual(len(self.logins), 1)
+
+    def test_rename_cleanup_tolerates_an_absent_destination_and_skips_standard_ones(self):
+        def absent(request, timeout):
+            if request.get_method() == "DELETE":
+                self.calls.append(request)
+                raise HTTPError(request.full_url, 404, "not found", {}, None)
+            return self.serve(request, timeout)
+        self.network.stop()
+        with patch.object(self.module.urllib.request, "urlopen", side_effect=absent):
+            self.responses = [({}, 201)]
+            self.module.give_each_rename_probe_a_folder(self.transaction("folders/old", {"name": "Paid receipts"}))
+            self.assertTrue(self.calls[-1].full_url.endswith("/folders/Paid%20receipts"))
+            for name in ("INBOX", "inbox", "Trash", "", "  ", None, 12):
+                with self.subTest(name=name):
+                    self.responses = [({}, 201)]
+                    self.calls.clear()
+                    self.module.give_each_rename_probe_a_folder(self.transaction("folders/old", {"name": name}))
+                    self.assertEqual([request.get_method() for request in self.calls], ["POST"])
+        self.network.start()
 
     def test_folder_cleanup_removes_only_a_previous_probe_and_keeps_request_intact(self):
         transaction = self.transaction("folders", {"name": "contract probe"})
@@ -108,7 +130,7 @@ class ContractSetupAuthTests(unittest.TestCase):
         original = copy.deepcopy(transaction)
         self.responses = [({"data": []}, 200),
                           ({"data": [{"id": 42, "email": "probe@example.test"}]}, 200),
-                          (None, 204), ({}, 201)]
+                          (None, 204), ({}, 201), (None, 204)]
         self.module.remove_a_previous_contact_probe(transaction)
         self.module.remove_a_previous_contact_probe(transaction)
         self.assertEqual(transaction, original)

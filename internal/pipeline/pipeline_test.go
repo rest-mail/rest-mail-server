@@ -398,7 +398,7 @@ func TestDefaultInboundPipeline(t *testing.T) {
 	expectedFilters := []string{
 		"size_check", "spf_check", "dkim_verify", "arc_verify", "dmarc_check",
 		"domain_allowlist", "contact_whitelist", "greylist",
-		"header_validate", "recipient_check", "extract_attachments", "sieve",
+		"header_validate", "recipient_check", "extract_attachments", "sieve", "vacation",
 	}
 	if len(p.Filters) != len(expectedFilters) {
 		t.Fatalf("expected %d filters, got %d", len(expectedFilters), len(p.Filters))

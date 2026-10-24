@@ -125,10 +125,11 @@ It can be lost too:
   silent.
 - **Quarantine is reported:** each user gets a periodic digest of mail held for
   them ([`internal/digest/`](../../../internal/digest/)).
-- **Bounces for REST Mail's own users** go straight into their inbox.
-- **Not yet right:** a failed forward to another server is not bounced to the
-  original sender ([#715](https://github.com/rest-mail/rest-mail-server/issues/715)),
-  mail to a domain that does not exist is retried for days instead of failing at
+- **Bounces for REST Mail's own users** go straight into their inbox; a sender
+  elsewhere, whose mail a forward failed to deliver, is sent one by mail
+  ([#715](https://github.com/rest-mail/rest-mail-server/issues/715)).
+- **Not yet right:** mail to a domain that does not exist is retried for days
+  instead of failing at
   once ([#713](https://github.com/rest-mail/rest-mail-server/issues/713)), and
   the queue gives up after 3 days rather than the 4–5 RFC 5321 expects
   ([#711](https://github.com/rest-mail/rest-mail-server/issues/711)).
