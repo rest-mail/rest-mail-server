@@ -48,7 +48,13 @@ type MessageHandler struct {
 	// newMail is told of each message delivered into a mailbox's INBOX, to
 	// push to the phones of the sessions that list it (#363). Nil when push
 	// is off.
-	newMail NewMailNotifier
+	newMail    NewMailNotifier
+	tlsReports *TLSReportEmailReceiver
+}
+
+// SetTLSReportEmailReceiver enables ingestion at the configured reporting mailbox.
+func (h *MessageHandler) SetTLSReportEmailReceiver(receiver *TLSReportEmailReceiver) {
+	h.tlsReports = receiver
 }
 
 // NewMailNotifier is told that a message reached the INBOX of a mailbox. It
@@ -1935,6 +1941,9 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	// labelled by transport. Non inbound-MX deliveries (nil ReceivedTLS) are not
 	// counted — this measures mail received from the internet.
 	recordInboundReceived(params.ReceivedTLS)
+	if consumed, err := h.tlsReports.receive(ctx, mailbox.Address, params.RawMessage); consumed || err != nil {
+		return nil, err
+	}
 
 	// Authentication-Results claiming this server's authserv-id did not come
 	// from this server: remove them before anything parses, verifies or stores
