@@ -532,9 +532,43 @@ jobs:
             exit 1
           fi
 
+  guide:
+    name: Email, explained
+    # The guide is checked where it is written, so a broken link, an unsourced
+    # chapter or a diagram Archify refuses fails the pull request that broke it
+    # (docs/design/email-explained-website.md). Outside links change on other
+    # sites' schedules, so scheduled.yml checks those daily.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: scripts/email-explained
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: scripts/email-explained/package.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fetch Archify, at the commit package.json pins
+        run: echo "ARCHIFY=$(node fetch-archify.mjs "$RUNNER_TEMP/archify")" >> "$GITHUB_ENV"
+
+      - name: Test the checks and the bundler
+        run: npm test
+
+      - name: Check the guide
+        run: node check.mjs --archify "$ARCHIFY"
+
+      - name: Build the bundle the website renders
+        run: node bundle.mjs --archify "$ARCHIFY" --out "$RUNNER_TEMP/email-explained"
+
   ci:
     name: CI
-    needs: [contract-diff, lint, test, attachments-s3, build, helm, webmail, admin, js-filter, first-start, webapp-images]
+    needs: [contract-diff, lint, test, attachments-s3, build, helm, webmail, admin, js-filter, first-start, webapp-images, guide]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -552,6 +586,7 @@ jobs:
             js-filter=${{ needs.js-filter.result }}
             first-start=${{ needs.first-start.result }}
             webapp-images=${{ needs.webapp-images.result }}
+            guide=${{ needs.guide.result }}
         run: |
           set -euo pipefail
           # `needs.build.result` covers the whole matrix: it is `success` only

@@ -54,11 +54,42 @@ current, reliable count of …") rather than estimating.
 - Each chapter starts with front matter: `title`, `part`, `summary`, and
   `diagram` when it has one. The website build reads it. A value with a colon in
   it goes in double quotes, so GitHub can read it as YAML.
+- A page whose claims are all sourced in the chapters it links (the glossary,
+  the checklist, the summary table) says `sources: linked` in its front matter
+  instead of having a Sources section of its own.
 - The order of the chapters is the order [README.md](README.md) lists them in.
 - Links between chapters are relative, so they work on GitHub as well as on the
   website.
 - Only the chapters that exist are linked from [README.md](README.md). A
   planned chapter is a line in the contents, not an empty file.
+
+## Checking it
+
+CI checks the guide on every pull request, as part of the required `CI` check,
+so run the same checks before pushing. From `scripts/email-explained/`:
+
+```sh
+npm ci
+ARCHIFY=$(node fetch-archify.mjs .archify)   # the Archify commit package.json pins
+npm test                                     # the checks' and the bundler's own tests
+node check.mjs --archify "$ARCHIFY"          # the guide itself
+node bundle.mjs --archify "$ARCHIFY"         # and it builds into the website's bundle
+```
+
+`check.mjs` fails on:
+
+- a link to a chapter, heading, file or line that does not exist, or one that
+  leaves the repository;
+- front matter that is missing `title`, `part` or `summary`, has a key the
+  website does not read, or has a value GitHub cannot read as YAML;
+- a chapter with no `## Sources` section (or `sources: linked`);
+- a diagram no chapter shows, one without its static image, or a source Archify
+  does not accept.
+
+Outside links change on other sites' schedules, so `node check.mjs --external`
+runs daily instead (`scheduled.yml`). A link that no longer answers, or an
+anchor no longer on its page, opens an issue, which closes itself once they all
+answer again.
 
 ## Diagrams
 

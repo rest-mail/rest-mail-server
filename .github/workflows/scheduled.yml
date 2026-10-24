@@ -95,3 +95,61 @@ jobs:
         run: |
           echo "=== Direct dependencies ==="
           go list -m -u all 2>/dev/null | grep '\[' || echo "All dependencies are up to date."
+
+  guide-links:
+    name: Email, explained outside links
+    # Every outside link in docs/email-explained, and every anchor in one, still
+    # answers. A broken one opens an issue listing them (or updates the one that
+    # is open), and the issue closes itself once they all answer again.
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TITLE: "Email, explained: outside links that no longer answer"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: scripts/email-explained/package.json
+
+      - name: Install dependencies
+        working-directory: scripts/email-explained
+        run: npm ci
+
+      - name: Check every outside link
+        id: links
+        working-directory: scripts/email-explained
+        run: |
+          set -o pipefail
+          node check.mjs --external | tee "$RUNNER_TEMP/links.txt"
+
+      - name: Open or update the issue
+        if: failure() && steps.links.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          {
+            echo "The daily check of [Email, explained]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/main/docs/email-explained/README.md) found outside links that no longer answer, or anchors no longer on their page. Fix or replace each one; this issue closes itself once they all answer."
+            echo
+            echo '```'
+            grep -E '^(broken|refused)' "$RUNNER_TEMP/links.txt" || true
+            echo '```'
+            echo
+            echo "From [this run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)."
+          } > "$RUNNER_TEMP/issue.md"
+          number=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label documentation --json number,title --jq ".[] | select(.title == \"$TITLE\") | .number" | head -1)
+          if [ -n "$number" ]; then
+            gh issue edit "$number" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/issue.md"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --label documentation --body-file "$RUNNER_TEMP/issue.md"
+          fi
+
+      - name: Close the issue once every link answers
+        if: success()
+        run: |
+          set -euo pipefail
+          number=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label documentation --json number,title --jq ".[] | select(.title == \"$TITLE\") | .number" | head -1)
+          if [ -n "$number" ]; then
+            gh issue close "$number" --repo "$GITHUB_REPOSITORY" --comment "Every outside link answers again ([run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID))."
+          fi

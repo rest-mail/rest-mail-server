@@ -2,6 +2,7 @@
 title: "Check your own server: a checklist"
 part: Reference
 summary: The checks to run on any mail server, in order, with the commands to run them and the chapter that explains each.
+sources: linked
 ---
 
 # Check your own server: a checklist
