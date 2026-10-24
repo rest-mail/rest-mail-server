@@ -363,7 +363,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// ═══════════════════════════════════════════════════════════════
 	// MTA-STS policy (no auth — served to external MTAs per RFC 8461)
 	// ═══════════════════════════════════════════════════════════════
-	r.Get("/.well-known/mta-sts.txt", mtastsH.ServePolicy)
+	mtastsH.RegisterPolicyFile(endpoint.Routes{Router: r, Registry: registry})
 
 	// ═══════════════════════════════════════════════════════════════
 	// TLS-RPT report ingestion (no auth — receives reports from external MTAs per RFC 8460)
