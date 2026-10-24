@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,7 +24,7 @@ import (
 // recipient has it; a domain whose pipeline has no sieve step runs no account's script.
 func TestRESTMAILDeliver_RunsEachRecipientsSieveScript(t *testing.T) {
 	db := openRedirectTestDB(t)
-	if err := db.AutoMigrate(&models.SieveScript{}, &models.Quarantine{}); err != nil {
+	if err := db.AutoMigrate(&models.SieveScript{}, &models.Quarantine{}, &models.VacationConfig{}, &models.VacationResponse{}); err != nil {
 		t.Skipf("restmail account sieve DB test skipped: migrate failed (%v)", err)
 	}
 	engine := pipeline.NewEngine(pipeline.DefaultRegistry, slog.Default())
@@ -32,7 +33,7 @@ func TestRESTMAILDeliver_RunsEachRecipientsSieveScript(t *testing.T) {
 
 	// setup makes a domain with the given inbound pipeline and one mailbox per local part,
 	// each with the script given for it (none for ""), stored under hash (its own when "").
-	setup := func(t *testing.T, pipelineFilters []pipeline.FilterConfig, scripts map[string]string, hash string) (*RestmailHandler, map[string]models.Mailbox) {
+	setup := func(t *testing.T, pipelineFilters []pipeline.FilterConfig, scripts map[string]string, hash string, engines ...*pipeline.Engine) (*RestmailHandler, map[string]models.Mailbox) {
 		t.Helper()
 		suffix := time.Now().UnixNano()
 		dom := models.Domain{Name: fmt.Sprintf("rm-sieve-%d.test", suffix), Active: true}
@@ -66,12 +67,18 @@ func TestRESTMAILDeliver_RunsEachRecipientsSieveScript(t *testing.T) {
 				db.Where("mailbox_id = ?", mb.ID).Delete(&models.SieveScript{})
 				db.Where("mailbox_id = ?", mb.ID).Delete(&models.Message{})
 				db.Where("mailbox_id = ?", mb.ID).Delete(&models.Quarantine{})
+				db.Where("mailbox_id = ?", mb.ID).Delete(&models.VacationResponse{})
+				db.Where("sending_domain = ?", dom.Name).Delete(&models.OutboundQueue{})
 				db.Where("id = ?", mb.ID).Delete(&models.Mailbox{})
 			}
 			db.Where("id = ?", pl.ID).Delete(&models.Pipeline{})
 			db.Where("id = ?", dom.ID).Delete(&models.Domain{})
 		})
-		return NewRestmailHandler(db, engine, nil, RestmailTarpitConfig{}, RestmailDeliverAuthConfig{}), boxes
+		use := engine
+		if len(engines) > 0 {
+			use = engines[0]
+		}
+		return NewRestmailHandler(db, use, nil, RestmailTarpitConfig{}, RestmailDeliverAuthConfig{}), boxes
 	}
 	stored := func(t *testing.T, mailboxID uint) []models.Message {
 		t.Helper()
@@ -113,6 +120,32 @@ func TestRESTMAILDeliver_RunsEachRecipientsSieveScript(t *testing.T) {
 			if got := stored(t, mb.ID); len(got) != 0 {
 				t.Errorf("%s stored %+v, want nothing before the peer retries", local, got)
 			}
+		}
+	})
+
+	t.Run("a recipient's own vacation answers the sender", func(t *testing.T) {
+		// The API registers the vacation filter with its database at startup (routes.go); this
+		// engine has its own registry, so the global one is left alone.
+		registry := pipeline.NewRegistry()
+		registry.Register("sieve", filters.NewSieve)
+		registry.Register("vacation", filters.NewVacation(db))
+		vacation := pipeline.FilterConfig{Name: "vacation", Type: pipeline.FilterTypeAction, Enabled: true, Config: json.RawMessage(`{}`)}
+		h, boxes := setup(t, []pipeline.FilterConfig{sieveStep(""), vacation},
+			map[string]string{"away": `require "vacation"; vacation :days 1 "I am away.";`, "plain": ""}, "",
+			pipeline.NewEngine(registry, slog.Default()))
+		addressed := "From: alice@remote.test\r\nTo: " + boxes["away"].Address + ", " + boxes["plain"].Address + "\r\nSubject: Lunch?\r\n\r\nhello body\r\n"
+		delivered, _ := deliverRESTMAIL(t, h, "alice@remote.test", addressed, boxes["away"].Address, boxes["plain"].Address)
+		if len(delivered) != 2 {
+			t.Fatalf("delivered %v, want both recipients", delivered)
+		}
+		var replies []models.OutboundQueue
+		db.Where("recipient = ?", "alice@remote.test").Find(&replies)
+		if len(replies) != 1 || !strings.Contains(replies[0].RawMessage, "From: "+boxes["away"].Address+"\r\n") ||
+			!strings.Contains(replies[0].RawMessage, "I am away.") {
+			t.Fatalf("replies %+v, want one from away with its reason", replies)
+		}
+		for _, r := range replies {
+			db.Delete(&r)
 		}
 	})
 

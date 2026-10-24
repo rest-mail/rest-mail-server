@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"mime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -68,6 +70,12 @@ func (f *vacationFilter) Execute(ctx context.Context, email *pipeline.EmailJSON)
 		return f.skip(reason), nil
 	}
 
+	// ── 2b. A Sieve vacation action answers instead (RFC 5230, #748): the script is the
+	//        mailbox's own, run for this delivery, and asked for this reply.
+	if email.Metadata["vacation_reply_to"] != "" {
+		return f.sieveReply(db, email, sender, time.Now())
+	}
+
 	// ── 3. Process each recipient — look up their mailbox, vacation
 	//       config, and queue a reply if warranted. ─────────────────
 	replied := false
@@ -108,7 +116,7 @@ func (f *vacationFilter) Execute(ctx context.Context, email *pipeline.EmailJSON)
 		cutoff := now.Add(-time.Duration(f.cfg.Days) * 24 * time.Hour)
 		var recentCount int64
 		db.Table("vacation_responses").
-			Where("mailbox_id = ? AND sender = ? AND responded_at > ?",
+			Where("mailbox_id = ? AND sender = ? AND handle = '' AND responded_at > ?",
 				mailboxID, sender, cutoff).
 			Count(&recentCount)
 
@@ -117,13 +125,9 @@ func (f *vacationFilter) Execute(ctx context.Context, email *pipeline.EmailJSON)
 		}
 
 		// ── 3b. Record the response for dedup ─────────────────────
-		// The row takes this reply's time, so the interval runs from the latest reply. A
-		// plain insert hit the (mailbox_id, sender) unique index once a first interval had
-		// passed, kept the first reply's time, and every later message was answered (#809).
-		if err := db.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "mailbox_id"}, {Name: "sender"}},
-			DoUpdates: clause.Assignments(map[string]interface{}{"responded_at": now}),
-		}).Create(&models.VacationResponse{MailboxID: mailboxID, Sender: sender, RespondedAt: now}).Error; err != nil {
+		// The row takes this reply's time, so the interval runs from the latest
+		// reply (#809).
+		if err := recordVacationResponse(db, mailboxID, sender, "", now); err != nil {
 			slog.Warn("vacation: could not record the reply; sending it anyway", "mailbox_id", mailboxID, "error", err)
 		}
 
@@ -164,6 +168,124 @@ func (f *vacationFilter) Execute(ctx context.Context, email *pipeline.EmailJSON)
 			Detail: fmt.Sprintf("vacation auto-reply queued for sender %s", sender),
 		},
 	}, nil
+}
+
+// sieveReply queues the reply a Sieve vacation action asked for (RFC 5230 §4): to the envelope
+// sender, from the mailbox (or :from), with :subject or "Auto: " and the message's subject, and
+// the reason as its body, or as its MIME entity with :mime. It goes at most once per sender and
+// handle within the action's interval, tracked across messages in vacation_responses (§4.1,
+// RFC 6131), and with a null reverse path and Auto-Submitted: auto-replied (§5.1, RFC 3834).
+func (f *vacationFilter) sieveReply(db *gorm.DB, email *pipeline.EmailJSON, sender string, now time.Time) (*pipeline.FilterResult, error) {
+	meta := email.Metadata
+	if len(email.Envelope.RcptTo) == 0 {
+		return f.skip("sieve vacation: no recipient to answer for"), nil
+	}
+	rcpt := email.Envelope.RcptTo[0]
+	parts := strings.SplitN(rcpt, "@", 2)
+	if len(parts) != 2 {
+		return f.skip("sieve vacation: the recipient is not an address"), nil
+	}
+	var mailboxID uint
+	if err := db.Table("mailboxes").
+		Joins("JOIN domains ON domains.id = mailboxes.domain_id").
+		Where("mailboxes.local_part = ? AND domains.name = ? AND mailboxes.active = ?", parts[0], parts[1], true).
+		Pluck("mailboxes.id", &mailboxID).Error; err != nil || mailboxID == 0 {
+		return f.skip("sieve vacation: the recipient mailbox is not here"), nil
+	}
+
+	handle := meta["vacation_handle"]
+	interval := 7 * 24 * time.Hour
+	if seconds, err := strconv.ParseInt(meta["vacation_seconds"], 10, 64); err == nil && seconds >= 0 {
+		interval = time.Duration(seconds) * time.Second
+	}
+	if interval > 0 {
+		var recent int64
+		db.Table("vacation_responses").
+			Where("mailbox_id = ? AND sender = ? AND handle = ? AND responded_at > ?", mailboxID, sender, handle, now.Add(-interval)).
+			Count(&recent)
+		if recent > 0 {
+			return f.skip("sieve vacation: already answered within its interval"), nil
+		}
+	}
+	if err := recordVacationResponse(db, mailboxID, sender, handle, now); err != nil {
+		return nil, fmt.Errorf("sieve vacation: record the reply: %w", err)
+	}
+
+	from := rcpt
+	if given := strings.TrimSpace(meta["vacation_reply_from"]); given != "" {
+		from = given
+	}
+	subject, explicit := meta["vacation_reply_subject"]
+	if !explicit {
+		// RFC 5230 §4.5: "Auto: " and the original subject, or a fixed one without it.
+		subject = "Auto: " + email.Headers.Subject
+		if strings.TrimSpace(email.Headers.Subject) == "" {
+			subject = "Automated reply"
+		}
+	}
+	raw := buildSieveVacationReply(from, sender, subject, meta["vacation_reply_body"], meta["vacation_reply_mime"] == "true", email.Headers.MessageID)
+
+	senderDomain := parts[1]
+	if idx := strings.LastIndex(sender, "@"); idx >= 0 {
+		senderDomain = sender[idx+1:]
+	}
+	if err := db.Create(&models.OutboundQueue{
+		Sender:        "",
+		SendingDomain: parts[1],
+		Recipient:     sender,
+		Domain:        senderDomain,
+		RawMessage:    raw,
+		Status:        "pending",
+	}).Error; err != nil {
+		return nil, fmt.Errorf("sieve vacation: queue the reply: %w", err)
+	}
+	return &pipeline.FilterResult{
+		Type:   pipeline.FilterTypeAction,
+		Action: pipeline.ActionContinue,
+		Log: pipeline.FilterLog{
+			Filter: "vacation",
+			Result: "queued",
+			Detail: fmt.Sprintf("sieve vacation reply queued for sender %s", sender),
+		},
+	}, nil
+}
+
+// buildSieveVacationReply is a Sieve vacation reply: the RFC 3834 headers buildVacationReply
+// writes, a subject encoded for its header (RFC 2047), and the reason as UTF-8 text or, with
+// :mime, as the MIME entity it already is (RFC 5230 §4.4).
+func buildSieveVacationReply(from, to, subject, reason string, isMIME bool, inReplyTo string) string {
+	inReplyTo = sanitizeHeaderValue(inReplyTo)
+	from = sanitizeHeaderValue(from)
+	subject = mime.QEncoding.Encode("utf-8", sanitizeHeaderValue(subject))
+	reason = strings.ReplaceAll(strings.ReplaceAll(reason, "\r\n", "\n"), "\n", "\r\n")
+
+	var b strings.Builder
+	b.WriteString("From: " + from + "\r\n")
+	b.WriteString("To: " + to + "\r\n")
+	b.WriteString("Subject: " + subject + "\r\n")
+	b.WriteString("Date: " + time.Now().Format(time.RFC1123Z) + "\r\n")
+	b.WriteString("Message-ID: " + rmail.GenerateMessageID(rmail.DomainFromAddress(to)) + "\r\n")
+	if inReplyTo != "" {
+		b.WriteString("In-Reply-To: " + inReplyTo + "\r\n")
+		b.WriteString("References: " + inReplyTo + "\r\n")
+	}
+	b.WriteString("Auto-Submitted: auto-replied\r\n")
+	b.WriteString("Precedence: bulk\r\n")
+	b.WriteString("X-Auto-Response-Suppress: All\r\n")
+	b.WriteString("MIME-Version: 1.0\r\n")
+	if isMIME {
+		// The reason is an entity of its own: its headers, a blank line and its content.
+		b.WriteString(reason)
+		if !strings.HasSuffix(reason, "\r\n") {
+			b.WriteString("\r\n")
+		}
+		return b.String()
+	}
+	b.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
+	b.WriteString("Content-Transfer-Encoding: 8bit\r\n")
+	b.WriteString("\r\n")
+	b.WriteString(reason + "\r\n")
+	return b.String()
 }
 
 // buildVacationReply constructs an RFC 2822 vacation auto-reply with RFC 3834 headers.
@@ -334,4 +456,15 @@ func (f *vacationFilter) skip(detail string) *pipeline.FilterResult {
 			Detail: detail,
 		},
 	}
+}
+
+// recordVacationResponse notes that mailboxID answered sender under handle at now. A row
+// from an earlier reply takes the new time, so the interval runs from the latest reply: the
+// insert alone hit the (mailbox, sender) unique index once a first interval had passed, and
+// every message after that was answered.
+func recordVacationResponse(db *gorm.DB, mailboxID uint, sender, handle string, now time.Time) error {
+	return db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "mailbox_id"}, {Name: "sender"}, {Name: "handle"}},
+		DoUpdates: clause.Assignments(map[string]interface{}{"responded_at": now}),
+	}).Create(&models.VacationResponse{MailboxID: mailboxID, Sender: sender, Handle: handle, RespondedAt: now}).Error
 }

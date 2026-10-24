@@ -563,12 +563,17 @@ func (e *metadataExecutor) Vacation(v sieve.Vacation) {
 	if v.From != "" {
 		e.email.Metadata["vacation_reply_from"] = v.From
 	}
-	// go-sieve now carries the resend interval as a duration (RFC 5230 :days /
-	// RFC 6131 :seconds). The downstream vacation agent keys off whole days, so
-	// convert; a sub-day :seconds interval rounds down to 0 and is omitted.
-	if days := int(v.Interval / (24 * time.Hour)); days > 0 {
-		e.email.Metadata["vacation_days"] = strconv.Itoa(days)
+	// The vacation filter sends the reply (#748): at most once per sender and handle within
+	// the interval, which go-sieve gives exactly (RFC 5230 :days, RFC 6131 :seconds, zero
+	// among them). Without a :handle, one is made from what the reply says, as RFC 5230 §4.2
+	// suggests, so two different vacation actions are tracked apart.
+	handle := v.Handle
+	if !v.HandleSet {
+		handle = "derived\x00" + v.Subject + "\x00" + v.From + "\x00" + strconv.FormatBool(v.MIME) + "\x00" + v.Body
 	}
+	sum := sha256.Sum256([]byte(handle))
+	e.email.Metadata["vacation_handle"] = fmt.Sprintf("%x", sum[:16])
+	e.email.Metadata["vacation_seconds"] = strconv.FormatInt(int64(v.Interval/time.Second), 10)
 	e.email.Metadata[lastSentKey] = "pending"
 	e.applied = append(e.applied, "vacation:"+replyTo)
 }
