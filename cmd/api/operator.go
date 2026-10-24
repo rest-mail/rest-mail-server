@@ -329,8 +329,22 @@ func dnsRecords(args []string, stdout, stderr io.Writer) int {
 	out := struct {
 		Domains []domainRecords `json:"domains"`
 	}{Domains: []domainRecords{}}
+	var policies []models.MTASTSPolicy
+	if err := database.Transaction(func(tx *gorm.DB) error {
+		return tx.Where("active = ?", true).Find(&policies).Error
+	}, &sql.TxOptions{ReadOnly: true}); err != nil {
+		return fail(stderr, exitFailed, "database", err.Error())
+	}
+	policyOf := map[uint]models.MTASTSPolicy{}
+	for _, policy := range policies {
+		policyOf[policy.DomainID] = policy
+	}
 	for _, d := range domains {
-		out.Domains = append(out.Domains, recordsForDomain(d, host, *ip, cfg.MasterKey, clientPorts(cfg)))
+		entry := recordsForDomain(d, host, *ip, cfg.MasterKey, clientPorts(cfg))
+		if policy, ok := policyOf[d.ID]; ok {
+			addMTASTSRecord(&entry, d, policy)
+		}
+		out.Domains = append(out.Domains, entry)
 	}
 	_ = json.NewEncoder(stdout).Encode(out)
 	return exitOK
@@ -367,6 +381,27 @@ func recordsForDomain(d models.Domain, mailHost, ip, masterKey string, ports dns
 	}
 	entry.Records = dns.MailRecords(name, mailHost, ip, d.DKIMSelector, dkimValue, ports)
 	return entry
+}
+
+// addMTASTSRecord adds the _mta-sts record of a domain with an active MTA-STS policy, its id
+// derived from the policy (#727), so dns:check reports a published id the policy has moved on
+// from. A policy that cannot be served, an mx that is not a host name, gets no record: the
+// problem says why.
+func addMTASTSRecord(entry *domainRecords, d models.Domain, policy models.MTASTSPolicy) {
+	name, err := mail.DomainASCII(d.Name)
+	if err != nil {
+		return // the entry already says the name cannot be published
+	}
+	id, err := policy.RecordID()
+	if err != nil {
+		problem := "MTA-STS policy cannot be served (" + err.Error() + "): its record is left out"
+		if entry.Problem != "" {
+			problem = entry.Problem + "; " + problem
+		}
+		entry.Problem = problem
+		return
+	}
+	entry.Records = append(entry.Records, dns.MTASTSRecord(name, id))
 }
 
 // clientPorts are the client listeners the gateways bind, from the same

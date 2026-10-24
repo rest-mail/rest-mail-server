@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"strings"
@@ -172,48 +171,14 @@ func (h *MTASTSHandler) ServePolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build the policy text
-	var sb strings.Builder
-	sb.WriteString("version: STSv1\n")
-	sb.WriteString(fmt.Sprintf("mode: %s\n", policy.Mode))
-
-	// Write each MX host on its own line. A policy's mx patterns are DNS names
-	// (RFC 8461 section 3.2), so an internationalized host is written as its
-	// A-label. One that is not a valid name fails the fetch rather than serve
-	// a policy that silently allows fewer hosts: a sending MTA then keeps the
-	// policy it has cached.
-	if policy.MXHosts != "" {
-		for _, mx := range strings.Split(policy.MXHosts, ",") {
-			mx = strings.TrimSpace(mx)
-			if mx == "" {
-				continue
-			}
-			pattern, err := mxPatternASCII(mx)
-			if err != nil {
-				http.Error(w, "MTA-STS policy has an invalid mx host", http.StatusInternalServerError)
-				return
-			}
-			sb.WriteString(fmt.Sprintf("mx: %s\n", pattern))
-		}
+	// The policy file, as the _mta-sts record's id is derived from it.
+	text, err := policy.Text()
+	if err != nil {
+		http.Error(w, "MTA-STS policy has an invalid mx host", http.StatusInternalServerError)
+		return
 	}
-
-	sb.WriteString(fmt.Sprintf("max_age: %d\n", policy.MaxAge))
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(sb.String()))
-}
-
-// mxPatternASCII is an MTA-STS mx pattern, a host name or a "*." wildcard over
-// one, in A-label form.
-func mxPatternASCII(pattern string) (string, error) {
-	wildcard := strings.HasPrefix(pattern, "*.")
-	ascii, err := rmail.DomainASCII(strings.TrimPrefix(pattern, "*."))
-	if err != nil {
-		return "", err
-	}
-	if wildcard {
-		return "*." + ascii, nil
-	}
-	return ascii, nil
+	_, _ = w.Write([]byte(text))
 }
