@@ -38,11 +38,28 @@ Key rotation is the worker described below; alert rules on key age are still to 
 
 ## Per-domain rotation policy
 
-`GET /api/v1/admin/dkim/{id}/rotation` returns the domain's saved settings:
+`GET /api/v1/admin/dkim/{id}/rotation` returns the domain's saved settings
+and where its rotation stands:
 
 ```json
-{"data":{"domain_id":1,"rotation_interval_days":90}}
+{"data":{"domain_id":1,"rotation_interval_days":90,"state":"awaiting_publication",
+  "staged":{"selector":"restmail-2","record_name":"restmail-2._domainkey.example.com",
+    "record_value":"v=DKIM1; k=rsa; p=MIIBIjAN...","published_at":null},
+  "previous":null}}
 ```
+
+`state` is one of:
+
+- `stable`: no rotation under way; `staged` and `previous` are null.
+- `awaiting_publication`: a staged key whose record has not resolved yet.
+  `staged.record_name` and `staged.record_value` are the TXT record to publish.
+- `waiting_ttl`: the staged record resolved at `staged.published_at`; signing
+  moves to it at `staged.activates_at`, one TTL later.
+- `retiring`: signing has moved. `previous` is the old key, whose record stays
+  until `previous.retire_after`.
+
+Record names use the domain's A-label form. A record value is empty when the
+stored key cannot be read (a wrong master key).
 
 `PUT /api/v1/admin/dkim/{id}/rotation` accepts a single JSON object:
 
@@ -56,7 +73,8 @@ out-of-range values return 422 with `details.fields.rotation_interval_days`.
 Malformed JSON, noninteger values, unknown fields and trailing JSON return 400.
 Reading requires `domains:read`, writing requires `domains:write`, and the
 grant must cover the requested domain. Settings can be saved before a signing
-key is installed. Responses contain only the domain ID and the interval.
+key is installed. A write answers as the read does. No response carries
+private key material.
 
 The API's additive startup migration adds `domains.dkim_rotation_interval_days`
 with a non-null default of zero and a database range constraint. New and
@@ -64,9 +82,8 @@ existing domains therefore start with rotation disabled. Changing the interval
 preserves the current selector, encrypted key and installation timestamp.
 Installing or deleting a signing key preserves the saved interval.
 
-The rotation worker (below) acts on a nonzero interval. Rotation status in
-the admin API and the mobile admin, alerts, rollback and manual-key
-reconciliation are still to come (#728).
+The rotation worker (below) acts on a nonzero interval. Alerts, rollback and
+manual-key reconciliation are still to come (#728).
 
 ## The rotation worker
 

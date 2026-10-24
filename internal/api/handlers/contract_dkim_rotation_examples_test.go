@@ -52,7 +52,7 @@ func TestSetDKIMRotation_DocumentedExamples(t *testing.T) {
 	if err != nil {
 		t.Skipf("DKIM rotation contract test requires PostgreSQL: %v", err)
 	}
-	if err := db.AutoMigrate(&models.Domain{}); err != nil {
+	if err := db.AutoMigrate(&models.Domain{}, &models.DKIMRotationKey{}); err != nil {
 		t.Fatal(err)
 	}
 	tx := db.Begin()

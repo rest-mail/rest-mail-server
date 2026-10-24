@@ -2893,7 +2893,10 @@
         "body": {
           "data": {
             "domain_id": 1,
-            "rotation_interval_days": 90
+            "rotation_interval_days": 90,
+            "state": "stable",
+            "staged": null,
+            "previous": null
           }
         }
       }
