@@ -221,8 +221,8 @@ func (h *AuthHandler) revokeAllForAccount(accountID uint) {
 
 type loginRequest struct {
 	// Email is the account's address.
-	Email    string `json:"email,omitempty"`
-	Password string `json:"password,omitempty"`
+	Email    string `json:"email" minLength:"1" pattern:"\\S" message:"required: the account's address" missing:"required: the account's address"`
+	Password string `json:"password" minLength:"1" message:"required" missing:"required"`
 	// TOTPCode / RecoveryCode carry the second factor for accounts with 2FA
 	// active (OSI-19). Both are optional and ignored for accounts without 2FA,
 	// so non-2FA logins are byte-for-byte unchanged. A single-step login that
@@ -233,7 +233,7 @@ type loginRequest struct {
 	// it gets the tokens in the response body instead of as cookies, and keeps
 	// them in its own secure storage. Empty means a browser. Anything else is
 	// refused, so a typo cannot quietly fall back to cookies.
-	Client string `json:"client,omitempty"`
+	Client string `json:"client,omitempty" enums:"native" message:"must be \"native\" or omitted"`
 }
 
 // clientNative is the loginRequest.Client value that asks for body tokens.
@@ -402,19 +402,6 @@ type userInfo struct {
 // has one.
 func (h *AuthHandler) login(r *http.Request, req loginRequest) (endpoint.Headed[loginResponse], error) {
 	var zero endpoint.Headed[loginResponse]
-	problems := map[string]string{}
-	if strings.TrimSpace(req.Email) == "" {
-		problems["email"] = "required: the account's address"
-	}
-	if req.Password == "" {
-		problems["password"] = "required"
-	}
-	if req.Client != "" && req.Client != clientNative {
-		problems["client"] = `must be "native" or omitted`
-	}
-	if len(problems) > 0 {
-		return zero, endpoint.Invalid(problems)
-	}
 
 	// Find the account. A miss does NOT short-circuit: MatchPassword still runs
 	// one bcrypt comparison (against a dummy hash) so an unknown address, an

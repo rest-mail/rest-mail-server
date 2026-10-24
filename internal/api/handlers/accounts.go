@@ -341,8 +341,8 @@ func grantOwner(tx *gorm.DB, r *http.Request, claims *auth.Claims, account *mode
 // always, empty when the user gave none. The handler checks address and password together, so
 // one missing names both, as the documented examples show.
 type linkAccountRequest struct {
-	Address      string `json:"address,omitempty"`
-	Password     string `json:"password,omitempty"`
+	Address      string `json:"address" minLength:"1" pattern:"\\S" message:"required" missing:"required"`
+	Password     string `json:"password" minLength:"1" message:"required" missing:"required"`
 	DisplayName  string `json:"display_name,omitempty"`
 	TOTPCode     string `json:"totp_code,omitempty"`
 	RecoveryCode string `json:"recovery_code,omitempty"`
@@ -362,13 +362,6 @@ func (h *AccountHandler) link(r *http.Request, req linkAccountRequest) (accountR
 	if claims == nil {
 		return accountResponse{}, errAuthenticationRequired
 	}
-	if strings.TrimSpace(req.Address) == "" || req.Password == "" {
-		return accountResponse{}, endpoint.Invalid(map[string]string{
-			"address":  "required",
-			"password": "required",
-		})
-	}
-
 	// As at sign-in, a lookup miss does NOT short-circuit: MatchPassword runs one
 	// bcrypt comparison against a dummy hash, so an unknown address, an account
 	// with no password and a wrong password take the same time.

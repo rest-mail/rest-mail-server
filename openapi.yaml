@@ -1363,7 +1363,6 @@ paths:
                       details:
                         fields:
                           address: required
-                          password: required
                 password_missing:
                   value:
                     error:
@@ -1371,7 +1370,6 @@ paths:
                       message: Request body failed validation
                       details:
                         fields:
-                          address: required
                           password: required
                 address_blank:
                   value:
@@ -1381,7 +1379,6 @@ paths:
                       details:
                         fields:
                           address: required
-                          password: required
                 password_empty:
                   value:
                     error:
@@ -1389,7 +1386,6 @@ paths:
                       message: Request body failed validation
                       details:
                         fields:
-                          address: required
                           password: required
         "429":
           description: Too many attempts from this client
@@ -9666,10 +9662,13 @@ components:
         email:
           type: string
           format: email
+          minLength: 1
+          pattern: '\S'
           description: The account's address. There is no username.
         password:
           type: string
           format: password
+          minLength: 1
         totp_code:
           type: string
           description: A current code from one of the account's authenticators, when it has one.
@@ -10047,9 +10046,12 @@ components:
         address:
           type: string
           format: email
+          minLength: 1
+          pattern: '\S'
         password:
           type: string
           format: password
+          minLength: 1
         display_name:
           type: string
         totp_code:
