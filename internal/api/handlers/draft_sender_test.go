@@ -33,7 +33,7 @@ func TestUpdateDraft_RefusesASenderTheCallerMayNotActAs(t *testing.T) {
 	params := map[string]string{"id": uintToStr(draft.ID)}
 	update := func(body string) *httptest.ResponseRecorder {
 		rr := httptest.NewRecorder()
-		h.UpdateDraft(rr, authzRequest(http.MethodPut, "/api/v1/messages/draft/"+uintToStr(draft.ID), fx.attackerMailbox.ID, params, body))
+		composeRoutes(h).ServeHTTP(rr, authzRequest(http.MethodPut, "/api/v1/messages/draft/"+uintToStr(draft.ID), fx.attackerMailbox.ID, params, body))
 		return rr
 	}
 

@@ -64,7 +64,7 @@ func keysHandler(t *testing.T, f *firstSignIn, owners, status []ssh.Signer) *Own
 func askAsOwner(t *testing.T, h *OwnerHandler, s ssh.Signer, purpose, username string) *httptest.ResponseRecorder {
 	t.Helper()
 	rr := httptest.NewRecorder()
-	h.Challenge(rr, httptest.NewRequest(http.MethodPost, "/", nil))
+	ownerRoute(h, "challenge")(rr, httptest.NewRequest(http.MethodPost, "/", nil))
 	var ch struct {
 		Data struct {
 			Challenge string `json:"challenge"`
@@ -85,7 +85,7 @@ func askAsOwner(t *testing.T, h *OwnerHandler, s ssh.Signer, purpose, username s
 		"address":    username,
 	})
 	rr = httptest.NewRecorder()
-	h.Token(rr, httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(b)))
+	ownerRoute(h, "token")(rr, httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(b)))
 	return rr
 }
 
@@ -108,7 +108,7 @@ func TestOwner_SignedChallengeLetsAnAdminBackIn(t *testing.T) {
 		} `json:"data"`
 	}
 	_ = json.Unmarshal(rr.Body.Bytes(), &got)
-	if reset := post(f.auth.Reset, map[string]string{"token": got.Data.Token, "password": ownerPassword, "client": "native"}); reset.Code != http.StatusOK {
+	if reset := post(resetHandler(f.auth), map[string]string{"token": got.Data.Token, "password": ownerPassword, "client": "native"}); reset.Code != http.StatusOK {
 		t.Errorf("reset with the owner's token = %d %s", reset.Code, reset.Body)
 	}
 }
