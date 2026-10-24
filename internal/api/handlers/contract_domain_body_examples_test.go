@@ -63,7 +63,7 @@ func domainBodyArrayPairProblems(t *testing.T, requests map[string]interface{}, 
 		problems = append(problems, fmt.Sprintf("created is %s, want %s", mustJSON(requests["created"]), created))
 	}
 	createdBody := `{"data":{"id":1,"name":"example.org","server_type":"restmail","active":false,` +
-		`"default_quota_bytes":0,"sending_policy":"","created_at":"2026-01-01T00:00:00Z",` +
+		`"default_quota_bytes":0,"sending_policy":"","dmarc_policy":"none","created_at":"2026-01-01T00:00:00Z",` +
 		`"updated_at":"2026-01-01T00:00:00Z"}}`
 	if !reflect.DeepEqual(responses["201"]["created"], parseShapeJSON(t, createdBody)) {
 		problems = append(problems, fmt.Sprintf("the 201 created is %s, want %s",

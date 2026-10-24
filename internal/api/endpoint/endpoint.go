@@ -108,9 +108,19 @@ type Error struct {
 	Fields  map[string]string
 	// Header is written with the refusal: the Retry-After of a 429.
 	Header http.Header
+	// text writes Message as plain text, as http.Error writes it (RefuseText).
+	text bool
 }
 
 func (e *Error) Error() string { return fmt.Sprintf("%d %s: %s", e.Status, e.Code, e.Message) }
+
+// RefuseText is a refusal written as plain text, the message and a newline, as http.Error
+// writes it: for the documents a mail client fetches (autoconfig, autodiscover), which have
+// always answered so and whose clients read no JSON. The operation describes it in
+// Operation.Responses, as text/plain.
+func RefuseText(status int, message string) *Error {
+	return &Error{Status: status, Message: message, text: true}
+}
 
 // Refuse is an *Error with a status, code and message.
 func Refuse(status int, code, message string) *Error {
@@ -409,6 +419,10 @@ func writeError(w http.ResponseWriter, err error) {
 		for _, v := range values {
 			w.Header().Add(name, v)
 		}
+	}
+	if refusal.text {
+		http.Error(w, refusal.Message, refusal.Status)
+		return
 	}
 	if refusal.Fields != nil {
 		respond.ValidationError(w, refusal.Fields)

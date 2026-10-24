@@ -27,7 +27,22 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ include "restmail.componentName" (list . "api") }}
+                name: {{ include "restmail.componentName" (list $ "api") }}
                 port:
-                  number: {{ .Values.api.service.port }}
+                  number: {{ $.Values.api.service.port }}
+          {{- /*
+          The documents other mail servers fetch from this host at its root, whatever
+          api.ingress.path is: RESTMAIL discovery, which a peer asks the MX host for
+          (https://<MX>/.well-known/restmail?domain=...), and TLS-RPT reports posted to
+          the rua the domain's _smtp._tls record names (RFC 8460 §3).
+          */}}
+          {{- range list "/.well-known/restmail" "/.well-known/smtp-tlsrpt" }}
+          - path: {{ . }}
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "restmail.componentName" (list $ "api") }}
+                port:
+                  number: {{ $.Values.api.service.port }}
+          {{- end }}
 {{- end }}

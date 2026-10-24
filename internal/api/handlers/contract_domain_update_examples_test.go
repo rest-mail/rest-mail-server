@@ -63,9 +63,9 @@ func TestDomainUpdate_ExamplePairs(t *testing.T) {
 		got[status] = names(examples)
 	}
 	want := map[string][]string{
-		"request": {"sending_policy_invalid", "updated"},
+		"request": {"dmarc_policy_invalid", "sending_policy_invalid", "updated"},
 		"200":     {"updated"},
-		"422":     {"sending_policy_invalid"},
+		"422":     {"dmarc_policy_invalid", "sending_policy_invalid"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("updateDomain's named examples = %v, want %v", got, want)
@@ -74,6 +74,9 @@ func TestDomainUpdate_ExamplePairs(t *testing.T) {
 		if want := map[string]interface{}{"sending_policy": policy}; !reflect.DeepEqual(requests[name], want) {
 			t.Errorf("%s request = %s, want %s", name, mustJSON(requests[name]), mustJSON(want))
 		}
+	}
+	if want := map[string]interface{}{"dmarc_policy": "strict"}; !reflect.DeepEqual(requests["dmarc_policy_invalid"], want) {
+		t.Errorf("dmarc_policy_invalid request = %s, want %s", mustJSON(requests["dmarc_policy_invalid"]), mustJSON(want))
 	}
 }
 
@@ -105,6 +108,7 @@ func TestDomainUpdate_DocumentedExamples(t *testing.T) {
 		status int
 	}{
 		{"sending_policy_invalid", http.StatusUnprocessableEntity},
+		{"dmarc_policy_invalid", http.StatusUnprocessableEntity},
 		{"updated", http.StatusOK},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

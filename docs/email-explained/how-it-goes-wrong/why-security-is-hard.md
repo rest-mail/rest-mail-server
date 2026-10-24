@@ -124,11 +124,12 @@ REST Mail is built around that list:
 - **Records generated and checked:** `chore dns:show` prints the A, MX, SPF,
   DKIM, DMARC and PTR records each domain needs, from the server's own state, and
   `chore dns:check` compares them with what is published
-  ([`internal/dns/mail_records.go`](../../../internal/dns/mail_records.go)). Not
-  yet included: SRV ([#712](https://github.com/rest-mail/rest-mail-server/issues/712)),
-  MTA-STS and TLS-RPT ([#727](https://github.com/rest-mail/rest-mail-server/issues/727),
-  [#726](https://github.com/rest-mail/rest-mail-server/issues/726)), and the
-  DMARC policy should start at `p=none` ([#729](https://github.com/rest-mail/rest-mail-server/issues/729)).
+  ([`internal/dns/mail_records.go`](../../../internal/dns/mail_records.go)), with
+  the SRV records clients find the server by (#712). The DMARC record asks for
+  the domain's own policy, `p=none` for a new domain, raised by an admin once
+  the reports show its mail passes (#729). Not yet included: MTA-STS and TLS-RPT
+  ([#727](https://github.com/rest-mail/rest-mail-server/issues/727),
+  [#726](https://github.com/rest-mail/rest-mail-server/issues/726)).
 - **Keys made for you:** each domain's DKIM key is generated at 2048 bits and
   stored encrypted; automatic rotation is
   [#728](https://github.com/rest-mail/rest-mail-server/issues/728).

@@ -2,7 +2,7 @@
 # chore dns:show / chore dns:check
 #
 # show: every record each domain on the server needs — MX, SPF, DMARC, DKIM,
-# the SRV records mail clients find the server by, the mail host's address
+# TLS-RPT, the SRV records mail clients find the server by, the mail host's address
 # and its reverse. The DKIM record can only come from
 # the server, which made the key; the address from wherever the server is
 # exposed, which the server does not know about itself.
