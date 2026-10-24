@@ -250,3 +250,23 @@ func TestSubcommand_KnownCommands(t *testing.T) {
 		t.Errorf("help: code %d handled %v, out %q", code, handled, out.String())
 	}
 }
+
+// The shared registry response type rejects a malformed wire timestamp instead
+// of printing it as a plausible server start time.
+func TestStatus_RejectsInvalidStartTime(t *testing.T) {
+	key := edSigner(t)
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/v1/auth/owner/challenge", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data":{"challenge":"c"}}`))
+	})
+	mux.HandleFunc("POST /api/v1/auth/owner/status", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data":{"version":"0.24.0","started_at":"yesterday"}}`))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	var out, errOut bytes.Buffer
+	code := runStatus(context.Background(), []string{"--server", srv.URL, "--key", "/key", "--json"}, srv.Client(), keysOf(key), &out, &errOut)
+	if code != exitUnreachable || out.Len() != 0 || !strings.Contains(errOut.String(), "unreachable") {
+		t.Fatalf("exit %d, stdout %q, stderr %q", code, out.String(), errOut.String())
+	}
+}

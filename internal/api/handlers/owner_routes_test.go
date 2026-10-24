@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	apitypes "github.com/restmail/restmail/internal/api/types"
 )
 
 // The typed owner answers write the bytes the maps and the local type they replaced wrote:
@@ -24,11 +26,11 @@ func TestOwnerResponseJSONParity(t *testing.T) {
 		name         string
 		old, current interface{}
 	}{
-		{"challenge", map[string]string{"challenge": "c", "expires_at": stamp}, OwnerChallenge{Challenge: "c", ExpiresAt: wholeSecondUTC(at)}},
+		{"challenge", map[string]string{"challenge": "c", "expires_at": stamp}, apitypes.OwnerChallenge{Challenge: "c", ExpiresAt: wholeSecondUTC(at)}},
 		{"token", map[string]string{"purpose": "reset-admin", "token": "t", "expires_at": stamp},
 			OwnerToken{ExpiresAt: wholeSecondUTC(at), Purpose: "reset-admin", Token: "t"}},
 		{"status", oldStatus{"0.22.0", "abc", "unknown", stamp},
-			ServerStatus{Version: "0.22.0", Commit: "abc", BuiltAt: "unknown", StartedAt: wholeSecondUTC(at)}},
+			apitypes.ServerStatus{Version: "0.22.0", Commit: "abc", BuiltAt: "unknown", StartedAt: wholeSecondUTC(at)}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			old, err := json.Marshal(tc.old)

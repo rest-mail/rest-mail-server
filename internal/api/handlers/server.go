@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 
+	apitypes "github.com/restmail/restmail/internal/api/types"
 	"github.com/restmail/restmail/internal/version"
 )
 
@@ -15,12 +16,6 @@ import (
 // confirmed from outside. Nothing else is said: there is nothing to choose
 // between before signing in, because the first admin comes from the password
 // the installer chose.
-func describeServer(*http.Request, struct{}) (serverDescription, error) {
-	return serverDescription{Product: "rest-mail", Version: version.Version}, nil
-}
-
-// serverDescription is the body of GET /api/v1/server.
-type serverDescription struct {
-	Product string `json:"product" enums:"rest-mail"`
-	Version string `json:"version" description:"e.g. 0.7.0; dev for a build with none stamped in"`
+func describeServer(*http.Request, struct{}) (apitypes.ServerDescription, error) {
+	return apitypes.ServerDescription{Product: "rest-mail", Version: version.Version}, nil
 }

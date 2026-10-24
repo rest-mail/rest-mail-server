@@ -11,8 +11,11 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/ssh"
+
+	apitypes "github.com/restmail/restmail/internal/api/types"
 )
 
 // `restmail status` asks a server what it is and which version it runs.
@@ -46,20 +49,6 @@ not as rest-mail, 6 the key is not one of the server's status or owner keys
 (or it lists none), 1 anything else.
 `
 
-// serverDescription is GET /api/v1/server's answer.
-type serverDescription struct {
-	Product string `json:"product"`
-	Version string `json:"version"`
-}
-
-// signedStatus is POST /api/v1/auth/owner/status's answer.
-type signedStatus struct {
-	Version   string `json:"version"`
-	Commit    string `json:"commit"`
-	BuiltAt   string `json:"built_at"`
-	StartedAt string `json:"started_at"`
-}
-
 // statusPurpose is what --key signs: the server's bootstrap.StatusPurpose.
 const statusPurpose = "status"
 
@@ -89,7 +78,7 @@ func runStatus(ctx context.Context, args []string, client *http.Client, keys key
 		return signedStatusOf(ctx, api, keys, *keyPath, o)
 	}
 
-	var got serverDescription
+	var got apitypes.ServerDescription
 	code, msg, err := api.get(ctx, "/api/v1/server", &got)
 	if err != nil {
 		return o.fail(exitUnreachable, "unreachable", err.Error())
@@ -125,13 +114,11 @@ func signedStatusOf(ctx context.Context, api apiClient, keys keySource, path str
 		return o.fail(exitNotOwner, "no_key", err.Error())
 	}
 
-	var got signedStatus
+	var got apitypes.ServerStatus
 	var refused, refusal string
 	for _, s := range signers {
 		// A fresh challenge per key: each is spent once it is answered.
-		var ch struct {
-			Challenge string `json:"challenge"`
-		}
+		var ch apitypes.OwnerChallenge
 		if code, msg, err := api.post(ctx, "/api/v1/auth/owner/challenge", nil, &ch); err != nil {
 			return o.fail(exitUnreachable, "unreachable", err.Error())
 		} else if code != "" {
@@ -141,10 +128,10 @@ func signedStatusOf(ctx context.Context, api apiClient, keys keySource, path str
 		if err != nil {
 			return o.fail(exitFailed, "sign_failed", err.Error())
 		}
-		code, msg, err := api.post(ctx, "/api/v1/auth/owner/status", map[string]any{
-			"challenge":  ch.Challenge,
-			"public_key": strings.TrimSpace(string(ssh.MarshalAuthorizedKey(s.pub))),
-			"signature":  base64.StdEncoding.EncodeToString(ssh.Marshal(sig)),
+		code, msg, err := api.post(ctx, "/api/v1/auth/owner/status", apitypes.OwnerStatusRequest{
+			Challenge: ch.Challenge,
+			PublicKey: strings.TrimSpace(string(ssh.MarshalAuthorizedKey(s.pub))),
+			Signature: base64.StdEncoding.EncodeToString(ssh.Marshal(sig)),
 		}, &got)
 		if err != nil {
 			return o.fail(exitUnreachable, "unreachable", err.Error())
@@ -165,7 +152,7 @@ func signedStatusOf(ctx context.Context, api apiClient, keys keySource, path str
 }
 
 // signedStatus prints a signed status answer.
-func (o output) signedStatus(base *url.URL, got signedStatus) int {
+func (o output) signedStatus(base *url.URL, got apitypes.ServerStatus) int {
 	if got.Version == "" {
 		return o.fail(exitUnreachable, "unreachable", fmt.Sprintf("%s answered, but not as a rest-mail server", base.Host))
 	}
@@ -180,7 +167,7 @@ func (o output) signedStatus(base *url.URL, got signedStatus) int {
 		return exitOK
 	}
 	fmt.Fprintf(o.stdout, "%s: rest-mail %s\n  commit   %s\n  built    %s\n  started  %s\n",
-		base.Host, got.Version, got.Commit, got.BuiltAt, got.StartedAt)
+		base.Host, got.Version, got.Commit, got.BuiltAt, got.StartedAt.Format(time.RFC3339))
 	return exitOK
 }
 
