@@ -1,7 +1,7 @@
 {
   "name": "email-explained-bundle",
   "private": true,
-  "description": "Builds docs/email-explained into the content bundle rest-mail.com renders",
+  "description": "Checks docs/email-explained and builds it into the content bundle rest-mail.com renders",
   "license": "MIT",
   "type": "module",
   "engines": {
@@ -9,9 +9,15 @@
   },
   "scripts": {
     "bundle": "node bundle.mjs",
+    "check": "node check.mjs",
     "test": "node --test"
   },
   "dependencies": {
     "marked": "18.1.1"
+  },
+  "archify": {
+    "repository": "tt-a1i/archify",
+    "version": "3.2.0",
+    "commit": "208acba8d412335185b2056fedf54b3405df43fb"
   }
 }

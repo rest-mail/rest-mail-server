@@ -2,6 +2,7 @@
 title: Glossary
 part: Reference
 summary: Every term this guide uses, in a sentence, with the chapter that explains it.
+sources: linked
 ---
 
 # Glossary
