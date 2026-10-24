@@ -20,8 +20,8 @@ func TestAutoconfigDocumentsAdvertiseOnlyImplicitTLS(t *testing.T) {
 		name string
 		doc  any
 	}{
-		{"mozilla", mozillaClientConfig(domain)},
-		{"autodiscover", autodiscoverResponse(domain, "alice@"+domain)},
+		{"mozilla", mozillaClientConfig(domain, "mail."+domain)},
+		{"autodiscover", autodiscoverResponse("mail."+domain, "alice@"+domain)},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			out, err := xml.MarshalIndent(c.doc, "", "  ")
@@ -60,8 +60,8 @@ func TestAutoconfigDocumentsAdvertiseOnlyImplicitTLS(t *testing.T) {
 func TestAutoconfigDocumentsAgreeOnPorts(t *testing.T) {
 	const domain = "example.test"
 
-	moz := mozillaClientConfig(domain)
-	ad := autodiscoverResponse(domain, "alice@"+domain)
+	moz := mozillaClientConfig(domain, "mail."+domain)
+	ad := autodiscoverResponse("mail."+domain, "alice@"+domain)
 
 	if moz.Provider.Incoming.Port != autoconfigIMAPPort || moz.Provider.Outgoing.Port != autoconfigSMTPPort {
 		t.Errorf("mozilla ports = imap %d / smtp %d, want %d / %d",

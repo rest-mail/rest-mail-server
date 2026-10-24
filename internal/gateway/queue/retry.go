@@ -16,26 +16,34 @@ type retrySchedule struct {
 	first, max, maxAge time.Duration
 }
 
-// retrySchedules holds a schedule for every transient category. Each stays
-// within the default 30-attempt budget over its maximum age. A permanent
-// category has none: it bounces at once.
+// retrySchedules holds a schedule for every transient category. Each retries
+// for the queue's whole lifetime, five days (RFC 5321 §4.5.4.1), within the
+// default retry budget. A permanent category has none: it bounces at once.
+//
+// RFC 5321 §4.5.4.1 says a retry interval SHOULD be at least 30 minutes, and
+// that "more sophisticated and variable strategies will be beneficial when the
+// SMTP client can determine the reason for non-delivery". Every failure here
+// is classified first, and each category's first retry is chosen for its
+// reason; a doubling backoff passes 30 minutes within the first few retries.
 var retrySchedules = map[models.FailureCategory]retrySchedule{
 	// Greylisting turns away a first attempt and accepts the next one after a
 	// delay, five minutes in most setups (Postgrey's default). A first retry at
 	// seven minutes clears that even with the jitter taking a fifth off.
-	models.FailureGreylisted: {first: 7 * time.Minute, max: 4 * time.Hour, maxAge: 72 * time.Hour},
+	models.FailureGreylisted: {first: 7 * time.Minute, max: 4 * time.Hour, maxAge: models.QueueLifetime},
 	// A remote limiting our rate is not helped by retrying soon: back off harder.
-	models.FailureRateLimited: {first: 15 * time.Minute, max: 4 * time.Hour, maxAge: 72 * time.Hour},
-	// Someone has to delete mail first. A mailbox still full after two days is
-	// seldom emptied in time to matter, and the sender is better told.
-	models.FailureMailboxFull: {first: time.Hour, max: 8 * time.Hour, maxAge: 48 * time.Hour},
+	models.FailureRateLimited: {first: 15 * time.Minute, max: 4 * time.Hour, maxAge: models.QueueLifetime},
+	// Someone has to delete mail first, which can take a long weekend: the queue's
+	// whole lifetime, as for any other transient failure.
+	models.FailureMailboxFull: {first: time.Hour, max: 8 * time.Hour, maxAge: models.QueueLifetime},
 	// Certificates and TLS policies are fixed by people, not in a minute.
-	models.FailureTLS: {first: 15 * time.Minute, max: 4 * time.Hour, maxAge: 72 * time.Hour},
+	models.FailureTLS: {first: 15 * time.Minute, max: 4 * time.Hour, maxAge: models.QueueLifetime},
 	// A resolver or nameserver failing for now: a little longer than a blip.
-	models.FailureDNS: {first: 5 * time.Minute, max: 4 * time.Hour, maxAge: 72 * time.Hour},
-	// Outages, and anything else: soon at first, then less and less often.
-	models.FailureConnection:     {first: time.Minute, max: 4 * time.Hour, maxAge: 72 * time.Hour},
-	models.FailureOtherTransient: {first: time.Minute, max: 4 * time.Hour, maxAge: 72 * time.Hour},
+	models.FailureDNS: {first: 5 * time.Minute, max: 4 * time.Hour, maxAge: models.QueueLifetime},
+	// Outages, and anything else: five minutes first, as Postfix's
+	// minimal_backoff_time, since a host that did not answer often answers
+	// soon; then less and less often, past 30 minutes from the fourth retry.
+	models.FailureConnection:     {first: 5 * time.Minute, max: 4 * time.Hour, maxAge: models.QueueLifetime},
+	models.FailureOtherTransient: {first: 5 * time.Minute, max: 4 * time.Hour, maxAge: models.QueueLifetime},
 }
 
 // scheduleFor returns the retry schedule for a transient category, or the

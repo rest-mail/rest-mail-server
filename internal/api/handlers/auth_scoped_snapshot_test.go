@@ -30,7 +30,7 @@ func TestScopedRefreshSnapshot(t *testing.T) {
 			seedActive(store, pair, 42)
 			read := func(token string) loginResponse {
 				rr := httptest.NewRecorder()
-				h.Refresh(rr, bodyRequest("/api/v1/auth/refresh", token))
+				serveAuth(h, rr, bodyRequest("/api/v1/auth/refresh", token))
 				if rr.Code != http.StatusOK {
 					t.Fatalf("refresh status%d body%s", rr.Code, rr.Body.String())
 				}

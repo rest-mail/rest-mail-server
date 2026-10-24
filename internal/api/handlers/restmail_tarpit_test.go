@@ -223,7 +223,7 @@ func TestCheckMailboxTarpitsNegativeButNotPositive(t *testing.T) {
 	reqN := httptest.NewRequest(http.MethodGet, "/restmail/mailboxes?address=ghost@"+domainName, nil)
 	reqN.RemoteAddr = "203.0.113.77:40000"
 	rrN := httptest.NewRecorder()
-	h.CheckMailbox(rrN, reqN)
+	restmailRoutes(h).ServeHTTP(rrN, reqN)
 	if got := decodeExists(t, rrN); got != false {
 		t.Fatalf("negative lookup exists = %v, want false", got)
 	}
@@ -235,7 +235,7 @@ func TestCheckMailboxTarpitsNegativeButNotPositive(t *testing.T) {
 	reqP := httptest.NewRequest(http.MethodGet, "/restmail/mailboxes?address="+realAddr, nil)
 	reqP.RemoteAddr = "203.0.113.77:40001"
 	rrP := httptest.NewRecorder()
-	h.CheckMailbox(rrP, reqP)
+	restmailRoutes(h).ServeHTTP(rrP, reqP)
 	if got := decodeExists(t, rrP); got != true {
 		t.Fatalf("positive lookup exists = %v, want true", got)
 	}
