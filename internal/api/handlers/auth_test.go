@@ -15,7 +15,7 @@ func refreshWith(t *testing.T, jwt *auth.JWTService, refreshToken string) *auth.
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", nil)
 	req.AddCookie(&http.Cookie{Name: "restmail_refresh", Value: refreshToken})
 	rec := httptest.NewRecorder()
-	h.Refresh(rec, req)
+	serveAuth(h, rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("refresh status %d: %s", rec.Code, rec.Body.String())
 	}

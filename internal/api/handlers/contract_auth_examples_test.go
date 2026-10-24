@@ -84,7 +84,7 @@ func TestAuthLogin_DocumentedValidationExamples(t *testing.T) {
 	h := &AuthHandler{}
 	for name, want := range responses["422"] {
 		t.Run(name, func(t *testing.T) {
-			authExampleResponse(t, h.Login, path, requests[name], http.StatusUnprocessableEntity, want)
+			authExampleResponse(t, authRoute(h), path, requests[name], http.StatusUnprocessableEntity, want)
 		})
 	}
 }
@@ -118,7 +118,7 @@ func TestAuthLogin_DocumentedCredentialExamples(t *testing.T) {
 	h := NewAuthHandler(db, auth.NewJWTService("contract-auth-secret", 15*time.Minute, 7*24*time.Hour), "", nil)
 	for name, want := range responses["401"] {
 		t.Run(name, func(t *testing.T) {
-			authExampleResponse(t, h.Login, path, requests[name], http.StatusUnauthorized, want)
+			authExampleResponse(t, authRoute(h), path, requests[name], http.StatusUnauthorized, want)
 		})
 	}
 	var count int64
@@ -134,7 +134,7 @@ func TestAuthLogin_DocumentedCredentialExamples(t *testing.T) {
 	}
 	// The same stored credential accepts the success request; the refusal was
 	// a wrong password, not a missing account or broken fixture.
-	rr := authExampleResponse(t, h.Login, path, valid, http.StatusOK, nil)
+	rr := authExampleResponse(t, authRoute(h), path, valid, http.StatusOK, nil)
 	native := decodeNative(t, rr)
 	if native.Data.AccessToken == "" || native.Data.RefreshToken == "" {
 		t.Fatalf("successful login returned no tokens: %s", rr.Body)
@@ -158,7 +158,7 @@ func TestAuthRefresh_DocumentedExamples(t *testing.T) {
 	before := *store.rows[pair.RefreshJTI]
 	for name, want := range responses["401"] {
 		t.Run(name, func(t *testing.T) {
-			authExampleResponse(t, h.Refresh, path, requests[name], http.StatusUnauthorized, want)
+			authExampleResponse(t, authRoute(h), path, requests[name], http.StatusUnauthorized, want)
 			if len(store.rows) != 1 || !reflect.DeepEqual(*store.rows[pair.RefreshJTI], before) {
 				t.Fatal("refused refresh changed the existing session")
 			}
@@ -170,7 +170,7 @@ func TestAuthRefresh_DocumentedExamples(t *testing.T) {
 		t.Fatal("success example must use the hook's runtime token placeholder")
 	}
 	valid["refresh_token"] = pair.RefreshToken
-	rr := authExampleResponse(t, h.Refresh, path, valid, http.StatusOK, nil)
+	rr := authExampleResponse(t, authRoute(h), path, valid, http.StatusOK, nil)
 	if store.statusOf(pair.RefreshJTI) != models.RefreshTokenRotated || decodeNative(t, rr).Data.RefreshToken == "" {
 		t.Fatalf("success did not rotate the session: %s", rr.Body)
 	}
@@ -190,7 +190,7 @@ func TestAuthRefresh_BrowserCoverageExamples(t *testing.T) {
 			}
 			seedActive(store, pair, 42)
 			before := *store.rows[pair.RefreshJTI]
-			authExampleResponse(t, h.Refresh, "/api/v1/auth/refresh", parseShapeJSON(t, body),
+			authExampleResponse(t, authRoute(h), "/api/v1/auth/refresh", parseShapeJSON(t, body),
 				http.StatusUnauthorized, parseShapeJSON(t, `{"error":{"code":"unauthorized","message":"No refresh token"}}`))
 			if !reflect.DeepEqual(*store.rows[pair.RefreshJTI], before) {
 				t.Fatal("missing-cookie refusal consumed the browser session")
@@ -198,7 +198,7 @@ func TestAuthRefresh_BrowserCoverageExamples(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", bytes.NewBufferString(body))
 			req.AddCookie(&http.Cookie{Name: auth.RefreshCookieName, Value: pair.RefreshToken})
 			rr := httptest.NewRecorder()
-			h.Refresh(rr, req)
+			serveAuth(h, rr, req)
 			if rr.Code != http.StatusOK || refreshCookieValue(rr) == "" || store.statusOf(pair.RefreshJTI) != models.RefreshTokenRotated {
 				t.Fatalf("browser refresh failed: %d %s", rr.Code, rr.Body)
 			}

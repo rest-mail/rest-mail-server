@@ -62,7 +62,7 @@ func TestImportContacts_DocumentedExamples(t *testing.T) {
 		return contacts
 	}
 	requests, responses := postExamples(t, importContactsPath, "importContacts")
-	h := NewContactHandler(db)
+	routes := contactRoutes(NewContactHandler(db))
 	send := func(t *testing.T, name, status string) {
 		t.Helper()
 		body, err := json.Marshal(requests[name])
@@ -70,7 +70,7 @@ func TestImportContacts_DocumentedExamples(t *testing.T) {
 			t.Fatal(err)
 		}
 		rr := httptest.NewRecorder()
-		h.ImportContacts(rr, authzRequest(http.MethodPost, importContactsPath, mailbox.ID,
+		routes.ServeHTTP(rr, authzRequest(http.MethodPost, contactsPathOf(mailbox.ID, "/import"), mailbox.ID,
 			map[string]string{"id": uintToStr(mailbox.ID)}, string(body)))
 		wantStatus, err := strconv.Atoi(status)
 		if err != nil {
