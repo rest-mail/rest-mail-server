@@ -418,9 +418,11 @@
   reason: >-
     The optional sample email retains its previous null/omission semantics. The sidecar endpoints accept arbitrary sample JSON and forward it unchanged; engine previews bind a partial canonical email.
 - operation: testPipeline
-  difference: "request body application/json.required: openapi.yaml [\"email\",\"pipeline_id\"], generated absent"
+  difference: "request body application/json.required: openapi.yaml [\"email\",\"pipeline_id\"], generated [\"email\"]"
   reason: >-
-    Required-field checks remain in the typed handler to retain the existing documented messages and validation order (notably combined missing fields). Other omitted fields keep the old decoder defaults; binding closes the body and checks supplied field types.
+    A missing pipeline_id is the id 0, which names no pipeline: 404 not_found, as for any other
+    unknown id, which the handler finds before it runs the email. Requiring it would answer 422
+    first, an order the owner has not decided (#625).
 - operation: testPipeline
   difference: "response 200 application/json.properties.data.properties.auth_results.items.properties.method.enum: openapi.yaml [\"arc\",\"dkim\",\"dmarc\",\"spf\"], generated absent"
   reason: >-
@@ -565,10 +567,6 @@
   difference: "request body application/json.properties.email.type: openapi.yaml \"object\", generated absent"
   reason: >-
     The optional sample email retains its previous null/omission semantics. The sidecar endpoints accept arbitrary sample JSON and forward it unchanged; engine previews bind a partial canonical email.
-- operation: validateCustomFilter
-  difference: "request body application/json.required: openapi.yaml [\"script\"], generated absent"
-  reason: >-
-    Required-field checks remain in the typed handler to retain the existing documented messages and validation order (notably combined missing fields). Other omitted fields keep the old decoder defaults; binding closes the body and checks supplied field types.
 - operation: validateCustomFilter
   difference: "response 200 application/json.properties: openapi.yaml absent, generated {\"dry_run\":{\"additionalProperties\":false,\"properties\":{\"error\":{\"type\":\"string\"},\"logs\":{\"items\":{\"type\":\"string\"},\"type\":\"array\"},\"result\":{}},\"required\":[\"logs\"],\"type\":[\"null\",\"object\"]},\"error\":{\"type\":\"string\"},\"phase\":{\"type\":\"string\"},\"valid\":{\"type\":\"boolean\"}}"
   reason: >-
@@ -1534,11 +1532,6 @@
   reason: >-
     The API key routes' no-store middleware writes Cache-Control: no-store on every answer;
     a middleware cannot yet describe a header it adds to the success response.
-- operation: linkAccount
-  difference: "request body application/json.required: openapi.yaml [\"address\",\"password\"], generated absent"
-  reason: >-
-    The handler checks address and password together and answers the documented 422 naming
-    both when either is missing or blank, after the session check.
 - operation: createAPIKey
   difference: 'response 422 application/json.properties.error.properties.details.properties: openapi.yaml absent, generated {"fields":{"additionalProperties":{"type":"string"},"type":"object"}}'
   reason: Binding always names the invalid fields in details.fields, whereas the oracle uses the general error envelope.
@@ -2711,21 +2704,10 @@
 # Sign-in and sessions (#632)
 
 - operation: login
-  difference: "request body application/json.required: openapi.yaml [\"email\",\"password\"], generated absent"
-  reason: >-
-    Checked in the handler, with every missing field reported together and its documented
-    wording ("required: the account's address" and the like); a schema rule would answer them
-    separately, worded otherwise.
-- operation: login
   difference: "request body application/json.properties.email.format: openapi.yaml \"email\", generated absent"
   reason: >-
     The address is looked up as given; one that is not an account is the same 401 as a wrong
     password, so the answer says nothing about which addresses exist.
-- operation: login
-  difference: "request body application/json.properties.client.enum: openapi.yaml [\"native\"], generated absent"
-  reason: >-
-    An empty client means a browser, as an absent one does; any other value is 422 client in
-    the handler (must be "native" or omitted).
 - operation: recoverAccount
   difference: "request body application/json.properties.client.enum: openapi.yaml [\"native\"], generated absent"
   reason: >-

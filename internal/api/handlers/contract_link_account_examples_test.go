@@ -6,6 +6,12 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"testing"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/restmail/restmail/internal/api/endpoint"
+	"github.com/restmail/restmail/internal/api/middleware"
+	"github.com/restmail/restmail/internal/auth"
 
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/grants"
@@ -53,12 +59,18 @@ func TestLinkAccount_ExamplePairs(t *testing.T) {
 	}
 }
 
+// A refused link needs a session first: the route sits behind JWTMiddleware, as routes.go
+// mounts it, which answers 401 before the body is read.
 func TestLinkAccount_RefusalsStillRequireSession(t *testing.T) {
 	requests, responses := postExamples(t, "/api/v1/accounts/link", "linkAccount")
+	jwt := auth.NewJWTService("link-session-test", 15*time.Minute, 24*time.Hour)
+	r := chi.NewRouter()
+	r.Use(middleware.JWTMiddleware(jwt))
+	NewAccountHandler(nil, nil, "").RegisterLinks(endpoint.Routes{Router: r, Registry: endpoint.NewRegistry()}, passingSessionChecks)
 	for name := range responses["422"] {
 		rr := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/accounts/link", bytes.NewReader(mustJSON(requests[name])))
-		accountRoutes(NewAccountHandler(nil, nil, "")).ServeHTTP(rr, req)
+		r.ServeHTTP(rr, req)
 		if rr.Code != http.StatusUnauthorized {
 			t.Errorf("%s without a session = %d, want 401: %s", name, rr.Code, rr.Body)
 		}

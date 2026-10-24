@@ -737,7 +737,7 @@ type updatePipelineRequest struct {
 }
 type testPipelineRequestBody struct {
 	PipelineID uint         `json:"pipeline_id,omitempty"`
-	Email      *sampleEmail `json:"email,omitempty"`
+	Email      *sampleEmail `json:"email"`
 }
 type testFilterRequestBody struct {
 	FilterName string          `json:"filter_name,omitempty"`
@@ -775,7 +775,7 @@ type testCustomFilterRequest struct {
 	Body *testCustomFilterRequestBody `body:""`
 }
 type validateCustomFilterRequestBody struct {
-	Script string           `json:"script,omitempty" minLength:"1" message:"required"`
+	Script string           `json:"script" minLength:"1" message:"required" nullMessage:"required"`
 	Email  *json.RawMessage `json:"email,omitempty"`
 }
 

@@ -1043,7 +1043,9 @@
             "server_type": "restmail",
             "active": false,
             "default_quota_bytes": 0,
+            "dkim_selector": "",
             "sending_policy": "",
+            "dmarc_policy": "none",
             "created_at": "2026-01-01T00:00:00Z",
             "updated_at": "2026-01-01T00:00:00Z"
           }
@@ -1698,8 +1700,7 @@
             "message": "Request body failed validation",
             "details": {
               "fields": {
-                "address": "required",
-                "password": "required"
+                "address": "required"
               }
             }
           }
@@ -1721,8 +1722,7 @@
             "message": "Request body failed validation",
             "details": {
               "fields": {
-                "address": "required",
-                "password": "required"
+                "address": "required"
               }
             }
           }
@@ -1764,7 +1764,6 @@
             "message": "Request body failed validation",
             "details": {
               "fields": {
-                "address": "required",
                 "password": "required"
               }
             }
@@ -1787,7 +1786,6 @@
             "message": "Request body failed validation",
             "details": {
               "fields": {
-                "address": "required",
                 "password": "required"
               }
             }
@@ -2091,7 +2089,18 @@
       },
       "response": {
         "status": 200,
-        "body": {}
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 1,
+            "script": "require [\"fileinto\"];\nif header :contains \"subject\" \"invoice\" {\n  fileinto \"Invoices\";\n}\n",
+            "script_hash": "7091965918f81b8726f2ff1b22731eacb1290c04718b14ee96821456767384b4",
+            "validated_at": "2026-01-01T00:00:00Z",
+            "active": true,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        }
       }
     }
   },
@@ -3750,6 +3759,24 @@
           "data": {
             "final_action": "reject",
             "reject_message": "550 Invalid headers: missing From header, missing Date header",
+            "final_email": {
+              "envelope": {
+                "mail_from": "",
+                "rcpt_to": [],
+                "tls": false,
+                "direction": ""
+              },
+              "headers": {
+                "from": [],
+                "to": [],
+                "subject": "",
+                "date": "",
+                "message-id": ""
+              },
+              "body": {
+                "content_type": ""
+              }
+            },
             "steps": [
               {
                 "filter_name": "header_validate",
@@ -3998,7 +4025,9 @@
             "server_type": "restmail",
             "active": false,
             "default_quota_bytes": 0,
+            "dkim_selector": "",
             "sending_policy": "transactional",
+            "dmarc_policy": "none",
             "created_at": "2026-01-01T00:00:00Z",
             "updated_at": "2026-01-01T00:00:00Z"
           }
