@@ -5,6 +5,7 @@ metadata:
   labels:
     {{- include "restmail.componentLabels" (list . "api") | nindent 4 }}
 data:
+  TLSRPT_REPORT_ADDRESS: {{ .Values.api.tlsReportAddress | quote }}
   API_PORT: {{ .Values.api.port | quote }}
   # Public HTTPS delivery host advertised by /.well-known/restmail (#291).
   GATEWAY_HOSTNAME: {{ .Values.mailserver.hostname | quote }}

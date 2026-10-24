@@ -12,6 +12,7 @@ import (
 // does not leak into the test.
 var allEnvKeys = []string{
 	"DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASS",
+	"TLSRPT_REPORT_ADDRESS",
 	"DB_MAX_OPEN_CONNS", "DB_MAX_IDLE_CONNS", "DB_CONN_MAX_LIFETIME",
 	"API_PORT", "API_HOST", "LOG_LEVEL",
 	"TLS_CERT_PATH", "TLS_KEY_PATH", "TLS_CERT_DIR",

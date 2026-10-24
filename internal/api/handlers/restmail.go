@@ -31,6 +31,12 @@ type RestmailHandler struct {
 	recorder    traceRecorder
 	tarpit      *negLookupTarpit
 	deliverAuth *restmailDeliverAuth
+	tlsReports  *TLSReportEmailReceiver
+}
+
+// SetTLSReportEmailReceiver enables ingestion at the configured reporting mailbox.
+func (h *RestmailHandler) SetTLSReportEmailReceiver(receiver *TLSReportEmailReceiver) {
+	h.tlsReports = receiver
 }
 
 func NewRestmailHandler(db *gorm.DB, engine *pipeline.Engine, recorder traceRecorder, tarpitCfg RestmailTarpitConfig, authCfg RestmailDeliverAuthConfig) *RestmailHandler {
@@ -250,6 +256,30 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 
 	delivered := []string{}
 	failed := []string{}
+	// Report signatures may use a tlsrpt-only key. Consume reports before the
+	// ordinary mail pipeline, whose DKIM verifier checks the email service.
+	// Other recipients still go through their usual inbound filtering.
+	if h.tlsReports != nil && h.tlsReports.address != "" {
+		remaining := make([]string, 0, len(to))
+		for _, rcpt := range to {
+			mailbox, _, ok := h.resolveRecipientMailbox(rcpt)
+			if ok {
+				consumed, err := h.tlsReports.receive(r.Context(), mailbox.Address, req.RawMessage)
+				if err != nil {
+					return RestmailDelivery{}, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
+				}
+				if consumed {
+					delivered = append(delivered, rcpt)
+					continue
+				}
+			}
+			remaining = append(remaining, rcpt)
+		}
+		to = remaining
+		if len(to) == 0 {
+			return RestmailDelivery{Delivered: delivered, Failed: failed}, nil
+		}
+	}
 	// The inbound pipeline's verdicts (spf/dkim/arc/dmarc), prepended onto the
 	// stored raw message as Authentication-Results so they are visible — the
 	// same surfacing the SMTP delivery path does.

@@ -194,6 +194,11 @@ func (h *TLSReportHandler) receiveReport(r *http.Request, in receiveTLSReportInp
 		raw = read
 	}
 
+	return h.storeReport(report, raw)
+}
+
+// storeReport is shared by HTTP and authenticated MIME report ingestion.
+func (h *TLSReportHandler) storeReport(report *TLSRPTReport, raw []byte) (tlsReportStored, error) {
 	startDate, _ := time.Parse(time.RFC3339, report.DateRange.StartDatetime)
 	endDate, _ := time.Parse(time.RFC3339, report.DateRange.EndDatetime)
 	now := time.Now()
@@ -208,7 +213,10 @@ func (h *TLSReportHandler) receiveReport(r *http.Request, in receiveTLSReportInp
 		// Look up the domain in our database; skip unknown domains
 		var domain models.Domain
 		if err := h.db.Where("name = ?", domainName).First(&domain).Error; err != nil {
-			continue
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				continue
+			}
+			return tlsReportStored{}, err
 		}
 
 		// "no-policy-found" is the RFC term; it and anything unknown are stored as

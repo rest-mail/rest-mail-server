@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	rmail "github.com/restmail/restmail/internal/mail"
 	"github.com/restmail/restmail/internal/mtls"
 	"github.com/restmail/restmail/internal/netallow"
 )
@@ -371,6 +372,7 @@ type Config struct {
 	TLSRPTRateLimitEnabled bool
 	TLSRPTRateLimitRPS     float64 // sustained requests/sec per client IP
 	TLSRPTRateLimitBurst   int     // bucket capacity (max short burst) per client IP
+	TLSRPTReportAddress    string  // optional existing mailbox that consumes emailed TLS reports
 }
 
 // DefaultHSTSMaxAgeSeconds is the Strict-Transport-Security max-age used when
@@ -784,6 +786,14 @@ func Load() (*Config, error) {
 		}
 	}
 	cfg.TLSRPTRateLimitRPS = tlsRPTRPS
+	cfg.TLSRPTReportAddress = strings.TrimSpace(getEnv("TLSRPT_REPORT_ADDRESS", ""))
+	if cfg.TLSRPTReportAddress != "" {
+		address, err := rmail.CanonicalMailboxAddress(cfg.TLSRPTReportAddress)
+		if err != nil {
+			return nil, fmt.Errorf("TLSRPT_REPORT_ADDRESS must be a mailbox address: %w", err)
+		}
+		cfg.TLSRPTReportAddress = address
+	}
 
 	// ── OSI-25: bounce/DSN anti-mailbomb (appended block — keep contiguous) ──
 	cfg.BounceDSNMaxPerRecipient = getEnvInt("BOUNCE_DSN_MAX_PER_RECIPIENT", 20)

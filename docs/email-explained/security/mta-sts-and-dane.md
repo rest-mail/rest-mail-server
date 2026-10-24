@@ -183,8 +183,17 @@ dig +dnssec +short TLSA _25._tcp.mx1.example.org
   signed with the DKIM key of REST Mail's own domain
   ([`tlsrpt_report.go`](../../../internal/gateway/queue/tlsrpt_report.go)).
   An MTA-STS policy it could not fetch, authenticate or read is reported as
-  that failure. It does not yet accept reports by email:
-  [#726](https://github.com/rest-mail/rest-mail-server/issues/726).
+  that failure. It also accepts reports by email at an existing mailbox configured
+  with `TLSRPT_REPORT_ADDRESS` (`api.tlsReportAddress` in the chart). Publish a
+  `mailto:` URI for that mailbox in the domain's `_smtp._tls` record to use it.
+  Reports must be `multipart/report; report-type=tlsrpt`, contain a JSON or gzip
+  report, and carry a valid full-body DKIM signature from the reporting domain
+  ([RFC 8460 §§3 and 5.3](https://www.rfc-editor.org/rfc/rfc8460.html#section-5.3)).
+  Recognised reports are consumed into the same table as HTTPS reports; unsigned
+  or invalid reports are ignored. Ordinary mail still reaches the mailbox.
+  Both the compressed and inflated report are capped at 512 KiB, the email at
+  1 MiB, and the report at 100 policy entries. Email ingestion is disabled when
+  the address is empty. DNS output continues to advertise the HTTPS endpoint.
 - **DANE** is not supported yet, for sending or receiving:
   [#725](https://github.com/rest-mail/rest-mail-server/issues/725).
 

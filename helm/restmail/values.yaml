@@ -141,6 +141,8 @@ internalMtls:
 
 # ── REST API ──────────────────────────────────────────────────────────────
 api:
+  # Optional existing mailbox that consumes DKIM-authenticated emailed TLS reports.
+  tlsReportAddress: ""
   replicaCount: 1
   image:
     repository: ghcr.io/rest-mail/api
