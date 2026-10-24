@@ -22,7 +22,7 @@ There are two ways to get it wrong:
 Either way, the spam leaves from your server's address, and the rest of the
 internet holds you responsible for it.
 
-![How a misconfigured Postfix server relays for strangers](../diagrams/open-relay.png)
+![How a misconfigured Postfix server relays for strangers](../diagrams/open-relay.svg)
 
 *The diagram's source is [`open-relay.workflow.json`](../diagrams/open-relay.workflow.json).
 On the website it is interactive: it animates, and you can follow any path

@@ -16,7 +16,7 @@ the web.
 This chapter follows that message hop by hop. Each later chapter takes one of
 these hops, or one of the protections around them, and explains it in depth.
 
-![A message's journey from Alice's mail app to Bob's](../diagrams/journey.png)
+![A message's journey from Alice's mail app to Bob's](../diagrams/journey.svg)
 
 *The diagram's source is [`journey.workflow.json`](../diagrams/journey.workflow.json).*
 

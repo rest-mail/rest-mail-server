@@ -17,7 +17,7 @@ one computer, IMAP from when people wanted it everywhere, and JMAP from when
 "everywhere" came to mean phones on mobile networks. A fourth standard, Sieve,
 runs before any of them, and decides which folder a message goes into.
 
-![How mail gets from the mailbox to the apps that read it](../diagrams/reading.png)
+![How mail gets from the mailbox to the apps that read it](../diagrams/reading.svg)
 
 *The diagram's source is [`reading.workflow.json`](../diagrams/reading.workflow.json).*
 

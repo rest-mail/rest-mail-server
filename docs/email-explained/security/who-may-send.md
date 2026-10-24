@@ -20,7 +20,7 @@ Mixing the two up is how a server becomes an
 apart is the job of separate ports, a sign-in, and limits on what a signed-in
 user may do.
 
-![Two front doors: who may send, and what is checked](../diagrams/who-may-send.png)
+![Two front doors: who may send, and what is checked](../diagrams/who-may-send.svg)
 
 *The diagram's source is [`who-may-send.workflow.json`](../diagrams/who-may-send.workflow.json).*
 

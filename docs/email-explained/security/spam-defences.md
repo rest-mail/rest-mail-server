@@ -18,7 +18,7 @@ cheap checks first, on the connection, before the spammer has sent anything;
 expensive ones last, on the content. Each layer turns away what it can, and
 passes the rest on.
 
-![The layers of a receiving server's spam defences](../diagrams/spam.png)
+![The layers of a receiving server's spam defences](../diagrams/spam.svg)
 
 *The diagram's source is [`spam.workflow.json`](../diagrams/spam.workflow.json).*
 

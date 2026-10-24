@@ -37,7 +37,7 @@ diagram: ../diagrams/open-relay.workflow.json
 
 Intro, see [the front page](../README.md#contents).
 
-![The relay](../diagrams/open-relay.png)
+![The relay](../diagrams/open-relay.svg)
 
 ## How common is it?
 
@@ -46,7 +46,7 @@ Code is [here](../../../internal/gateway/smtp/session.go#L10), the rules [there]
   assert.equal(chapter.title, "The open relay");
   assert.equal(chapter.diagram, "open-relay");
   assert.match(chapter.intro, /href="\/email-explained#contents"/);
-  assert.match(chapter.intro, /^<figure class="guide-diagram" data-diagram="open-relay"><img src="diagrams\/open-relay.png" alt="The relay"><\/figure>$/m);
+  assert.match(chapter.intro, /^<figure class="guide-diagram" data-diagram="open-relay"><img src="diagrams\/open-relay.svg" alt="The relay"><\/figure>$/m);
   assert.doesNotMatch(chapter.intro, /<h1|<p><figure/);
   assert.deepEqual(chapter.sections.map((s) => s.id), ["how-common-is-it"]);
   const html = chapter.sections[0].html;

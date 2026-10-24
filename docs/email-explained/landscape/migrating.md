@@ -17,7 +17,7 @@ the end.
 This chapter is written for any move between servers. It applies to moving onto
 REST Mail, from Postfix and Dovecot or a bundle, and equally to moving away.
 
-![A migration in four phases, each reversible](../diagrams/migration.png)
+![A migration in four phases, each reversible](../diagrams/migration.svg)
 
 *The diagram's source is [`migration.workflow.json`](../diagrams/migration.workflow.json).*
 
