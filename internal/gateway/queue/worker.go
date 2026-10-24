@@ -658,23 +658,7 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 	// plaintext EHLO-advertised RESTMAIL upgrade as well as the SMTP fallback
 	// (#168). Discovery is fail-open: a missing/unreachable policy leaves stsPolicy
 	// nil and delivery proceeds with ordinary opportunistic TLS.
-	var stsPolicy *mtasts.Policy
-	stsCtx, stsCancel := context.WithTimeout(context.Background(), 15*time.Second)
-	policy, stsErr := w.sts.Resolve(stsCtx, dnsDomain)
-	stsCancel()
-	if item.TLSReport {
-		// A TLS-RPT report goes despite any TLS failure, MTA-STS included:
-		// it may be what tells the domain its TLS is broken (RFC 8460 §3).
-		policy, stsErr = nil, mtasts.ErrNoPolicy
-	}
-	if stsErr != nil {
-		slog.Debug("queue: MTA-STS not available, proceeding normally",
-			"domain", item.Domain, "error", stsErr)
-	} else {
-		stsPolicy = policy
-		slog.Info("queue: MTA-STS policy found",
-			"domain", item.Domain, "mode", policy.Mode, "mx_count", len(policy.MX), "enforce", w.stsEnforce)
-	}
+	stsPolicy, stsErr := w.recipientPolicy(item, dnsDomain)
 
 	// Whether an enforce policy is actively enforced by this worker. When
 	// enforcement is disabled, an enforce policy behaves like "testing".
@@ -757,6 +741,39 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 
 	return fmt.Errorf("all MX hosts failed: %w", lastErr)
 }
+
+// recipientPolicy is the MTA-STS policy a delivery to dnsDomain applies, nil
+// when there is none, with the error saying why. A message that carries
+// "TLS-Required: No" applies none, and its policy is not even looked up: its
+// sender asks that the recipient's policy be ignored, so it goes with
+// opportunistic TLS, STARTTLS whenever the MX offers it, as mail to a domain
+// without a policy does (RFC 8689 §4.2.2, §8.4).
+func (w *Worker) recipientPolicy(item models.OutboundQueue, dnsDomain string) (*mtasts.Policy, error) {
+	if item.TLSReport {
+		// A TLS-RPT report goes despite any TLS failure, MTA-STS included:
+		// it may be what tells the domain its TLS is broken (RFC 8460 §3).
+		return nil, mtasts.ErrNoPolicy
+	}
+	if outbound.TLSOptional(item.RawMessage) {
+		slog.Info("queue: TLS-Required: No, the recipient's MTA-STS policy is not applied", "domain", item.Domain)
+		return nil, errTLSOptional
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	policy, err := w.sts.Resolve(ctx, dnsDomain)
+	if err != nil {
+		slog.Debug("queue: MTA-STS not available, proceeding normally",
+			"domain", item.Domain, "error", err)
+		return nil, err
+	}
+	slog.Info("queue: MTA-STS policy found",
+		"domain", item.Domain, "mode", policy.Mode, "mx_count", len(policy.MX), "enforce", w.stsEnforce)
+	return policy, nil
+}
+
+// errTLSOptional is why a message that carries "TLS-Required: No" applies no
+// MTA-STS policy.
+var errTLSOptional = errors.New("queue: TLS-Required: No, the recipient's policy is not applied")
 
 // capabilityApplies reports whether a cached RESTMAIL capability row may be
 // reused for a delivery to domain whose current primary MX is mxHost, as of now

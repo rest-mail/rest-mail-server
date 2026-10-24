@@ -163,7 +163,10 @@ host name the MX record gives.
   (`restmail_outbound_transport_total`), never calling an unverified
   certificate authenticated. A handshake that fails is retried on a new
   connection without TLS ([`internal/gateway/queue/worker.go`](../../../internal/gateway/queue/worker.go), #723).
-- **REQUIRETLS** is not supported yet:
+- **`TLS-Required: No`** is honoured: a message that carries it goes without
+  the recipient's MTA-STS policy, its policy not even looked up, with
+  `STARTTLS` still used whenever the MX offers it (RFC 8689 §4.2.2).
+  **REQUIRETLS** itself is not supported yet:
   [#724](https://github.com/rest-mail/rest-mail-server/issues/724).
 
 ## Sources
