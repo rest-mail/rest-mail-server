@@ -21,7 +21,7 @@ func putSieve(t *testing.T, h *SieveHandler, ownerAccountID uint, body string) *
 	t.Helper()
 	rr := httptest.NewRecorder()
 	params := map[string]string{"id": uintToStr(ownerAccountID)}
-	h.PutScript(rr, authzRequest(http.MethodPut, "/sieve", ownerAccountID, params, body))
+	serveSieve(h, rr, authzRequest(http.MethodPut, "/sieve", ownerAccountID, params, body))
 	return rr
 }
 
@@ -49,7 +49,7 @@ func TestSieveScriptRequiredByContract(t *testing.T) {
 				t.Errorf("PUT: missing script field error: %s", put.Body.String())
 			}
 			validate := httptest.NewRecorder()
-			h.ValidateScript(validate, authzRequest(http.MethodPost, "/sieve/validate", fx.ownerMailbox.ID,
+			serveSieve(h, validate, authzRequest(http.MethodPost, "/sieve/validate", fx.ownerMailbox.ID,
 				map[string]string{"id": uintToStr(fx.ownerMailbox.ID)}, body))
 			if validate.Code != http.StatusUnprocessableEntity {
 				t.Errorf("validate: want 422, got %d (%s)", validate.Code, validate.Body.String())

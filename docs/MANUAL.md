@@ -293,7 +293,7 @@ Recommended order (inbound): `size_check → {spf,dkim,arc,dmarc}_check → doma
 
 Implementations at [internal/gateway/smtp/](../internal/gateway/smtp/), [internal/gateway/imap/](../internal/gateway/imap/), [internal/gateway/pop3/](../internal/gateway/pop3/). The wire-protocol engines are external libraries; each in-repo gateway supplies only the backend (accounts, folders, messages) and policy:
 
-- **SMTP**: inbound (25), submission (587), implicit TLS (465). Built on the `rest-mail/go-smtp` fork (`internal/gateway/smtp` is a thin layer over it) and still advertises the custom `RESTMAIL` EHLO capability for server-to-server upgrade. Wired for the outbound queue — inserts into `outbound_queue` on non-local RCPT with `ExpiresAt: now+72h`, `MaxRetries: 30`.
+- **SMTP**: inbound (25), submission (587), implicit TLS (465). Built on the `rest-mail/go-smtp` fork (`internal/gateway/smtp` is a thin layer over it) and still advertises the custom `RESTMAIL` EHLO capability for server-to-server upgrade. Wired for the outbound queue — inserts into `outbound_queue` on non-local RCPT with `ExpiresAt: now+5 days`, `MaxRetries: 60` (`models.QueueLifetime`, `models.DefaultMaxRetries`).
 - **IMAP**: 143 / 993. A thin `Backend` adapter over the `rest-mail/imap` server library; the library handles the IMAP protocol (SELECT/FETCH/SEARCH/EXPUNGE/CREATE etc.) and the gateway serves mailbox data from the REST/DB layer.
 - **POP3**: 110 / 995. A thin `Backend` adapter over the `rest-mail/pop3` server library (STAT/LIST/RETR/DELE/QUIT).
 
