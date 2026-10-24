@@ -8,6 +8,7 @@ beside the HTML and Markdown reports.
 Usage: summary.py [report directory]
 """
 from pathlib import Path
+import json
 import sys
 import xml.etree.ElementTree as ET
 
@@ -37,6 +38,33 @@ def summary(directory):
             continue
         total, failed, skipped = counts(report)
         rows.append("| %s | %d | %d | %d | %d |" % (label, total, total - failed - skipped, failed, skipped))
+    return "\n".join(rows) + "\n" + operation_summary(directory)
+
+
+def cell(value):
+    return str(value).replace("|", r"\|").replace("\n", " ")
+
+
+def operation_summary(directory):
+    """Use Vertrag's own surface verdict, without deriving a second gate."""
+    report = Path(directory) / "examples.json"
+    if not report.exists():
+        return ""
+    surface = json.loads(report.read_text()).get("surface")
+    if not surface:
+        return ""
+    figures = surface["run"]
+    excluded = surface.get("excluded") or []
+    operations_excluded = len({entry["operation"] for entry in excluded if not entry.get("status")})
+    rows = ["", "Operations: %d reached, %d passed, %d counted, %d excluded." % (
+        figures["operationsReached"], figures["operationsPassed"], figures["operations"], operations_excluded)]
+    for key, label in (("missed", "Not reached"), ("notPassed", "Not passed"), ("excluded", "Excluded")):
+        entries = surface.get(key) or []
+        if entries:
+            rows.extend(["", "### " + label, "", "| Operation | Status | Reason |", "|---|---|---|"])
+            for entry in entries:
+                rows.append("| %s | %s | %s |" % (
+                    cell(entry["operation"]), cell(entry.get("status", "")), cell(entry["reason"])))
     return "\n".join(rows) + "\n"
 
 

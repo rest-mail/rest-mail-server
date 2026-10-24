@@ -52,10 +52,14 @@ class RequiredCI(unittest.TestCase):
         with open(os.path.join(root, ".github/workflows/e2e-suite.yml")) as source:
             workflow = yaml.safe_load(source)
         steps = [step for step in workflow["jobs"]["suite"]["steps"]
-                 if step.get("run") == "chore test:contract-api-keys"]
+                 if step.get("run") == "chore contract"]
         self.assertEqual(len(steps), 1)
         self.assertEqual(steps[0]["if"], "inputs.contract-phases == 'gate'")
         self.assertFalse(steps[0].get("continue-on-error", False))
+        with open(os.path.join(root, "chores.yml")) as source:
+            command = yaml.safe_load(source)["tasks"]["contract"]["cmds"][0]
+        self.assertIn("set -eu", command)
+        self.assertLess(command.index("chore test:contract-api-keys"), command.index("code=0"))
 
     def test_validation_examples_pair_with_documented_responses(self):
         root = os.path.join(os.path.dirname(__file__), "..", "..")
