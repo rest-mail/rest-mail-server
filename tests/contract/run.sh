@@ -46,7 +46,7 @@ export CONTRACT_SPEC="$PWD/openapi.yaml"
 if [ "$phase" != authorization ]; then
   # Do not report an earlier run's transactions after this run fails early.
   names=(fuzz)
-  if [ "$phase" = gate ]; then names=(examples coverage authorization); fi
+  if [ "$phase" = gate ]; then names=(examples coverage authorization browser-sessions); fi
   for name in "${names[@]}"; do
     rm -f "$out/$name.xml" "$out/$name.html" "$out/$name.md" "$out/$name.har" "$out/$name.json"
   done
@@ -66,6 +66,12 @@ python3 tests/contract/reports.py vertrag.yml "$out/vertrag-run.yml" "$out/run" 
 
 case "$phase" in
 gate)
+  # Real browser cookies, both CSRF variants, rotation and revocation are a
+  # required gate even while the broader authorization matrix is report-only.
+  go run ./tests/contract/browser_sessions \
+    --endpoint "${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}" \
+    --spec "$served" --principals .cache/contract-principals.json \
+    --output "$out/browser-sessions.json"
   # 1 is a failed transaction (or a run that could not be carried out) and 3 an
   # operation not exercised and passing (the surface gate): either fails here,
   # at once. 2 is a failed boundary probe, which the baseline judges below.

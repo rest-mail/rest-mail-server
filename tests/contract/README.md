@@ -695,3 +695,21 @@ successful lookup's id. The real-handler
 test checks missing and successful lookup, domain association and unchanged
 storage. `test_gate.py` holds the enabled 404 set to `getDomain`,
 `getCertificate` and `getAlias`; sibling exclusions remain in place.
+
+### Browser session gate (#659)
+
+Before examples, `chore contract` runs `tests/contract/browser_sessions` against
+that run's saved served JSON and existing `restmail.test` admin fixture. It signs
+in as a browser, validates all three cookie attributes and paths, checks every
+cookie-protected unsafe operation refuses a missing CSRF header, and compares
+safe reads with and without the header. Invalid resource IDs and malformed JSON
+keep negative probes away from handler mutations. A valid-header folder request
+must reach validation, and an own-account event stream must open using cookies.
+Refresh must return browser cookies without body tokens; logout must expire all
+three cookies and refuse another refresh with the revoked cookie. The probe revokes its own
+session on failure as well.
+
+Failures stop the gate. `browser-sessions.json` records operation, principal and
+status only, with `passed` true only after the whole proof. Local HTTP fixtures
+verify that removing CSRF enforcement or a cookie's Secure attribute fails this
+proof. Live topology and broader mutation workflows still run in GitHub.
