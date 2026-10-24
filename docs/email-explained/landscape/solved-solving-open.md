@@ -20,7 +20,7 @@ it. Each row links to the chapter that explains it.
 | [Finding the MX](../how-email-works/dns-for-email.md) | Solved | Implicit and null MX handled; a domain that does not exist is retried instead of failing ([#713](https://github.com/rest-mail/rest-mail-server/issues/713)) |
 | [Retrying for long enough](../how-email-works/bounces-queues-retries.md) | Solved (RFC 5321: 4–5 days) | Gives up after 3 days ([#711](https://github.com/rest-mail/rest-mail-server/issues/711)); one timeout for the whole attempt ([#714](https://github.com/rest-mail/rest-mail-server/issues/714)) |
 | [Backscatter](../how-email-works/bounces-queues-retries.md#refuse-dont-bounce) | Solved where servers refuse during the conversation | Refuses during the conversation |
-| [Silently lost mail](../how-it-goes-wrong/the-black-hole.md) | Still open: depends on every server's behaviour | Traces every outcome; failed forwards not yet bounced ([#715](https://github.com/rest-mail/rest-mail-server/issues/715)); vacation replies to `<>` ([#716](https://github.com/rest-mail/rest-mail-server/issues/716)) |
+| [Silently lost mail](../how-it-goes-wrong/the-black-hole.md) | Still open: depends on every server's behaviour | Traces every outcome; failed forwards bounced to the original sender ([#715](https://github.com/rest-mail/rest-mail-server/issues/715)); vacation replies to `<>` ([#716](https://github.com/rest-mail/rest-mail-server/issues/716)) |
 | [SMTP smuggling](../how-email-works/smtp-conversation.md#what-goes-wrong) | Being solved: Postfix, for example, shipped fixes in 2023–2024 ([Postfix](https://www.postfix.org/smtp-smuggling.html)) | Only CRLF ends a line |
 
 ## Encryption

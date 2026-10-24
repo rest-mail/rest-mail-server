@@ -178,11 +178,13 @@ A queue that keeps growing is a symptom, never the problem: read the errors.
 - **No backscatter from port 25.** REST Mail refuses an unknown recipient with
   `550 5.1.1` during the conversation, and runs its checks before it answers the
   message, so it does not accept mail and bounce it later.
-- **Not yet compliant:** when a forward to another server fails for good, the
-  bounce to the original sender is dropped
-  ([#715](https://github.com/rest-mail/rest-mail-server/issues/715)), and the
-  vacation responder can answer a bounce and sends from the user's address
-  rather than `<>` ([#716](https://github.com/rest-mail/rest-mail-server/issues/716)).
+- **Bounces for senders elsewhere.** When a forward to another server fails for
+  good, the original sender is told by mail: a DSN with a null reverse path,
+  queued like any outbound message and limited per recipient as a local bounce
+  is ([#715](https://github.com/rest-mail/rest-mail-server/issues/715)).
+- **Not yet compliant:** the vacation responder can answer a bounce and sends
+  from the user's address rather than `<>`
+  ([#716](https://github.com/rest-mail/rest-mail-server/issues/716)).
 - **Hard bounces are remembered.** An address that bounces with "no such
   mailbox" is suppressed for 90 days, so REST Mail does not keep sending to it
   ([`suppression.go`](../../../internal/gateway/queue/suppression.go), #141).
