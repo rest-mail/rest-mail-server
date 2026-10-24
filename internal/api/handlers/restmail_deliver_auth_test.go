@@ -38,7 +38,7 @@ func TestRestmailDeliverAuth_EquivalentHostedFromDomains(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/restmail/messages", bytes.NewReader(body))
 			req.RemoteAddr = "203.0.113.9:5000"
 			rr := httptest.NewRecorder()
-			h.Deliver(rr, req)
+			restmailRoutes(h).ServeHTTP(rr, req)
 			if rr.Code != http.StatusForbidden {
 				t.Fatalf("status = %d, want 403: %s", rr.Code, rr.Body.String())
 			}

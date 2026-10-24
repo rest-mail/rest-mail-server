@@ -76,7 +76,7 @@ func TestRecipientsEAI(t *testing.T) {
 		{"münchen+tag@" + unicodeDomain + "\r\n", 0},
 	} {
 		t.Run(tc.address, func(t *testing.T) {
-			for _, check := range []func(http.ResponseWriter, *http.Request){gateway.CheckAddress, rest.CheckMailbox} {
+			for _, check := range []func(http.ResponseWriter, *http.Request){gateway.CheckAddress, restmailRoute(rest, "/restmail/mailboxes")} {
 				rr := httptest.NewRecorder()
 				check(rr, httptest.NewRequest(http.MethodGet, "/?address="+url.QueryEscape(tc.address), nil))
 				var response struct {
@@ -190,7 +190,7 @@ func TestRecipientsEAIInboundPipeline(t *testing.T) {
 	for _, domainName := range []string{domain.Name, "städte." + suffix, "STA\u0308DTE." + suffix, "städte." + suffix + " "} {
 		body, _ := json.Marshal(map[string]interface{}{"from": "sender@remote.test", "to": []string{"münchen@" + domainName}})
 		rr := httptest.NewRecorder()
-		h.Deliver(rr, httptest.NewRequest(http.MethodPost, "/restmail/messages", bytes.NewReader(body)))
+		restmailRoutes(h).ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/restmail/messages", bytes.NewReader(body)))
 		if rr.Code != http.StatusServiceUnavailable {
 			t.Fatalf("domain %q bypassed inbound pipeline: %d %s", domainName, rr.Code, rr.Body.String())
 		}

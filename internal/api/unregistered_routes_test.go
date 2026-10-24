@@ -28,7 +28,4 @@ var unregisteredRoutes = []string{
 	"GET /api/v1/messages/{id}/raw",
 	"POST /autodiscover/autodiscover.xml",
 	"GET /mail/config-v1.1.xml",
-	"GET /restmail/capabilities",
-	"GET /restmail/mailboxes",
-	"POST /restmail/messages",
 }
