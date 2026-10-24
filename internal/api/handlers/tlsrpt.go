@@ -1,10 +1,13 @@
 package handlers
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"strings"
 	"time"
@@ -153,8 +156,42 @@ func isJSONObjectList(raw json.RawMessage) bool {
 	return true
 }
 
-// ReceiveReport accepts a JSON TLS-RPT report from an external MTA,
-// parses it, and stores each policy entry as a separate TLSReport row.
+// compressedReport reports whether a report came gzip-compressed: its media type is
+// application/tlsrpt+gzip (RFC 8460 §5.4), its encoding is gzip, or its bytes start as a gzip
+// stream does (RFC 1952 §2.3.1), for a reporter that labels it otherwise.
+func compressedReport(r *http.Request, body []byte) bool {
+	if mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err == nil &&
+		strings.EqualFold(mediaType, "application/tlsrpt+gzip") {
+		return true
+	}
+	if strings.EqualFold(strings.TrimSpace(r.Header.Get("Content-Encoding")), "gzip") {
+		return true
+	}
+	return len(body) >= 2 && body[0] == 0x1f && body[1] == 0x8b
+}
+
+// gunzipReport inflates a compressed report, held to the same cap as one sent plain, so a
+// small compressed body cannot expand without bound. It answers the status to refuse with:
+// 413 past the cap, 400 for a stream that is not gzip.
+func gunzipReport(body []byte) ([]byte, int, error) {
+	reader, err := gzip.NewReader(bytes.NewReader(body))
+	if err != nil {
+		return nil, http.StatusBadRequest, err
+	}
+	defer func() { _ = reader.Close() }()
+	inflated, err := io.ReadAll(io.LimitReader(reader, tlsRPTMaxBodyBytes+1))
+	if err != nil {
+		return nil, http.StatusBadRequest, err
+	}
+	if int64(len(inflated)) > tlsRPTMaxBodyBytes {
+		return nil, http.StatusRequestEntityTooLarge, errors.New("decompressed report too large")
+	}
+	return inflated, 0, nil
+}
+
+// ReceiveReport accepts a JSON TLS-RPT report from an external MTA, plain or
+// gzip-compressed, parses it, and stores each policy entry as a separate
+// TLSReport row.
 // POST /.well-known/smtp-tlsrpt
 func (h *TLSReportHandler) ReceiveReport(w http.ResponseWriter, r *http.Request) {
 	// Hard-cap the body: an oversized report is rejected (413), never silently
@@ -170,6 +207,21 @@ func (h *TLSReportHandler) ReceiveReport(w http.ResponseWriter, r *http.Request)
 		}
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Failed to read request body")
 		return
+	}
+
+	// RFC 8460 §5.2 asks reporters to gzip their reports, and §5.4 names
+	// application/tlsrpt+gzip for one sent compressed.
+	if compressedReport(r, body) {
+		inflated, status, err := gunzipReport(body)
+		if err != nil {
+			code, message := "bad_request", "Invalid gzip-compressed TLS-RPT report"
+			if status == http.StatusRequestEntityTooLarge {
+				code, message = "payload_too_large", "TLS-RPT report exceeds the maximum accepted size"
+			}
+			respond.Error(w, status, code, message)
+			return
+		}
+		body = inflated
 	}
 
 	var report tlsRPTReport

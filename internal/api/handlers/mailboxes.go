@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	oapifly "github.com/antimatter-studios/go-oapifly"
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
@@ -244,12 +245,34 @@ func (h *MailboxHandler) endSessions(r *http.Request, in adminAddressPath) (endp
 	return endpoint.Empty{}, nil
 }
 
-// CheckAddress verifies a recipient exists: GET /api/mailboxes?address=...
-func (h *MailboxHandler) CheckAddress(w http.ResponseWriter, r *http.Request) {
-	address := r.URL.Query().Get("address")
+// AddressCheck is whether an address is a mailbox here, and which. Its fields are in the order
+// the map it replaced was written in, so the bytes are unchanged.
+type AddressCheck struct {
+	Address   string `json:"address"`
+	Exists    bool   `json:"exists"`
+	MailboxID uint   `json:"mailbox_id,omitempty"`
+}
+
+// addressCheckQuery names the recipient to check. A blank one is the handler's 400.
+type addressCheckQuery struct {
+	Address string `query:"address,required"`
+}
+
+// RegisterAddressCheck mounts the recipient check the protocol gateways ask before they take a
+// message: on the internal mTLS listener, or the public one where internal mTLS is off.
+func (h *MailboxHandler) RegisterAddressCheck(rs endpoint.Routes) {
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/mailboxes",
+		OperationID: "checkMailboxAddress", Summary: "Check whether an address is a mailbox here (protocol gateways)", Tags: []string{"Mailboxes"},
+		Description: "Machine to machine: no user token. An address that is not a mailbox here is 200 with exists " +
+			"false: the gateway then routes it outbound.",
+		Errors: []int{http.StatusBadRequest}, Security: oapifly.Public}, h.checkAddress)
+}
+
+// checkAddress verifies a recipient exists: GET /api/mailboxes?address=...
+func (h *MailboxHandler) checkAddress(_ *http.Request, in addressCheckQuery) (AddressCheck, error) {
+	address := in.Address
 	if address == "" {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "address query parameter required")
-		return
+		return AddressCheck{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "address query parameter required")
 	}
 
 	var mailbox models.Mailbox
@@ -260,19 +283,9 @@ func (h *MailboxHandler) CheckAddress(w http.ResponseWriter, r *http.Request) {
 			// so authenticated submission can route external recipients to the
 			// outbound queue — a 404 here surfaced as a client error and made
 			// every external recipient temp-fail with 451 at RCPT.
-			respond.Data(w, http.StatusOK, map[string]interface{}{
-				"exists":  false,
-				"address": address,
-			})
-			return
+			return AddressCheck{Address: address, Exists: false}, nil
 		}
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to check address")
-		return
+		return AddressCheck{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to check address")
 	}
-
-	respond.Data(w, http.StatusOK, map[string]interface{}{
-		"exists":     true,
-		"mailbox_id": mailbox.ID,
-		"address":    mailbox.Address,
-	})
+	return AddressCheck{Address: mailbox.Address, Exists: true, MailboxID: mailbox.ID}, nil
 }

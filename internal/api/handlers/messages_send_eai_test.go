@@ -104,7 +104,7 @@ func TestSendMessageLocalRecipientsEAI(t *testing.T) {
 	ctx := context.WithValue(req.Context(), chi.RouteCtxKey, rctx)
 	req = req.WithContext(context.WithValue(ctx, middleware.ClaimsKey, &auth.Claims{AccountID: sender.ID, CredentialKind: "app_password"}))
 	rr = httptest.NewRecorder()
-	h.RespondToCalendar(rr, req)
+	composeRoutes(h).ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK && rr.Code != http.StatusCreated {
 		t.Fatalf("calendar reply: %d %s", rr.Code, rr.Body.String())
 	}

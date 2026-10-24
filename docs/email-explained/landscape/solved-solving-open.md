@@ -28,7 +28,7 @@ it. Each row links to the chapter that explains it.
 | Problem | Email as a whole | REST Mail |
 |---|---|---|
 | [Mail readable on the wire](../security/encryption-in-transit.md) | Mostly solved: 98–99% of Gmail's outbound mail is encrypted | STARTTLS on 25; implicit TLS everywhere else |
-| [Delivery to servers with bad certificates](../security/encryption-in-transit.md#certificates-nobody-checks) | Solved by opportunistic TLS | Refuses them today ([#723](https://github.com/rest-mail/rest-mail-server/issues/723)) |
+| [Delivery to servers with bad certificates](../security/encryption-in-transit.md#certificates-nobody-checks) | Solved by opportunistic TLS | Opportunistic: encrypts, and records the certificate as unverified (#723) |
 | [STARTTLS downgrade](../security/encryption-in-transit.md#the-downgrade) | Being solved: MTA-STS and DANE, adopted slowly | MTA-STS enforced when sending; records not yet printed ([#727](https://github.com/rest-mail/rest-mail-server/issues/727)); no DANE ([#725](https://github.com/rest-mail/rest-mail-server/issues/725)) |
 | [Hearing about TLS failures](../security/mta-sts-and-dane.md#tls-rpt-being-told-what-went-wrong) | Solved by TLS-RPT, where published | Receives reports over HTTPS; does not send them ([#726](https://github.com/rest-mail/rest-mail-server/issues/726)) |
 | [Encryption required per message](../security/encryption-in-transit.md#asking-for-encryption-per-message) | Standard exists (REQUIRETLS), little deployed | Not supported ([#724](https://github.com/rest-mail/rest-mail-server/issues/724)) |
