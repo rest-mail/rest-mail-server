@@ -15,6 +15,7 @@ import base64
 from http.cookies import SimpleCookie
 import json
 import os
+from pathlib import Path
 import subprocess
 import tempfile
 import time
@@ -24,7 +25,10 @@ import urllib.request
 
 import vertrag_hooks as hooks
 
-ADMIN = "admin@restmail.test"
+with (Path(__file__).resolve().parent / "fixtureplan" / "defaults.json").open() as _source:
+    FIXTURE_PLAN = json.load(_source)
+
+ADMIN = FIXTURE_PLAN["principals"]["admin"]["address"]
 ADMIN_PASSWORD = "admin123!@"
 # A seeded account that nobody owns, to link (cmd/seed's fixture password).
 LINKABLE_PASSWORD = "password123"
@@ -603,7 +607,8 @@ def list_the_sent_messages_queue_entry(transaction):
     # until tomorrow, for the linked queue examples. Only the pending example
     # is redirected; invalid boundary queries and caller credentials stay intact.
     if transaction.get("fullPath", "").endswith("/api/v1/admin/queue?status=pending"):
-        transaction["fullPath"] = "/api/v1/admin/queue?recipient=contract-retry%40retry.invalid"
+        transaction["fullPath"] = "/api/v1/admin/queue?" + urllib.parse.urlencode({
+            "recipient": FIXTURE_PLAN["queue"]["retry"]["recipient"]})
 
 
 @hooks.before("getMessageTrace")

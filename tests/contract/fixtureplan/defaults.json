@@ -1,0 +1,13 @@
+{
+  "domain": "restmail.test",
+  "principals": {
+    "admin": {"kind": "existing", "address": "admin@restmail.test"},
+    "ordinary": {"kind": "account", "address": "contract-ordinary@restmail.test", "display_name": "Contract Ordinary", "owner": "admin", "password": true},
+    "owned": {"kind": "account", "address": "contract-owned@restmail.test", "display_name": "Contract Owned", "owner": "admin"},
+    "app_password": {"kind": "app_password", "account": "ordinary", "name": "contract tests"},
+    "none": {"kind": "anonymous"}
+  },
+  "queue": {
+    "retry": {"sender": "admin@restmail.test", "recipient": "contract-retry@retry.invalid", "domain": "retry.invalid", "subject": "contract retry fixture", "body": "Contract fixture.\r\n", "status": "deferred", "next_attempt_hours": 24, "expires_hours": 72}
+  }
+}

@@ -15,10 +15,9 @@ import (
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
 	"github.com/restmail/restmail/internal/grants"
+	"github.com/restmail/restmail/tests/contract/fixtureplan"
 	"gorm.io/gorm"
 )
-
-const retryRecipient = "contract-retry@retry.invalid"
 
 func main() {
 	domain := flag.String("test-domain", "", "confirm the disposable restmail.test topology")
@@ -144,6 +143,11 @@ func prepareRetryFixture(database *gorm.DB, domain string) (uint, error) {
 	if domain != "restmail.test" {
 		return 0, errors.New("contract fixtures require restmail.test")
 	}
+	plan, err := fixtureplan.Default()
+	if err != nil {
+		return 0, err
+	}
+	entry := plan.Queue["retry"]
 	var count int64
 	if err := database.Model(&models.Domain{}).Where("name = ?", domain).Count(&count).Error; err != nil {
 		return 0, err
@@ -156,9 +160,9 @@ func prepareRetryFixture(database *gorm.DB, domain string) (uint, error) {
 	// makes it due. Create a fresh entry on every run; listQueue orders newest first.
 	now := time.Now()
 	item := models.OutboundQueue{
-		Sender: "admin@restmail.test", Recipient: retryRecipient, Domain: "retry.invalid",
-		RawMessage: "From: admin@restmail.test\r\nTo: " + retryRecipient + "\r\nSubject: contract retry fixture\r\n\r\nContract fixture.\r\n",
-		Status:     "deferred", NextAttempt: now.Add(24 * time.Hour), ExpiresAt: now.Add(72 * time.Hour),
+		Sender: entry.Sender, Recipient: entry.Recipient, Domain: entry.Domain,
+		RawMessage: "From: " + entry.Sender + "\r\nTo: " + entry.Recipient + "\r\nSubject: " + entry.Subject + "\r\n\r\n" + entry.Body,
+		Status:     entry.Status, NextAttempt: now.Add(time.Duration(entry.NextAttemptHours) * time.Hour), ExpiresAt: now.Add(time.Duration(entry.ExpiresHours) * time.Hour),
 	}
 	if err := database.Create(&item).Error; err != nil {
 		return 0, err

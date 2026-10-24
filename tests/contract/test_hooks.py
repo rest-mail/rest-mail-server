@@ -27,6 +27,23 @@ vertrag_hooks = stub_vertrag_hooks()
 import hooks  # noqa: E402
 
 
+class SharedFixturePlan(unittest.TestCase):
+    def test_queue_hook_uses_the_named_declaration_and_preserves_credentials(self):
+        transaction = {"fullPath": "/api/v1/admin/queue?status=pending",
+                       "request": {"headers": {"Authorization": "Bearer original"}}}
+        with patch.dict(hooks.FIXTURE_PLAN["queue"], {"retry": {"recipient": "alternate@retry.invalid"}}):
+            hooks.list_the_sent_messages_queue_entry(transaction)
+        parsed = urllib.parse.urlparse(transaction["fullPath"])
+        self.assertEqual(urllib.parse.parse_qs(parsed.query), {"recipient": ["alternate@retry.invalid"]})
+        self.assertEqual(transaction["request"]["headers"], {"Authorization": "Bearer original"})
+
+    def test_invalid_and_unrelated_queue_probes_remain_unchanged(self):
+        for path in ("/api/v1/admin/queue?status=invalid", "/api/v1/admin/queue?status=deferred", "/api/v1/admin/queue"):
+            transaction = {"fullPath": path}
+            hooks.list_the_sent_messages_queue_entry(transaction)
+            self.assertEqual(transaction, {"fullPath": path})
+
+
 class FixtureAPI(BaseHTTPRequestHandler):
     """The admin endpoints the hook calls, over an in-memory fixture."""
 
