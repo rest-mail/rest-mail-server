@@ -374,7 +374,7 @@ func recordsForDomain(d models.Domain, mailHost, ip, masterKey string, ports dns
 		}
 		dkimValue = value
 	}
-	entry.Records = dns.MailRecords(name, mailHost, ip, d.DKIMSelector, dkimValue, ports)
+	entry.Records = dns.MailRecords(name, mailHost, ip, d.DKIMSelector, dkimValue, d.DMARCPolicy, ports)
 	return entry
 }
 
