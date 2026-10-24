@@ -65,7 +65,7 @@ type setDKIMKeyBody struct {
 	PrivateKey string `json:"private_key" minLength:"1" message:"required"`
 }
 type setDKIMKeyRequest struct {
-	ID   uint32         `path:"id" minimum:"1"`
+	ID   uint32         `path:"id" minimum:"1" example:"1"`
 	Body setDKIMKeyBody `body:""`
 }
 

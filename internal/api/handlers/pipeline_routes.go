@@ -96,7 +96,7 @@ type deletedStatus struct {
 	Status string `json:"status"`
 }
 type pipelinePath struct {
-	ID uint32 `path:"id" minimum:"1"`
+	ID uint32 `path:"id" minimum:"1" example:"1"`
 }
 type listPipelineResourcesRequest struct {
 	DomainID *int `query:"domain_id"`

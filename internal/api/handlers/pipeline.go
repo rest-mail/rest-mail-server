@@ -739,7 +739,7 @@ type updatePipelineRequestBody struct {
 	Direction *string `json:"direction,omitempty"`
 }
 type updatePipelineRequest struct {
-	ID   uint32                    `path:"id" minimum:"1"`
+	ID   uint32                    `path:"id" minimum:"1" example:"1"`
 	Body updatePipelineRequestBody `body:""`
 }
 type testPipelineRequestBody struct {
@@ -771,14 +771,14 @@ type updateCustomFilterRequestBody struct {
 	DomainID *uint `json:"domain_id,omitempty"`
 }
 type updateCustomFilterRequest struct {
-	ID   uint32                        `path:"id" minimum:"1"`
+	ID   uint32                        `path:"id" minimum:"1" example:"1"`
 	Body updateCustomFilterRequestBody `body:""`
 }
 type testCustomFilterRequestBody struct {
 	Email *json.RawMessage `json:"email,omitempty"`
 }
 type testCustomFilterRequest struct {
-	ID   uint32                       `path:"id" minimum:"1"`
+	ID   uint32                       `path:"id" minimum:"1" example:"1"`
 	Body *testCustomFilterRequestBody `body:""`
 }
 type validateCustomFilterRequestBody struct {
@@ -831,15 +831,15 @@ type QuarantineDeleted struct {
 }
 
 type quarantineListRequest struct {
-	ID     uint32 `path:"id" minimum:"1"`
+	ID     uint32 `path:"id" minimum:"1" example:"1"`
 	Limit  *int   `query:"limit"`
 	Offset *int   `query:"offset"`
 }
 
 // quarantinePath names a held message by its account and its own id.
 type quarantinePath struct {
-	ID  uint32 `path:"id" minimum:"1"`
-	MID uint32 `path:"mid" minimum:"1"`
+	ID  uint32 `path:"id" minimum:"1" example:"1"`
+	MID uint32 `path:"mid" minimum:"1" example:"1"`
 }
 
 // RegisterQuarantine mounts the account's quarantine. Its routes take what the mail routes

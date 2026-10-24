@@ -17,14 +17,14 @@ type GrantRouteChecks struct {
 }
 
 type grantPath struct {
-	ID uint32 `path:"id" minimum:"1"`
+	ID uint32 `path:"id" minimum:"1" example:"1"`
 }
 type activateGrantRequest struct {
-	ID   uint32          `path:"id" minimum:"1"`
+	ID   uint32          `path:"id" minimum:"1" example:"1"`
 	Body activateRequest `body:""`
 }
 type eligibleGrantRequest struct {
-	ID   uint32              `path:"id" minimum:"1"`
+	ID   uint32              `path:"id" minimum:"1" example:"1"`
 	Body secondFactorRequest `body:""`
 }
 

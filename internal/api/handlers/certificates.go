@@ -158,7 +158,7 @@ type CertificateDetails struct {
 }
 
 type certificatePath struct {
-	ID uint32 `path:"id" minimum:"1"`
+	ID uint32 `path:"id" minimum:"1" example:"1"`
 }
 
 func certificateOf(c models.Certificate) Certificate {

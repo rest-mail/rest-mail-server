@@ -96,7 +96,7 @@ func handlerChecked(capability string, schemes ...string) []oapifly.SecurityRequ
 
 // accountPath names an account by the path's {id}, the mailbox's id.
 type accountPath struct {
-	ID uint32 `path:"id" minimum:"1"`
+	ID uint32 `path:"id" minimum:"1" example:"1"`
 }
 
 var errAuthenticationRequired = endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Authentication required")

@@ -111,22 +111,22 @@ func (h *MessageHandler) signOutboundDKIM(senderDomain, raw string) (string, err
 // listMessagesRequest is a page of a folder, newest first. limit is 1 to 100 (50 otherwise);
 // cursor is the next_cursor of the page before.
 type listMessagesRequest struct {
-	ID     uint32 `path:"id" minimum:"1"`
-	Folder string `path:"folder"`
+	ID     uint32 `path:"id" minimum:"1" example:"1"`
+	Folder string `path:"folder" example:"INBOX"`
 	Limit  *int   `query:"limit"`
 	Cursor string `query:"cursor"`
 }
 
 // messagePath names a message by its id.
 type messagePath struct {
-	ID uint32 `path:"id" minimum:"1"`
+	ID uint32 `path:"id" minimum:"1" example:"1"`
 }
 
 // updateMessageRequest changes what is given; null or left out leaves a flag as it is, and a
 // folder moves the message, into a folder the name makes if there is none: the name is held to
 // the folder rule (rmail.FolderNameProblem), 422 on folder.
 type updateMessageRequest struct {
-	ID   uint32            `path:"id" minimum:"1"`
+	ID   uint32            `path:"id" minimum:"1" example:"1"`
 	Body updateMessageBody `body:""`
 }
 
@@ -141,13 +141,13 @@ type updateMessageBody struct {
 // deleteMessageRequest deletes a message: to Trash, or for good when permanent is true, or
 // when it is already in Trash or deleted. The protocol gateways delete for good.
 type deleteMessageRequest struct {
-	ID        uint32 `path:"id" minimum:"1"`
+	ID        uint32 `path:"id" minimum:"1" example:"1"`
 	Permanent string `query:"permanent" description:"true deletes the message for good; anything else moves it to Trash"`
 }
 
 type threadRequest struct {
-	ID       uint32 `path:"id" minimum:"1"`
-	ThreadID string `path:"threadID"`
+	ID       uint32 `path:"id" minimum:"1" example:"1"`
+	ThreadID string `path:"threadID" example:"1"`
 }
 
 var (
@@ -1126,19 +1126,19 @@ type folderNameBody struct {
 }
 
 type createFolderRequest struct {
-	ID   uint32         `path:"id" minimum:"1"`
+	ID   uint32         `path:"id" minimum:"1" example:"1"`
 	Body folderNameBody `body:""`
 }
 
 // folderPath names one of the account's folders.
 type folderPath struct {
-	ID     uint32 `path:"id" minimum:"1"`
-	Folder string `path:"folder"`
+	ID     uint32 `path:"id" minimum:"1" example:"1"`
+	Folder string `path:"folder" example:"INBOX"`
 }
 
 type renameFolderRequest struct {
-	ID     uint32         `path:"id" minimum:"1"`
-	Folder string         `path:"folder"`
+	ID     uint32         `path:"id" minimum:"1" example:"1"`
+	Folder string         `path:"folder" example:"INBOX"`
 	Body   folderNameBody `body:""`
 }
 
@@ -1597,7 +1597,7 @@ func (h *MessageHandler) getRawMessage(r *http.Request, in messagePath) (endpoin
 // forwardRequest forwards message {id}. from and to are checked in the handler, as they always
 // were: both are required.
 type forwardRequest struct {
-	ID   uint32      `path:"id" minimum:"1"`
+	ID   uint32      `path:"id" minimum:"1" example:"1"`
 	Body forwardBody `body:""`
 }
 

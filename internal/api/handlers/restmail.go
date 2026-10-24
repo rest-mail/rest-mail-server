@@ -80,7 +80,7 @@ type RestmailMailboxCheck struct {
 }
 
 type restmailMailboxQuery struct {
-	Address string `query:"address,required" minLength:"1" message:"address query parameter required" missing:"address query parameter required"`
+	Address string `query:"address,required" minLength:"1" message:"address query parameter required" missing:"address query parameter required" example:"admin@restmail.test"`
 }
 
 // checkMailbox verifies a recipient mailbox exists.

@@ -63,8 +63,8 @@ type ContactsImported struct {
 
 // contactPath names one of the account's contacts.
 type contactPath struct {
-	ID  uint32 `path:"id" minimum:"1"`
-	CID uint32 `path:"cid" minimum:"1"`
+	ID  uint32 `path:"id" minimum:"1" example:"1"`
+	CID uint32 `path:"cid" minimum:"1" example:"1"`
 }
 
 // RegisterContacts mounts the account's contacts. Their routes take what the mail routes take;
@@ -121,7 +121,7 @@ func (h *ContactHandler) resolveMailboxID(r *http.Request, accountID uint32, cap
 }
 
 type listContactsRequest struct {
-	ID         uint32  `path:"id" minimum:"1"`
+	ID         uint32  `path:"id" minimum:"1" example:"1"`
 	TrustLevel *string `query:"trust_level" enums:"auto,trusted,blocked" message:"must be one of auto, trusted, blocked"`
 	Search     string  `query:"search"`
 	Limit      *int    `query:"limit"`
@@ -165,7 +165,7 @@ func (h *ContactHandler) list(r *http.Request, in listContactsRequest) (endpoint
 // trusted (trusted when left out). The address and the trust level are checked in the
 // handler, together.
 type createContactRequest struct {
-	ID   uint32            `path:"id" minimum:"1"`
+	ID   uint32            `path:"id" minimum:"1" example:"1"`
 	Body createContactBody `body:""`
 }
 
@@ -221,8 +221,8 @@ func (h *ContactHandler) create(r *http.Request, in createContactRequest) (Conta
 
 // updateContactRequest changes what is given; null or left out leaves a field as it is.
 type updateContactRequest struct {
-	ID   uint32            `path:"id" minimum:"1"`
-	CID  uint32            `path:"cid" minimum:"1"`
+	ID   uint32            `path:"id" minimum:"1" example:"1"`
+	CID  uint32            `path:"cid" minimum:"1" example:"1"`
 	Body updateContactBody `body:""`
 }
 
@@ -284,7 +284,7 @@ func (h *ContactHandler) delete(r *http.Request, in contactPath) (endpoint.Empty
 }
 
 type blockSenderRequest struct {
-	ID   uint32          `path:"id" minimum:"1"`
+	ID   uint32          `path:"id" minimum:"1" example:"1"`
 	Body blockSenderBody `body:""`
 }
 
@@ -334,7 +334,7 @@ func (h *ContactHandler) block(r *http.Request, in blockSenderRequest) (endpoint
 }
 
 type suggestContactsRequest struct {
-	ID uint32 `path:"id" minimum:"1"`
+	ID uint32 `path:"id" minimum:"1" example:"1"`
 	Q  string `query:"q"`
 }
 
@@ -362,7 +362,7 @@ func (h *ContactHandler) suggest(r *http.Request, in suggestContactsRequest) (en
 }
 
 type importContactsRequest struct {
-	ID   uint32             `path:"id" minimum:"1"`
+	ID   uint32             `path:"id" minimum:"1" example:"1"`
 	Body importContactsBody `body:""`
 }
 

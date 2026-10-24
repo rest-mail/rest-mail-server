@@ -71,7 +71,7 @@ type apiKeyPermission struct {
 }
 
 type createAPIKeyRequest struct {
-	ID   uint32           `path:"id" minimum:"1"`
+	ID   uint32           `path:"id" minimum:"1" example:"1"`
 	Body createAPIKeyBody `body:""`
 }
 

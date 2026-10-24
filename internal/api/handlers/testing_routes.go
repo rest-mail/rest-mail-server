@@ -38,7 +38,7 @@ type sendTestEmailRequest struct {
 }
 
 type verifyDeliveryRequest struct {
-	To        string `query:"to,required" minLength:"1" message:"recipient address required"`
+	To        string `query:"to,required" minLength:"1" message:"recipient address required" example:"admin@restmail.test"`
 	Subject   string `query:"subject,omitempty"`
 	MessageID string `query:"message_id,omitempty"`
 	Timeout   string `query:"timeout,omitempty"`
