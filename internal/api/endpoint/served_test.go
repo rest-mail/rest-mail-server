@@ -3,6 +3,7 @@ package endpoint
 import (
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -23,7 +24,7 @@ func (c *closingReader) Close() error {
 
 // Served content is streamed with http.ServeContent: a whole answer, a range, and a
 // conditional request each get ServeContent's answer, with the content's own headers, and
-// the content is closed once written.
+// the content is closed once written. It is described as bytes in its media type.
 func TestServedIsServedWithRangesAndConditionalRequests(t *testing.T) {
 	modified := time.Date(2026, 10, 24, 1, 0, 0, 0, time.UTC)
 	var opened []*closingReader
@@ -68,7 +69,7 @@ func TestServedIsServedWithRangesAndConditionalRequests(t *testing.T) {
 	}
 
 	ok := reg.Endpoints()[0].Responses[0]
-	if ok.Status != http.StatusOK || ok.MediaType != "application/octet-stream" || ok.Type.Kind().String() != "string" {
+	if ok.Status != http.StatusOK || ok.MediaType != "application/octet-stream" || ok.Type != reflect.TypeOf([]byte(nil)) {
 		t.Fatalf("described as %+v", ok)
 	}
 }

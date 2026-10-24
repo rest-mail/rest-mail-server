@@ -335,11 +335,17 @@ func described(applied []oapifly.Middleware, own []Middleware) []oapifly.Middlew
 }
 
 // successResponse describes the success answer in the envelope write puts it in: a List as
-// itself, a Document or Served as text in its media type, anything else as Data[Resp], the
-// {"data": ...} body respond.Data writes.
+// itself, a Document as text in its media type, Served as bytes in its media type, anything
+// else as Data[Resp], the {"data": ...} body respond.Data writes.
 func successResponse(op Operation, status int, respType, envelope reflect.Type) oapifly.EndpointResponse {
-	if respType == reflect.TypeOf(Document{}) || respType == reflect.TypeOf(Served{}) {
+	if respType == reflect.TypeOf(Document{}) {
 		return oapifly.EndpointResponse{Status: status, Type: reflect.TypeOf(""), MediaType: op.MediaType}
+	}
+	if respType == reflect.TypeOf(Served{}) {
+		// Stored bytes, not text: go-oapifly describes a []byte in a media type that is not
+		// JSON as that media type with no schema, OpenAPI 3.1's way of saying the bytes are
+		// the body.
+		return oapifly.EndpointResponse{Status: status, Type: reflect.TypeOf([]byte(nil)), MediaType: op.MediaType}
 	}
 	if raw, ok := reflect.Zero(respType).Interface().(forwardedResponse); ok {
 		return oapifly.EndpointResponse{Status: status, Type: raw.responseType()}
