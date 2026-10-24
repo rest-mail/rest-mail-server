@@ -46,10 +46,13 @@ class ProbeConfig(unittest.TestCase):
         self.assertEqual(self.config["output"], ["", str(self.report)])
 
     def test_workflow_enforces_unpinned_examples_before_coverage_and_uses_coverage_report(self):
-        # The contract run is tests/contract/run.sh, which CI's E2E job and
-        # `chore contract` both call (#627).
+        # CI's E2E job runs `chore contract`, the same command a person runs,
+        # and it runs tests/contract/run.sh gate, then the secret scan (#627).
         workflow = (ROOT / ".github/workflows/e2e-suite.yml").read_text()
-        self.assertIn("run: tests/contract/run.sh gate", workflow)
+        self.assertIn("run: chore contract", workflow)
+        chores = (ROOT / "chores.yml").read_text()
+        task = chores[chores.index("\n  contract:\n"):chores.index("\n  contract:run:\n")]
+        self.assertLess(task.index("tests/contract/run.sh gate"), task.index("tests/contract/secret_scan.py"))
         script = (ROOT / "tests/contract/run.sh").read_text()
         examples = script.index("--sequence --phases examples")
         generated = script.index("python3 tests/contract/probes.py")
@@ -61,7 +64,8 @@ class ProbeConfig(unittest.TestCase):
         self.assertLess(queue, generated)
         self.assertLess(examples, generated)
         self.assertLess(generated, coverage)
-        self.assertIn('gate.py openapi.yaml vertrag.yml "$out/coverage.xml" tests/contract/coverage-baseline.txt', script)
+        # The coverage gate judges the description this server serves (#627).
+        self.assertIn('gate.py "$CONTRACT_SPEC" vertrag.yml "$out/coverage.xml" tests/contract/coverage-baseline.txt', script)
         # The first command must fail the job immediately on any example or
         # surface failure; only coverage findings may defer to the ratchet.
         command = script[script.rindex("\n", 0, examples):generated].strip().splitlines()[0]

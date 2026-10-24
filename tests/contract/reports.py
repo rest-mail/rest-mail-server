@@ -16,18 +16,20 @@ import sys
 import yaml
 
 
-def configure(config, source_dir, base, narrowed=False, endpoint=""):
+def configure(config, source_dir, base, narrowed=False, endpoint="", spec=""):
     for key in ("spec", "hookfiles"):
         if config.get(key):
             config[key] = str((Path(source_dir) / config[key]).resolve())
+    if spec:
+        config["spec"] = str(Path(spec).resolve())
     if endpoint:
         config["endpoint"] = endpoint
     if narrowed:
         config.pop("surface", None)
     base = str(Path(base).resolve())
     # The HAR is the run's traffic, which the secret scan reads (#673).
-    config["reporter"] = ["cli", "junit", "html", "markdown", "har"]
-    config["output"] = ["", base + ".xml", base + ".html", base + ".md", base + ".har"]
+    config["reporter"] = ["cli", "junit", "html", "markdown", "har", "json"]
+    config["output"] = ["", base + ".xml", base + ".html", base + ".md", base + ".har", base + ".json"]
     return config
 
 
@@ -38,7 +40,8 @@ def main(argv):
     source, out, base = args
     with open(source) as stream:
         config = yaml.safe_load(stream)
-    configure(config, Path(source).resolve().parent, base, "--narrowed" in argv, os.environ.get("CONTRACT_ENDPOINT", ""))
+    configure(config, Path(source).resolve().parent, base, "--narrowed" in argv, os.environ.get("CONTRACT_ENDPOINT", ""),
+              os.environ.get("CONTRACT_SPEC", ""))
     with open(out, "w") as stream:
         yaml.safe_dump(config, stream, sort_keys=False, allow_unicode=True)
     return 0

@@ -192,52 +192,20 @@ jobs:
           rm -rf "$tmp"
           vertrag version
 
-      - name: Prepare stable contract queue state
-        if: inputs.contract-phases == 'gate' || inputs.contract-phases == 'fuzz'
+      - name: Prepare stable contract queue state for fuzz
+        if: inputs.contract-phases == 'fuzz'
         run: chore test:contract-fixtures
 
-      - name: API key contract (real MFA and scoped credential lifecycle)
-        if: inputs.contract-phases == 'gate'
-        run: chore test:contract-api-keys
-
-      - name: Contract tests (examples and coverage)
-        # Every operation in openapi.yaml, sent as the fixture admin against the
-        # topology the stages above just exercised, ordered by the spec's links
-        # (--sequence) so each read, update and delete addresses what its create
-        # made. The examples phase checks each documented answer; the coverage
-        # phase sends every boundary each schema implies and requires a 4xx for
-        # each one outside it, held to tests/contract/coverage-baseline.txt,
-        # which only shrinks. tests/contract/run.sh is the same check
-        # `chore contract` runs on a person's machine (#627); see
-        # tests/contract/README.md.
+      - name: Contract tests (examples, coverage, secret scan and authorization report)
+        # The same command a person runs (#627), against the topology whose
+        # stages just passed. Fetch the generated description; openapi.yaml
+        # remains the independent oracle used by the fast contract diff.
         id: contract
         if: inputs.contract-phases == 'gate'
         env:
+          CONTRACT_ENDPOINT: http://10.99.0.20:8080
           CONTRACT_LOGS: ${{ runner.temp }}
-        run: tests/contract/run.sh gate
-
-      - name: Contract secret scan (no secret the run sent is answered back)
-        # Every password, key, recovery code and token the examples phase sent
-        # or was issued, searched for in every answer it recorded and in the
-        # audit log read at the end (#673). A hit fails the run and names the
-        # operation that echoed it. With no recording the scan fails too: a run
-        # it cannot read is not a clean one.
-        if: always() && steps.contract.outcome != 'skipped'
-        run: |
-          python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
-          python3 tests/contract/secret_scan.py .cache/contract/examples.har --audit-from vertrag.yml
-
-      - name: Contract tests (authorization, report only)
-        # Examples always run first, then the matrix repeats destructive
-        # requests as the admin, so run after the gates.
-        # Scope expectations and lifecycle fixtures still need work
-        # (#376); failures and unsent cells are evidence, not a passing gate.
-        if: ${{ !cancelled() && steps.contract.outcome != 'skipped' && inputs.contract-phases == 'gate' }}
-        continue-on-error: true
-        timeout-minutes: 10
-        env:
-          CONTRACT_LOGS: ${{ runner.temp }}
-        run: tests/contract/run.sh authorization
+        run: chore contract
 
       - name: Contract tests (fuzz)
         # Values drawn from each schema, with shrinking and a replayable seed
@@ -255,6 +223,7 @@ jobs:
           mkdir -p "$out"
           cp "$RUNNER_TEMP/e2e.log" "$out/e2e-test-output.log" 2>/dev/null || true
           cp "$RUNNER_TEMP"/contract*.log "$out/" 2>/dev/null || true
+          cp .cache/contract/openapi.json .cache/contract/examples.json .cache/contract/coverage.json .cache/contract/authorization.json .cache/contract/fuzz.json "$out/" 2>/dev/null || true
           cp .cache/contract/*.xml .cache/contract/*.html .cache/contract/*.md "$out/" 2>/dev/null || true
           docker ps -a > "$out/docker-ps.txt" 2>&1 || true
           docker network inspect testbed_mailnet > "$out/network.txt" 2>&1 || true
