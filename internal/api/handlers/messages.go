@@ -1083,7 +1083,8 @@ type Quota struct {
 	QuotaUsedBytes int64   `json:"quota_used_bytes"`
 }
 
-// folderNameBody names a folder; an empty name is refused in the handler as "required".
+// folderNameBody names a folder; the handler refuses a name rmail.FolderNameProblem finds
+// fault with, an empty one as "required".
 type folderNameBody struct {
 	Name string `json:"name"`
 }
@@ -1110,10 +1111,41 @@ type renameFolderRequest struct {
 var folderSchemes = []string{"CookieAuth", "BearerAuth", "APIKeyAuth", "BasicAuth"}
 
 var (
-	errMailboxAccess  = endpoint.Refuse(http.StatusForbidden, "forbidden", "Access denied")
-	errNotSignedIn    = endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Authentication required")
-	errFolderRequired = endpoint.Invalid(map[string]string{"name": "required"})
+	errMailboxAccess = endpoint.Refuse(http.StatusForbidden, "forbidden", "Access denied")
+	errNotSignedIn   = endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Authentication required")
+	errFolderExists  = endpoint.Refuse(http.StatusConflict, "already_exists", "Folder already exists")
 )
+
+// folderNameRefusal is the 422 for a folder name rmail.FolderNameProblem finds fault with, or
+// nil for a good one.
+func folderNameRefusal(name string) error {
+	if problem := rmail.FolderNameProblem(name); problem != "" {
+		return endpoint.Invalid(map[string]string{"name": problem})
+	}
+	return nil
+}
+
+// listedFolders are listed whether they hold anything or not.
+var listedFolders = []string{"INBOX", "Sent", "Drafts", "Trash"}
+
+// folderExists reports whether the mailbox has the folder: one of the listedFolders, a
+// message in it, or the marker createFolder leaves.
+func (h *MessageHandler) folderExists(mailboxID uint, folder string) bool {
+	for _, listed := range listedFolders {
+		if folder == listed {
+			return true
+		}
+	}
+	var count int64
+	h.db.Model(&models.Message{}).
+		Where("mailbox_id = ? AND folder = ?", mailboxID, folder).
+		Count(&count)
+	return count > 0
+}
+
+// folderNameRule is what createFolder and renameFolder take as a name, as rmail.FolderNameProblem has it.
+const folderNameRule = "The name is valid UTF-8 of at most 255 bytes, neither blank nor beginning or ending with a space, " +
+	`with no control character and no ".."; a "/" is the hierarchy delimiter IMAP clients show. Any other name is 422.`
 
 // RegisterFolders mounts the account's folders and its quota.
 func (h *MessageHandler) RegisterFolders(rs endpoint.Routes) {
@@ -1125,10 +1157,14 @@ func (h *MessageHandler) RegisterFolders(rs endpoint.Routes) {
 		Errors: []int{http.StatusForbidden}, Security: reads}, h.listFolders)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/folders",
 		OperationID: "createFolder", Summary: "Create a new folder", Tags: tags, Status: http.StatusCreated,
+		Description: folderNameRule + " A folder that already exists is 409 already_exists, INBOX in any case, Sent, " +
+			"Drafts and Trash among them: they are listed empty or not.",
 		Errors: []int{http.StatusForbidden, http.StatusConflict}, Security: writes}, h.createFolder)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPatch, Path: "/api/v1/accounts/{id}/folders/{folder}",
 		OperationID: "renameFolder", Summary: "Rename a folder", Tags: tags,
-		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.renameFolder)
+		Description: "A standard folder (INBOX, Sent, Drafts, Trash, Spam, Archive) is not renamed, and no folder is renamed " +
+			"to one: 400 bad_request. A name another folder has is 409 already_exists: folders are not merged. " + folderNameRule,
+		Errors: []int{http.StatusBadRequest, http.StatusForbidden, http.StatusNotFound, http.StatusConflict}, Security: writes}, h.renameFolder)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/accounts/{id}/folders/{folder}",
 		OperationID: "deleteFolder", Summary: "Delete a folder and its messages", Tags: tags, Status: http.StatusNoContent,
 		Description: "A standard folder (INBOX, Sent, Drafts, Trash, Spam, Archive) cannot be deleted: 400 bad_request.",
@@ -1167,12 +1203,11 @@ func (h *MessageHandler) listFolders(r *http.Request, in accountPath) (endpoint.
 		Order("folder ASC").
 		Scan(&folders)
 
-	standardFolders := []string{"INBOX", "Sent", "Drafts", "Trash"}
 	folderMap := make(map[string]bool)
 	for _, f := range folders {
 		folderMap[f.Folder] = true
 	}
-	for _, sf := range standardFolders {
+	for _, sf := range listedFolders {
 		if !folderMap[sf] {
 			folders = append(folders, FolderSummary{Folder: sf, Total: 0, Unread: 0})
 		}
@@ -1188,18 +1223,12 @@ func (h *MessageHandler) createFolder(r *http.Request, in createFolderRequest) (
 	if err != nil {
 		return FolderName{}, err
 	}
-	name := in.Body.Name
-	if name == "" {
-		return FolderName{}, errFolderRequired
+	if err := folderNameRefusal(in.Body.Name); err != nil {
+		return FolderName{}, err
 	}
-
-	// Check if folder already has messages (i.e. exists)
-	var count int64
-	h.db.Model(&models.Message{}).
-		Where("mailbox_id = ? AND folder = ?", mailboxID, name).
-		Count(&count)
-	if count > 0 {
-		return FolderName{}, endpoint.Refuse(http.StatusConflict, "already_exists", "Folder already exists")
+	name := rmail.CanonicalFolder(in.Body.Name)
+	if h.folderExists(mailboxID, name) {
+		return FolderName{}, errFolderExists
 	}
 
 	// Create a placeholder so the folder shows up in ListFolders (store as a message-less folder marker)
@@ -1224,16 +1253,30 @@ func (h *MessageHandler) renameFolder(r *http.Request, in renameFolderRequest) (
 	if err != nil {
 		return FolderName{}, err
 	}
-	name := in.Body.Name
-	if name == "" {
-		return FolderName{}, errFolderRequired
+	from := rmail.CanonicalFolder(in.Folder)
+	if rmail.IsStandardFolder(from) {
+		return FolderName{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "Cannot rename standard folder")
+	}
+	if err := folderNameRefusal(in.Body.Name); err != nil {
+		return FolderName{}, err
+	}
+	name := rmail.CanonicalFolder(in.Body.Name)
+	if rmail.IsStandardFolder(name) {
+		return FolderName{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "Cannot rename a folder to a standard folder")
+	}
+	errNoFolder := endpoint.Refuse(http.StatusNotFound, "not_found", "Folder not found or empty")
+	if !h.folderExists(mailboxID, from) {
+		return FolderName{}, errNoFolder
+	}
+	if h.folderExists(mailboxID, name) {
+		return FolderName{}, errFolderExists
 	}
 
 	result := h.db.Model(&models.Message{}).
-		Where("mailbox_id = ? AND folder = ?", mailboxID, in.Folder).
+		Where("mailbox_id = ? AND folder = ?", mailboxID, from).
 		Update("folder", name)
 	if result.RowsAffected == 0 {
-		return FolderName{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Folder not found or empty")
+		return FolderName{}, errNoFolder
 	}
 
 	return FolderName{Name: name}, nil
@@ -1247,14 +1290,9 @@ func (h *MessageHandler) deleteFolder(r *http.Request, in folderPath) (endpoint.
 		return endpoint.Empty{}, err
 	}
 
-	folderName := in.Folder
-
-	// Prevent deletion of standard folders
-	standardFolders := []string{"INBOX", "Sent", "Drafts", "Trash", "Spam", "Archive"}
-	for _, sf := range standardFolders {
-		if folderName == sf {
-			return endpoint.Empty{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "Cannot delete standard folder")
-		}
+	folderName := rmail.CanonicalFolder(in.Folder)
+	if rmail.IsStandardFolder(folderName) {
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "Cannot delete standard folder")
 	}
 
 	// Sum message sizes for quota adjustment
