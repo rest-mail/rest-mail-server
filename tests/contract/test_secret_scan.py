@@ -58,10 +58,19 @@ class SecretScanTest(unittest.TestCase):
         self.assertIn("[list] answers the password issued by", findings[0])
         self.assertIn("rm_a…(59) at $.data[0].note", findings[0])
 
-    def test_vertrags_redacted_credentials_outside_sign_in_are_a_finding(self):
-        whoami = exchange("GET", "/api/v1/auth/session", response={"data": {"token": "<redacted>"}}, name="session")
-        findings = secret_scan.scan(har(SIGN_IN, whoami))
-        self.assertEqual(findings, ["GET " + API + "/api/v1/auth/session [session] answers one of vertrag's own credentials at $.data.token"])
+    def test_a_redacted_value_is_not_judged(self):
+        # vertrag redacts its whole login body, so the admin's own address reads
+        # "<redacted>" in every message it sent.
+        sent = exchange("POST", "/api/v1/messages/send", {"from": "<redacted>", "to": ["dana@example.test"]},
+                        {"data": {"sender": "<redacted>", "recipients_to": ["dana@example.test"]}}, "send")
+        self.assertEqual(secret_scan.scan(har(SIGN_IN, sent)), [])
+
+    def test_the_fixture_admins_password_is_searched_for_in_the_audit_log(self):
+        audit = [json.dumps({"seq": 2, "action": "auth.login", "details": {"password": "admin123!@"}})]
+        known = [("password", "admin123!@", "vertrag.yml's auth.login")]
+        findings = secret_scan.scan(har(SIGN_IN), audit, known)
+        self.assertEqual(len(findings), 1)
+        self.assertIn("auth.login entry holds the password sent in vertrag.yml's auth.login", findings[0])
 
     def test_the_audit_log_is_searched_too(self):
         audit = [json.dumps({"seq": 1, "action": "account.create", "details": {"password": "dana-secret-1"}})]

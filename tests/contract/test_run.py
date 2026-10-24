@@ -19,8 +19,9 @@ class Reports(unittest.TestCase):
 
     def test_each_phase_writes_junit_html_and_markdown(self):
         config = self.config()
-        self.assertEqual(config["reporter"], ["cli", "junit", "html", "markdown"])
-        self.assertEqual(config["output"], ["", "/tmp/run/examples.xml", "/tmp/run/examples.html", "/tmp/run/examples.md"])
+        self.assertEqual(config["reporter"], ["cli", "junit", "html", "markdown", "har"])
+        self.assertEqual(config["output"], ["", "/tmp/run/examples.xml", "/tmp/run/examples.html", "/tmp/run/examples.md",
+                                            "/tmp/run/examples.har"])
         self.assertEqual(config["spec"], str(ROOT / "openapi.yaml"))
         self.assertEqual(config["hookfiles"], str(ROOT / "tests/contract/hooks.py"))
         self.assertIn("surface", config)

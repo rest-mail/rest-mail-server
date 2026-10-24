@@ -220,8 +220,9 @@ jobs:
         # Every password, key, recovery code and token the examples phase sent
         # or was issued, searched for in every answer it recorded and in the
         # audit log read at the end (#673). A hit fails the run and names the
-        # operation that echoed it.
-        if: always() && steps.contract.outcome != 'skipped' && hashFiles('.cache/contract/examples.har') != ''
+        # operation that echoed it. With no recording the scan fails too: a run
+        # it cannot read is not a clean one.
+        if: always() && steps.contract.outcome != 'skipped'
         run: |
           python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
           python3 tests/contract/secret_scan.py .cache/contract/examples.har --audit-from vertrag.yml
