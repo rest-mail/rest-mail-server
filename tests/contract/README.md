@@ -298,7 +298,8 @@ domain's, leaves it as it is. The handler test
 checks both lookups against PostgreSQL and verifies the existing domain
 is unchanged. Other 404s keep their exclusions; `test_gate.py` holds
 the enabled set to exactly `getDomain`, `getCertificate`, `getAlias`,
-`getCustomFilter` and `getMailbox`.
+`getCustomFilter`, `getMailbox`, `getDKIMRotation`, `domainDNSCheck`,
+`getMtaStsPolicy` and `getDomainRelay`.
 
 `getCertificate` sends its documented 404 with the `missing` path parameter
 example, paired with the 404 alone as `getDomain`'s is, the create link
@@ -314,6 +315,15 @@ responses against PostgreSQL and checks that neither lookup changes the account
 or creates the missing one. Mailbox update, delete and session-ending 404s keep
 their exclusions until each has its own request pair. This does not change the
 resource authorization checks or the coverage baseline.
+
+`getDKIMRotation`, `domainDNSCheck`, `getMtaStsPolicy` and `getDomainRelay`
+also send their missing-domain 404s. Each names the same absent positive ID,
+2147483647, and pairs it with its exact error body: `domain_not_found` for
+DNS, `not_found` for the other three. Existing links supply only the successful
+lookups. `contract_domain_lookup_examples_test.go` checks the registered routes
+against PostgreSQL, both the refusal and a successful lookup of the created
+domain, and verifies the domain stays unchanged. DNS uses deterministic test
+resolvers. DKIM, MTA-STS and relay writes keep their 404 exclusions.
 
 `login` pairs `wrong_password` with 401 and `email_missing`,
 `password_missing` and `client_invalid` with their 422s. Its 200 is named
@@ -381,7 +391,7 @@ empty or wrong-type selectors and private keys, `selector_invalid`, and
 fields and invalid selectors or keys. The existing createDomain link supplies
 the domain ID. Refusals leave the stored domain unchanged
 (`contract_dkim_key_examples_test.go`, `test_contract_dkim_hook.py`). DKIM
-rotation retains its own exclusions.
+rotation writes retain their own 404 exclusion.
 
 Generated DKIM requests hold a public test-only Ed25519 key through
 `probes.py`'s `fuzz.pin.private_key`: schema generation cannot construct a signing key.
@@ -719,8 +729,8 @@ never rewritten.
 paired with the 404 alone by Vertrag 0.30; the create link fills only the
 successful lookup's id. The real-handler
 test checks missing and successful lookup, domain association and unchanged
-storage. `test_gate.py` holds the enabled 404 set to `getDomain`,
-`getCertificate` and `getAlias`; sibling exclusions remain in place.
+storage. `test_gate.py` pins the complete enabled 404 set listed above;
+unpaired sibling operations retain their exclusions.
 
 ### Browser session gate (#659)
 
