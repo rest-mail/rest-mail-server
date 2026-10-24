@@ -22,6 +22,30 @@ import (
 // into one field, other schemes, URI or display-name forms, credentials. Each
 // is refused with 400 before the handler touches the database (it has none
 // here), and an empty object is refused rather than read as "no header".
+// A list_unsubscribe that is not the object of its two targets is binding's 422, on the field
+// at fault, before anything is checked or stored: another key, a header written by hand, a
+// list of targets, or no object at all.
+func TestSendMessage_BindsListUnsubscribe(t *testing.T) {
+	for _, tc := range []struct {
+		name, value, field, words string
+	}{
+		{"wrong type", `"https://example.com/u"`, "list_unsubscribe", "must be an object"},
+		{"unknown scheme key", `{"http":"http://example.com/u"}`, "list_unsubscribe.http", "not allowed"},
+		{"caller-set one-click field", `{"https":"https://example.com/u","post":"List-Unsubscribe=One-Click"}`, "list_unsubscribe.post", "not allowed"},
+		{"raw header", `{"mailto":"unsub@example.com","List-Unsubscribe":"<https://evil.example/u>"}`, "list_unsubscribe.List-Unsubscribe", "not allowed"},
+		{"list of targets", `[{"https":"https://example.com/u"},{"https":"https://example.com/v"}]`, "list_unsubscribe", "must be an object"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := `{"from":"news@example.com","to":["bob@example.net"],"subject":"x","body_text":"hi",` +
+				`"list_unsubscribe":` + tc.value + `}`
+			rr := sendAs(&MessageHandler{}, &auth.Claims{AccountID: 1, CredentialKind: "app_password"}, body)
+			if rr.Code != http.StatusUnprocessableEntity || !strings.Contains(rr.Body.String(), `"`+tc.field+`":"`+tc.words+`"`) {
+				t.Fatalf("want 422 %s %q, got %d %s", tc.field, tc.words, rr.Code, rr.Body.String())
+			}
+		})
+	}
+}
+
 func TestSendMessage_RejectsUnsafeListUnsubscribe(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -51,11 +75,6 @@ func TestSendMessage_RejectsUnsafeListUnsubscribe(t *testing.T) {
 		{"mailto in angle brackets", `{"mailto":"<unsub@example.com>"}`},
 		{"mailto two addresses", `{"mailto":"a@example.com, b@example.com"}`},
 		{"mailto not an address", `{"mailto":"unsubscribe"}`},
-		{"wrong type", `"https://example.com/u"`},
-		{"unknown scheme key", `{"http":"http://example.com/u"}`},
-		{"caller-set one-click field", `{"https":"https://example.com/u","post":"List-Unsubscribe=One-Click"}`},
-		{"raw header", `{"mailto":"unsub@example.com","List-Unsubscribe":"<https://evil.example/u>"}`},
-		{"list of targets", `[{"https":"https://example.com/u"},{"https":"https://example.com/v"}]`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			body := `{"from":"news@example.com","to":["bob@example.net"],"subject":"x","body_text":"hi",` +
@@ -289,7 +308,7 @@ func sendAs(h *MessageHandler, claims *auth.Claims, body string) *httptest.Respo
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages/send", strings.NewReader(body))
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ClaimsKey, claims))
 	rr := httptest.NewRecorder()
-	h.SendMessage(rr, req)
+	composeRoute(h)(rr, req)
 	return rr
 }
 

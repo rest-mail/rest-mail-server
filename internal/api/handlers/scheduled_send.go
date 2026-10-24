@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"log/slog"
@@ -105,7 +104,7 @@ func (h *MessageHandler) runScheduledSends(ctx context.Context) {
 	}
 }
 
-// deliverScheduled replays the stored request through SendMessage. Every
+// deliverScheduled replays the stored request through sendMessage. Every
 // check runs again at the due time: the sender may have lost access, the
 // domain's policy may have changed, or the send rate limit may be spent.
 func (h *MessageHandler) deliverScheduled(ctx context.Context, row models.ScheduledSend) {
@@ -122,12 +121,6 @@ func (h *MessageHandler) deliverScheduled(ctx context.Context, row models.Schedu
 	}
 	req.ScheduledAt = nil
 
-	body, err := json.Marshal(req)
-	if err != nil {
-		h.finishScheduled(row.ID, "failed", 0, "could not rebuild the stored message: "+err.Error())
-		return
-	}
-
 	// Give the send its own budget, and the account the request was made
 	// with. CredentialKind is deliberately empty: this is not an app password
 	// session, so the account's own grants decide what it may send as.
@@ -135,20 +128,21 @@ func (h *MessageHandler) deliverScheduled(ctx context.Context, row models.Schedu
 	defer cancel()
 	sendCtx = context.WithValue(sendCtx, middleware.ClaimsKey, &auth.Claims{AccountID: row.AccountID})
 
-	httpReq := httptest.NewRequest(http.MethodPost, "/api/v1/messages/send", bytes.NewReader(body)).
-		WithContext(sendCtx)
-	rec := httptest.NewRecorder()
-	h.SendMessage(rec, httpReq)
-
-	if rec.Code >= http.StatusOK && rec.Code < http.StatusMultipleChoices {
-		var envelope struct {
-			Data models.Message `json:"data"`
+	httpReq := httptest.NewRequest(http.MethodPost, "/api/v1/messages/send", nil).WithContext(sendCtx)
+	outcome, err := h.sendMessage(httpReq, req)
+	if err == nil {
+		var messageID uint
+		if sent, ok := outcome.Value.(Message); ok {
+			messageID = sent.ID
 		}
-		_ = json.Unmarshal(rec.Body.Bytes(), &envelope)
-		h.finishScheduled(row.ID, "sent", envelope.Data.ID, "")
+		h.finishScheduled(row.ID, "sent", messageID, "")
 		return
 	}
 
+	// The refusal is kept as the API writes it, as it was when the send ran
+	// through the route.
+	rec := httptest.NewRecorder()
+	endpoint.WriteError(rec, err)
 	reason := rec.Body.String()
 	if rec.Code == http.StatusTooManyRequests || rec.Code >= http.StatusInternalServerError {
 		if row.Attempts+1 < scheduledSendMaxAttempts {

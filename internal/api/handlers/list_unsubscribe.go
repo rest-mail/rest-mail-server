@@ -1,8 +1,6 @@
 package handlers
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
 	"net/mail"
 	"net/url"
@@ -36,21 +34,6 @@ type listUnsubscribe struct {
 	// HTTPS is an https URL that unsubscribes the recipient when it receives
 	// the RFC 8058 one-click POST.
 	HTTPS string `json:"https,omitempty"`
-}
-
-// UnmarshalJSON refuses a key the object does not have, so a target under
-// another name ("http", "post", a header name) is an error rather than
-// silently dropped.
-func (l *listUnsubscribe) UnmarshalJSON(b []byte) error {
-	type fields listUnsubscribe
-	dec := json.NewDecoder(bytes.NewReader(b))
-	dec.DisallowUnknownFields()
-	var f fields
-	if err := dec.Decode(&f); err != nil {
-		return err
-	}
-	*l = listUnsubscribe(f)
-	return nil
 }
 
 // validate checks each target. It is the only gate between the request and

@@ -9,7 +9,6 @@ import (
 	"html"
 	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"net/mail"
 	"strconv"
 	"strings"
@@ -393,16 +392,17 @@ func (h *MessageHandler) deleteMessage(r *http.Request, in deleteMessageRequest)
 
 // sendMessageRequest is the body of POST /api/v1/messages/send. It is kept as
 // a named type because a scheduled send stores the same body and replays it
-// through this handler when its time comes.
+// through sendMessage when its time comes. Every field is optional to binding:
+// the handler checks from, to and the addresses, with the refusals it always gave.
 type sendMessageRequest struct {
-	From          string                  `json:"from"`
-	To            []string                `json:"to"`
-	Cc            []string                `json:"cc"`
-	Bcc           []string                `json:"bcc"`
-	Subject       string                  `json:"subject"`
-	BodyText      string                  `json:"body_text"`
-	BodyHTML      string                  `json:"body_html"`
-	InReplyTo     string                  `json:"in_reply_to"`
+	From          string                  `json:"from,omitempty"`
+	To            []string                `json:"to,omitempty"`
+	Cc            []string                `json:"cc,omitempty"`
+	Bcc           []string                `json:"bcc,omitempty"`
+	Subject       string                  `json:"subject,omitempty"`
+	BodyText      string                  `json:"body_text,omitempty"`
+	BodyHTML      string                  `json:"body_html,omitempty"`
+	InReplyTo     string                  `json:"in_reply_to,omitempty"`
 	CalendarEvent *pipeline.CalendarEvent `json:"calendar_event,omitempty"`
 	// ListUnsubscribe, when set, publishes where a recipient unsubscribes
 	// (#144). Absent, the message carries no List-Unsubscribe fields.
@@ -413,26 +413,18 @@ type sendMessageRequest struct {
 }
 
 // SendMessage composes and sends a message from an authenticated user.
-func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
+func (h *MessageHandler) sendMessage(r *http.Request, req sendMessageRequest) (endpoint.Status[any], error) {
+	var zero endpoint.Status[any]
 	claims := middleware.GetClaims(r)
 	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
-	}
-
-	var req sendMessageRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
+		return zero, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Authentication required")
 	}
 
 	if req.From == "" {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "from is required")
-		return
+		return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "from is required")
 	}
 	if len(req.To) == 0 {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "to is required and must not be empty")
-		return
+		return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "to is required and must not be empty")
 	}
 
 	// Per-message recipient cap (#184): a single API send must not fan out to an
@@ -443,9 +435,8 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	// work so an oversized fan-out is rejected cheaply. maxRecipients <= 0 disables.
 	if h.maxRecipients > 0 {
 		if total := len(req.To) + len(req.Cc) + len(req.Bcc); total > h.maxRecipients {
-			respond.Error(w, http.StatusBadRequest, "too_many_recipients",
+			return zero, endpoint.Refuse(http.StatusBadRequest, "too_many_recipients",
 				fmt.Sprintf("too many recipients: %d exceeds the per-message limit of %d", total, h.maxRecipients))
-			return
 		}
 	}
 
@@ -457,32 +448,27 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	// injection (#166).
 	for _, addr := range req.To {
 		if err := rmail.ValidateAddress(addr); err != nil {
-			respond.Error(w, http.StatusBadRequest, "bad_request", "invalid recipient address in to")
-			return
+			return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "invalid recipient address in to")
 		}
 	}
 	for _, addr := range req.Cc {
 		if err := rmail.ValidateAddress(addr); err != nil {
-			respond.Error(w, http.StatusBadRequest, "bad_request", "invalid recipient address in cc")
-			return
+			return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "invalid recipient address in cc")
 		}
 	}
 	for _, addr := range req.Bcc {
 		if err := rmail.ValidateAddress(addr); err != nil {
-			respond.Error(w, http.StatusBadRequest, "bad_request", "invalid recipient address in bcc")
-			return
+			return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "invalid recipient address in bcc")
 		}
 	}
 	if err := rmail.ValidateAddress(req.From); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "invalid from address")
-		return
+		return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "invalid from address")
 	}
 	// The unsubscribe targets become header fields, so they are checked here,
 	// with the addresses, before anything is stored or signed.
 	if req.ListUnsubscribe != nil {
 		if err := req.ListUnsubscribe.validate(); err != nil {
-			respond.Error(w, http.StatusBadRequest, "bad_request", err.Error())
-			return
+			return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", err.Error())
 		}
 	}
 
@@ -496,10 +482,8 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	// every request. Both the draft-send and forward paths delegate to SendMessage,
 	// so they inherit this cap.
 	if !h.sendLimiter.Allow(strconv.FormatUint(uint64(claims.AccountID), 10)) {
-		w.Header().Set("Retry-After", "60")
-		respond.Error(w, http.StatusTooManyRequests, "rate_limited",
-			"Account send rate limit exceeded; try again later")
-		return
+		return zero, &endpoint.Error{Status: http.StatusTooManyRequests, Code: "rate_limited",
+			Message: "Account send rate limit exceeded; try again later", Header: http.Header{"Retry-After": {"60"}}}
 	}
 
 	// The sender must be an account the caller may send as: its own, or one
@@ -507,11 +491,9 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	sender, err := mayActAs(h.db, claims, req.From, models.CapMailSend)
 	if err != nil {
 		if errors.Is(err, errNoAccess) {
-			respond.Error(w, http.StatusForbidden, "forbidden", "You are not authorized to send from this address")
-		} else {
-			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to check the sender")
+			return zero, endpoint.Refuse(http.StatusForbidden, "forbidden", "You are not authorized to send from this address")
 		}
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to check the sender")
 	}
 	senderMailbox := *sender
 
@@ -520,18 +502,15 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	// mismatch is refused, never silently dropped or sent without one.
 	var senderDomain models.Domain
 	if err := h.db.Select("sending_policy").First(&senderDomain, senderMailbox.DomainID).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to check the sender domain's sending policy")
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to check the sender domain's sending policy")
 	}
 	switch {
 	case senderDomain.SendingPolicy == models.SendingPolicyBulk && req.ListUnsubscribe == nil:
-		respond.Error(w, http.StatusUnprocessableEntity, "list_unsubscribe_required",
+		return zero, endpoint.Refuse(http.StatusUnprocessableEntity, "list_unsubscribe_required",
 			"The sender domain sends bulk mail, so every message needs list_unsubscribe")
-		return
 	case senderDomain.SendingPolicy == models.SendingPolicyTransactional && req.ListUnsubscribe != nil:
-		respond.Error(w, http.StatusUnprocessableEntity, "list_unsubscribe_not_allowed",
+		return zero, endpoint.Refuse(http.StatusUnprocessableEntity, "list_unsubscribe_not_allowed",
 			"The sender domain sends transactional mail, which carries no List-Unsubscribe field: omit list_unsubscribe")
-		return
 	}
 
 	// RFC 8058 §4: a one-click claim counts only under a DKIM signature that
@@ -542,13 +521,11 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	if req.ListUnsubscribe != nil && req.ListUnsubscribe.HTTPS != "" {
 		signs, err := outbound.HasDKIMKey(h.db, rmail.DomainFromAddress(req.From))
 		if err != nil {
-			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to check the sender domain's DKIM key")
-			return
+			return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to check the sender domain's DKIM key")
 		}
 		if !signs {
-			respond.Error(w, http.StatusUnprocessableEntity, "dkim_required",
+			return zero, endpoint.Refuse(http.StatusUnprocessableEntity, "dkim_required",
 				"list_unsubscribe.https needs the sender domain to have a DKIM key: one-click unsubscribe must be DKIM signed")
-			return
 		}
 	}
 
@@ -560,21 +537,18 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		at := req.ScheduledAt.UTC()
 		now := time.Now().UTC()
 		if at.Before(now.Add(time.Minute)) {
-			respond.Error(w, http.StatusUnprocessableEntity, "validation_failed",
+			return zero, endpoint.Refuse(http.StatusUnprocessableEntity, "validation_failed",
 				"scheduled_at must be at least a minute in the future")
-			return
 		}
 		if at.After(now.Add(365 * 24 * time.Hour)) {
-			respond.Error(w, http.StatusUnprocessableEntity, "validation_failed",
+			return zero, endpoint.Refuse(http.StatusUnprocessableEntity, "validation_failed",
 				"scheduled_at must be within a year")
-			return
 		}
 		stored := req
 		stored.ScheduledAt = nil
 		body, err := json.Marshal(stored)
 		if err != nil {
-			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to store the scheduled message")
-			return
+			return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to store the scheduled message")
 		}
 		toJSON, _ := json.Marshal(req.To)
 		row := models.ScheduledSend{
@@ -587,11 +561,9 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 			Request:   models.JSONB(body),
 		}
 		if err := h.db.Create(&row).Error; err != nil {
-			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to store the scheduled message")
-			return
+			return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to store the scheduled message")
 		}
-		respond.Data(w, http.StatusAccepted, row)
-		return
+		return endpoint.Status[any]{Code: http.StatusAccepted, Value: scheduledMessageOf(row)}, nil
 	}
 
 	// ── Outbound pipeline execution ────────────────────────────────
@@ -676,8 +648,7 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		outPipelineCtx := pipeline.WithDB(r.Context(), h.db)
 		outResult, outErr := h.engine.Execute(outPipelineCtx, outPipelineCfg, outEmailJSON)
 		if outErr != nil {
-			respond.Error(w, http.StatusInternalServerError, "pipeline_error", "Outbound pipeline execution failed")
-			return
+			return zero, endpoint.Refuse(http.StatusInternalServerError, "pipeline_error", "Outbound pipeline execution failed")
 		}
 
 		// Base trace inputs shared by every outbound terminal branch. transport is
@@ -699,23 +670,19 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 			}
 			outTraceBase.Outcome = outcomeRejected
 			h.recordTrace(buildTrace(outTraceBase))
-			respond.Error(w, http.StatusForbidden, "rejected", rejectMsg)
-			return
+			return zero, endpoint.Refuse(http.StatusForbidden, "rejected", rejectMsg)
 		case pipeline.ActionQuarantine:
 			outTraceBase.Outcome = outcomeQuarantined
 			h.recordTrace(buildTrace(outTraceBase))
-			respond.Error(w, http.StatusForbidden, "quarantined", "Message held for review by outbound policy")
-			return
+			return zero, endpoint.Refuse(http.StatusForbidden, "quarantined", "Message held for review by outbound policy")
 		case pipeline.ActionDiscard:
 			outTraceBase.Outcome = outcomeDiscarded
 			h.recordTrace(buildTrace(outTraceBase))
-			respond.Data(w, http.StatusOK, map[string]string{"status": "discarded"})
-			return
+			return endpoint.Status[any]{Code: http.StatusOK, Value: SendDiscarded{Status: "discarded"}}, nil
 		case pipeline.ActionDefer:
 			outTraceBase.Outcome = outcomeDeferred
 			h.recordTrace(buildTrace(outTraceBase))
-			respond.Error(w, http.StatusServiceUnavailable, "deferred", "Try again later")
-			return
+			return zero, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Try again later")
 		case pipeline.ActionContinue:
 			// Stash the trace; recorded as "queued" after the sent Message row is
 			// created so message_id is non-nil.
@@ -765,8 +732,7 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		var icsErr error
 		icsData, icsErr = rmime.GenerateICS(*evt)
 		if icsErr != nil {
-			respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid calendar event: "+icsErr.Error())
-			return
+			return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "Invalid calendar event: "+icsErr.Error())
 		}
 	}
 
@@ -818,8 +784,7 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.db.Create(&sentMsg).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to save sent message")
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to save sent message")
 	}
 
 	// ── Record the queued trace ──────────────────────────────────────
@@ -851,8 +816,7 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		ICSMethod: calendarMethod(req.CalendarEvent),
 	})
 	if rawErr != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to build the outbound message")
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to build the outbound message")
 	}
 
 	// Sign the finalized outbound message over its actual transmitted bytes.
@@ -860,14 +824,12 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	// send (client retries) rather than deliver the message unsigned.
 	signedRaw, signErr := h.signOutboundDKIM(rmail.DomainFromAddress(req.From), rawMessage)
 	if signErr != nil {
-		respond.Error(w, http.StatusServiceUnavailable, "deferred", "Try again later")
-		return
+		return zero, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Try again later")
 	}
 	// The key was there when the request was checked; if the message still
 	// came back unsigned, its one-click claim must not leave.
 	if req.ListUnsubscribe != nil && req.ListUnsubscribe.HTTPS != "" && signedRaw == rawMessage {
-		respond.Error(w, http.StatusServiceUnavailable, "deferred", "Try again later")
-		return
+		return zero, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Try again later")
 	}
 	rawMessage = signedRaw
 
@@ -944,7 +906,7 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		}).FirstOrCreate(&models.Contact{})
 	}
 
-	respond.Data(w, http.StatusCreated, sentMsg)
+	return endpoint.Status[any]{Code: http.StatusCreated, Value: messageOf(sentMsg)}, nil
 }
 
 // DeliverMessage is the inbound delivery endpoint for the gateway.
@@ -1448,75 +1410,45 @@ func (h *MessageHandler) updateDraft(r *http.Request, in updateDraftRequest) (Me
 	return messageOf(draft), nil
 }
 
-// SendDraft converts a draft to a sent message by deleting it and delegating to SendMessage.
-// SendMessage checks the stored sender again, so a draft whose from the
-// caller may not send as is refused and kept (#610).
+// sendDraft sends a draft through sendMessage, and deletes the draft once it is sent.
 // POST /api/v1/messages/draft/{id}/send
-func (h *MessageHandler) SendDraft(w http.ResponseWriter, r *http.Request) {
-	claims := middleware.GetClaims(r)
-	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
-	}
-
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid message ID")
-		return
+func (h *MessageHandler) sendDraft(r *http.Request, in messagePath) (endpoint.Status[any], error) {
+	var zero endpoint.Status[any]
+	if middleware.GetClaims(r) == nil {
+		return zero, errNotSignedIn
 	}
 
 	var draft models.Message
-	if err := h.db.Where("id = ? AND is_draft = ?", id, true).First(&draft).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "Draft not found")
-		return
+	if err := h.db.Where("id = ? AND is_draft = ?", in.ID, true).First(&draft).Error; err != nil {
+		return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "Draft not found")
 	}
-
-	if !h.verifyMessageOwnership(w, r, &draft, models.CapMailWrite) {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
+	if !h.verifyMessageOwnership(nil, r, &draft, models.CapMailWrite) {
+		return zero, errMessageAccess
 	}
 
 	var toList []string
 	_ = json.Unmarshal(draft.RecipientsTo, &toList)
 	if len(toList) == 0 {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Draft has no recipients")
-		return
+		return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "Draft has no recipients")
 	}
-
 	var ccList []string
 	_ = json.Unmarshal(draft.RecipientsCc, &ccList)
 
-	sendBody := map[string]interface{}{
-		"from":        draft.Sender,
-		"to":          toList,
-		"cc":          ccList,
-		"subject":     draft.Subject,
-		"body_text":   draft.BodyText,
-		"body_html":   draft.BodyHTML,
-		"in_reply_to": draft.InReplyTo,
+	sent, err := h.sendMessage(r, sendMessageRequest{
+		From:      draft.Sender,
+		To:        toList,
+		Cc:        ccList,
+		Subject:   draft.Subject,
+		BodyText:  draft.BodyText,
+		BodyHTML:  draft.BodyHTML,
+		InReplyTo: draft.InReplyTo,
+	})
+	if err != nil {
+		return zero, err
 	}
-	bodyBytes, _ := json.Marshal(sendBody)
-
-	// Use a recorder to capture the send response so we only delete the
-	// draft if the send actually succeeds.
-	newReq, _ := http.NewRequestWithContext(r.Context(), "POST", "/api/v1/messages/send", strings.NewReader(string(bodyBytes)))
-	newReq.Header.Set("Content-Type", "application/json")
-	newReq.Header.Set("Authorization", r.Header.Get("Authorization"))
-
-	rec := httptest.NewRecorder()
-	h.SendMessage(rec, newReq)
-
-	// Only delete the draft if send succeeded
-	if rec.Code >= 200 && rec.Code < 300 {
-		h.db.Delete(&draft)
-	}
-
-	// Copy recorded response to the actual ResponseWriter
-	for k, v := range rec.Header() {
-		w.Header()[k] = v
-	}
-	w.WriteHeader(rec.Code)
-	_, _ = w.Write(rec.Body.Bytes())
+	// Only a sent draft is deleted: a refused send keeps it to try again.
+	h.db.Delete(&draft)
+	return sent, nil
 }
 
 // GetThread returns all messages sharing the same thread_id.
@@ -1573,67 +1505,43 @@ func (h *MessageHandler) GetRawMessage(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(msg.RawMessage))
 }
 
-// ForwardMessage forwards an existing message to new recipients.
+// forwardRequest forwards message {id}. from and to are checked in the handler, as they always
+// were: both are required.
+type forwardRequest struct {
+	ID   uint32      `path:"id" minimum:"1"`
+	Body forwardBody `body:""`
+}
+
+type forwardBody struct {
+	From     string   `json:"from,omitempty"`
+	To       []string `json:"to,omitempty"`
+	BodyText string   `json:"body_text,omitempty"`
+}
+
+// forwardMessage forwards an existing message to new recipients, through sendMessage.
 // POST /api/v1/messages/{id}/forward
-func (h *MessageHandler) ForwardMessage(w http.ResponseWriter, r *http.Request) {
-	claims := middleware.GetClaims(r)
-	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
-	}
-
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+func (h *MessageHandler) forwardMessage(r *http.Request, in forwardRequest) (endpoint.Status[any], error) {
+	var zero endpoint.Status[any]
+	original, err := h.ownedMessage(r, in.ID, models.CapMailRead)
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid message ID")
-		return
+		return zero, err
 	}
-
-	var original models.Message
-	if err := h.db.First(&original, id).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "message_not_found", "Message not found")
-		return
-	}
-
-	if !h.verifyMessageOwnership(w, r, &original, models.CapMailRead) {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
-	}
-
-	var req struct {
-		From     string   `json:"from"`
-		To       []string `json:"to"`
-		BodyText string   `json:"body_text"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
-
+	req := in.Body
 	if req.From == "" || len(req.To) == 0 {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "from and to are required")
-		return
+		return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "from and to are required")
 	}
 
 	// Build the forwarded bodies. Both parts carry the note and the header, so a
 	// client showing the HTML part sees what a client showing the text part sees
 	// (issue #286).
 	fwdText, fwdHTML := forwardBodies(req.BodyText, &original)
-
-	// Build the send request body and delegate to SendMessage
-	sendBody := map[string]interface{}{
-		"from":      req.From,
-		"to":        req.To,
-		"subject":   "Fwd: " + original.Subject,
-		"body_text": fwdText,
-		"body_html": fwdHTML,
-	}
-	bodyBytes, _ := json.Marshal(sendBody)
-
-	newReq, _ := http.NewRequestWithContext(r.Context(), "POST", "/api/v1/messages/send", strings.NewReader(string(bodyBytes)))
-	newReq.Header.Set("Content-Type", "application/json")
-	newReq.Header.Set("Authorization", r.Header.Get("Authorization"))
-
-	h.SendMessage(w, newReq)
+	return h.sendMessage(r, sendMessageRequest{
+		From:     req.From,
+		To:       req.To,
+		Subject:  "Fwd: " + original.Subject,
+		BodyText: fwdText,
+		BodyHTML: fwdHTML,
+	})
 }
 
 // forwardBodies builds the text and HTML bodies of a forwarded message: the
