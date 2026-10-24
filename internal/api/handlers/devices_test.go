@@ -23,6 +23,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/audit"
 	"github.com/restmail/restmail/internal/auth"
@@ -143,10 +144,9 @@ func newPushEnv(t *testing.T) *pushEnv {
 	r := chi.NewRouter()
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.JWTMiddleware(e.jwt))
-		r.Get("/api/v1/devices", h.List)
-		r.With(auditor.Audit(push.ActionDeviceRegister, middleware.AuditBodyFields("platform", "environment"),
-			middleware.AuditResponseField("id", "device_id"))).Post("/api/v1/devices", h.Register)
-		r.With(auditor.Audit(push.ActionDeviceRemove)).Delete("/api/v1/devices/{device_id}", h.Remove)
+		h.RegisterRoutes(endpoint.Routes{Router: r, Registry: endpoint.NewRegistry()}, func(action string, options ...middleware.AuditOption) endpoint.Middleware {
+			return endpoint.Middleware{Wrap: auditor.Audit(action, options...)}
+		})
 	})
 	e.routes = r
 
