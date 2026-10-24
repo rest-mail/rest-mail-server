@@ -27,6 +27,21 @@ need_release
 host=$(release_values | jq -r '.mailserver.hostname // empty')
 [ -n "$host" ] || die "The release has no mailserver.hostname."
 
+# Public certificate inputs are local to this command, not read from a
+# different component's mount: the operator chooses the actual SMTP leaf.
+tlsa=''
+if [ "$mode" = show ] && [ -n "${TLSA_NEXT_CERT:-}" ] && [ -z "${TLSA_CERT:-}" ]; then
+  die "--tlsa-next-cert also needs --tlsa-cert for the currently deployed key."
+fi
+if [ "$mode" = show ] && [ -n "${TLSA_CERT:-}" ]; then
+  need restmail
+  tlsa_args=(tlsa-records --mail-host "$host" --cert "$TLSA_CERT" --json)
+  [ -n "${TLSA_NEXT_CERT:-}" ] && tlsa_args+=(--next-cert "$TLSA_NEXT_CERT")
+  if ! tlsa=$(restmail "${tlsa_args[@]}"); then
+    die "Could not prepare TLSA records. Update the restmail CLI and check the public certificates."
+  fi
+fi
+
 # The address mail arrives at: the SMTP gateway's load balancer, if it has one.
 ip=$(k get svc -l "$(component smtp-gateway)" -o json 2>/dev/null |
   jq -r '[.items[].status.loadBalancer.ingress[]? | .ip // empty][0] // empty')
@@ -54,6 +69,12 @@ show)
       + (if .type == "MX" then "\(.priority) " elif .type == "SRV" then "\(.priority) \(.weight) \(.port) " else "" end) + .value
       + (if .type == "PTR" then "    (set by whoever owns the address, not in your zone)" else "" end)),
     ""' <<<"$records"
+  if [ -n "$tlsa" ]; then
+    say "SMTP TLSA publication candidates (requires DNSSEC with a validated chain of trust):" \
+      "Automatic renewal rotates keys; arrange a safe rollover before publishing." \
+      "$(jq -r '.rollover' <<<"$tlsa")"
+    jq -r '.records[] | "  TLSA  \(.name)  \(.value)"' <<<"$tlsa"
+  fi
   ;;
 check)
   need dig

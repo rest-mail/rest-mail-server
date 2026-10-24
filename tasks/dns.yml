@@ -19,9 +19,15 @@ tasks:
         desc: the Helm release name (default restmail)
       - name: namespace
         desc: the namespace (default rest-mail)
+      - name: tlsa_cert
+        desc: optional local current SMTP public PEM certificate; TLSA candidates require DNSSEC
+      - name: tlsa_next_cert
+        desc: optional local staged SMTP public PEM certificate, published alongside the current key
     vars: &dns_vars
       NAME: restmail
       NAMESPACE: rest-mail
+      TLSA_CERT: ''
+      TLSA_NEXT_CERT: ''
     cmds:
       - cmd: '"{{.TASKFILE_DIR}}/lifecycle/dns.sh" show'
         silent: true

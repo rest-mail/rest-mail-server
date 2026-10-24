@@ -194,8 +194,14 @@ dig +dnssec +short TLSA _25._tcp.mx1.example.org
   Both the compressed and inflated report are capped at 512 KiB, the email at
   1 MiB, and the report at 100 policy entries. Email ingestion is disabled when
   the address is empty. DNS output continues to advertise the HTTPS endpoint.
-- **DANE** is not supported yet, for sending or receiving:
-  [#725](https://github.com/rest-mail/rest-mail-server/issues/725).
+- **DANE publication preparation:** `restmail tlsa-records` computes `3 1 1`
+  records from the SMTP public certificate, with an optional staged key for
+  rollover. `chore dns:show --tlsa-cert current.pem --tlsa-next-cert staged.pem`
+  includes those candidates. See [preparing TLSA records](../../dane-tlsa.md)
+  for the DNSSEC prerequisites and rollover sequence. Outbound authentication
+  and automatic safe certificate/key renewal remain in
+  [#725](https://github.com/rest-mail/rest-mail-server/issues/725); the current
+  ACME renewal rotates keys and must be coordinated before publishing TLSA.
 
 ## Sources
 
