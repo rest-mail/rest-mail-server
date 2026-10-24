@@ -156,13 +156,17 @@ A queue that keeps growing is a symptom, never the problem: read the errors.
   schedule for that reason, which is the "more sophisticated" strategy RFC 5321
   allows: greylisting is retried after 7 minutes, a remote asking it to slow
   down after 15, a full mailbox after an hour, a
-  TLS problem after 15 minutes, a DNS failure after 5, and anything else after
-  1. Each wait doubles, up to 4 hours, with random jitter of a fifth either way
+  TLS problem after 15 minutes, a DNS failure after 5, and a failed connection
+  or anything else after 5, as Postfix's `minimal_backoff_time`. Each wait
+  doubles, up to 4 hours, with random jitter of a fifth either way
   so that messages held up by the same outage do not all retry at once
   ([`internal/gateway/queue/retry.go`](../../../internal/gateway/queue/retry.go)).
-- **How long:** today REST Mail gives up after 72 hours, or 48 for a full
-  mailbox. That is shorter than RFC 5321's 4–5 days; bringing it to 5 days is
-  [#711](https://github.com/rest-mail/rest-mail-server/issues/711).
+- **How long:** REST Mail retries for 5 days before it bounces, whatever the
+  reason, a full mailbox included, within RFC 5321's 4–5 days and as Postfix's
+  `maximal_queue_lifetime`. The retry budget, 60 attempts, outlasts every
+  schedule, so the deadline is what ends retrying
+  ([`internal/db/models/queue.go`](../../../internal/db/models/queue.go),
+  `QueueLifetime`, #711).
 - **Bounces** are RFC 3464 reports, marked `Auto-Submitted: auto-generated`,
   with `Remote-MTA` and `Last-Attempt-Date`, and with every remote value
   cleaned so a hostile reply cannot inject header lines

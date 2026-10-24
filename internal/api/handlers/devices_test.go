@@ -187,7 +187,7 @@ type pushSessionT struct {
 func (e *pushEnv) signIn(t *testing.T, mb models.Mailbox) pushSessionT {
 	t.Helper()
 	rr := httptest.NewRecorder()
-	e.authH.Login(rr, httptest.NewRequest(http.MethodPost, "/api/v1/auth/login",
+	serveAuth(e.authH, rr, httptest.NewRequest(http.MethodPost, "/api/v1/auth/login",
 		strings.NewReader(fmt.Sprintf(`{"email":%q,"password":"password123","client":"native"}`, mb.Address))))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("sign in %s: %d %s", mb.Address, rr.Code, rr.Body.String())
@@ -215,7 +215,7 @@ func (e *pushEnv) sessionFrom(t *testing.T, body []byte) pushSessionT {
 func (e *pushEnv) refreshSession(t *testing.T, s pushSessionT) pushSessionT {
 	t.Helper()
 	rr := httptest.NewRecorder()
-	e.authH.Refresh(rr, httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh",
+	serveAuth(e.authH, rr, httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh",
 		strings.NewReader(fmt.Sprintf(`{"refresh_token":%q}`, s.refresh))))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("refresh: %d %s", rr.Code, rr.Body.String())
@@ -226,7 +226,7 @@ func (e *pushEnv) refreshSession(t *testing.T, s pushSessionT) pushSessionT {
 func (e *pushEnv) logout(t *testing.T, refresh string) {
 	t.Helper()
 	rr := httptest.NewRecorder()
-	e.authH.Logout(rr, httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout",
+	serveAuth(e.authH, rr, httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout",
 		strings.NewReader(fmt.Sprintf(`{"refresh_token":%q}`, refresh))))
 	if rr.Code != http.StatusNoContent {
 		t.Fatalf("logout: %d %s", rr.Code, rr.Body.String())
@@ -509,7 +509,7 @@ func TestDevicesTokenWithoutSidIsRefused(t *testing.T) {
 	}
 
 	rr := httptest.NewRecorder()
-	e.authH.Refresh(rr, httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh",
+	serveAuth(e.authH, rr, httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh",
 		strings.NewReader(fmt.Sprintf(`{"refresh_token":%q}`, refresh))))
 	if rr.Code != http.StatusUnauthorized {
 		t.Fatalf("refresh with a refresh token without a sid = %d %s; want 401", rr.Code, rr.Body.String())

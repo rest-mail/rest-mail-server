@@ -198,7 +198,7 @@ func relayHasMechanism(list, want string) bool {
 // settings cannot be read, or the stored password cannot be decrypted — is an
 // error, so the message is retried rather than sent direct or unauthenticated.
 func (w *Worker) relayRoute(item models.OutboundQueue) (*relaySettings, error) {
-	domain := rmail.DomainFromAddress(item.Sender)
+	domain := sendsAs(item)
 	if domain == "" {
 		return nil, nil
 	}
