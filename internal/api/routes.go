@@ -177,7 +177,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	mailboxH := handlers.NewMailboxHandler(db, grantCache, sessions)
 	aliasH := handlers.NewAliasHandler(db)
 	broker := handlers.NewSSEBroker()
-	eventH := handlers.NewEventHandler(db, broker, jwtService, sessionCurrent)
+	eventH := handlers.NewEventHandler(db, broker, sessionCurrent)
 	accountH := handlers.NewAccountHandler(db, grantCache, cfg.MasterKey)
 	searchH := handlers.NewSearchHandler(db)
 	attachmentStore := attachmentstore.NewS3(cfg.Attachments)
@@ -497,11 +497,17 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	restmailH.Register(endpoint.Routes{Router: r, Registry: registry}, endpoint.Middleware{Wrap: deliverBodyLimit})
 
 	// ═══════════════════════════════════════════════════════════════
-	// SSE — outside the JWT middleware group; the handler authenticates from the
-	// restmail_access cookie (native EventSource) or an Authorization: Bearer
-	// header. GET, so it is CSRF-exempt.
+	// SSE — a session from the restmail_access cookie (native EventSource) or an
+	// Authorization: Bearer header, never an API key or HTTP Basic. GET, so it
+	// needs no CSRF check; a stream is not a body, so no size cap.
 	// ═══════════════════════════════════════════════════════════════
-	r.Get("/api/v1/accounts/{id}/events", eventH.Events)
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.JWTMiddleware(jwtService))
+		r.Use(middleware.RejectStaleSessions(sessionCurrent))
+		r.Use(middleware.SetupDone)
+		eventH.Register(endpoint.Routes{Router: r, Registry: registry}.
+			Describing(describedPersonSession, describedSetupDone))
+	})
 
 	// Provisioning uses the same live mailboxes:write check for sessions and
 	// explicitly scoped API keys. Other identity and credential changes below

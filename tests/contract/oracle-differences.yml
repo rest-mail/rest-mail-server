@@ -3412,3 +3412,11 @@
     The handler reads the domain after the last @ and checks that, not the address as an email
     address, so an internationalised address (EAI) is looked up too; one with no @ is the
     400 "no email domain in the address or the host name".
+
+# Events (#636)
+
+- operation: accountEvents
+  difference: "response 503: generated only"
+  reason: >-
+    Besides the session check's 503 unavailable, the stream answers 503 too_many_streams when
+    the account already holds its limit of open streams (#204).

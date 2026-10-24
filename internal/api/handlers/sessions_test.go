@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/auth"
 	rmdb "github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
@@ -152,11 +151,9 @@ func TestRefresh_RefusesATokenFromAnOlderEpoch(t *testing.T) {
 
 // eventStream opens the account's event stream on h with token, and returns
 // its lines as they arrive; the channel closes when the stream ends.
-func eventStream(t *testing.T, h *EventHandler, accountID uint, token string) <-chan string {
+func eventStream(t *testing.T, h *EventHandler, jwt *auth.JWTService, accountID uint, token string) <-chan string {
 	t.Helper()
-	r := chi.NewRouter()
-	r.Get("/api/v1/accounts/{id}/events", h.Events)
-	srv := httptest.NewServer(r)
+	srv := httptest.NewServer(eventRoutes(h, jwt))
 	t.Cleanup(srv.Close)
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -230,7 +227,7 @@ func TestEvents_OpenStreamEndsWithItsSession(t *testing.T) {
 		mb := seedMailbox(t, db, "sse")
 		var ended atomic.Bool
 		broker := NewSSEBroker()
-		h := NewEventHandler(db, broker, jwt, func(accountID uint, epoch int) (bool, error) {
+		h := NewEventHandler(db, broker, func(accountID uint, epoch int) (bool, error) {
 			return accountID == mb.ID && !ended.Load(), nil
 		})
 		h.keepalive = keepalive
@@ -238,7 +235,7 @@ func TestEvents_OpenStreamEndsWithItsSession(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return broker, mb, &ended, eventStream(t, h, mb.ID, pair.AccessToken)
+		return broker, mb, &ended, eventStream(t, h, jwt, mb.ID, pair.AccessToken)
 	}
 
 	t.Run("at the next event", func(t *testing.T) {
@@ -256,9 +253,16 @@ func TestEvents_OpenStreamEndsWithItsSession(t *testing.T) {
 	})
 
 	t.Run("at the next keepalive", func(t *testing.T) {
-		_, _, ended, lines := open(t, 20*time.Millisecond)
+		broker, mb, ended, lines := open(t, 20*time.Millisecond)
 		waitFor(t, lines, ": keepalive")
 		ended.Store(true)
 		untilEnd(t, lines)
+		// The stream is over, so its slot is free again (#204).
+		broker.activeMu.Lock()
+		held := broker.active[mb.ID]
+		broker.activeMu.Unlock()
+		if held != 0 {
+			t.Errorf("the ended stream still holds %d slot(s)", held)
+		}
 	})
 }
