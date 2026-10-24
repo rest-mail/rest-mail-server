@@ -42,7 +42,7 @@ func TestProtocolSignIn_DocumentedRefusals(t *testing.T) {
 				req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/protocol-sign-in", bytes.NewReader(body))
 				req = withClaims(req, &auth.Claims{AccountID: 1, CredentialID: 1})
 				rr := httptest.NewRecorder()
-				NewCredentialHandler(nil).ProtocolSignIn(rr, req)
+				serveProtocolSignIn(NewCredentialHandler(nil), rr, req)
 				if rr.Code != map[string]int{"400": http.StatusBadRequest, "422": http.StatusUnprocessableEntity}[status] {
 					t.Fatalf("%s answered %d; body %s", body, rr.Code, rr.Body)
 				}

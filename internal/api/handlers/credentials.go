@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -12,10 +11,10 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	oapifly "github.com/antimatter-studios/go-oapifly"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
-	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/audit"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
@@ -310,10 +309,28 @@ func revokeAppPasswordsForNewPassword(tx *gorm.DB, r *http.Request, accountID ui
 var signInProtocols = map[string]bool{"imap": true, "pop3": true, "smtp": true}
 
 type protocolSignInRequest struct {
-	Protocol string `json:"protocol"`
+	Protocol string `json:"protocol,omitempty"`
 }
 
-// ProtocolSignIn is how a protocol gateway signs in a mail client: the request
+// ProtocolSignedIn is the account a mail client signed in to, and the credential it used.
+// Its fields are in the order the map it replaced was written in.
+type ProtocolSignedIn struct {
+	CredentialID   uint     `json:"credential_id"`
+	CredentialKind string   `json:"credential_kind" enums:"password,app_password"`
+	User           userInfo `json:"user"`
+}
+
+// RegisterProtocolSignIn registers the protocol gateways' sign-in, in the mail routes' group:
+// it takes HTTP Basic only (a session is 400 basic_required), is throttled like login, and is
+// audited with its protocol.
+func (h *CredentialHandler) RegisterProtocolSignIn(rs endpoint.Routes, checks SessionRouteChecks) {
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/auth/protocol-sign-in",
+		OperationID: "protocolSignIn", Summary: "Sign a mail client in (protocol gateways)", Tags: []string{"Auth"},
+		Security:   []oapifly.SecurityRequirement{{"BasicAuth": nil}},
+		Middleware: []endpoint.Middleware{checks.Throttle, checks.Audit("auth.protocol_sign_in", middleware.AuditBodyFields("protocol"))}}, h.protocolSignIn)
+}
+
+// protocolSignIn is how a protocol gateway signs in a mail client: the request
 // carries the address and what the client gave as its password (an app
 // password, or one of the account's passwords) with HTTP Basic, already
 // checked by the middleware against the account's credentials, and the audit
@@ -322,36 +339,28 @@ type protocolSignInRequest struct {
 // makes, each carrying the same Basic credentials, are for. A session cannot
 // use it.
 // POST /api/v1/auth/protocol-sign-in
-func (h *CredentialHandler) ProtocolSignIn(w http.ResponseWriter, r *http.Request) {
+func (h *CredentialHandler) protocolSignIn(r *http.Request, req protocolSignInRequest) (ProtocolSignedIn, error) {
 	claims := middleware.GetClaims(r)
 	if claims == nil || claims.CredentialID == 0 || claims.IsAPIKey() {
-		respond.Error(w, http.StatusBadRequest, "basic_required",
+		return ProtocolSignedIn{}, endpoint.Refuse(http.StatusBadRequest, "basic_required",
 			"Sign in here with HTTP Basic: the account's address, and its password or an app password")
-		return
-	}
-	var req protocolSignInRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
 	}
 	if !signInProtocols[req.Protocol] {
-		respond.ValidationError(w, map[string]string{"protocol": `must be "imap", "pop3" or "smtp"`})
-		return
+		return ProtocolSignedIn{}, endpoint.Invalid(map[string]string{"protocol": `must be "imap", "pop3" or "smtp"`})
 	}
 	var account models.Mailbox
 	if err := h.db.Select("id", "address", "display_name").Take(&account, claims.AccountID).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to load the account")
-		return
+		return ProtocolSignedIn{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to load the account")
 	}
-	respond.Data(w, http.StatusOK, map[string]any{
-		"user": userInfo{
+	return ProtocolSignedIn{
+		CredentialID:   claims.CredentialID,
+		CredentialKind: claims.CredentialKind,
+		User: userInfo{
 			ID:          account.ID,
 			Email:       account.Address,
 			DisplayName: account.DisplayName,
 		},
-		"credential_id":   claims.CredentialID,
-		"credential_kind": claims.CredentialKind,
-	})
+	}, nil
 }
 
 // BasicVerifier checks credentials sent with HTTP Basic against the

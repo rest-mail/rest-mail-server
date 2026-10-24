@@ -57,6 +57,10 @@ type Operation struct {
 	// SuccessStatuses are additional success statuses carrying the same response type.
 	SuccessStatuses []int
 
+	// Headers are the response headers every success answer carries, by name, for a handler
+	// that answers Headed: Set-Cookie on a sign-in.
+	Headers map[string]oapifly.ResponseHeader
+
 	// MediaType is the success answer's media type when the handler answers a Document: a
 	// page, a YAML document or a metrics exposition rather than the JSON envelope.
 	MediaType string
@@ -102,6 +106,8 @@ type Error struct {
 	Code    string
 	Message string
 	Fields  map[string]string
+	// Header is written with the refusal: the Retry-After of a 429.
+	Header http.Header
 }
 
 func (e *Error) Error() string { return fmt.Sprintf("%d %s: %s", e.Status, e.Code, e.Message) }
@@ -216,7 +222,11 @@ func Register[Req, Resp any](rs Routes, op Operation, handler func(*http.Request
 			writeError(w, err)
 			return
 		}
-		if reply, ok := any(out).(statusResponse); ok {
+		answer := any(out)
+		if headed, ok := answer.(headedResponse); ok {
+			_, answer = headed.responseHeader()
+		}
+		if reply, ok := answer.(statusResponse); ok {
 			status, _ := reply.responseStatus()
 			declared := status == op.Status
 			for _, additional := range op.SuccessStatuses {
@@ -238,6 +248,10 @@ func (reg *Registry) record(applied []oapifly.Middleware, op Operation, reqType,
 	}
 	reg.routes[key] = true
 
+	if respType.Implements(reflect.TypeOf((*headedResponse)(nil)).Elem()) {
+		headed := reflect.Zero(respType).Interface().(headedResponse)
+		respType, envelope = headed.headedType(), headed.headedEnvelope()
+	}
 	if respType.Implements(reflect.TypeOf((*statusResponse)(nil)).Elem()) {
 		reply := reflect.Zero(respType).Interface().(statusResponse)
 		respType, envelope = reply.responseType(), reply.responseEnvelope()
@@ -245,6 +259,11 @@ func (reg *Registry) record(applied []oapifly.Middleware, op Operation, reqType,
 	responses := []oapifly.EndpointResponse{successResponse(op, op.Status, respType, envelope)}
 	for _, status := range op.SuccessStatuses {
 		responses = append(responses, successResponse(op, status, respType, envelope))
+	}
+	if op.Headers != nil {
+		for i := range responses {
+			responses[i].Headers = op.Headers
+		}
 	}
 	errorStatuses := map[int]bool{http.StatusInternalServerError: true}
 	if shape.binds {
@@ -346,6 +365,7 @@ func write(w http.ResponseWriter, status int, out interface{}) {
 		raw.writeResponse(w)
 		return
 	}
+	out = unheaded(w, out)
 	if reply, ok := out.(statusResponse); ok {
 		status, out = reply.responseStatus()
 	}
@@ -374,12 +394,22 @@ func writeError(w http.ResponseWriter, err error) {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Internal server error")
 		return
 	}
+	for name, values := range refusal.Header {
+		for _, v := range values {
+			w.Header().Add(name, v)
+		}
+	}
 	if refusal.Fields != nil {
 		respond.ValidationError(w, refusal.Fields)
 		return
 	}
 	respond.Error(w, refusal.Status, refusal.Code, refusal.Message)
 }
+
+// WriteError writes err as a registered route would answer it: the refusal it is, with its
+// headers, or 500 for anything else. It is for a handler not yet registered that shares
+// code with registered ones.
+func WriteError(w http.ResponseWriter, err error) { writeError(w, err) }
 
 // shape is what a request type takes from a request, read once at registration by the rules
 // go-oapifly's Endpoint.Request describes it with.

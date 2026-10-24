@@ -103,7 +103,7 @@ func TestLogout_ClearsSessionCookies(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
 	req.AddCookie(&http.Cookie{Name: auth.RefreshCookieName, Value: pair.RefreshToken})
 	rr := httptest.NewRecorder()
-	h.Logout(rr, req)
+	serveAuth(h, rr, req)
 
 	if rr.Code != http.StatusNoContent {
 		t.Fatalf("logout: expected 204, got %d", rr.Code)

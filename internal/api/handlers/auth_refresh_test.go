@@ -98,7 +98,7 @@ func doRefresh(h *AuthHandler, refreshToken string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", nil)
 	req.AddCookie(&http.Cookie{Name: "restmail_refresh", Value: refreshToken})
 	rr := httptest.NewRecorder()
-	h.Refresh(rr, req)
+	serveAuth(h, rr, req)
 	return rr
 }
 
@@ -198,7 +198,7 @@ func TestLogout_RevokesRefreshToken(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
 	req.AddCookie(&http.Cookie{Name: "restmail_refresh", Value: pair.RefreshToken})
 	rr := httptest.NewRecorder()
-	h.Logout(rr, req)
+	serveAuth(h, rr, req)
 	if rr.Code != http.StatusNoContent {
 		t.Fatalf("logout: expected 204, got %d", rr.Code)
 	}
