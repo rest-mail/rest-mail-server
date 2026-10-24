@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -301,6 +303,9 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 	// and cancelled the implicit keep (RFC 5228 §4.2): the message is forwarded but
 	// NOT also stored to a local mailbox.
 	suppressLocalKeep := false
+	// sharedEmail is the message as the domain's pipeline left it, which each recipient's own
+	// Sieve script starts from (#787).
+	sharedEmail := emailJSON
 	if pipelineCfg != nil && h.engine != nil {
 		// Use the request context so a client disconnect / server shutdown cancels
 		// the pipeline. Combined with the engine's per-filter timeout backstop, a
@@ -340,19 +345,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 			case pipeline.ActionQuarantine:
 				for _, rcpt := range to {
 					if mailbox, _, ok := h.resolveRecipientMailbox(rcpt); ok {
-						preview := req.BodyText
-						if len(preview) > 200 {
-							preview = preview[:200]
-						}
-						h.db.Create(&models.Quarantine{
-							MailboxID:        mailbox.ID,
-							Sender:           req.From,
-							Subject:          req.Subject,
-							BodyPreview:      preview,
-							QuarantineReason: quarantineReason(result),
-							ReceivedAt:       time.Now(),
-							ExpiresAt:        time.Now().Add(30 * 24 * time.Hour),
-						})
+						h.quarantineFor(mailbox.ID, req.From, req.Subject, req.BodyText, result)
 					}
 				}
 				rmTrace.Outcome = outcomeQuarantined
@@ -366,6 +359,9 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 			// Carry the pipeline's verdicts forward so the message stored below
 			// records them (they are otherwise computed and thrown away).
 			authResults = result.Auth
+			if result.FinalEmail != nil {
+				sharedEmail = result.FinalEmail
+			}
 
 			// Sieve `redirect`: forward the ORIGINAL message onward to each recorded
 			// target via the outbound queue (the same path SMTP submission and
@@ -407,12 +403,56 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 		rawMessage = pipeline.AuthResultsHeader(authResults) + rawMessage
 	}
 
+	// Each recipient's own Sieve script runs on its own copy of the message, after the domain's
+	// pipeline ran once for all of them (#787). Every script runs before anything is stored,
+	// so one that cannot run defers the whole message, as a failed domain pipeline does, and
+	// no recipient gets the message twice when the peer retries.
+	sieved, err := h.runRecipientScripts(r.Context(), pipelineCfg, sharedEmail, to)
+	if err != nil {
+		slog.Error("restmail: a recipient's Sieve script could not run, deferring delivery", "error", err)
+		return RestmailDelivery{}, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
+	}
+
 	for _, rcpt := range to {
 		mailbox, deliveredTo, ok := h.resolveRecipientMailbox(rcpt)
 		if !ok {
 			failed = append(failed, rcpt)
 			continue
 		}
+
+		// The recipient's own script decides for this recipient alone: refused, dropped,
+		// held, forwarded instead, or kept, with its folder and flags. Without one, the
+		// domain pipeline's folder and flags apply.
+		final := sharedEmail
+		if own, ran := sieved[rcpt]; ran {
+			final = own.FinalEmail
+			switch own.FinalAction {
+			case pipeline.ActionReject:
+				failed = append(failed, rcpt)
+				continue
+			case pipeline.ActionDiscard:
+				delivered = append(delivered, rcpt)
+				continue
+			case pipeline.ActionQuarantine:
+				h.quarantineFor(mailbox.ID, req.From, req.Subject, req.BodyText, own)
+				failed = append(failed, rcpt)
+				continue
+			}
+			forwarded := 0
+			for _, fwd := range buildRedirectForwards(final, req.RawMessage, req.From, []string{rcpt}) {
+				row := fwd
+				if err := h.db.Create(&row).Error; err != nil {
+					slog.Error("restmail: failed to enqueue sieve redirect", "recipient", row.Recipient, "error", err)
+					continue
+				}
+				forwarded++
+			}
+			if forwarded > 0 && redirectSuppressesKeep(final) {
+				delivered = append(delivered, rcpt)
+				continue
+			}
+		}
+		flags := sieveFlagsOf(final)
 
 		// Check quota
 		if mailbox.QuotaBytes > 0 && mailbox.QuotaUsedBytes >= mailbox.QuotaBytes {
@@ -439,7 +479,10 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 
 		msg := models.Message{
 			MailboxID:    mailbox.ID,
-			Folder:       "INBOX",
+			Folder:       sieveFolder(final, mailbox.Address),
+			IsRead:       flags.seen,
+			IsFlagged:    flags.flagged,
+			IsDraft:      flags.draft,
 			MsgID:        req.MessageID,
 			InReplyTo:    req.InReplyTo,
 			References:   req.References,
@@ -490,6 +533,62 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 		return RestmailDelivery{}, endpoint.Refuse(http.StatusUnprocessableEntity, "undeliverable", "No recipient accepted the message")
 	}
 	return RestmailDelivery{Delivered: delivered, Failed: failed}, nil
+}
+
+// runRecipientScripts runs each recipient's own Sieve script, the ones that have one, on its
+// copy of email, and returns their results by recipient. An error, or a script that defers,
+// stops them all: the caller defers the message.
+func (h *RestmailHandler) runRecipientScripts(ctx context.Context, cfg *pipeline.PipelineConfig, email *pipeline.EmailJSON, to []string) (map[string]*pipeline.ExecutionResult, error) {
+	sieved := map[string]*pipeline.ExecutionResult{}
+	if cfg == nil || h.engine == nil {
+		return sieved, nil
+	}
+	for _, rcpt := range to {
+		mailbox, _, ok := h.resolveRecipientMailbox(rcpt)
+		if !ok {
+			continue
+		}
+		own, err := accountSieveOnly(h.db, cfg, mailbox.ID)
+		if err != nil {
+			return nil, err
+		}
+		if own == nil {
+			continue
+		}
+		copied, err := recipientCopy(email, rcpt)
+		if err != nil {
+			return nil, err
+		}
+		result, err := h.engine.Execute(ctx, own, copied)
+		if err != nil {
+			return nil, fmt.Errorf("%s's Sieve script: %w", rcpt, err)
+		}
+		if result.FinalAction == pipeline.ActionDefer {
+			return nil, fmt.Errorf("%s's Sieve script deferred the message", rcpt)
+		}
+		if result.FinalEmail == nil {
+			result.FinalEmail = copied
+		}
+		sieved[rcpt] = result
+	}
+	return sieved, nil
+}
+
+// quarantineFor holds a RESTMAIL message for mailboxID, with the pipeline's reason.
+func (h *RestmailHandler) quarantineFor(mailboxID uint, from, subject, bodyText string, result *pipeline.ExecutionResult) {
+	preview := bodyText
+	if len(preview) > 200 {
+		preview = preview[:200]
+	}
+	h.db.Create(&models.Quarantine{
+		MailboxID:        mailboxID,
+		Sender:           from,
+		Subject:          subject,
+		BodyPreview:      preview,
+		QuarantineReason: quarantineReason(result),
+		ReceivedAt:       time.Now(),
+		ExpiresAt:        time.Now().Add(30 * 24 * time.Hour),
+	})
 }
 
 // buildInboundEmail assembles the pipeline EmailJSON for a RESTMAIL inbound
