@@ -1,0 +1,61 @@
+# openapi-example.json findings not yet fixed (#625), one a line, taken off as each is
+# fixed: TestExamplePairsFitTheDescription fails on one not listed and on one listed that
+# is gone. Each is "kind operationId/example [status]":
+# - example-invalid on a request marked invalid: the 400 or 422 comes from a rule the
+#   request type does not state; state it in the type (go-oapifly#23), or, for a rule no
+#   schema can state, take the mark off the example.
+# - example-invalid on a response: the example and the response type disagree.
+example-invalid bulkBounceQueue/selection_missing
+example-invalid bulkDeleteQueue/selection_missing
+example-invalid bulkRetryQueue/selection_missing
+example-invalid createAPIKey/permissions_missing
+example-invalid createAPIKey/wildcard_capability
+example-invalid createAlias/source_invalid
+example-invalid createAppPassword/name_control
+example-invalid createAppPassword/name_empty
+example-invalid createAppPassword/name_too_long
+example-invalid createContact/email_invalid
+example-invalid createContact/trust_level_invalid
+example-invalid createDomain/created 201
+example-invalid createFolder/name_empty
+example-invalid createPipeline/direction_missing
+example-invalid createPipeline/filters_missing
+example-invalid importContacts/contacts_empty
+example-invalid importContacts/email_invalid
+example-invalid importContacts/mixed_batch
+example-invalid linkAccount/address_blank
+example-invalid linkAccount/address_missing
+example-invalid linkAccount/password_empty
+example-invalid linkAccount/password_missing
+example-invalid login/client_invalid
+example-invalid login/email_missing
+example-invalid login/password_missing
+example-invalid probeServices/service_unknown
+example-invalid protocolSignIn/protocol_missing
+example-invalid putSieveScript/script_null
+example-invalid putSieveScript/valid 200
+example-invalid restmailDeliver/recipients_missing
+example-invalid sendMessage/from_missing
+example-invalid sendMessage/unsubscribe_not_allowed
+example-invalid sendMessage/unsubscribe_not_allowed 422
+example-invalid sendMessage/valid 201
+example-invalid setDKIMKey/private_key_invalid
+example-invalid setDomainRelay/credentials_mismatch
+example-invalid setDomainRelay/host_invalid
+example-invalid setVacation/body_missing
+example-invalid setVacation/dates_reversed
+example-invalid setVacation/reply_missing
+example-invalid setVacation/subject_missing
+example-invalid testFilter/filter_name_missing
+example-invalid testPipeline/email_missing
+example-invalid testPipeline/valid 200
+example-invalid updateAlias/destination_invalid
+example-invalid updateCustomFilter/config_array
+example-invalid updateCustomFilter/config_null
+example-invalid updateCustomFilter/name_empty
+example-invalid updateDomain/updated 200
+example-invalid updateMailbox/password_short
+example-invalid updatePipeline/filters_null
+example-invalid updatePipeline/filters_object
+example-invalid validateCustomFilter/script_missing
+example-invalid validateSieveScript/script_null
