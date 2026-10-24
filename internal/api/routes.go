@@ -355,7 +355,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// ═══════════════════════════════════════════════════════════════
 	// Email client auto-configuration (no auth)
 	// ═══════════════════════════════════════════════════════════════
-	autoconfigH := handlers.NewAutoconfigHandler(db)
+	autoconfigH := handlers.NewAutoconfigHandler(db, cfg.GatewayHostname)
 	r.Get("/mail/config-v1.1.xml", autoconfigH.MozillaAutoconfig)
 	r.Get("/.well-known/autoconfig/mail/config-v1.1.xml", autoconfigH.MozillaAutoconfig)
 	r.Post("/autodiscover/autodiscover.xml", autoconfigH.MicrosoftAutodiscover)
@@ -490,11 +490,9 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// ═══════════════════════════════════════════════════════════════
 	restmailDiscoveryH := handlers.NewRestmailDiscoveryHandler(db, cfg.GatewayHostname)
 	r.Get("/.well-known/restmail", restmailDiscoveryH.Discover)
-	r.Get("/restmail/capabilities", restmailH.Capabilities)
-	r.Get("/restmail/mailboxes", restmailH.CheckMailbox)
 	// OSI-7: same delivery-body bound as the machine deliver route — the RESTMAIL
 	// hop must accept up to a full max-size message but not buffer without limit.
-	r.With(deliverBodyLimit).Post("/restmail/messages", restmailH.Deliver)
+	restmailH.Register(endpoint.Routes{Router: r, Registry: registry}, endpoint.Middleware{Wrap: deliverBodyLimit})
 
 	// ═══════════════════════════════════════════════════════════════
 	// SSE — outside the JWT middleware group; the handler authenticates from the
@@ -621,19 +619,14 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		messageH.RegisterMessages(mail)
 		searchH.Register(mail)
 		attachmentH.RegisterList(mail)
+		messageH.RegisterCompose(mail)
 
 		// Messages
 		r.Post("/api/v1/messages/send", messageH.SendMessage)
-		r.Get("/api/v1/messages/scheduled", messageH.ListScheduledSends)
-		r.Delete("/api/v1/messages/scheduled/{id}", messageH.CancelScheduledSend)
 		r.Get("/api/v1/messages/{id}/raw", messageH.GetRawMessage)
 		r.Post("/api/v1/messages/{id}/forward", messageH.ForwardMessage)
-		r.Post("/api/v1/messages/{id}/calendar-reply", messageH.RespondToCalendar)
-		r.Get("/api/v1/accounts/{id}/calendar-events", messageH.ListCalendarEvents)
 
 		// Drafts
-		r.Post("/api/v1/messages/draft", messageH.SaveDraft)
-		r.Put("/api/v1/messages/draft/{id}", messageH.UpdateDraft)
 		r.Post("/api/v1/messages/draft/{id}/send", messageH.SendDraft)
 
 		// Attachments

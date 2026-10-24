@@ -24,25 +24,25 @@ func TestRetrySchedules(t *testing.T) {
 	}{
 		{models.FailureGreylisted,
 			[]time.Duration{7 * time.Minute, 14 * time.Minute, 28 * time.Minute, 56 * time.Minute, 112 * time.Minute, 224 * time.Minute, 4 * time.Hour},
-			4 * time.Hour, 72 * time.Hour},
+			4 * time.Hour, models.QueueLifetime},
 		{models.FailureRateLimited,
 			[]time.Duration{15 * time.Minute, 30 * time.Minute, time.Hour, 2 * time.Hour, 4 * time.Hour},
-			4 * time.Hour, 72 * time.Hour},
+			4 * time.Hour, models.QueueLifetime},
 		{models.FailureMailboxFull,
 			[]time.Duration{time.Hour, 2 * time.Hour, 4 * time.Hour, 8 * time.Hour},
-			8 * time.Hour, 48 * time.Hour},
+			8 * time.Hour, models.QueueLifetime},
 		{models.FailureTLS,
 			[]time.Duration{15 * time.Minute, 30 * time.Minute, time.Hour, 2 * time.Hour, 4 * time.Hour},
-			4 * time.Hour, 72 * time.Hour},
+			4 * time.Hour, models.QueueLifetime},
 		{models.FailureDNS,
 			[]time.Duration{5 * time.Minute, 10 * time.Minute, 20 * time.Minute, 40 * time.Minute, 80 * time.Minute, 160 * time.Minute, 4 * time.Hour},
-			4 * time.Hour, 72 * time.Hour},
+			4 * time.Hour, models.QueueLifetime},
 		{models.FailureConnection,
-			[]time.Duration{time.Minute, 2 * time.Minute, 4 * time.Minute, 8 * time.Minute, 16 * time.Minute, 32 * time.Minute, 64 * time.Minute, 128 * time.Minute, 4 * time.Hour},
-			4 * time.Hour, 72 * time.Hour},
+			[]time.Duration{5 * time.Minute, 10 * time.Minute, 20 * time.Minute, 40 * time.Minute, 80 * time.Minute, 160 * time.Minute, 4 * time.Hour},
+			4 * time.Hour, models.QueueLifetime},
 		{models.FailureOtherTransient,
-			[]time.Duration{time.Minute, 2 * time.Minute, 4 * time.Minute, 8 * time.Minute, 16 * time.Minute, 32 * time.Minute, 64 * time.Minute, 128 * time.Minute, 4 * time.Hour},
-			4 * time.Hour, 72 * time.Hour},
+			[]time.Duration{5 * time.Minute, 10 * time.Minute, 20 * time.Minute, 40 * time.Minute, 80 * time.Minute, 160 * time.Minute, 4 * time.Hour},
+			4 * time.Hour, models.QueueLifetime},
 	}
 	if len(cases) != len(transientCategories) {
 		t.Fatalf("%d schedules tested, %d transient categories", len(cases), len(transientCategories))
@@ -71,20 +71,42 @@ func TestRetrySchedules(t *testing.T) {
 }
 
 // A schedule never needs more attempts than a message's default budget to
-// reach its maximum age, or the budget, not the schedule, would decide when a
-// message bounces.
+// reach its maximum age, even with every delay jittered as short as it goes,
+// or the budget, not the schedule, would decide when a message bounces (#711).
 func TestRetrySchedules_FitTheDefaultBudget(t *testing.T) {
-	const defaultBudget = 30
 	for _, c := range transientCategories {
 		s := retrySchedules[c]
 		attempts, at := 1, time.Duration(0)
-		for at+s.delay(attempts) < s.maxAge {
-			at += s.delay(attempts)
+		shortest := func(attempts int) time.Duration {
+			return time.Duration(float64(s.delay(attempts)) * (1 - backoffJitterFraction))
+		}
+		for at+shortest(attempts) < s.maxAge {
+			at += shortest(attempts)
 			attempts++
 		}
-		if attempts > defaultBudget {
-			t.Errorf("%s: %d attempts within %s, more than the budget of %d", c, attempts, s.maxAge, defaultBudget)
+		if attempts >= models.DefaultMaxRetries {
+			t.Errorf("%s: %d attempts within %s, the budget of %d runs out first", c, attempts, s.maxAge, models.DefaultMaxRetries)
 		}
+	}
+}
+
+// A message is retried for at least four to five days before it bounces
+// (RFC 5321 §4.5.4.1), and by default for five (#711).
+func TestRetrySchedules_RetryForDays(t *testing.T) {
+	if models.QueueLifetime != 5*24*time.Hour {
+		t.Errorf("the queue's lifetime is %s, want five days", models.QueueLifetime)
+	}
+	for _, c := range transientCategories {
+		if age := retrySchedules[c].maxAge; age < 4*24*time.Hour {
+			t.Errorf("%s bounces after %s, under four days", c, age)
+		}
+	}
+	var q models.OutboundQueue
+	if err := q.BeforeCreate(nil); err != nil {
+		t.Fatal(err)
+	}
+	if until := time.Until(q.ExpiresAt); until < models.QueueLifetime-time.Minute || q.MaxRetries != models.DefaultMaxRetries {
+		t.Errorf("a new message expires in %s with a budget of %d; want %s and %d", until, q.MaxRetries, models.QueueLifetime, models.DefaultMaxRetries)
 	}
 }
 
@@ -133,7 +155,7 @@ func TestRetryAt(t *testing.T) {
 	created := time.Date(2026, 10, 17, 9, 0, 0, 0, time.UTC)
 	item := func(attempts int, age time.Duration) (models.OutboundQueue, time.Time) {
 		return models.OutboundQueue{
-			Attempts: attempts, MaxRetries: 30, CreatedAt: created, ExpiresAt: created.Add(72 * time.Hour),
+			Attempts: attempts, MaxRetries: models.DefaultMaxRetries, CreatedAt: created, ExpiresAt: created.Add(models.QueueLifetime),
 		}, created.Add(age)
 	}
 
@@ -148,13 +170,13 @@ func TestRetryAt(t *testing.T) {
 		}
 	})
 	t.Run("bounces once the next try would pass the category's maximum age", func(t *testing.T) {
-		it, now := item(5, 47*time.Hour) // a full mailbox, two days on: 8h to the next try
+		it, now := item(5, 116*time.Hour) // a full mailbox, four hours short of five days: 8h to the next try
 		if _, ok := retryAt(it, models.FailureMailboxFull, now); ok {
-			t.Error("a mailbox full for two days is still retried")
+			t.Error("a mailbox full until the queue's lifetime is up is still retried")
 		}
-		// The same message, failing for another reason, has a day left.
+		// The same message, failing for another reason, retries within the time left.
 		if _, ok := retryAt(it, models.FailureConnection, now); !ok {
-			t.Error("a connection failure at 47h is not retried")
+			t.Error("a connection failure at 116h is not retried")
 		}
 	})
 	t.Run("bounces before its own expiry", func(t *testing.T) {
@@ -165,13 +187,13 @@ func TestRetryAt(t *testing.T) {
 		}
 	})
 	t.Run("bounces when its retry budget is spent", func(t *testing.T) {
-		it, now := item(30, time.Hour)
+		it, now := item(models.DefaultMaxRetries, time.Hour)
 		if _, ok := retryAt(it, models.FailureConnection, now); ok {
-			t.Error("retried after its 30th attempt")
+			t.Errorf("retried after its %dth attempt", models.DefaultMaxRetries)
 		}
-		it.Attempts = 29
+		it.Attempts = models.DefaultMaxRetries - 1
 		if _, ok := retryAt(it, models.FailureConnection, now); !ok {
-			t.Error("not retried after its 29th attempt")
+			t.Errorf("not retried after its %dth attempt", models.DefaultMaxRetries-1)
 		}
 	})
 }
