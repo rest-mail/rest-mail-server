@@ -146,15 +146,16 @@ port 4190.
 ## How REST Mail handles it
 
 - **IMAP on port 993 only,** encrypted from the first byte, with `IDLE`,
-  `MOVE`, `QUOTA`, `UIDPLUS`, `UNSELECT`, `ENABLE` and `UTF8=ACCEPT`. The
-  protocol is [`rest-mail/go-imap`](https://github.com/rest-mail/go-imap), a
-  server library with a test for each RFC; REST Mail's gateway only supplies
+  `MOVE`, `QUOTA`, `UIDPLUS`, `UNSELECT`, `ENABLE`, `UTF8=ACCEPT` and
+  `SPECIAL-USE`, and with these parts of IMAP4rev2: `SASL-IR`, `LITERAL-`,
+  `NAMESPACE`, `ESEARCH`, `SEARCHRES`, `LIST-EXTENDED`, `LIST-STATUS`,
+  `STATUS=SIZE` and `BINARY`. The protocol is [`rest-mail/go-imap`](https://github.com/rest-mail/go-imap),
+  a server library with a test for each RFC; REST Mail's gateway only supplies
   the mailboxes, from the REST API
-  ([`internal/gateway/imap/`](../../../internal/gateway/imap/)). Sent, Drafts
-  and Trash are marked with their roles in `LIST`; marking Spam as `\Junk` and
-  Archive as `\Archive`, and advertising `SPECIAL-USE`, is
-  [#717](https://github.com/rest-mail/rest-mail-server/issues/717). It speaks
-  IMAP4rev1; IMAP4rev2 is [#718](https://github.com/rest-mail/rest-mail-server/issues/718).
+  ([`internal/gateway/imap/`](../../../internal/gateway/imap/)). Sent, Drafts,
+  Trash, Spam and Archive carry their roles (`\Sent`, `\Drafts`, `\Trash`,
+  `\Junk`, `\Archive`) in `LIST`. It speaks IMAP4rev1; the rest of IMAP4rev2
+  is [#718](https://github.com/rest-mail/rest-mail-server/issues/718).
 - **POP3 on port 995 only,** from [`rest-mail/go-pop3`](https://github.com/rest-mail/go-pop3)
   ([`internal/gateway/pop3/`](../../../internal/gateway/pop3/)).
 - **Apps that do not ask for UTF-8** get headers rewritten into ASCII, as

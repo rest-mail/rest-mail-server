@@ -48,7 +48,7 @@ it. Each row links to the chapter that explains it.
 
 | Problem | Email as a whole | REST Mail |
 |---|---|---|
-| [Mail on every device](../how-email-works/reading-mail.md) | Solved by IMAP; JMAP for mobile and web | IMAP4rev1 and its key extensions; IMAP4rev2 ([#718](https://github.com/rest-mail/rest-mail-server/issues/718)), SPECIAL-USE ([#717](https://github.com/rest-mail/rest-mail-server/issues/717)), JMAP ([#720](https://github.com/rest-mail/rest-mail-server/issues/720)) not yet |
+| [Mail on every device](../how-email-works/reading-mail.md) | Solved by IMAP; JMAP for mobile and web | IMAP4rev1 and its key extensions, SPECIAL-USE, and most of IMAP4rev2's; IMAP4rev2 itself ([#718](https://github.com/rest-mail/rest-mail-server/issues/718)) and JMAP ([#720](https://github.com/rest-mail/rest-mail-server/issues/720)) not yet |
 | [Server-side rules](../how-email-works/reading-mail.md#sieve-rules-that-run-on-the-server) | Solved by Sieve and ManageSieve | Sieve; no ManageSieve ([#719](https://github.com/rest-mail/rest-mail-server/issues/719)) |
 | [Mail app setup](../how-email-works/finding-the-server.md) | Being solved: autoconfig is an IETF draft; SRV records | Autoconfig and Autodiscover, with two bugs ([#721](https://github.com/rest-mail/rest-mail-server/issues/721), [#722](https://github.com/rest-mail/rest-mail-server/issues/722)); SRV records ([#712](https://github.com/rest-mail/rest-mail-server/issues/712)) |
 
