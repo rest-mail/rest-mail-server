@@ -6715,6 +6715,19 @@ paths:
         worker has the domain: the staged key's TXT record to publish, when it
         was seen resolving and when signing moves to it, and the previous key
         kept until its retirement deadline.
+      # Links fill the successful lookup; this named ID stays absent.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          examples:
+            found:
+              value: 1
+            missing:
+              value: 2147483647
       responses:
         "200":
           description: DKIM rotation settings
@@ -6733,7 +6746,17 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          $ref: "#/components/responses/NotFound"
+          description: Domain not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missing:
+                  value:
+                    error:
+                      code: not_found
+                      message: Domain not found
     put:
       operationId: setDKIMRotation
       tags: ["Admin: DKIM"]
@@ -8562,6 +8585,19 @@ paths:
         - BearerAuth: [domains:read]
         - APIKeyAuth: [domains:read]
       summary: Live DNS record check (MX, SPF, DMARC, DKIM, MTA-STS) for a domain
+      # Links fill the successful lookup; this named ID stays absent.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          examples:
+            found:
+              value: 1
+            missing:
+              value: 2147483647
       responses:
         "200":
           description: DNS check result
@@ -8574,7 +8610,17 @@ paths:
                   data:
                     $ref: "#/components/schemas/DNSCheckResult"
         "404":
-          $ref: "#/components/responses/NotFound"
+          description: Domain not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missing:
+                  value:
+                    error:
+                      code: domain_not_found
+                      message: Domain not found
 
   # ═══════════════════════════════════════════════════════════════
   # Admin: Suppressions
@@ -8650,6 +8696,19 @@ paths:
         - BearerAuth: [domains:read]
         - APIKeyAuth: [domains:read]
       summary: Get the MTA-STS policy for a domain
+      # Links fill the successful lookup; this named ID stays absent.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          examples:
+            found:
+              value: 1
+            missing:
+              value: 2147483647
       responses:
         "200":
           description: MTA-STS policy
@@ -8667,7 +8726,17 @@ paths:
               parameters:
                 id: '$request.path.id'
         "404":
-          $ref: "#/components/responses/NotFound"
+          description: Domain not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missing:
+                  value:
+                    error:
+                      code: not_found
+                      message: Domain not found
     put:
       operationId: setMtaStsPolicy
       tags: ["Admin: MTA-STS"]
@@ -8820,6 +8889,19 @@ paths:
         each recipient's MX, `relay` hands every message to the configured
         SMTP relay. A domain with nothing configured is `direct`. The relay
         password is never returned, only whether one is set.
+      # Links fill the successful lookup; this named ID stays absent.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          examples:
+            found:
+              value: 1
+            missing:
+              value: 2147483647
       responses:
         "200":
           description: Outbound transport
@@ -8831,17 +8913,29 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/DomainRelay"
-              example:
-                data:
-                  domain_id: 1
-                  transport: relay
-                  host: smtp.example.net
-                  port: 587
-                  tls_mode: starttls
-                  username: apikey
-                  password_set: true
+              examples:
+                found:
+                  value:
+                    data:
+                      domain_id: 1
+                      transport: relay
+                      host: smtp.example.net
+                      port: 587
+                      tls_mode: starttls
+                      username: apikey
+                      password_set: true
         "404":
-          $ref: "#/components/responses/NotFound"
+          description: Domain not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missing:
+                  value:
+                    error:
+                      code: not_found
+                      message: Domain not found
     put:
       operationId: setDomainRelay
       tags: ["Admin: Domains"]

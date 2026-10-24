@@ -1362,6 +1362,34 @@
       }
     }
   },
+  "domainDNSCheck": {
+    "found": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "domain_not_found",
+            "message": "Domain not found"
+          }
+        }
+      }
+    }
+  },
   "enrollTwoFactor": {
     "example": {
       "summary": "The operation's example",
@@ -1481,6 +1509,34 @@
       }
     }
   },
+  "getDKIMRotation": {
+    "found": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Domain not found"
+          }
+        }
+      }
+    }
+  },
   "getDomain": {
     "found": {
       "request": {
@@ -1510,9 +1566,12 @@
     }
   },
   "getDomainRelay": {
-    "example": {
-      "summary": "The operation's example",
-      "request": {},
+    "found": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
       "response": {
         "status": 200,
         "body": {
@@ -1524,6 +1583,22 @@
             "tls_mode": "starttls",
             "username": "apikey",
             "password_set": true
+          }
+        }
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Domain not found"
           }
         }
       }
@@ -1552,6 +1627,34 @@
           "error": {
             "code": "mailbox_not_found",
             "message": "Mailbox not found"
+          }
+        }
+      }
+    }
+  },
+  "getMtaStsPolicy": {
+    "found": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Domain not found"
           }
         }
       }
