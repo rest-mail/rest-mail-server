@@ -13,7 +13,8 @@ import (
 const (
 	// CredentialKindPassword is a password the account signs in with
 	// interactively, and through the protocol gateways when it has no TOTP.
-	// SecretHash is its {BLF-CRYPT} bcrypt hash.
+	// SecretHash is its bcrypt hash, or a supported imported SHA-crypt hash
+	// until a password proof upgrades it.
 	CredentialKindPassword = "password"
 	// CredentialKindTOTP is an authenticator (RFC 6238). EncryptedSecret is its
 	// base32 secret, encrypted with MASTER_KEY; it counts once ConfirmedAt is

@@ -9871,6 +9871,17 @@ components:
           description: >
             Optional. With one, the account can be signed in to; without one
             it has no credentials, and is reached only through its owners.
+        password_hash:
+          type: string
+          maxLength: 256
+          pattern: '^((\{BLF-CRYPT\})?\$2[aby]\$(0[4-9]|1[0-4])\$[./A-Za-z0-9]{53}|(\{SHA256-CRYPT\})?\$5\$(rounds=([1-9][0-9]{3,5}|1000000)\$)?[./A-Za-z0-9]{1,16}\$[./A-Za-z0-9]{43}|(\{SHA512-CRYPT\})?\$6\$(rounds=([1-9][0-9]{3,5}|1000000)\$)?[./A-Za-z0-9]{1,16}\$[./A-Za-z0-9]{86}|)$'
+          description: >
+            Import an existing BLF-CRYPT, SHA256-CRYPT or SHA512-CRYPT hash,
+            with its Dovecot scheme prefix or as raw crypt(3). Mutually
+            exclusive with password. bcrypt costs 4–14 and SHA-crypt rounds
+            1000–1000000 are accepted. SHA-crypt is upgraded to bcrypt after
+            a matching password proof, unless the password exceeds bcrypt's
+            72-byte limit. Weak schemes are refused. Never returned.
 
     Credential:
       type: object

@@ -201,6 +201,9 @@ type createAccountRequest struct {
 	// can be signed in to. Without one the account has no credentials, and is
 	// reached only through its owners.
 	Password string `json:"password,omitempty"`
+	// PasswordHash imports an existing crypt(3) password without resetting it.
+	// Mutually exclusive with Password; never returned or written to audit.
+	PasswordHash string `json:"password_hash,omitempty" maxLength:"256" pattern:"^((\\{BLF-CRYPT\\})?\\$2[aby]\\$(0[4-9]|1[0-4])\\$[./A-Za-z0-9]{53}|(\\{SHA256-CRYPT\\})?\\$5\\$(rounds=([1-9][0-9]{3,5}|1000000)\\$)?[./A-Za-z0-9]{1,16}\\$[./A-Za-z0-9]{43}|(\\{SHA512-CRYPT\\})?\\$6\\$(rounds=([1-9][0-9]{3,5}|1000000)\\$)?[./A-Za-z0-9]{1,16}\\$[./A-Za-z0-9]{86}|)$"`
 }
 
 // ActionAccountsCreate is the audit action of a created account.
@@ -230,6 +233,18 @@ func (h *AccountHandler) create(r *http.Request, req createAccountRequest) (acco
 	if req.Password != "" && len(req.Password) < minChosenPasswordLength {
 		problems["password"] = fmt.Sprintf("must be at least %d characters", minChosenPasswordLength)
 	}
+	var importedHash string
+	if req.PasswordHash != "" {
+		if req.Password != "" {
+			problems["password_hash"] = "send password or password_hash, not both"
+		} else {
+			var err error
+			importedHash, err = auth.NormalizeImportedPasswordHash(req.PasswordHash)
+			if err != nil {
+				problems["password_hash"] = err.Error()
+			}
+		}
+	}
 	if len(problems) > 0 {
 		return accountResponse{}, endpoint.Invalid(problems)
 	}
@@ -251,7 +266,7 @@ func (h *AccountHandler) create(r *http.Request, req createAccountRequest) (acco
 		return accountResponse{}, fmt.Errorf("read the domain: %w", err)
 	}
 
-	var hash string
+	hash := importedHash
 	if req.Password != "" {
 		if hash, err = hashPassword(req.Password); err != nil {
 			return accountResponse{}, fmt.Errorf("set the password: %w", err)

@@ -460,6 +460,26 @@
           }
         }
       }
+    },
+    "hash_imported": {
+      "request": {
+        "body": {
+          "address": "imported@restmail.test",
+          "display_name": "Imported Account",
+          "password_hash": "{SHA512-CRYPT}$6$importsalt$ObInO4qcr134i8FQT.XNC6Ma04n9aRTAUNHmm8Yb1idoDBOXKoDTmdosY1xwfageGXo4ZSSrkIPRk9zMWfsG7/"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 3,
+            "address": "imported@restmail.test",
+            "display_name": "Imported Account",
+            "is_primary": false
+          }
+        }
+      }
     }
   },
   "createAlias": {

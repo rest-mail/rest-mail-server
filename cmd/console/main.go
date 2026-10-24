@@ -25,6 +25,7 @@ const topUsage = `restmail — run a rest-mail server
   restmail reset-admin   let an admin back in; also hands a server over
   restmail sign-in-link  the link, and QR code, that opens the app signed in
   restmail password-hash a bcrypt hash of an admin password, for a deployment
+  restmail import-account create an account with its existing password hash
   restmail version       print the version
   restmail [flags]       the interactive admin console (-api, -user, -pass)
 
@@ -104,6 +105,8 @@ func runSubcommand(args []string, stdout, stderr io.Writer) (code int, handled b
 		return runSignInLink(args[2:], os.Stdin, stdout, stderr), true
 	case "password-hash":
 		return runPasswordHash(args[2:], os.Stdin, stdout, stderr), true
+	case "import-account":
+		return runImportAccount(context.Background(), args[2:], os.Stdin, os.Getenv("RESTMAIL_API_KEY"), client, stdout, stderr), true
 	case "version":
 		fmt.Fprintln(stdout, "restmail", version)
 		return 0, true
