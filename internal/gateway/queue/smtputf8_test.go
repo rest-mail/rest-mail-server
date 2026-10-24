@@ -63,7 +63,7 @@ func TestSMTPInternationalizedDelivery(t *testing.T) {
 				w := &Worker{hostname: "sender.test", tlsInsecure: true, allowPrivateDest: true, sendDeadline: defaultSendDeadline}
 				var err error
 				if transport == "direct" {
-					err = w.deliverSMTP(net.JoinHostPort(settings.host, strconv.Itoa(settings.port)), settings.host, item, nil)
+					err = w.deliverSMTP(net.JoinHostPort(settings.host, strconv.Itoa(settings.port)), settings.host, item, nil, nil)
 				} else {
 					err = w.deliverToRelay(context.Background(), settings, item)
 				}
