@@ -206,45 +206,15 @@ jobs:
         # (--sequence) so each read, update and delete addresses what its create
         # made. The examples phase checks each documented answer; the coverage
         # phase sends every boundary each schema implies and requires a 4xx for
-        # each one outside it. Both are deterministic, so both gate: the
-        # examples here, through vertrag.yml's surface gate, and the coverage
-        # ratchet in the step after this one. See vertrag.yml and tests/contract/.
+        # each one outside it, held to tests/contract/coverage-baseline.txt,
+        # which only shrinks. tests/contract/run.sh is the same check
+        # `chore contract` runs on a person's machine (#627); see
+        # tests/contract/README.md.
         id: contract
         if: inputs.contract-phases == 'gate'
-        run: |
-          set -euo pipefail
-          # 1 is a failed transaction (or a run that could not be carried out)
-          # and 3 an operation not exercised and passing (vertrag.yml's surface
-          # gate): both fail here. 2 is a failed boundary probe, which the
-          # ratchet below judges from the report.
-          code=0
-          # vertrag writes its report here and makes no directories itself.
-          mkdir -p .cache/contract
-          # Pins also replace named examples in vertrag 0.29. First enforce
-          # every example and the full surface gate with no generated pins.
-          vertrag run --sequence --phases examples 2>&1 | tee "$RUNNER_TEMP/contract-examples.log"
-          python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
-          # The second process repeats create examples after the first one
-          # consumed its queue entry and left its folder and contact behind.
-          python3 tests/contract/repeat_fixtures.py vertrag.yml
-          chore test:contract-fixtures
-          trap 'rm -f .cache/contract/vertrag-probes.yml' EXIT
-          python3 tests/contract/probes.py vertrag.yml .cache/contract/vertrag-probes.yml \
-            .cache/contract/coverage.xml
-          vertrag run --config .cache/contract/vertrag-probes.yml --sequence --phases coverage \
-            2>&1 | tee "$RUNNER_TEMP/contract.log" || code=$?
-          echo "vertrag exited $code"
-          if [ "$code" -ne 0 ] && [ "$code" -ne 2 ]; then exit "$code"; fi
-
-      - name: Contract gate (the coverage baseline only shrinks)
-        # No failing probe outside tests/contract/coverage-baseline.txt, and no
-        # operation left in it once its probes pass; and every operation
-        # vertrag.yml never sends is one its surface gate does not count.
-        if: always() && steps.contract.outcome != 'skipped'
-        run: |
-          python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
-          python3 tests/contract/gate.py openapi.yaml vertrag.yml .cache/contract/coverage.xml \
-            tests/contract/coverage-baseline.txt
+        env:
+          CONTRACT_LOGS: ${{ runner.temp }}
+        run: tests/contract/run.sh gate
 
       - name: Contract tests (authorization, report only)
         # Examples always run first, then the matrix repeats destructive
@@ -254,34 +224,18 @@ jobs:
         if: ${{ !cancelled() && steps.contract.outcome != 'skipped' && inputs.contract-phases == 'gate' }}
         continue-on-error: true
         timeout-minutes: 10
-        run: |
-          mkdir -p .cache/contract
-          python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
-          trap 'rm -f .cache/contract/vertrag-authorization.yml' EXIT
-          python3 tests/contract/authorization.py openapi.yaml vertrag.yml \
-            .cache/contract-principals.json .cache/contract/vertrag-authorization.yml \
-            .cache/contract/authorization.xml
-          code=0
-          vertrag run --config .cache/contract/vertrag-authorization.yml --sequence --phases authorization \
-            > "$RUNNER_TEMP/contract-authorization.log" 2>&1 || code=$?
-          cat "$RUNNER_TEMP/contract-authorization.log"
-          echo "vertrag authorization exited $code (report only)"
-          exit "$code"
+        env:
+          CONTRACT_LOGS: ${{ runner.temp }}
+        run: tests/contract/run.sh authorization
 
       - name: Contract tests (fuzz)
         # Values drawn from each schema, with shrinking and a replayable seed
         # (in the log). Exploratory, so it reports and never fails the run:
         # findings exit 2, and its report is uploaded with the logs below.
         if: inputs.contract-phases == 'fuzz'
-        run: |
-          mkdir -p .cache/contract
-          python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
-          trap 'rm -f .cache/contract/vertrag-probes.yml' EXIT
-          python3 tests/contract/probes.py vertrag.yml .cache/contract/vertrag-probes.yml \
-            .cache/contract/fuzz.xml
-          vertrag run --config .cache/contract/vertrag-probes.yml --sequence --phases fuzz \
-            > "$RUNNER_TEMP/contract-fuzz.log" 2>&1 || echo "vertrag exited $?: findings are in the report"
-          cat "$RUNNER_TEMP/contract-fuzz.log"
+        env:
+          CONTRACT_LOGS: ${{ runner.temp }}
+        run: tests/contract/run.sh fuzz
 
       - name: Collect container logs
         if: always()
@@ -290,7 +244,7 @@ jobs:
           mkdir -p "$out"
           cp "$RUNNER_TEMP/e2e.log" "$out/e2e-test-output.log" 2>/dev/null || true
           cp "$RUNNER_TEMP"/contract*.log "$out/" 2>/dev/null || true
-          cp .cache/contract/*.xml "$out/" 2>/dev/null || true
+          cp .cache/contract/*.xml .cache/contract/*.html .cache/contract/*.md "$out/" 2>/dev/null || true
           docker ps -a > "$out/docker-ps.txt" 2>&1 || true
           docker network inspect testbed_mailnet > "$out/network.txt" 2>&1 || true
           for c in $(docker ps -aq); do

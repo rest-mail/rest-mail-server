@@ -568,6 +568,32 @@ tasks:
       - go tool cover -html=coverage.out -o coverage.html
       - echo "Coverage report written to coverage.html"
 
+  contract:
+    desc: 'The whole contract check, as CI runs it: the E2E topology (unless CONTRACT_ENDPOINT names a server), fixtures, the API key contract, the examples and coverage gates, and the authorization report. Reports in .cache/contract/'
+    cmds:
+      - |
+        set -eu
+        if [ -z "${CONTRACT_ENDPOINT:-}" ]; then chore e2e:up; fi
+        chore test:contract-fixtures
+        chore test:contract-api-keys
+        tests/contract/run.sh gate {{.CLI_ARGS}}
+        tests/contract/run.sh authorization {{.CLI_ARGS}} || echo "the authorization phase is a report, not a gate"
+
+  contract:run:
+    desc: 'The contract gates against a running topology; narrow with -- --tag Domains, --operation-id getDomain or --only-matching REGEX'
+    cmds:
+      - tests/contract/run.sh gate {{.CLI_ARGS}}
+
+  contract:fuzz:
+    desc: 'The fuzz phase against a running topology, a report; replay a finding with -- --seed N'
+    cmds:
+      - tests/contract/run.sh fuzz {{.CLI_ARGS}}
+
+  contract:diff:
+    desc: The generated description against openapi.yaml, operation by operation (#624), without a server
+    cmds:
+      - go test ./internal/api/ -run 'TestGeneratedDescriptionMatchesOracle|TestExamplePairsFitTheDescription' -count=1 -v
+
   test:contract-fixtures:
     desc: Prepare stable queue state only on the disposable restmail.test topology
     env:

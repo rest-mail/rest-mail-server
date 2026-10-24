@@ -576,22 +576,38 @@ them.
 
 ## Running it
 
-Against a topology that is up (`chore e2e:up`, then `chore test:e2e` for the
-principals):
+One command does what CI does (#627), on any machine with Docker, `chore` and the
+pinned Vertrag (`chore vertrag:install`):
 
 ```sh
-chore test:contract-fixtures
-vertrag doctor                          # sends nothing: does every setting reach something?
-mkdir -p .cache/contract                # the report's directory; vertrag makes none
-vertrag run --sequence --phases examples
-python3 tests/contract/repeat_fixtures.py vertrag.yml
-chore test:contract-fixtures
-python3 tests/contract/probes.py vertrag.yml .cache/contract/vertrag-probes.yml .cache/contract/coverage.xml
-vertrag run --config .cache/contract/vertrag-probes.yml --sequence --phases coverage
-echo "vertrag exited $?"                 # 0, or 2 for probe findings; 1 and 3 fail
-python3 tests/contract/gate.py openapi.yaml vertrag.yml .cache/contract/coverage.xml \
-  tests/contract/coverage-baseline.txt
+chore contract                      # bring up the E2E topology, then every phase
+CONTRACT_ENDPOINT=http://10.99.0.20:8080 chore contract   # a topology already up
+chore contract:run -- --tag Domains # the gates for one area, against a running topology
+chore contract:run -- --operation-id getDomain
+chore contract:fuzz -- --seed 42    # the fuzz phase; replay a finding by its seed
+chore contract:diff                 # the generated description against openapi.yaml, no server
 ```
+
+`chore contract` prepares the fixtures, proves the API key lifecycle, then runs
+`tests/contract/run.sh gate` (the examples phase, then the coverage phase held to
+`coverage-baseline.txt`) and `tests/contract/run.sh authorization` (a report).
+CI's E2E job calls the same script, so a run here gives the verdict CI gives for
+the same commit. A narrowed run (`--tag`, `--operation-id`, `--only-matching`)
+reports without the surface gate and the baseline, which are about the whole API.
+
+Each phase writes JUnit, HTML and Markdown to `.cache/contract/` (`examples.html`,
+`coverage.md`, …), and the run ends with a summary, also in
+`.cache/contract/summary.md`:
+
+```
+| Phase | Transactions | Passed | Failed | Skipped |
+|---|---:|---:|---:|---:|
+| examples | … | … | … | … |
+| coverage | … | … | … | … |
+```
+
+CI uploads the same reports with the container logs (the `e2e-container-logs`
+artifact), so a run's verdict can be read in a browser.
 
 `vertrag run --dry-run --sequence` shows what would be sent, with nothing up.
 
