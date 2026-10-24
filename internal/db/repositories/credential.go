@@ -234,6 +234,25 @@ func (r *CredentialRepository) matchPassword(accountID uint, password string, no
 	}
 	for i := range creds {
 		if auth.CheckPassword(password, creds[i].SecretHash) == nil {
+			if auth.PasswordNeedsRehash(password, creds[i].SecretHash) {
+				hash, err := auth.HashPassword(password)
+				if err != nil {
+					return nil, fmt.Errorf("upgrade imported password: %w", err)
+				}
+				// Re-encoding the same password keeps its credential id, grants,
+				// sessions and audit history. Never overwrite a concurrent reset,
+				// replacement or revocation with this proof of the old password.
+				res := r.db.Model(&models.Credential{}).
+					Where("id = ? AND secret_hash = ? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?)", creds[i].ID, creds[i].SecretHash, now).
+					Update("secret_hash", hash)
+				if res.Error != nil {
+					return nil, fmt.Errorf("store upgraded password: %w", res.Error)
+				}
+				if res.RowsAffected == 0 {
+					return nil, nil
+				}
+				creds[i].SecretHash = hash
+			}
 			if memo != nil {
 				memo.Remember(&creds[i], password)
 			}
