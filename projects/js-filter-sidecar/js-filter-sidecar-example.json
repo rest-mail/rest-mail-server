@@ -1,0 +1,480 @@
+{
+  "sidecarHealth": {
+    "up": {
+      "response": {
+        "status": 200,
+        "body": {
+          "status": "ok"
+        }
+      }
+    }
+  },
+  "sidecarExecute": {
+    "continue": {
+      "request": {
+        "body": {
+          "script": "function filter(email) { console.log('subject', email.headers.subject); return { type: 'action', action: 'continue' }; }",
+          "email": {
+            "envelope": {
+              "mail_from": "ana@example.com",
+              "rcpt_to": [
+                "dana@restmail.test"
+              ],
+              "tls": true,
+              "direction": "inbound"
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Ana",
+                  "address": "ana@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "dana@restmail.test"
+                }
+              ],
+              "subject": "Quarterly report",
+              "date": "Sat, 24 Oct 2026 09:00:00 +0000",
+              "message-id": "<report-1@example.com>"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "The report is attached."
+            }
+          },
+          "timeout_ms": 500
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "result": {
+            "type": "action",
+            "action": "continue"
+          },
+          "logs": [
+            "subject Quarterly report"
+          ]
+        }
+      }
+    },
+    "script_missing": {
+      "request": {
+        "body": {
+          "email": {
+            "envelope": {
+              "mail_from": "ana@example.com",
+              "rcpt_to": [
+                "dana@restmail.test"
+              ],
+              "tls": true,
+              "direction": "inbound"
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Ana",
+                  "address": "ana@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "dana@restmail.test"
+                }
+              ],
+              "subject": "Quarterly report",
+              "date": "Sat, 24 Oct 2026 09:00:00 +0000",
+              "message-id": "<report-1@example.com>"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "The report is attached."
+            }
+          }
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": "script and email are required"
+        }
+      }
+    },
+    "unauthorized": {
+      "request": {
+        "body": {
+          "script": "function filter(email) { console.log('subject', email.headers.subject); return { type: 'action', action: 'continue' }; }",
+          "email": {
+            "envelope": {
+              "mail_from": "ana@example.com",
+              "rcpt_to": [
+                "dana@restmail.test"
+              ],
+              "tls": true,
+              "direction": "inbound"
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Ana",
+                  "address": "ana@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "dana@restmail.test"
+                }
+              ],
+              "subject": "Quarterly report",
+              "date": "Sat, 24 Oct 2026 09:00:00 +0000",
+              "message-id": "<report-1@example.com>"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "The report is attached."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": "unauthorized"
+        }
+      }
+    },
+    "out_of_time": {
+      "request": {
+        "body": {
+          "script": "function filter(email) { for (;;) {} }",
+          "email": {
+            "envelope": {
+              "mail_from": "ana@example.com",
+              "rcpt_to": [
+                "dana@restmail.test"
+              ],
+              "tls": true,
+              "direction": "inbound"
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Ana",
+                  "address": "ana@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "dana@restmail.test"
+                }
+              ],
+              "subject": "Quarterly report",
+              "date": "Sat, 24 Oct 2026 09:00:00 +0000",
+              "message-id": "<report-1@example.com>"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "The report is attached."
+            }
+          },
+          "timeout_ms": 50
+        }
+      },
+      "response": {
+        "status": 408,
+        "body": {
+          "error": "execution timeout"
+        }
+      }
+    },
+    "threw": {
+      "request": {
+        "body": {
+          "script": "function filter(email) { throw new Error('no verdict'); }",
+          "email": {
+            "envelope": {
+              "mail_from": "ana@example.com",
+              "rcpt_to": [
+                "dana@restmail.test"
+              ],
+              "tls": true,
+              "direction": "inbound"
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Ana",
+                  "address": "ana@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "dana@restmail.test"
+                }
+              ],
+              "subject": "Quarterly report",
+              "date": "Sat, 24 Oct 2026 09:00:00 +0000",
+              "message-id": "<report-1@example.com>"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "The report is attached."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": "no verdict"
+        }
+      }
+    },
+    "too_large": {
+      "request": {
+        "body": {
+          "script": "function filter(email) { return { type: 'action', action: 'continue' }; }\n// xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "email": {
+            "envelope": {
+              "mail_from": "ana@example.com",
+              "rcpt_to": [
+                "dana@restmail.test"
+              ],
+              "tls": true,
+              "direction": "inbound"
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Ana",
+                  "address": "ana@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "dana@restmail.test"
+                }
+              ],
+              "subject": "Quarterly report",
+              "date": "Sat, 24 Oct 2026 09:00:00 +0000",
+              "message-id": "<report-1@example.com>"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "The report is attached."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": "request body too large (limit 2048 bytes)"
+        }
+      }
+    }
+  },
+  "sidecarValidate": {
+    "valid": {
+      "request": {
+        "body": {
+          "script": "function filter(email) { console.log('subject', email.headers.subject); return { type: 'action', action: 'continue' }; }"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "valid": true
+        }
+      }
+    },
+    "syntax_error": {
+      "request": {
+        "body": {
+          "script": "function filter(email) {"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "valid": false,
+          "error": "unexpected token in expression: ')'",
+          "phase": "syntax"
+        }
+      }
+    },
+    "dry_run": {
+      "request": {
+        "body": {
+          "script": "function filter(email) { console.log('subject', email.headers.subject); return { type: 'action', action: 'continue' }; }",
+          "email": {
+            "envelope": {
+              "mail_from": "ana@example.com",
+              "rcpt_to": [
+                "dana@restmail.test"
+              ],
+              "tls": true,
+              "direction": "inbound"
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Ana",
+                  "address": "ana@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "dana@restmail.test"
+                }
+              ],
+              "subject": "Quarterly report",
+              "date": "Sat, 24 Oct 2026 09:00:00 +0000",
+              "message-id": "<report-1@example.com>"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "The report is attached."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "valid": true,
+          "dry_run": {
+            "result": {
+              "type": "action",
+              "action": "continue"
+            },
+            "logs": [
+              "subject Quarterly report"
+            ]
+          }
+        }
+      }
+    },
+    "dry_run_failed": {
+      "request": {
+        "body": {
+          "script": "function filter(email) { throw new Error('no verdict'); }",
+          "email": {
+            "envelope": {
+              "mail_from": "ana@example.com",
+              "rcpt_to": [
+                "dana@restmail.test"
+              ],
+              "tls": true,
+              "direction": "inbound"
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Ana",
+                  "address": "ana@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "dana@restmail.test"
+                }
+              ],
+              "subject": "Quarterly report",
+              "date": "Sat, 24 Oct 2026 09:00:00 +0000",
+              "message-id": "<report-1@example.com>"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "The report is attached."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "valid": true,
+          "dry_run": {
+            "error": "no verdict",
+            "logs": []
+          },
+          "phase": "execution"
+        }
+      }
+    },
+    "script_missing": {
+      "request": {
+        "body": {
+          "email": {
+            "envelope": {
+              "mail_from": "ana@example.com",
+              "rcpt_to": [
+                "dana@restmail.test"
+              ],
+              "tls": true,
+              "direction": "inbound"
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Ana",
+                  "address": "ana@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "dana@restmail.test"
+                }
+              ],
+              "subject": "Quarterly report",
+              "date": "Sat, 24 Oct 2026 09:00:00 +0000",
+              "message-id": "<report-1@example.com>"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "The report is attached."
+            }
+          }
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "valid": false,
+          "error": "script is required"
+        }
+      }
+    },
+    "unauthorized": {
+      "request": {
+        "body": {
+          "script": "function filter(email) { console.log('subject', email.headers.subject); return { type: 'action', action: 'continue' }; }"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": "unauthorized"
+        }
+      }
+    },
+    "too_large": {
+      "request": {
+        "body": {
+          "script": "function filter(email) { return { type: 'action', action: 'continue' }; }\n// xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": "request body too large (limit 2048 bytes)"
+        }
+      }
+    }
+  }
+}

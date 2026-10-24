@@ -143,27 +143,16 @@ func (f *jsFilter) fail(result, detail string) *pipeline.FilterResult {
 func (f *jsFilter) Name() string              { return "javascript" }
 func (f *jsFilter) Type() pipeline.FilterType { return pipeline.FilterTypeTransform }
 
-// sidecarRequest is the JSON payload sent to the Node.js sidecar.
-type sidecarRequest struct {
-	Script    string              `json:"script"`
-	Email     *pipeline.EmailJSON `json:"email"`
-	TimeoutMS int                 `json:"timeout_ms"`
-}
-
-// sidecarResponse is the JSON response from the Node.js sidecar.
-type sidecarResponse struct {
-	Result json.RawMessage `json:"result"`
-	Error  string          `json:"error,omitempty"`
-}
-
 func (f *jsFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
-	reqBody := sidecarRequest{
-		Script:    f.script,
-		Email:     email,
-		TimeoutMS: int(f.timeout.Milliseconds()),
+	message, err := json.Marshal(email)
+	if err != nil {
+		return nil, fmt.Errorf("marshal the email for the sidecar: %w", err)
 	}
-
-	bodyBytes, err := json.Marshal(reqBody)
+	bodyBytes, err := json.Marshal(SidecarExecute{
+		Script:    f.script,
+		Email:     message,
+		TimeoutMS: int(f.timeout.Milliseconds()),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal sidecar request: %w", err)
 	}
@@ -190,7 +179,7 @@ func (f *jsFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pip
 
 	// Handle other error responses
 	if resp.StatusCode != http.StatusOK {
-		var errResp sidecarResponse
+		var errResp SidecarError
 		_ = json.Unmarshal(respBody, &errResp)
 		detail := errResp.Error
 		if detail == "" {
@@ -200,7 +189,7 @@ func (f *jsFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pip
 	}
 
 	// Parse the successful response
-	var sidecarResp sidecarResponse
+	var sidecarResp SidecarResult
 	if err := json.Unmarshal(respBody, &sidecarResp); err != nil {
 		return f.fail("error", fmt.Sprintf("cannot parse sidecar response: %v", err)), nil
 	}
