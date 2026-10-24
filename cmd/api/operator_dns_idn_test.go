@@ -81,6 +81,29 @@ func TestDNSRecords_RejectsAnInvalidMailHost(t *testing.T) {
 	}
 }
 
+// A domain with an active MTA-STS policy gets its _mta-sts record, the id derived from the
+// policy, so dns:check reports a published id the policy has moved on from (#727). One whose
+// policy cannot be served gets none, and the problem says why.
+func TestAddMTASTSRecord(t *testing.T) {
+	policy := models.MTASTSPolicy{Mode: "enforce", MXHosts: "mail.xn--bcher-kva.example", MaxAge: 86400}
+	id, err := policy.RecordID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := domainRecords{Domain: "bücher.example"}
+	addMTASTSRecord(&entry, models.Domain{Name: "bücher.example"}, policy)
+	want := dns.DNSRecord{Type: "TXT", Name: "_mta-sts.xn--bcher-kva.example", Value: "v=STSv1; id=" + id, TTL: 3600}
+	if len(entry.Records) != 1 || entry.Records[0] != want || entry.Problem != "" {
+		t.Fatalf("records %+v, problem %q; want %+v", entry.Records, entry.Problem, want)
+	}
+
+	broken := domainRecords{Domain: "example.org", Problem: "no DKIM key: mail from this domain goes out unsigned"}
+	addMTASTSRecord(&broken, models.Domain{Name: "example.org"}, models.MTASTSPolicy{Mode: "enforce", MXHosts: "bad_.example", MaxAge: 1})
+	if len(broken.Records) != 0 || !strings.Contains(broken.Problem, "no DKIM key") || !strings.Contains(broken.Problem, "MTA-STS policy cannot be served") {
+		t.Fatalf("records %+v, problem %q", broken.Records, broken.Problem)
+	}
+}
+
 // A rotation's keys join the records to publish: the staged key before signing moves to it,
 // and the previous key until it retires, under the A-label name and the DKIM TTL. A key this
 // server cannot read is left out (#728).
