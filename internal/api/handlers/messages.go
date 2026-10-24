@@ -1020,6 +1020,17 @@ func (h *MessageHandler) RegisterDelivery(rs endpoint.Routes, bodyLimit endpoint
 func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody) (endpoint.Status[any], error) {
 	var zero endpoint.Status[any]
 
+	// The folder a gateway delivers into follows the folder rule, behind the gateway's own
+	// check (#759): a name the rule refuses is 422 on folder, and INBOX in any case is INBOX.
+	// No folder is the inbox.
+	folder := req.Folder
+	if folder != "" {
+		if problem := rmail.FolderNameProblem(folder); problem != "" {
+			return zero, endpoint.Invalid(map[string]string{"folder": problem})
+		}
+		folder = rmail.CanonicalFolder(folder)
+	}
+
 	var mailbox models.Mailbox
 	if req.MailboxID > 0 {
 		if err := h.db.First(&mailbox, req.MailboxID).Error; err != nil {
@@ -1049,7 +1060,7 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody)
 		RawMessage:   string(req.RawMessage),
 		ClientIP:     req.ClientIP,
 		HeloName:     req.HeloName,
-		Folder:       req.Folder,
+		Folder:       folder,
 		IsRead:       req.IsRead,
 		IsFlagged:    req.IsFlagged,
 		IsStarred:    req.IsStarred,

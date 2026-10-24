@@ -116,3 +116,32 @@ func TestDeliverMessage_StripsOurAuthResults(t *testing.T) {
 		t.Errorf("stored message lost another server's Authentication-Results:\n%s", msg.RawMessage)
 	}
 }
+
+// A gateway delivering into "inbox" delivers into INBOX: the folder follows the folder rule,
+// so the message is not filed in a second inbox spelled another way (#759).
+func TestDeliverMessage_InboxInAnyCaseIsInbox(t *testing.T) {
+	db := openMsgDeleteTestDB(t)
+	if err := db.AutoMigrate(&models.QuotaUsage{}); err != nil {
+		t.Skipf("deliver DB test skipped: migrate quota_usage failed (%v)", err)
+	}
+	tx := db.Begin()
+	t.Cleanup(func() { tx.Rollback() })
+
+	fx := seedMsgDeleteFixture(t, tx, 0)
+	body := fmt.Sprintf(`{"mailbox_id": %d, "sender": "someone@remote.test", "subject": "Lower case inbox", "body_text": "hello", "folder": "inbox"}`,
+		fx.mailbox.ID)
+
+	h := NewMessageHandler(tx, nil, nil, "", nil)
+	rr := httptest.NewRecorder()
+	deliveryRoute(h)(rr, httptest.NewRequest(http.MethodPost, "/api/v1/messages/deliver", strings.NewReader(body)))
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("deliver: expected 201, got %d (%s)", rr.Code, rr.Body.String())
+	}
+	var msg models.Message
+	if err := tx.Where("mailbox_id = ? AND subject = ?", fx.mailbox.ID, "Lower case inbox").First(&msg).Error; err != nil {
+		t.Fatalf("reload delivered message: %v", err)
+	}
+	if msg.Folder != "INBOX" {
+		t.Errorf("message delivered into folder %q, want INBOX", msg.Folder)
+	}
+}
