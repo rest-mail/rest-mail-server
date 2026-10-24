@@ -491,7 +491,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// or DKIM alignment, refusing spoofed local-domain injection.
 	// ═══════════════════════════════════════════════════════════════
 	restmailDiscoveryH := handlers.NewRestmailDiscoveryHandler(db, cfg.GatewayHostname)
-	r.Get("/.well-known/restmail", restmailDiscoveryH.Discover)
+	restmailDiscoveryH.Register(endpoint.Routes{Router: r, Registry: registry})
 	// OSI-7: same delivery-body bound as the machine deliver route — the RESTMAIL
 	// hop must accept up to a full max-size message but not buffer without limit.
 	restmailH.Register(endpoint.Routes{Router: r, Registry: registry}, endpoint.Middleware{Wrap: deliverBodyLimit})

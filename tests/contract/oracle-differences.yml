@@ -2449,6 +2449,11 @@
 - operation: restmailDeliver
   difference: "response 400: generated only"
   reason: Binding answers 400 bad_request for a body that is not JSON or not an object, as the handler did.
+- operation: restmailDiscover
+  difference: "response 200 header Cache-Control: generated only"
+  reason: >-
+    Every answer is no-store, refusals too: a sender must not remember a discovery, nor a
+    failure as if it were one. The oracle says so in prose only.
 
 # Sign-in and sessions (#632)
 
