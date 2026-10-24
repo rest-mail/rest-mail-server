@@ -380,7 +380,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 			Burst: cfg.TLSRPTRateLimitBurst,
 		})
 	}
-	r.With(tlsrptThrottle).Post("/.well-known/smtp-tlsrpt", tlsrptH.ReceiveReport)
+	tlsrptH.RegisterReceive(endpoint.Routes{Router: r, Registry: registry}, describedTLSRPTThrottle(tlsrptThrottle))
 
 	// ═══════════════════════════════════════════════════════════════
 	// ACME HTTP-01 challenge (no auth — served to ACME CA for domain validation)

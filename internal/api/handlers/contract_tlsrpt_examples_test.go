@@ -8,14 +8,15 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/db/models"
 )
 
 const tlsReportPath = "/.well-known/smtp-tlsrpt"
 
-// tlsReportBodyRefused is the 400 ReceiveReport sends for a body that does not
+// tlsReportBodyRefused is the 400 receiveTlsReport sends for a body that does not
 // decode as a report.
-const tlsReportBodyRefused = `{"error":{"code":"bad_request","message":"Invalid TLS-RPT JSON"}}`
+const tlsReportBodyRefused = `{"error":{"code":"bad_request","message":"Invalid request body"}}`
 
 // The coverage generator uses required properties and format specimens, not
 // the stored example. Its smallest report must still identify a hosted domain.
@@ -33,7 +34,7 @@ func TestTLSReportReceive_MinimalContractReport(t *testing.T) {
 	for _, optional := range []string{"", `,"contact-info":""`, `,"report-id":""`} {
 		body := `{"organization-name":"x","date-range":{"start-datetime":"2020-01-02T03:04:05Z","end-datetime":"2020-01-02T03:04:05Z"},"policies":[{"policy":{"policy-domain":"example.com"}}]` + optional + `}`
 		rr := httptest.NewRecorder()
-		h.ReceiveReport(rr, httptest.NewRequest(http.MethodPost, tlsReportPath, bytes.NewBufferString(body)))
+		tlsReportRoutes(h, passThrough).ServeHTTP(rr, httptest.NewRequest(http.MethodPost, tlsReportPath, bytes.NewBufferString(body)))
 		if rr.Code != http.StatusCreated {
 			t.Fatalf("minimal report %s: got %d %s, want 201", body, rr.Code, rr.Body)
 		}
@@ -51,7 +52,7 @@ func TestTLSReportReceive_MinimalContractReport(t *testing.T) {
 // real handler with exactly its documented 422, before any domain is looked up
 // or any report stored: the handler has no database.
 func TestTLSReportReceive_DocumentedRefusals(t *testing.T) {
-	documentedRefusals(t, tlsReportPath, "receiveTlsReport", NewTLSReportHandler(nil).ReceiveReport)
+	documentedRefusals(t, tlsReportPath, "receiveTlsReport", tlsReportRoutes(NewTLSReportHandler(nil), passThrough).ServeHTTP)
 }
 
 // The pairs vertrag compiles for receiveTlsReport: stored with the 201,
@@ -123,12 +124,9 @@ func TestTLSReportReceive_ExamplePairs(t *testing.T) {
 
 	// stored passes the checks that come before storage, and carries one
 	// policy, so the only 201 it can get stores that one.
-	var report tlsRPTReport
-	if err := json.Unmarshal(mustJSON(requests["stored"]), &report); err != nil {
-		t.Fatalf("decode stored: %v", err)
-	}
-	if _, _, verr := validateTLSRPTReport(&report); verr != nil {
-		t.Fatalf("stored is refused before storage: %+v", verr)
+	var report TLSRPTReport
+	if err := endpoint.BindBody(&report, mustJSON(requests["stored"])); err != nil {
+		t.Fatalf("stored is refused before storage: %v", err)
 	}
 	if len(report.Policies) != 1 || report.Policies[0].Policy.PolicyDomain != "restmail.test" {
 		t.Fatalf("stored's policies are %+v, want one for restmail.test", report.Policies)
@@ -150,7 +148,7 @@ func receiveTLSReportNoDB(t *testing.T, body string) (rr *httptest.ResponseRecor
 				reached = true
 			}
 		}()
-		NewTLSReportHandler(nil).ReceiveReport(rr, req)
+		tlsReportRoutes(NewTLSReportHandler(nil), passThrough).ServeHTTP(rr, req)
 	}()
 	return rr, reached
 }

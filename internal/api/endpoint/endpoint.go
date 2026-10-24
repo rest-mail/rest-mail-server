@@ -15,6 +15,7 @@
 package endpoint
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -293,6 +294,9 @@ func (reg *Registry) record(applied []oapifly.Middleware, op Operation, reqType,
 		errorStatuses[http.StatusBadRequest] = true
 		errorStatuses[http.StatusRequestEntityTooLarge] = true
 	}
+	if shape.forms > 1 {
+		errorStatuses[http.StatusUnsupportedMediaType] = true
+	}
 	for _, status := range op.Errors {
 		errorStatuses[status] = true
 	}
@@ -446,13 +450,14 @@ func WriteError(w http.ResponseWriter, err error) { writeError(w, err) }
 type shape struct {
 	binds bool // anything at all: a parameter or a body
 	body  bool // a body
+	forms int  // the body fields: more than one is a body taken in several media types
 }
 
 func requestShape(t reflect.Type) shape {
 	if t.Kind() != reflect.Struct {
 		return shape{binds: true, body: true}
 	}
-	params, bodyField := false, false
+	params, forms := false, 0
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
 		for _, in := range []string{"path", "query", "header"} {
@@ -461,15 +466,18 @@ func requestShape(t reflect.Type) shape {
 			}
 		}
 		if _, ok := f.Tag.Lookup("body"); ok {
-			bodyField = true
+			forms++
 		}
 	}
+	bodyField := forms > 0
 	whole := !params && !bodyField && t.NumField() > 0
-	return shape{binds: params || bodyField || whole, body: bodyField || whole}
+	return shape{binds: params || bodyField || whole, body: bodyField || whole, forms: forms}
 }
 
 // bind reads the request into dst with go-oapifly, which enforces the rules the document
-// describes: a violation is the 422 validation failure, field by field.
+// describes: a violation is the 422 validation failure, field by field. A body in a media type
+// none of the request type's forms takes is the 415. The body read is left for the handler to
+// read again, for one that keeps a request as it came.
 func bind(r *http.Request, dst interface{}, s shape) error {
 	if !s.binds {
 		return nil
@@ -485,6 +493,7 @@ func bind(r *http.Request, dst interface{}, s shape) error {
 			return Refuse(http.StatusBadRequest, "bad_request", "Invalid request body")
 		}
 		body = read
+		r.Body = io.NopCloser(bytes.NewReader(body))
 	}
 
 	textual := stringParams(reflect.TypeOf(dst))
@@ -506,7 +515,19 @@ func bind(r *http.Request, dst interface{}, s shape) error {
 		v := r.Header.Get(name)
 		return v, v != ""
 	}, body)
+	return bindError(dst, err)
+}
 
+// BindBody reads body into dst, a pointer to a type that is a body itself, as a registered
+// operation binds its request: by the same rules, with the same refusals. It is for a body a
+// handler has to unwrap first, such as a compressed one.
+func BindBody(dst interface{}, body []byte) error {
+	return bindError(dst, oapifly.Bind(dst, func(string, string) (string, bool) { return "", false }, body))
+}
+
+// bindError is the refusal a Bind error is: the 422 with the fields for violations, 400 for a
+// body that cannot be read, 415 for one in a media type the request does not take.
+func bindError(dst interface{}, err error) error {
 	var violations oapifly.Violations
 	switch {
 	case err == nil:
@@ -516,6 +537,9 @@ func bind(r *http.Request, dst interface{}, s shape) error {
 		return Invalid(violations)
 	case errors.Is(err, oapifly.ErrMalformedBody):
 		return Refuse(http.StatusBadRequest, "bad_request", "Invalid request body")
+	case errors.Is(err, oapifly.ErrUnsupportedMediaType):
+		return Refuse(http.StatusUnsupportedMediaType, "unsupported_media_type",
+			"Unsupported media type: "+strings.TrimPrefix(err.Error(), oapifly.ErrUnsupportedMediaType.Error()+": "))
 	}
 	return err
 }

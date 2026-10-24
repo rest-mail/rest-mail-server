@@ -3420,3 +3420,46 @@
   reason: >-
     Besides the session check's 503 unavailable, the stream answers 503 too_many_streams when
     the account already holds its limit of open streams (#204).
+
+# TLS-RPT report ingestion (#631, #768)
+
+- operation: receiveTlsReport
+  difference: "request body application/tlsrpt+json: generated only"
+  reason: >-
+    RFC 8460 §5.4's own media type for an uncompressed report; plain application/json is
+    taken too, as reporters send it.
+- operation: receiveTlsReport
+  difference: "request body application/tlsrpt+gzip: generated only"
+  reason: >-
+    RFC 8460 §5.2 asks reporters to gzip their reports, and §5.4 names
+    application/tlsrpt+gzip for one sent compressed (#768). It is inflated, held to the same
+    512 KiB cap as a plain one, and checked as the JSON form is.
+- operation: receiveTlsReport
+  difference: "response 415: generated only"
+  reason: >-
+    A body in a media type the report is not taken in: 415 unsupported_media_type, naming
+    the three that are.
+- operation: receiveTlsReport
+  difference: "response 429: generated only"
+  reason: >-
+    Unauthenticated, so throttled per client IP (#183): 429 rate_limited with Retry-After.
+- operation: receiveTlsReport
+  difference: "request body application/json.properties.policies.items.required: openapi.yaml [\"policy\"], generated absent"
+  reason: >-
+    One policy entry cannot cost a report its others: an entry with no policy, or whose
+    policy-domain this server does not host, is skipped, not refused. A report with nothing
+    left to store is 422 no_matching_domains.
+- operation: receiveTlsReport
+  difference: "request body application/json.properties.policies.items.properties.policy.required: openapi.yaml [\"policy-domain\"], generated absent"
+  reason: >-
+    An entry with no policy-domain is skipped, not refused, as one for a domain this server
+    does not host is.
+- operation: receiveTlsReport
+  difference: "request body application/json.properties.policies.items.properties.policy.properties.policy-domain.minLength: openapi.yaml 1, generated absent"
+  reason: >-
+    An empty policy-domain names no hosted domain, so its entry is skipped, not refused.
+- operation: receiveTlsReport
+  difference: "request body application/json.properties.policies.items.properties.policy.properties.policy-domain.format: openapi.yaml \"hostname\", generated absent"
+  reason: >-
+    The domain is looked up, not checked as a hostname: a trailing dot is taken and removed,
+    so a report naming example.com. is stored for example.com rather than refused.
