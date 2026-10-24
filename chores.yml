@@ -377,6 +377,14 @@ tasks:
     cmds:
       - scripts/am-overview --tsv
 
+  queue:list:
+    desc: Every pull request waiting in a merge queue across REST Mail (add -- --tsv, --project NAME, --no-cache)
+    # One request for every repository whose answer is older than
+    # AM_GITHUB_CACHE_TTL seconds (300), each repository's default branch (#819).
+    dotenv: []
+    cmds:
+      - scripts/am-queue {{.CLI_ARGS}}
+
   # ════════════════════════════════════════════════════════
   # Build (Go binaries — used for local development without Docker)
   # ════════════════════════════════════════════════════════
