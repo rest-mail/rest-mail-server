@@ -1,7 +1,8 @@
 # Email, explained on the website: design
 
-Status: discussion. Nothing here is built yet. Each point is marked
-**Decided**, **Leaning** or **Open**; only Decided points get built.
+Status: the Decided points are built; the rest is discussion. Each point is
+marked **Decided**, **Leaning** or **Open**; only Decided points get built.
+Open questions waiting on the owner are issues labelled `question-for-user`.
 
 [Email, explained](../email-explained/README.md) is written as Markdown in this
 repository, next to the code it describes. The same guide has to appear on
@@ -53,35 +54,27 @@ one set of files becomes both, without the two ever drifting apart.
   the reader's light or dark theme, cropped to the drawing.
   `scripts/email-explained/svg.mjs` makes them all in one headless Chrome. The
   26 come to 3.3 MB, against 3.5 MB as PNGs.
+- **This repository builds the bundle; the website takes it by itself**
+  (2026-10-24, owner, who asked that a merged chapter go live with nobody
+  running the steps by hand). On every change to the guide on `main`,
+  `email-explained.yml` builds the bundle and pushes it as the OCI image
+  `ghcr.io/rest-mail/email-explained:<version>`: one layer holding
+  `bundle.json` and `diagrams/`, public, so it can be fetched with no
+  credentials. The version is `<format>.0.<commits on main>`, so its major is
+  the bundle's format and it rises with every publish. The website checks for a
+  newer version on a schedule, commits it, runs its own tests, and releases
+  itself: a tag, its image, and its chart. A failing test stops it there. The
+  last step, antimatter-vps deploying the new chart, waits on the owner's
+  answer to #826. An OCI image, not a branch here, because every clone of this
+  repository would otherwise carry every bundle's rendered diagrams (about
+  20 MB each), and not a GitHub release, which would compete with the server's
+  own releases.
 - **The website publishes the API reference too** (2026-10-23, owner). Once
   the server serves its generated `openapi.json` (#623), the same pipeline
   turns it into reference pages on rest-mail.com, so the reference is as
   current as the code.
 
 ## Leaning
-
-### The repository that owns the words builds them
-
-Two ways to connect the repositories:
-
-1. **The website fetches the Markdown** at build time and compiles it itself.
-   This is simple to start, but the website's build then needs Archify, the
-   diagram checks and this repository's layout. A broken chapter is discovered
-   in the other repository, by whoever happens to be building the site.
-2. **This repository builds a content bundle**, and the website consumes it.
-   CI here compiles the guide on every change under `docs/email-explained/`. It
-   produces, for each chapter, its HTML fragments by section, its metadata, its
-   rendered diagrams (interactive HTML and a static SVG) and its outbound links,
-   all pinned to the commit. It publishes them as a versioned artifact.
-   The website pins a bundle version and renders it with its own components. A
-   new bundle arrives as a dependency bump, which merges on green, the way #628
-   handles go-oapifly and Vertrag.
-
-Leaning: **2**. The checks run where the writing happens, so a broken link or
-an unsourced chapter fails the PR that broke it. The website stays a renderer
-and never learns how the guide is made. It is also the same shape as the
-contract work, where this repository publishes `openapi.json` and its clients
-consume it (#626, #663).
 
 ### Plain Markdown, with a few conventions, not MDX
 
@@ -109,7 +102,7 @@ can never quote a paragraph that has gone.
 
 ## Open
 
-1. **How interactive diagrams sit in the page.** To be decided by looking at a
+1. **How interactive diagrams sit in the page** (asked in #822). To be decided by looking at a
    working prototype (owner, 2026-10-23). The prototype is the website's
    `feat/email-explained-prototype` branch: every chapter takes `?embed=` to
    switch between six ways, on the real site with its real
@@ -145,16 +138,14 @@ can never quote a paragraph that has gone.
    cost of a rewriting layer between Archify and the page that has to follow
    Archify's releases. A frame needs none of it.
 
-2. **Matching the site's three designs.** Archify has its own looks (classic,
+2. **Matching the site's three designs** (asked in #823). Archify has its own looks (classic,
    editorial and others). Does a diagram follow the visitor's chosen design,
    or keep one look everywhere? To be decided by seeing it, in the same
    prototype (owner, 2026-10-23).
-3. **Where the bundle is published:** a GitHub release asset, an OCI artifact
-   next to the images, or a branch the website reads.
-4. **What the website adds of its own:** navigation between chapters, a
+3. **What the website adds of its own:** navigation between chapters, a
    contents page, search, "last updated from commit …" on every page. These
    live in the website repository and are not part of the bundle.
-5. **Other repositories' documentation.** The guide may later split, with
+4. **Other repositories' documentation.** The guide may later split, with
    protocol chapters moving to their libraries' repositories. The bundle format
    should not assume one repository, so the website can merge several bundles
    later.
