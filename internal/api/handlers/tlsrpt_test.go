@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -271,6 +272,71 @@ func TestReceiveReport_Storage(t *testing.T) {
 	}
 	if n := countRows(); n != 3 {
 		t.Fatalf("valid report stored %d rows, want 3", n)
+	}
+
+	// The same report gzip-compressed, as RFC 8460 asks reporters to send it, is
+	// stored the same way, its raw report kept as the JSON it inflates to.
+	plain := buildTLSRPTBodyForDomain(t, known, 2)
+	if rr := post(gzipped(t, plain)); rr.Code != http.StatusCreated {
+		t.Fatalf("gzip report: status = %d, want 201 (%s)", rr.Code, rr.Body)
+	}
+	if n := countRows(); n != 5 {
+		t.Fatalf("gzip report stored %d rows in all, want 5", n)
+	}
+	var last models.TLSReport
+	if err := tx.Where("domain_id = ?", dom.ID).Order("id DESC").First(&last).Error; err != nil || last.RawReport != string(plain) {
+		t.Fatalf("gzip report kept %q (%v), want the inflated JSON", last.RawReport, err)
+	}
+}
+
+// gzipped is body compressed as a reporter compresses it.
+func gzipped(t *testing.T, body []byte) []byte {
+	t.Helper()
+	var out bytes.Buffer
+	zw := gzip.NewWriter(&out)
+	if _, err := zw.Write(body); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return out.Bytes()
+}
+
+// A gzip-compressed report is inflated before it is checked, however it is labelled, and
+// held to the same cap inflated; one that only claims to be compressed is refused. The
+// handler has no database: each is answered before any storage.
+func TestReceiveReport_GzipCompressed(t *testing.T) {
+	h := NewTLSReportHandler(nil)
+	tooMany := gzipped(t, buildTLSRPTBody(t, tlsRPTMaxPolicies+1))
+	bomb := gzipped(t, []byte(`{"organization-name":"`+strings.Repeat("a", int(tlsRPTMaxBodyBytes))+`"}`))
+	if int64(len(bomb)) >= tlsRPTMaxBodyBytes {
+		t.Fatalf("the compressed body is %d bytes: it must be under the cap to test the inflated one", len(bomb))
+	}
+	for _, tc := range []struct {
+		name, contentType, encoding string
+		body                        []byte
+		status                      int
+		code                        string
+	}{
+		{"labelled tlsrpt+gzip", "application/tlsrpt+gzip", "", tooMany, http.StatusRequestEntityTooLarge, "too_many_policies"},
+		{"labelled by encoding", "application/tlsrpt+json", "gzip", tooMany, http.StatusRequestEntityTooLarge, "too_many_policies"},
+		{"unlabelled", "application/json", "", tooMany, http.StatusRequestEntityTooLarge, "too_many_policies"},
+		{"inflates past the cap", "application/tlsrpt+gzip", "", bomb, http.StatusRequestEntityTooLarge, "payload_too_large"},
+		{"claims gzip, is not", "application/tlsrpt+gzip", "", buildTLSRPTBody(t, 1), http.StatusBadRequest, "bad_request"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/.well-known/smtp-tlsrpt", bytes.NewReader(tc.body))
+			req.Header.Set("Content-Type", tc.contentType)
+			if tc.encoding != "" {
+				req.Header.Set("Content-Encoding", tc.encoding)
+			}
+			rr := httptest.NewRecorder()
+			callReceive(t, h, rr, req)
+			if rr.Code != tc.status || !strings.Contains(rr.Body.String(), `"`+tc.code+`"`) {
+				t.Fatalf("want %d %s, got %d %s", tc.status, tc.code, rr.Code, rr.Body)
+			}
+		})
 	}
 }
 

@@ -65,7 +65,7 @@ func TestScheduleMessage_StoresListsAndCancels(t *testing.T) {
 	}
 
 	rr = httptest.NewRecorder()
-	h.ListScheduledSends(rr, authzRequest(
+	composeRoutes(h).ServeHTTP(rr, authzRequest(
 		http.MethodGet, "/api/v1/messages/scheduled", fx.mailbox.ID, nil, "",
 	))
 	if rr.Code != http.StatusOK {
@@ -83,7 +83,7 @@ func TestScheduleMessage_StoresListsAndCancels(t *testing.T) {
 
 	id := uintToStr(created.Data.ID)
 	rr = httptest.NewRecorder()
-	h.CancelScheduledSend(rr, authzRequest(
+	composeRoutes(h).ServeHTTP(rr, authzRequest(
 		http.MethodDelete, "/api/v1/messages/scheduled/"+id, fx.mailbox.ID,
 		map[string]string{"id": id}, "",
 	))
@@ -99,7 +99,7 @@ func TestScheduleMessage_StoresListsAndCancels(t *testing.T) {
 	}
 
 	rr = httptest.NewRecorder()
-	h.ListScheduledSends(rr, authzRequest(
+	composeRoutes(h).ServeHTTP(rr, authzRequest(
 		http.MethodGet, "/api/v1/messages/scheduled", fx.mailbox.ID, nil, "",
 	))
 	if err := json.Unmarshal(rr.Body.Bytes(), &listed); err != nil {
