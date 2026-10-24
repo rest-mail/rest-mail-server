@@ -297,13 +297,23 @@ the 404 alone, and the create link, which fills the 200's id with the new
 domain's, leaves it as it is. The handler test
 checks both lookups against PostgreSQL and verifies the existing domain
 is unchanged. Other 404s keep their exclusions; `test_gate.py` holds
-the enabled set to exactly `getDomain`, `getCertificate` and `getAlias`.
+the enabled set to exactly `getDomain`, `getCertificate`, `getAlias`,
+`getCustomFilter` and `getMailbox`.
 
 `getCertificate` sends its documented 404 with the `missing` path parameter
 example, paired with the 404 alone as `getDomain`'s is, the create link
 filling only the 200's id. `contract_certificate_get_examples_test.go` checks
 the exact refusal, successful detail response, and unchanged stored
 certificate against PostgreSQL.
+
+`getMailbox` sends its documented 404 with the `missing` parameter example,
+2147483647, and the exact `mailbox_not_found` response. The successful lookup
+still follows the account created by the run; the account hook leaves the
+missing ID unchanged. `contract_mailbox_get_examples_test.go` verifies both
+responses against PostgreSQL and checks that neither lookup changes the account
+or creates the missing one. Mailbox update, delete and session-ending 404s keep
+their exclusions until each has its own request pair. This does not change the
+resource authorization checks or the coverage baseline.
 
 `login` pairs `wrong_password` with 401 and `email_missing`,
 `password_missing` and `client_invalid` with their 422s. Its 200 is named

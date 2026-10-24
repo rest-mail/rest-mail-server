@@ -1,16 +1,16 @@
-#!/usr/bin/env python3
 """gate.py's coverage ratchet, against a report written here.
 
 Run: python3 -m unittest discover -s tests/contract -p 'test_gate.py'
 """
+
 import os
 import re
 import tempfile
 import unittest
-
-import yaml
+from typing import ClassVar
 
 import gate
+import yaml
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
 
@@ -31,7 +31,7 @@ CONFIG = "exclude-operation-id: []\n"
 
 def case(name, failed):
     body = '<failure message="refused"/>' if failed else ""
-    return '<testcase name="%s">%s</testcase>' % (name, body)
+    return f'<testcase name="{name}">{body}</testcase>'
 
 
 class Gate(unittest.TestCase):
@@ -48,21 +48,36 @@ class Gate(unittest.TestCase):
     def run_gate(self, cases, listed):
         spec = self.write("openapi.yaml", SPEC)
         config = self.write("vertrag.yml", CONFIG)
-        report = self.write("examples.xml", "<testsuites><testsuite>%s</testsuite></testsuites>" % "".join(cases))
+        report = self.write(
+            "examples.xml",
+            f"<testsuites><testsuite>{''.join(cases)}</testsuite></testsuites>",
+        )
         base = self.write("baseline.txt", "".join(op + "\n" for op in listed))
         return gate.gate(spec, config, report, base)
 
     def test_a_probe_built_from_a_refusal_is_not_judged(self):
         cases = [
-            case("coverage: /api/v1/admin/aliases > Create an alias > 201 > application/json · body · source_address missing", False),
-            case("coverage: /api/v1/admin/aliases > Create an alias > 422 > application/json · body · valid", True),
-            case("coverage: /api/v1/admin/aliases > Create an alias > 400 · body · valid", True),
+            case(
+                "coverage: /api/v1/admin/aliases > Create an alias > 201 > application/json · body · source_address missing",
+                False,
+            ),
+            case(
+                "coverage: /api/v1/admin/aliases > Create an alias > 422 > application/json · body · valid",
+                True,
+            ),
+            case(
+                "coverage: /api/v1/admin/aliases > Create an alias > 400 · body · valid",
+                True,
+            ),
         ]
         self.assertEqual(self.run_gate(cases, []), 0)
 
     def test_a_failing_probe_built_from_a_success_still_fails(self):
         cases = [
-            case("coverage: /api/v1/admin/aliases > Create an alias > 201 > application/json · body · source_address missing", True),
+            case(
+                "coverage: /api/v1/admin/aliases > Create an alias > 201 > application/json · body · source_address missing",
+                True,
+            ),
         ]
         self.assertEqual(self.run_gate(cases, []), 1)
 
@@ -70,13 +85,19 @@ class Gate(unittest.TestCase):
         # Its refused probes pass, but they are not judged, so they cannot take
         # it out of the baseline.
         cases = [
-            case("coverage: /api/v1/admin/domains > Create a domain > 422 > application/json · body · valid", False),
+            case(
+                "coverage: /api/v1/admin/domains > Create a domain > 422 > application/json · body · valid",
+                False,
+            ),
         ]
         self.assertEqual(self.run_gate(cases, ["createDomain"]), 0)
 
     def test_a_baseline_operation_whose_probes_pass_must_come_out(self):
         cases = [
-            case("coverage: /api/v1/admin/domains > Create a domain > 201 > application/json · body · name missing", False),
+            case(
+                "coverage: /api/v1/admin/domains > Create a domain > 201 > application/json · body · name missing",
+                False,
+            ),
         ]
         self.assertEqual(self.run_gate(cases, ["createDomain"]), 1)
 
@@ -87,7 +108,7 @@ class PairedRefusals(unittest.TestCase):
 
     # The operations whose documented 400s and 422s each have their named
     # request example.
-    PAIRED = {
+    PAIRED: ClassVar[set[str]] = {
         "login",
         "updateAlias",
         "setDomainRelay",
@@ -132,8 +153,10 @@ class PairedRefusals(unittest.TestCase):
     }
 
     def test_exclude_matching_sends_exactly_the_paired_refusals(self):
-        spec = yaml.safe_load(open(os.path.join(ROOT, "openapi.yaml")))
-        config = yaml.safe_load(open(os.path.join(ROOT, "vertrag.yml")))
+        with open(os.path.join(ROOT, "openapi.yaml")) as source:
+            spec = yaml.safe_load(source)
+        with open(os.path.join(ROOT, "vertrag.yml")) as source:
+            config = yaml.safe_load(source)
         patterns = [re.compile(p) for p in config["exclude-matching"]]
         never = set(config["exclude-operation-id"])
         sent, paired = set(), set()
@@ -147,7 +170,7 @@ class PairedRefusals(unittest.TestCase):
                         continue
                     if op["operationId"] in self.PAIRED:
                         paired.add((op["operationId"], status))
-                    name = "%s > %s > %s > application/json" % (path, op["summary"], status)
+                    name = f"{path} > {op['summary']} > {status} > application/json"
                     if not any(p.search(name) for p in patterns):
                         sent.add((op["operationId"], status))
         self.assertEqual({op for op, _ in paired}, self.PAIRED)
@@ -175,7 +198,9 @@ class PairedRefusals(unittest.TestCase):
                             self.assertNotIn("example", response)
                             examples = response.get("examples", {})
                             self.assertTrue(examples)
-                            self.assertLessEqual(set(examples), set(requests.get("examples", {})))
+                            self.assertLessEqual(
+                                set(examples), set(requests.get("examples", {}))
+                            )
 
 
 class MissingResourceRefusals(unittest.TestCase):
@@ -190,12 +215,25 @@ class MissingResourceRefusals(unittest.TestCase):
         for path, item in spec["paths"].items():
             for method in gate.METHODS:
                 op = item.get(method)
-                if op is None or op["operationId"] in never or "404" not in op["responses"]:
+                if (
+                    op is None
+                    or op["operationId"] in never
+                    or "404" not in op["responses"]
+                ):
                     continue
-                name = "%s > %s > 404 > application/json" % (path, op["summary"])
+                name = f"{path} > {op['summary']} > 404 > application/json"
                 if not any(pattern.search(name) for pattern in patterns):
                     sent.add(op["operationId"])
-        self.assertEqual(sent, {"getDomain", "getCertificate", "getAlias", "getCustomFilter"})
+        self.assertEqual(
+            sent,
+            {
+                "getDomain",
+                "getCertificate",
+                "getAlias",
+                "getCustomFilter",
+                "getMailbox",
+            },
+        )
 
 
 if __name__ == "__main__":
