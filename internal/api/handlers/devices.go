@@ -1,15 +1,14 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"regexp"
 	"strconv"
 	"time"
 
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
-	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/push"
@@ -59,11 +58,10 @@ func pushSession(claims *auth.Claims) bool {
 // the session's devices. A session that cannot have devices is offered no
 // service, which the app reads as "off", and has none.
 // GET /api/v1/devices
-func (h *DeviceHandler) List(w http.ResponseWriter, r *http.Request) {
+func (h *DeviceHandler) list(r *http.Request, _ struct{}) (deviceListResponse, error) {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
+		return deviceListResponse{}, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Authentication required")
 	}
 	platforms := []string{}
 	if pushSession(claims) {
@@ -71,36 +69,29 @@ func (h *DeviceHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	registered, err := h.store.List(claims.SessionID)
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list devices")
-		return
+		return deviceListResponse{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to list devices")
 	}
 	devices := make([]deviceResponse, 0, len(registered))
 	for i := range registered {
 		devices = append(devices, deviceJSON(&registered[i]))
 	}
-	respond.Data(w, http.StatusOK, map[string]any{"platforms": platforms, "devices": devices})
+	return deviceListResponse{Platforms: platforms, Devices: devices}, nil
 }
 
 type registerDeviceRequest struct {
 	Platform    string `json:"platform"`
 	Token       string `json:"token"`
-	Environment string `json:"environment"`
-	AppID       string `json:"app_id"`
+	Environment string `json:"environment,omitempty"`
+	AppID       string `json:"app_id,omitempty"`
 }
 
 // Register registers this phone with this session: 201 with the new device,
 // or 200 with the one the session already registered for the token.
 // POST /api/v1/devices
-func (h *DeviceHandler) Register(w http.ResponseWriter, r *http.Request) {
+func (h *DeviceHandler) register(r *http.Request, req registerDeviceRequest) (endpoint.Status[deviceResponse], error) {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
-	}
-	var req registerDeviceRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
+		return endpoint.Status[deviceResponse]{}, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Authentication required")
 	}
 	fields := map[string]string{}
 	switch {
@@ -122,19 +113,16 @@ func (h *DeviceHandler) Register(w http.ResponseWriter, r *http.Request) {
 		fields["app_id"] = "this server pushes to " + h.topic + " only"
 	}
 	if len(fields) > 0 {
-		respond.ValidationError(w, fields)
-		return
+		return endpoint.Status[deviceResponse]{}, endpoint.Invalid(fields)
 	}
 
 	now := h.now()
 	alive, err := h.store.SessionAlive(claims.SessionID, now)
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to register the device")
-		return
+		return endpoint.Status[deviceResponse]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to register the device")
 	}
 	if !alive {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "This session has ended; sign in again")
-		return
+		return endpoint.Status[deviceResponse]{}, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "This session has ended; sign in again")
 	}
 	device, created, err := h.store.Register(&models.PushDevice{
 		SessionID:   claims.SessionID,
@@ -144,44 +132,66 @@ func (h *DeviceHandler) Register(w http.ResponseWriter, r *http.Request) {
 		Environment: req.Environment,
 	})
 	if errors.Is(err, push.ErrTooManyDevices) {
-		respond.ValidationError(w, map[string]string{
+		return endpoint.Status[deviceResponse]{}, endpoint.Invalid(map[string]string{
 			"token": "this session has registered " + strconv.Itoa(push.MaxDevicesPerSession) + " devices, the most it may; remove one first",
 		})
-		return
 	}
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to register the device")
-		return
+		return endpoint.Status[deviceResponse]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to register the device")
 	}
 	status := http.StatusOK
 	if created {
 		status = http.StatusCreated
 	}
-	respond.Data(w, status, deviceJSON(device))
+	return endpoint.Status[deviceResponse]{Code: status, Value: deviceJSON(device)}, nil
 }
 
 // Remove stops pushes to a device this session registered: 204, or 404 when
 // the id is not one of this session's.
 // DELETE /api/v1/devices/{device_id}
-func (h *DeviceHandler) Remove(w http.ResponseWriter, r *http.Request) {
+func (h *DeviceHandler) remove(r *http.Request, req devicePath) (endpoint.Empty, error) {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Authentication required")
 	}
-	id, err := pathID(r, "device_id")
-	if err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "Device not found")
-		return
+	id, err := strconv.ParseUint(req.ID, 10, 32)
+	if err != nil || id == 0 {
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Device not found")
 	}
 	ok, err := h.store.Remove(claims.SessionID, uint(id))
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to remove the device")
-		return
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to remove the device")
 	}
 	if !ok {
-		respond.Error(w, http.StatusNotFound, "not_found", "Device not found")
-		return
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Device not found")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return endpoint.Empty{}, nil
+}
+
+// RegisterRoutes describes exactly the device routes this configured server serves.
+func (h *DeviceHandler) RegisterRoutes(rs endpoint.Routes, audit func(string, ...middleware.AuditOption) endpoint.Middleware) {
+	tags := []string{"Push"}
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/devices",
+		OperationID: "listPushDevices", Summary: "List push services and this session's devices", Tags: tags,
+		Errors: []int{http.StatusUnauthorized}}, h.list)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/devices",
+		OperationID: "registerPushDevice", Summary: "Register a push device for this session", Tags: tags,
+		Status: http.StatusCreated, SuccessStatuses: []int{http.StatusOK},
+		Errors: []int{http.StatusUnauthorized, http.StatusUnprocessableEntity},
+		Middleware: []endpoint.Middleware{audit(push.ActionDeviceRegister, middleware.AuditBodyFields("platform", "environment"),
+			middleware.AuditResponseField("id", "device_id"))}}, h.register)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/devices/{device_id}",
+		OperationID: "removePushDevice", Summary: "Remove a push device registered by this session", Tags: tags,
+		Status: http.StatusNoContent, Errors: []int{http.StatusUnauthorized, http.StatusNotFound},
+		Middleware: []endpoint.Middleware{audit(push.ActionDeviceRemove)}}, h.remove)
+}
+
+type deviceListResponse struct {
+	Platforms []string         `json:"platforms"`
+	Devices   []deviceResponse `json:"devices"`
+}
+
+// Keep a malformed id's existing 404; the id is a string in device responses.
+type devicePath struct {
+	ID string `path:"device_id"`
 }

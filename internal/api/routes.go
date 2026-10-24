@@ -28,7 +28,6 @@ import (
 	"github.com/restmail/restmail/internal/netallow"
 	"github.com/restmail/restmail/internal/pipeline"
 	"github.com/restmail/restmail/internal/pipeline/filters" // register built-in filters via init() + DB-backed factories
-	"github.com/restmail/restmail/internal/push"
 	"github.com/restmail/restmail/internal/ratelimit"
 	"github.com/restmail/restmail/internal/trace"
 	"gorm.io/gorm"
@@ -589,10 +588,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 			// push is configured; otherwise there are no such routes, and the
 			// 404 tells the app push is off. Never the token in the audit log.
 			if pushSvc != nil {
-				r.Get("/api/v1/devices", pushSvc.devices.List)
-				r.With(auditLog(push.ActionDeviceRegister, middleware.AuditBodyFields("platform", "environment"),
-					middleware.AuditResponseField("id", "device_id"))).Post("/api/v1/devices", pushSvc.devices.Register)
-				r.With(auditLog(push.ActionDeviceRemove)).Delete("/api/v1/devices/{device_id}", pushSvc.devices.Remove)
+				pushSvc.devices.RegisterRoutes(person, describedAudit(auditLog))
 			}
 		})
 	})

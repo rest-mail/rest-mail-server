@@ -3,9 +3,13 @@ package handlers
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/auth"
 )
@@ -16,12 +20,39 @@ import (
 // their documented 422 and before anything is looked up or stored: the
 // handler has no database.
 func TestDeviceRegister_DocumentedRefusals(t *testing.T) {
+	router := deviceContractRouter()
+	documentedRefusals(t, "/api/v1/devices", "registerPushDevice", router.ServeHTTP)
+}
+
+func deviceContractRouter() *chi.Mux {
 	h := NewDeviceHandler(nil, pushTestTopic)
-	signedIn := func(w http.ResponseWriter, r *http.Request) {
-		claims := &auth.Claims{AccountID: 1, SessionID: "contract-session"}
-		h.Register(w, r.WithContext(context.WithValue(r.Context(), middleware.ClaimsKey, claims)))
+	router := chi.NewRouter()
+	router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			claims := &auth.Claims{AccountID: 1, SessionID: "contract-session"}
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), middleware.ClaimsKey, claims)))
+		})
+	})
+	h.RegisterRoutes(endpoint.Routes{Router: router, Registry: endpoint.NewRegistry()}, func(string, ...middleware.AuditOption) endpoint.Middleware {
+		return endpoint.Middleware{Wrap: func(next http.Handler) http.Handler { return next }}
+	})
+	return router
+}
+
+func TestDeviceRegister_UnknownFieldsAreRefused(t *testing.T) {
+	router := deviceContractRouter()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/devices", strings.NewReader(`{"platform":"apns","token":"`+strings.Repeat("a", 64)+`","unexpected":true}`))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), `"unexpected":"not allowed"`) {
+		t.Fatalf("unknown registration field: %d %s", rec.Code, rec.Body.String())
 	}
-	documentedRefusals(t, "/api/v1/devices", "registerPushDevice", signedIn)
+	req = httptest.NewRequest(http.MethodDelete, "/api/v1/devices/not-an-id", nil)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("malformed device id: %d %s", rec.Code, rec.Body.String())
+	}
 }
 
 // The pairs vertrag compiles for registerPushDevice: registered with the 201,
