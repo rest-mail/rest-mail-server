@@ -385,7 +385,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// ACME HTTP-01 challenge (no auth — served to ACME CA for domain validation)
 	// ═══════════════════════════════════════════════════════════════
 	if len(acmeClient) > 0 && acmeClient[0] != nil {
-		r.Handle("/.well-known/acme-challenge/*", acmeClient[0].ChallengeHandler())
+		registerACME(endpoint.Routes{Router: r, Registry: registry}, acmeClient[0].ChallengeHandler())
 	}
 
 	// ═══════════════════════════════════════════════════════════════
