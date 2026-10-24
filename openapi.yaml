@@ -4139,6 +4139,12 @@ paths:
                   name: example.org
                   server_type: restmail
                   sending_policy: newsletter
+              # A DMARC policy that is not none, quarantine or reject: refused the same way.
+              dmarc_policy_invalid:
+                value:
+                  name: example.org
+                  server_type: restmail
+                  dmarc_policy: strict
       responses:
         "201":
           description: Domain created, not yet live
@@ -4160,6 +4166,7 @@ paths:
                       active: false
                       default_quota_bytes: 0
                       sending_policy: ""
+                      dmarc_policy: none
                       created_at: "2026-01-01T00:00:00Z"
                       updated_at: "2026-01-01T00:00:00Z"
           links:
@@ -4268,6 +4275,14 @@ paths:
                       details:
                         fields:
                           sending_policy: must be 'transactional', 'bulk' or empty
+                dmarc_policy_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          dmarc_policy: must be 'none', 'quarantine' or 'reject'
 
   /api/v1/admin/domains/{id}:
     parameters:
@@ -4331,6 +4346,9 @@ paths:
         to false takes it out of service and is always allowed. Setting
         `sending_policy` to `""` clears it; any value other than
         `transactional`, `bulk` or `""` is refused with 422 `validation_failed`.
+        Setting `dmarc_policy` changes the p= the domain's DMARC record asks
+        for, as `restmail-api dns` prints it (DomainDMARCPolicy); any value other
+        than `none`, `quarantine` or `reject` is refused the same way.
       requestBody:
         required: true
         content:
@@ -4344,6 +4362,9 @@ paths:
               sending_policy_invalid:
                 value:
                   sending_policy: newsletter
+              dmarc_policy_invalid:
+                value:
+                  dmarc_policy: strict
       responses:
         "200":
           description: Domain updated
@@ -4365,6 +4386,7 @@ paths:
                       active: false
                       default_quota_bytes: 0
                       sending_policy: transactional
+                      dmarc_policy: none
                       created_at: "2026-01-01T00:00:00Z"
                       updated_at: "2026-01-01T00:00:00Z"
         "404":
@@ -4390,6 +4412,14 @@ paths:
                       details:
                         fields:
                           sending_policy: must be 'transactional', 'bulk' or empty
+                dmarc_policy_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          dmarc_policy: must be 'none', 'quarantine' or 'reject'
     delete:
       operationId: deleteDomain
       tags: ["Admin: Domains"]
@@ -10681,7 +10711,7 @@ components:
     # ─────────────────────────────────────────────────────────────
     Domain:
       type: object
-      required: [id, name, server_type, active, default_quota_bytes, sending_policy, created_at, updated_at]
+      required: [id, name, server_type, active, default_quota_bytes, sending_policy, dmarc_policy, created_at, updated_at]
       properties:
         id:
           type: integer
@@ -10699,6 +10729,8 @@ components:
           type: string
         sending_policy:
           $ref: "#/components/schemas/DomainSendingPolicy"
+        dmarc_policy:
+          $ref: "#/components/schemas/DomainDMARCPolicy"
         created_at:
           type: string
           format: date-time
@@ -10727,6 +10759,12 @@ components:
           type: string
           enum: ["", transactional, bulk]
           description: Sending policy for this domain; empty means no rule.
+        dmarc_policy:
+          # Inline, as sending_policy is; keep it in step with DomainDMARCPolicy.
+          type: [string, "null"]
+          enum: [none, quarantine, reject, null]
+          default: none
+          description: The domain's DMARC policy (DomainDMARCPolicy); omitted or null is none.
 
     UpdateDomainRequest:
       type: object
@@ -10744,6 +10782,22 @@ components:
           type: string
           enum: ["", transactional, bulk]
           description: The domain's sending policy (DomainSendingPolicy); `""` clears it.
+        dmarc_policy:
+          type: [string, "null"]
+          enum: [none, quarantine, reject, null]
+          description: The domain's DMARC policy (DomainDMARCPolicy); omitted or null leaves it.
+
+    DomainDMARCPolicy:
+      type: string
+      enum: [none, quarantine, reject]
+      description: >
+        The p= of the domain's DMARC record (RFC 9989 §4.7), as `restmail-api
+        dns` prints it: what receivers are asked to do with mail from the
+        domain that fails DMARC. A domain starts at `none`, which changes no
+        one's delivery and brings the aggregate reports in. RFC 9989 §7.4 asks
+        a domain whose users write ordinary mail to read a month of reports at
+        `none`, then a month at `quarantine`, before moving to `reject`, and
+        not to publish `reject` at all when its users post to mailing lists.
 
     DomainSendingPolicy:
       type: string

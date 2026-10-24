@@ -95,7 +95,7 @@ func RequiredRecords(domain, ip string) []DNSRecord {
         {Type: "MX", Name: domain, Value: domain, TTL: 3600, Priority: 10},
         {Type: "TXT", Name: domain, Value: "v=spf1 ip4:" + ip + " -all", TTL: 3600},
         {Type: "TXT", Name: "_dmarc." + domain,
-         Value: "v=DMARC1; p=reject; rua=mailto:postmaster@" + domain, TTL: 3600},
+         Value: "v=DMARC1; p=none; rua=mailto:postmaster@" + domain, TTL: 3600},
     }
 }
 ```
@@ -107,7 +107,9 @@ This produces four records:
 | A | `example.com` | `1.2.3.4` |
 | MX | `example.com` | `example.com` (priority 10) |
 | TXT | `example.com` | `v=spf1 ip4:1.2.3.4 -all` |
-| TXT | `_dmarc.example.com` | `v=DMARC1; p=reject; rua=mailto:postmaster@example.com` |
+| TXT | `_dmarc.example.com` | `v=DMARC1; p=none; rua=mailto:postmaster@example.com` |
+
+The DMARC policy is the domain's own (`dmarc_policy` in the admin API): `none` for a new domain, raised to `quarantine` or `reject` once its aggregate reports show its mail passes (RFC 9989 §7.4).
 
 DKIM records are not included here because they are generated separately (`instance dkim-keygen`, or `instance dkim-provision` against a running instance) and require the public key material.
 
@@ -175,7 +177,7 @@ If `configPath` is empty, it defaults to `/etc/dnsmasq.d/domains.conf`.
 address=/restmail.test/10.99.0.13
 mx-host=restmail.test,restmail.test,10
 txt-record=restmail.test,"v=spf1 ip4:10.99.0.13 -all"
-txt-record=_dmarc.restmail.test,"v=DMARC1; p=reject; rua=mailto:postmaster@restmail.test"
+txt-record=_dmarc.restmail.test,"v=DMARC1; p=none; rua=mailto:postmaster@restmail.test"
 ```
 
 **Supported record types:**
@@ -245,7 +247,7 @@ spec:
     - dnsName: _dmarc.example.com
       recordType: TXT
       targets:
-        - "v=DMARC1; p=reject; rua=mailto:postmaster@example.com"
+        - "v=DMARC1; p=none; rua=mailto:postmaster@example.com"
       recordTTL: 3600
 ```
 

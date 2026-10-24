@@ -548,7 +548,7 @@ func sampleRecords(domain, ip string) []DNSRecord {
 // A client service that is not offered gets the "." target (RFC 6186 §3.4),
 // so a client does not try a port nothing listens on (#712).
 func TestMailRecords_SRV(t *testing.T) {
-	records := MailRecords("example.com", "mail.example.com", "", "", "", ClientPorts{Submission: 465, IMAP: 993})
+	records := MailRecords("example.com", "mail.example.com", "", "", "", "", ClientPorts{Submission: 465, IMAP: 993})
 	srv := map[string]DNSRecord{}
 	for _, r := range records {
 		if r.Type == "SRV" {
@@ -571,11 +571,32 @@ func TestMailRecords_SRV(t *testing.T) {
 	}
 }
 
+// The DMARC record asks for the domain's policy, none when it has none, with the aggregate
+// reports sent to postmaster (RFC 9989 §7.4, #729).
+func TestMailRecords_DMARCPolicy(t *testing.T) {
+	for policy, want := range map[string]string{
+		"":           "v=DMARC1; p=none; rua=mailto:postmaster@example.com",
+		"none":       "v=DMARC1; p=none; rua=mailto:postmaster@example.com",
+		"quarantine": "v=DMARC1; p=quarantine; rua=mailto:postmaster@example.com",
+		"reject":     "v=DMARC1; p=reject; rua=mailto:postmaster@example.com",
+	} {
+		var got []string
+		for _, r := range MailRecords("example.com", "mail.example.com", "", "", "", policy, ClientPorts{}) {
+			if r.Type == "TXT" && r.Name == "_dmarc.example.com" {
+				got = append(got, r.Value)
+			}
+		}
+		if len(got) != 1 || got[0] != want {
+			t.Errorf("policy %q: DMARC records %q, want %q", policy, got, want)
+		}
+	}
+}
+
 // The TLS-RPT record sends a domain's reports to the endpoint REST Mail reads, on the mail
 // host (RFC 8460 §3, #726).
 func TestMailRecords_TLSRPT(t *testing.T) {
 	var got []string
-	for _, r := range MailRecords("example.com", "mail.example.net", "", "", "", ClientPorts{}) {
+	for _, r := range MailRecords("example.com", "mail.example.net", "", "", "", "", ClientPorts{}) {
 		if r.Type == "TXT" && r.Name == "_smtp._tls.example.com" {
 			got = append(got, r.Value)
 		}

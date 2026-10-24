@@ -2,10 +2,8 @@ package main
 
 import (
 	"bufio"
-	"crypto/x509"
 	"database/sql"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"flag"
 	"fmt"
@@ -16,14 +14,13 @@ import (
 	"strings"
 	"time"
 
-	dkim "github.com/rest-mail/go-dkim"
 	"github.com/restmail/restmail/internal/bootstrap"
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/dkimrotate"
 	"github.com/restmail/restmail/internal/dns"
 	"github.com/restmail/restmail/internal/mail"
-	"github.com/restmail/restmail/internal/outbound"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 )
@@ -329,8 +326,20 @@ func dnsRecords(args []string, stdout, stderr io.Writer) int {
 	out := struct {
 		Domains []domainRecords `json:"domains"`
 	}{Domains: []domainRecords{}}
+	var rotating []models.DKIMRotationKey
+	if err := database.Transaction(func(tx *gorm.DB) error {
+		return tx.Order("domain_id, slot").Find(&rotating).Error
+	}, &sql.TxOptions{ReadOnly: true}); err != nil {
+		return fail(stderr, exitFailed, "database", err.Error())
+	}
+	byDomain := map[uint][]models.DKIMRotationKey{}
+	for _, key := range rotating {
+		byDomain[key.DomainID] = append(byDomain[key.DomainID], key)
+	}
 	for _, d := range domains {
-		out.Domains = append(out.Domains, recordsForDomain(d, host, *ip, cfg.MasterKey, clientPorts(cfg)))
+		entry := recordsForDomain(d, host, *ip, cfg.MasterKey, clientPorts(cfg))
+		entry.Records = append(entry.Records, rotationRecords(d, byDomain[d.ID], cfg.MasterKey)...)
+		out.Domains = append(out.Domains, entry)
 	}
 	_ = json.NewEncoder(stdout).Encode(out)
 	return exitOK
@@ -365,7 +374,7 @@ func recordsForDomain(d models.Domain, mailHost, ip, masterKey string, ports dns
 		}
 		dkimValue = value
 	}
-	entry.Records = dns.MailRecords(name, mailHost, ip, d.DKIMSelector, dkimValue, ports)
+	entry.Records = dns.MailRecords(name, mailHost, ip, d.DKIMSelector, dkimValue, d.DMARCPolicy, ports)
 	return entry
 }
 
@@ -376,19 +385,28 @@ func clientPorts(cfg *config.Config) dns.ClientPorts {
 }
 
 func dkimRecordValue(stored, masterKey string) (string, error) {
-	keyPEM, err := models.LoadDKIMPrivateKey(stored, masterKey)
+	return dkimrotate.PublicRecord(stored, masterKey)
+}
+
+// rotationRecords are the records a key rotation needs beside the signing key's (#728): the
+// staged key's, to publish before signing moves to it, and the previous key's, kept until it
+// retires so mail it signed before the switch still verifies. A key this server cannot read
+// is left out: its rotation stops until it is reconciled.
+func rotationRecords(d models.Domain, keys []models.DKIMRotationKey, masterKey string) []dns.DNSRecord {
+	name, err := mail.DomainASCII(d.Name)
 	if err != nil {
-		return "", err
+		return nil
 	}
-	priv, err := outbound.ParseDKIMKey(keyPEM)
-	if err != nil {
-		return "", fmt.Errorf("the key %w", err)
+	var records []dns.DNSRecord
+	for _, key := range keys {
+		value, err := dkimrotate.PublicRecord(key.PrivateKey, masterKey)
+		if err != nil {
+			continue
+		}
+		records = append(records, dns.DNSRecord{Type: "TXT", Name: key.Selector + "._domainkey." + name,
+			Value: value, TTL: int(dkimrotate.RecordTTL / time.Second)})
 	}
-	pubDER, err := x509.MarshalPKIXPublicKey(priv.Public())
-	if err != nil {
-		return "", err
-	}
-	return dkim.RecordValue(string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER})))
+	return records
 }
 
 func fail(stderr io.Writer, status int, code, message string) int {

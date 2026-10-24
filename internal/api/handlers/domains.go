@@ -82,6 +82,7 @@ type Domain struct {
 	DefaultQuotaBytes int64     `json:"default_quota_bytes"`
 	DKIMSelector      string    `json:"dkim_selector"`
 	SendingPolicy     string    `json:"sending_policy" enums:",transactional,bulk"`
+	DMARCPolicy       string    `json:"dmarc_policy" enums:"none,quarantine,reject"`
 	CreatedAt         time.Time `json:"created_at"`
 	UpdatedAt         time.Time `json:"updated_at"`
 }
@@ -95,6 +96,7 @@ func domainOf(d models.Domain) Domain {
 		DefaultQuotaBytes: d.DefaultQuotaBytes,
 		DKIMSelector:      d.DKIMSelector,
 		SendingPolicy:     d.SendingPolicy,
+		DMARCPolicy:       d.DMARCPolicy,
 		CreatedAt:         d.CreatedAt,
 		UpdatedAt:         d.UpdatedAt,
 	}
@@ -185,7 +187,7 @@ func (h *DomainHandler) list(r *http.Request, in listDomainsRequest) (endpoint.L
 }
 
 // createDomainRequest creates a domain. Its sending policy is transactional, bulk, or empty
-// for none (#144).
+// for none (#144). Its DMARC policy is none unless the request asks for another (#729).
 type createDomainRequest struct {
 	Name string `json:"name" minLength:"1" message:"required"`
 	// ServerType is restmail (the server keeps the mail) or traditional, the default when it
@@ -193,6 +195,7 @@ type createDomainRequest struct {
 	ServerType        *string `json:"server_type,omitempty" enums:",traditional,restmail" message:"must be 'traditional' or 'restmail'"`
 	DefaultQuotaBytes *int64  `json:"default_quota_bytes,omitempty"`
 	SendingPolicy     string  `json:"sending_policy,omitempty" enums:",transactional,bulk" message:"must be 'transactional', 'bulk' or empty"`
+	DMARCPolicy       *string `json:"dmarc_policy,omitempty" enums:"none,quarantine,reject" message:"must be 'none', 'quarantine' or 'reject'"`
 }
 
 func (h *DomainHandler) create(_ *http.Request, req createDomainRequest) (Domain, error) {
@@ -218,6 +221,10 @@ func (h *DomainHandler) create(_ *http.Request, req createDomainRequest) (Domain
 		ServerType:    serverType,
 		Active:        false,
 		SendingPolicy: req.SendingPolicy,
+		DMARCPolicy:   models.DMARCPolicyNone,
+	}
+	if req.DMARCPolicy != nil {
+		domain.DMARCPolicy = *req.DMARCPolicy
 	}
 	if req.DefaultQuotaBytes != nil {
 		domain.DefaultQuotaBytes = *req.DefaultQuotaBytes
@@ -260,6 +267,7 @@ type updateDomainBody struct {
 	Active            *bool   `json:"active,omitempty"`
 	DefaultQuotaBytes *int64  `json:"default_quota_bytes,omitempty"`
 	SendingPolicy     *string `json:"sending_policy,omitempty" enums:",transactional,bulk" message:"must be 'transactional', 'bulk' or empty"`
+	DMARCPolicy       *string `json:"dmarc_policy,omitempty" enums:"none,quarantine,reject" message:"must be 'none', 'quarantine' or 'reject'"`
 }
 
 func (h *DomainHandler) update(_ *http.Request, in updateDomainRequest) (Domain, error) {
@@ -297,6 +305,9 @@ func (h *DomainHandler) update(_ *http.Request, in updateDomainRequest) (Domain,
 	// so the map (not the struct) carries it to the update.
 	if req.SendingPolicy != nil {
 		updates["sending_policy"] = *req.SendingPolicy
+	}
+	if req.DMARCPolicy != nil {
+		updates["dmarc_policy"] = *req.DMARCPolicy
 	}
 
 	if len(updates) > 0 {

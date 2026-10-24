@@ -26,6 +26,11 @@ type ClientPorts struct {
 // whoever owns the address, not in the domain's zone, and is the record most
 // often missing when a provider rejects mail that passes everything else.
 //
+// The DMARC record asks for dmarcPolicy (none, quarantine or reject; empty is none) and sends
+// the aggregate reports to postmaster@ the domain. A domain starts at none: RFC 9989 §7.4 asks
+// one whose users write ordinary mail to move to reject only after reading those reports, and
+// not to at all when its users post to mailing lists (#729).
+//
 // The _smtp._tls record (RFC 8460 §3) asks senders to post their daily TLS reports to
 // https://<mailHost>/.well-known/smtp-tlsrpt, which REST Mail reads and stores for the domain
 // (#726): the API is served on the mail host, the name RESTMAIL discovery is fetched from too.
@@ -34,7 +39,10 @@ type ClientPorts struct {
 // (RFC 8314 §5.1 names submissions), and say outright that the cleartext ones
 // are not offered, with the target "." (RFC 6186 §3.4), so a client does not
 // try ports nothing listens on.
-func MailRecords(domain, mailHost, ip, dkimSelector, dkimValue string, ports ClientPorts) []DNSRecord {
+func MailRecords(domain, mailHost, ip, dkimSelector, dkimValue, dmarcPolicy string, ports ClientPorts) []DNSRecord {
+	if dmarcPolicy == "" {
+		dmarcPolicy = "none"
+	}
 	var records []DNSRecord
 	if ip != "" {
 		records = append(records, DNSRecord{Type: "A", Name: mailHost, Value: ip, TTL: 3600})
@@ -42,7 +50,7 @@ func MailRecords(domain, mailHost, ip, dkimSelector, dkimValue string, ports Cli
 	records = append(records,
 		DNSRecord{Type: "MX", Name: domain, Value: mailHost, TTL: 3600, Priority: 10},
 		DNSRecord{Type: "TXT", Name: domain, Value: "v=spf1 mx -all", TTL: 3600},
-		DNSRecord{Type: "TXT", Name: "_dmarc." + domain, Value: "v=DMARC1; p=reject; rua=mailto:postmaster@" + domain, TTL: 3600},
+		DNSRecord{Type: "TXT", Name: "_dmarc." + domain, Value: "v=DMARC1; p=" + dmarcPolicy + "; rua=mailto:postmaster@" + domain, TTL: 3600},
 	)
 	if dkimSelector != "" && dkimValue != "" {
 		records = append(records, DNSRecord{Type: "TXT", Name: dkimSelector + "._domainkey." + domain, Value: dkimValue, TTL: 3600})
