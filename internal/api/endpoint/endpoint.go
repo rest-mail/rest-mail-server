@@ -60,6 +60,10 @@ type Operation struct {
 	// that answers Headed: Set-Cookie on a sign-in.
 	Headers map[string]oapifly.ResponseHeader
 
+	// MediaType is the success answer's media type when the handler answers a Document: a
+	// page, a YAML document or a metrics exposition rather than the JSON envelope.
+	MediaType string
+
 	// Security is the operation's own requirement, when it differs from what its middleware
 	// enforces: alternatives of schemes, each with the roles held there. nil leaves it to the
 	// middleware and the document's default; oapifly.Public needs no credential.
@@ -194,6 +198,9 @@ func Register[Req, Resp any](rs Routes, op Operation, handler func(*http.Request
 	if op.Status == 0 {
 		op.Status = http.StatusOK
 	}
+	if documents := reflect.TypeOf((*Resp)(nil)).Elem() == reflect.TypeOf(Document{}); documents != (op.MediaType != "") {
+		panic("endpoint: " + op.Method + " " + op.Path + " needs a MediaType exactly when it answers a Document")
+	}
 	reqType := reflect.TypeOf((*Req)(nil)).Elem()
 	shape := requestShape(reqType)
 
@@ -248,9 +255,9 @@ func (reg *Registry) record(applied []oapifly.Middleware, op Operation, reqType,
 		reply := reflect.Zero(respType).Interface().(statusResponse)
 		respType, envelope = reply.responseType(), reply.responseEnvelope()
 	}
-	responses := []oapifly.EndpointResponse{successResponse(op.Status, respType, envelope)}
+	responses := []oapifly.EndpointResponse{successResponse(op, op.Status, respType, envelope)}
 	for _, status := range op.SuccessStatuses {
-		responses = append(responses, successResponse(status, respType, envelope))
+		responses = append(responses, successResponse(op, status, respType, envelope))
 	}
 	if op.Headers != nil {
 		for i := range responses {
@@ -323,8 +330,12 @@ func described(applied []oapifly.Middleware, own []Middleware) []oapifly.Middlew
 }
 
 // successResponse describes the success answer in the envelope write puts it in: a List as
-// itself, anything else as Data[Resp], the {"data": ...} body respond.Data writes.
-func successResponse(status int, respType, envelope reflect.Type) oapifly.EndpointResponse {
+// itself, a Document as text in its media type, anything else as Data[Resp], the
+// {"data": ...} body respond.Data writes.
+func successResponse(op Operation, status int, respType, envelope reflect.Type) oapifly.EndpointResponse {
+	if respType == reflect.TypeOf(Document{}) {
+		return oapifly.EndpointResponse{Status: status, Type: reflect.TypeOf(""), MediaType: op.MediaType}
+	}
 	if raw, ok := reflect.Zero(respType).Interface().(forwardedResponse); ok {
 		return oapifly.EndpointResponse{Status: status, Type: raw.responseType()}
 	}
@@ -345,6 +356,10 @@ func documentedPath(path string) string {
 }
 
 func write(w http.ResponseWriter, status int, out interface{}) {
+	if doc, ok := out.(Document); ok {
+		doc.write(w, status)
+		return
+	}
 	if raw, ok := out.(forwardedResponse); ok {
 		raw.writeResponse(w)
 		return

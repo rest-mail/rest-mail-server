@@ -132,7 +132,7 @@ func TestSetVacation_DocumentedExamples(t *testing.T) {
 		}
 		body := string(mustJSON(yamlToJSON(request.Value)))
 		rr := httptest.NewRecorder()
-		h.SetVacation(rr, authzRequest(http.MethodPut, "/vacation", fx.ownerMailbox.ID,
+		serveVacation(h, rr, authzRequest(http.MethodPut, "/vacation", fx.ownerMailbox.ID,
 			map[string]string{"id": uintToStr(fx.ownerMailbox.ID)}, body))
 		code, err := strconv.Atoi(status)
 		if err != nil {

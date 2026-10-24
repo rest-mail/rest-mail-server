@@ -1,15 +1,10 @@
 package handlers
 
 import (
-	"encoding/json"
-	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/restmail/restmail/internal/api/middleware"
-	"github.com/restmail/restmail/internal/api/respond"
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/pipeline/filters"
 	"gorm.io/gorm"
@@ -25,67 +20,116 @@ func NewSieveHandler(db *gorm.DB) *SieveHandler {
 	return &SieveHandler{db: db}
 }
 
-// resolveMailboxID resolves the account ID from the URL to a mailbox ID,
-// verifying that the session may reach the account (its own, or one it holds
-// a mail grant on). Without this check the {id} path
-// segment was trusted as a raw mailbox ID, letting any authenticated caller
-// read/overwrite/delete another mailbox's Sieve script (IDOR).
-func (h *SieveHandler) resolveMailboxID(r *http.Request, accountIDStr string) (uint, error) {
-	claims := middleware.GetClaims(r)
-	if claims == nil {
-		return 0, fmt.Errorf("no claims")
-	}
-
-	accountID, err := strconv.ParseUint(accountIDStr, 10, 32)
-	if err != nil {
-		return 0, err
-	}
-	return resolveAccountMailbox(h.db, uint(accountID), claims, mailCapabilityFor(r))
+// SieveScript is the account's Sieve script. With none stored it is the empty script, not
+// active, with no id, hash or timestamps; a stored one has them all, its hash being the
+// sha256 hex of the script validated at install.
+type SieveScript struct {
+	ID          uint       `json:"id,omitempty"`
+	MailboxID   uint       `json:"mailbox_id"`
+	Script      string     `json:"script"`
+	ScriptHash  *string    `json:"script_hash,omitempty"`
+	ValidatedAt *time.Time `json:"validated_at,omitempty"`
+	Active      bool       `json:"active"`
+	CreatedAt   *time.Time `json:"created_at,omitempty"`
+	UpdatedAt   *time.Time `json:"updated_at,omitempty"`
 }
 
-// GetScript returns the Sieve script for a mailbox.
+func sieveScriptOf(m models.SieveScript) SieveScript {
+	return SieveScript{
+		ID:          m.ID,
+		MailboxID:   m.MailboxID,
+		Script:      m.Script,
+		ScriptHash:  &m.ScriptHash,
+		ValidatedAt: m.ValidatedAt,
+		Active:      m.Active,
+		CreatedAt:   &m.CreatedAt,
+		UpdatedAt:   &m.UpdatedAt,
+	}
+}
+
+// SieveDeleted is the answer to deleting the script, whether or not there was one.
+type SieveDeleted struct {
+	Status string `json:"status" enums:"deleted"`
+}
+
+// SieveValidation says whether a script would be accepted, and why not: the parser's message,
+// with its line and column, or the dry run's.
+type SieveValidation struct {
+	Message string `json:"message"`
+	Valid   bool   `json:"valid"`
+}
+
+// putSieveRequest replaces the account's script. script is required (null is refused like a
+// missing one); active defaults to true.
+type putSieveRequest struct {
+	ID   uint32       `path:"id" minimum:"1"`
+	Body putSieveBody `body:""`
+}
+
+type putSieveBody struct {
+	Script *string `json:"script"`
+	Active *bool   `json:"active,omitempty"`
+}
+
+type validateSieveRequest struct {
+	ID   uint32            `path:"id" minimum:"1"`
+	Body validateSieveBody `body:""`
+}
+
+type validateSieveBody struct {
+	Script *string `json:"script"`
+}
+
+var errSieveScriptRequired = endpoint.Invalid(map[string]string{"script": "required"})
+
+// Register mounts the account's Sieve script.
+func (h *SieveHandler) Register(rs endpoint.Routes) {
+	tags := []string{"Sieve"}
+	reads := handlerChecked(models.CapMailRead, mailRulesSchemes...)
+	writes := handlerChecked(models.CapMailWrite, mailRulesSchemes...)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/sieve",
+		OperationID: "getSieveScript", Summary: "Get the Sieve filter script", Tags: tags,
+		Errors: []int{http.StatusForbidden}, Security: reads}, h.get)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPut, Path: "/api/v1/accounts/{id}/sieve",
+		OperationID: "putSieveScript", Summary: "Create or replace the Sieve filter script", Tags: tags,
+		Description: "201 when it creates the script, 200 when it replaces it. A script that does not parse, or " +
+			"fails its dry run, is 400 invalid_sieve with the parser's message, and is not stored.",
+		Status: http.StatusOK, SuccessStatuses: []int{http.StatusCreated},
+		Errors: []int{http.StatusForbidden}, Security: writes}, h.put)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/accounts/{id}/sieve",
+		OperationID: "deleteSieveScript", Summary: "Delete the Sieve filter script", Tags: tags,
+		Errors: []int{http.StatusForbidden}, Security: writes}, h.delete)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/sieve/validate",
+		OperationID: "validateSieveScript", Summary: "Validate a Sieve script without saving", Tags: tags,
+		Errors: []int{http.StatusForbidden}, Security: writes}, h.validate)
+}
+
+// get returns the Sieve script for a mailbox, or the empty script when it has none.
 // GET /api/v1/accounts/{id}/sieve
-func (h *SieveHandler) GetScript(w http.ResponseWriter, r *http.Request) {
-	mailboxID, err := h.resolveMailboxID(r, chi.URLParam(r, "id"))
+func (h *SieveHandler) get(r *http.Request, in accountPath) (SieveScript, error) {
+	mailboxID, err := mailRulesMailbox(h.db, r, in.ID)
 	if err != nil {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
+		return SieveScript{}, err
 	}
 
 	var script models.SieveScript
 	if err := h.db.Where("mailbox_id = ?", mailboxID).First(&script).Error; err != nil {
-		// Return empty script if none exists
-		respond.Data(w, http.StatusOK, map[string]interface{}{
-			"mailbox_id": mailboxID,
-			"script":     "",
-			"active":     false,
-		})
-		return
+		return SieveScript{MailboxID: mailboxID}, nil
 	}
-
-	respond.Data(w, http.StatusOK, script)
+	return sieveScriptOf(script), nil
 }
 
-// PutScript creates or updates the Sieve script for a mailbox.
+// put creates or updates the Sieve script for a mailbox.
 // PUT /api/v1/accounts/{id}/sieve
-func (h *SieveHandler) PutScript(w http.ResponseWriter, r *http.Request) {
-	mailboxID, err := h.resolveMailboxID(r, chi.URLParam(r, "id"))
+func (h *SieveHandler) put(r *http.Request, in putSieveRequest) (endpoint.Status[SieveScript], error) {
+	mailboxID, err := mailRulesMailbox(h.db, r, in.ID)
 	if err != nil {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
+		return endpoint.Status[SieveScript]{}, err
 	}
 
-	var req struct {
-		Script *string `json:"script"`
-		Active *bool   `json:"active"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
+	req := in.Body
 	if req.Script == nil {
-		respond.ValidationError(w, map[string]string{"script": "required"})
-		return
+		return endpoint.Status[SieveScript]{}, errSieveScriptRequired
 	}
 
 	// Validate at INSTALL time: parse + a safe, side-effect-free dry-run. A script
@@ -94,8 +138,7 @@ func (h *SieveHandler) PutScript(w http.ResponseWriter, r *http.Request) {
 	// is NOT stored — moving the failure off the delivery path, where a bad script
 	// fails closed and silently defers the mailbox's mail.
 	if err := filters.ValidateSieveForInstall(*req.Script); err != nil {
-		respond.Error(w, http.StatusBadRequest, "invalid_sieve", err.Error())
-		return
+		return endpoint.Status[SieveScript]{}, endpoint.Refuse(http.StatusBadRequest, "invalid_sieve", err.Error())
 	}
 
 	active := true
@@ -115,18 +158,16 @@ func (h *SieveHandler) PutScript(w http.ResponseWriter, r *http.Request) {
 	if result.Error != nil {
 		// Create new
 		script = models.SieveScript{
-			MailboxID:   uint(mailboxID),
+			MailboxID:   mailboxID,
 			Script:      *req.Script,
 			ScriptHash:  scriptHash,
 			ValidatedAt: &now,
 			Active:      active,
 		}
 		if err := h.db.Create(&script).Error; err != nil {
-			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to create script")
-			return
+			return endpoint.Status[SieveScript]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to create script")
 		}
-		respond.Data(w, http.StatusCreated, script)
-		return
+		return endpoint.Status[SieveScript]{Code: http.StatusCreated, Value: sieveScriptOf(script)}, nil
 	}
 
 	// Update existing
@@ -135,68 +176,47 @@ func (h *SieveHandler) PutScript(w http.ResponseWriter, r *http.Request) {
 	script.ValidatedAt = &now
 	script.Active = active
 	if err := h.db.Save(&script).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to update script")
-		return
+		return endpoint.Status[SieveScript]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to update script")
 	}
 
-	respond.Data(w, http.StatusOK, script)
+	return endpoint.Status[SieveScript]{Code: http.StatusOK, Value: sieveScriptOf(script)}, nil
 }
 
-// DeleteScript removes the Sieve script for a mailbox.
+// delete removes the Sieve script for a mailbox.
 // DELETE /api/v1/accounts/{id}/sieve
-func (h *SieveHandler) DeleteScript(w http.ResponseWriter, r *http.Request) {
-	mailboxID, err := h.resolveMailboxID(r, chi.URLParam(r, "id"))
+func (h *SieveHandler) delete(r *http.Request, in accountPath) (SieveDeleted, error) {
+	mailboxID, err := mailRulesMailbox(h.db, r, in.ID)
 	if err != nil {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
+		return SieveDeleted{}, err
 	}
 
 	h.db.Where("mailbox_id = ?", mailboxID).Delete(&models.SieveScript{})
-	respond.Data(w, http.StatusOK, map[string]string{"status": "deleted"})
+	return SieveDeleted{Status: "deleted"}, nil
 }
 
-// ValidateScript checks a Sieve script without saving it.
+// validate checks a Sieve script without saving it.
 // POST /api/v1/accounts/{id}/sieve/validate
-func (h *SieveHandler) ValidateScript(w http.ResponseWriter, r *http.Request) {
-	// The same check as PutScript (mail:write on the account): validating is
-	// part of changing the account's script, and nobody else may run it there.
-	if _, err := h.resolveMailboxID(r, chi.URLParam(r, "id")); err != nil {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
+func (h *SieveHandler) validate(r *http.Request, in validateSieveRequest) (SieveValidation, error) {
+	// The same check as put (mail:write on the account): validating is part of
+	// changing the account's script, and nobody else may run it there.
+	if _, err := mailRulesMailbox(h.db, r, in.ID); err != nil {
+		return SieveValidation{}, err
 	}
 
-	var req struct {
-		Script *string `json:"script"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
-	if req.Script == nil {
-		respond.ValidationError(w, map[string]string{"script": "required"})
-		return
+	script := in.Body.Script
+	if script == nil {
+		return SieveValidation{}, errSieveScriptRequired
 	}
 
-	if *req.Script == "" {
-		respond.Data(w, http.StatusOK, map[string]interface{}{
-			"valid":   true,
-			"message": "Empty script is valid",
-		})
-		return
+	if *script == "" {
+		return SieveValidation{Message: "Empty script is valid", Valid: true}, nil
 	}
 
-	// Same gate as install (PutScript): parse + a safe dry-run, so "validate"
+	// Same gate as install (put): parse + a safe dry-run, so "validate"
 	// reports exactly what "save" would accept.
-	if err := filters.ValidateSieveForInstall(*req.Script); err != nil {
-		respond.Data(w, http.StatusOK, map[string]interface{}{
-			"valid":   false,
-			"message": err.Error(),
-		})
-		return
+	if err := filters.ValidateSieveForInstall(*script); err != nil {
+		return SieveValidation{Message: err.Error(), Valid: false}, nil
 	}
 
-	respond.Data(w, http.StatusOK, map[string]interface{}{
-		"valid":   true,
-		"message": "Script is valid",
-	})
+	return SieveValidation{Message: "Script is valid", Valid: true}, nil
 }
