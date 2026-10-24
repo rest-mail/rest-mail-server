@@ -37,6 +37,7 @@ auth:
     - '/api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 401'
     - '/api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 422 > application/json'
     - '/api/v1/accounts > List the accounts this one reaches > 401 > application/json'
+    - '/api/v1/accounts/{id}/events > Server-Sent Events stream for real-time updates > 401 > application/json'
     - '/api/v1/accounts > Create an account > 401 > application/json'
     - '/api/v1/accounts/link > Link an existing account by proving its password > 401'
     - '/api/v1/accounts/{id}/credentials > List an account''s app passwords > 401 > application/json'
@@ -66,7 +67,6 @@ exclude-operation-id:
   - checkMailboxAddress
   - deliverMessage
   - acmeChallenge
-  - accountEvents
   - resetAdmin
   - recoverAccount
   - ownerChallenge
@@ -202,8 +202,6 @@ surface:
       reason: "Served only on the internal mTLS listener, which the E2E topology turns on; the public listener vertrag reaches does not have it."
     - operation: acmeChallenge
       reason: "Served only when ACME is on; the E2E topology has no ACME."
-    - operation: accountEvents
-      reason: "An event stream: it never ends, so there is no response to judge."
     - operation: resetAdmin
       reason: "Needs a single-use token minted by the operator command (restmail-api mint-token) or for an owner key."
     - operation: recoverAccount
