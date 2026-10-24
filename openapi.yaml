@@ -4484,6 +4484,19 @@ paths:
         - BearerAuth: [mailboxes:read]
         - APIKeyAuth: [mailboxes:read]
       summary: Get an account by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          description: Resource ID
+          examples:
+            found:
+              value: 1
+            missing:
+              value: 2147483647
       responses:
         "200":
           description: Mailbox details
@@ -4496,7 +4509,17 @@ paths:
                   data:
                     $ref: "#/components/schemas/Mailbox"
         "404":
-          $ref: "#/components/responses/NotFound"
+          description: Mailbox not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missing:
+                  value:
+                    error:
+                      code: mailbox_not_found
+                      message: Mailbox not found
     patch:
       operationId: updateMailbox
       tags: ["Admin: Mailboxes"]
