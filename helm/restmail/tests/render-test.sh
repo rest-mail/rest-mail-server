@@ -407,6 +407,18 @@ assert_contains "in a Secret of its own by default"  "$tmp/webmail-tls.yaml" 'se
 assert_contains "or the one given"                   "$tmp/admin-tls.yaml"   'secretName: "admin-cert"'
 assert_contains "the ingress class is passed on"     "$tmp/webmail-tls.yaml" 'ingressClassName: "traefik"'
 
+# The API's own ingress, when it is on: its path, and the documents other mail servers fetch
+# from its host's root, RESTMAIL discovery and TLS-RPT reports, each exactly.
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" \
+  --set api.ingress.enabled=true --set api.ingress.host=mail.example.com > "$tmp/api-ingress-all.yaml"
+doc "$tmp/api-ingress-all.yaml" Ingress restmail-api > "$tmp/api-ingress.yaml"
+assert_contains "the API ingress is on its host"     "$tmp/api-ingress.yaml" 'host: "mail.example.com"'
+assert_contains "and sends /api to the API"          "$tmp/api-ingress.yaml" 'path: /api'
+assert_contains "RESTMAIL discovery at the root"     "$tmp/api-ingress.yaml" 'path: /.well-known/restmail'
+assert_contains "TLS-RPT reports at the root"        "$tmp/api-ingress.yaml" 'path: /.well-known/smtp-tlsrpt'
+[ "$(grep -c 'pathType: Exact' "$tmp/api-ingress.yaml")" -eq 2 ] || fail "the two documents are not matched exactly"
+pass "each exactly"
+
 # Both off: nothing of either is left, and nothing else goes with them.
 helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" \
   --set webmail.enabled=false --set admin.enabled=false > "$tmp/no-apps.yaml"
