@@ -14,7 +14,6 @@ import (
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/handlers"
 	"github.com/restmail/restmail/internal/api/middleware"
-	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/attachmentstore"
 	"github.com/restmail/restmail/internal/audit"
 	"github.com/restmail/restmail/internal/auth"
@@ -32,7 +31,6 @@ import (
 	"github.com/restmail/restmail/internal/push"
 	"github.com/restmail/restmail/internal/ratelimit"
 	"github.com/restmail/restmail/internal/trace"
-	"github.com/restmail/restmail/internal/version"
 	"gorm.io/gorm"
 )
 
@@ -328,32 +326,19 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// ═══════════════════════════════════════════════════════════════
 	// API root — version and discovery (no auth)
 	// ═══════════════════════════════════════════════════════════════
-	r.Get("/api", func(w http.ResponseWriter, r *http.Request) {
-		respond.Data(w, http.StatusOK, map[string]any{
-			"name":       "restmail",
-			"version":    version.Version,
-			"commit":     version.Commit,
-			"build_date": version.BuildDate,
-			"links": map[string]string{
-				"health": "/api/health",
-				"docs":   "/api/docs",
-				"login":  "/api/v1/auth/login",
-			},
-		})
-	})
+	// Registered with what this server is, below, where the owner endpoints' throttle is.
 
 	// ═══════════════════════════════════════════════════════════════
 	// API Documentation (no auth)
 	// ═══════════════════════════════════════════════════════════════
-	r.Get("/api/docs", SwaggerUIHandler())
-	r.Get("/api/docs/openapi.yaml", OpenAPISpecHandler())
+	registerDocs(endpoint.Routes{Router: r, Registry: registry})
 
 	// ═══════════════════════════════════════════════════════════════
 	// Health — public liveness probe (no auth, always 200 when up). The handler
 	// additionally surfaces the certificate inventory/expiry, but ONLY to a valid
 	// admin token; unauthenticated callers receive the liveness response only.
 	// ═══════════════════════════════════════════════════════════════
-	r.Get("/api/health", healthH.Health)
+	healthH.Register(endpoint.Routes{Router: r, Registry: registry})
 
 	// ═══════════════════════════════════════════════════════════════
 	// Prometheus metrics (no auth)
@@ -362,7 +347,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// A router-local registry avoids retaining DB handles in the global registry.
 	dkimRegistry := prometheus.NewRegistry()
 	dkimRegistry.MustRegister(metrics.NewDKIMKeyAgeCollector(db))
-	r.Handle("/metrics", promhttp.InstrumentMetricHandler(prometheus.DefaultRegisterer,
+	registerMetrics(endpoint.Routes{Router: r, Registry: registry}, promhttp.InstrumentMetricHandler(prometheus.DefaultRegisterer,
 		promhttp.HandlerFor(prometheus.Gatherers{
 			prometheus.DefaultGatherer, dkimRegistry,
 		}, promhttp.HandlerOpts{})))
@@ -462,7 +447,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// What this server is, for anyone who can reach it: how `restmail status`
 	// and the app confirm what is running. Shares the owner endpoints' bucket,
 	// so a script polling it cannot use up the budget anyone needs to sign in.
-	r.With(ownerThrottle).Get("/api/v1/server", handlers.DescribeServer)
+	handlers.RegisterSystem(endpoint.Routes{Router: r, Registry: registry}, describedOwnerThrottle(ownerThrottle))
 
 	// M-14 (CWE-770): the admin pipeline/filter test endpoints each run a message
 	// through the pipeline engine. They are capability-gated but were otherwise
@@ -630,20 +615,15 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		accountH.RegisterReads(endpoint.Routes{Router: r, Registry: registry}.
 			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap))
 
-		// Folders
-		r.Get("/api/v1/accounts/{id}/folders", messageH.ListFolders)
-		r.Post("/api/v1/accounts/{id}/folders", messageH.CreateFolder)
-		r.Patch("/api/v1/accounts/{id}/folders/{folder}", messageH.RenameFolder)
-		r.Delete("/api/v1/accounts/{id}/folders/{folder}", messageH.DeleteFolder)
-
-		// Quota
-		r.Get("/api/v1/accounts/{id}/quota", messageH.GetQuota)
+		// Folders and quota
+		mail := endpoint.Routes{Router: r, Registry: registry}.
+			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap)
+		messageH.RegisterFolders(mail)
+		messageH.RegisterMessages(mail)
+		searchH.Register(mail)
+		attachmentH.RegisterList(mail)
 
 		// Messages
-		r.Get("/api/v1/accounts/{id}/folders/{folder}/messages", messageH.ListMessages)
-		r.Get("/api/v1/messages/{id}", messageH.GetMessage)
-		r.Patch("/api/v1/messages/{id}", messageH.UpdateMessage)
-		r.Delete("/api/v1/messages/{id}", messageH.DeleteMessage)
 		r.Post("/api/v1/messages/send", messageH.SendMessage)
 		r.Get("/api/v1/messages/scheduled", messageH.ListScheduledSends)
 		r.Delete("/api/v1/messages/scheduled/{id}", messageH.CancelScheduledSend)
@@ -657,42 +637,22 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.Put("/api/v1/messages/draft/{id}", messageH.UpdateDraft)
 		r.Post("/api/v1/messages/draft/{id}/send", messageH.SendDraft)
 
-		// Threads
-		r.Get("/api/v1/accounts/{id}/threads/{threadID}", messageH.GetThread)
-
 		// Attachments
 		r.Get("/api/v1/attachments/{id}", attachmentH.GetAttachment)
-		r.Get("/api/v1/messages/{id}/attachments", attachmentH.ListAttachments)
 
 		// Contacts
-		r.Get("/api/v1/accounts/{id}/contacts", contactH.ListContacts)
-		r.Post("/api/v1/accounts/{id}/contacts", contactH.CreateContact)
-		r.Patch("/api/v1/accounts/{id}/contacts/{cid}", contactH.UpdateContact)
-		r.Delete("/api/v1/accounts/{id}/contacts/{cid}", contactH.DeleteContact)
-		r.Post("/api/v1/accounts/{id}/contacts/block", contactH.BlockSender)
-		r.Post("/api/v1/accounts/{id}/contacts/import", contactH.ImportContacts)
+		contactH.RegisterContacts(endpoint.Routes{Router: r, Registry: registry}.
+			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap))
 
-		// Vacation
-		r.Get("/api/v1/accounts/{id}/vacation", vacationH.GetVacation)
-		r.Put("/api/v1/accounts/{id}/vacation", vacationH.SetVacation)
-		r.Delete("/api/v1/accounts/{id}/vacation", vacationH.DisableVacation)
-
-		// Sieve scripts
-		r.Get("/api/v1/accounts/{id}/sieve", sieveH.GetScript)
-		r.Put("/api/v1/accounts/{id}/sieve", sieveH.PutScript)
-		r.Delete("/api/v1/accounts/{id}/sieve", sieveH.DeleteScript)
-		r.Post("/api/v1/accounts/{id}/sieve/validate", sieveH.ValidateScript)
-
-		// Contacts suggest (autocomplete)
-		r.Get("/api/v1/accounts/{id}/contacts/suggest", contactH.SuggestContacts)
-
-		// Search
-		r.Get("/api/v1/accounts/{id}/search", searchH.Search)
+		// Mail rules: the vacation reply and the Sieve script
+		mailRules := endpoint.Routes{Router: r, Registry: registry}.
+			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap)
+		vacationH.Register(mailRules)
+		sieveH.Register(mailRules)
 
 		// Quarantine
-		r.Get("/api/v1/accounts/{id}/quarantine", pipelineH.ListQuarantine)
-		r.Post("/api/v1/accounts/{id}/quarantine/{mid}/release", pipelineH.ReleaseQuarantine)
-		r.Delete("/api/v1/accounts/{id}/quarantine/{mid}", pipelineH.DeleteQuarantine)
+		pipelineH.RegisterQuarantine(endpoint.Routes{Router: r, Registry: registry}.
+			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap))
 	})
 
 	// ═══════════════════════════════════════════════════════════════

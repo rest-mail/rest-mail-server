@@ -34,7 +34,7 @@ func TestUpdateMessage_DraftFlagPersists(t *testing.T) {
 	req := authzRequest(http.MethodPatch,
 		"/api/v1/messages/"+idStr,
 		fx.mailbox.ID, map[string]string{"id": idStr}, `{"is_draft":true}`)
-	h.UpdateMessage(rr, req)
+	messageRoutes(h).ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("update: expected 200, got %d (%s)", rr.Code, rr.Body.String())
@@ -73,7 +73,7 @@ func TestUpdateMessage_DraftFlagClears(t *testing.T) {
 	req := authzRequest(http.MethodPatch,
 		"/api/v1/messages/"+idStr,
 		fx.mailbox.ID, map[string]string{"id": idStr}, `{"is_draft":false}`)
-	h.UpdateMessage(rr, req)
+	messageRoutes(h).ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("update: expected 200, got %d (%s)", rr.Code, rr.Body.String())

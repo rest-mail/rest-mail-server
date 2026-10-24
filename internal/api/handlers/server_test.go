@@ -13,7 +13,7 @@ import (
 // nothing else: before 0.7 it also said whether it was claimed, and how to.
 func TestServer_SaysWhatItIsAndNothingElse(t *testing.T) {
 	rr := httptest.NewRecorder()
-	DescribeServer(rr, httptest.NewRequest(http.MethodGet, "/api/v1/server", nil))
+	systemRoutes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/v1/server", nil))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("GET /api/v1/server = %d %s", rr.Code, rr.Body)
 	}
