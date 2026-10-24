@@ -168,7 +168,6 @@ func (h *MessageHandler) RegisterCompose(rs endpoint.Routes) {
 		Description: "The invitation's message is read with mail:read; the reply is sent from an address the session may send as (mail:send).",
 		Errors:      []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusServiceUnavailable},
 		Security:    readAndSend}, h.respondToCalendar)
-	sends := handlerChecked(models.CapMailSend, folderSchemes...)
 	writeAndSend := make([]oapifly.SecurityRequirement, len(folderSchemes))
 	for i, scheme := range folderSchemes {
 		writeAndSend[i] = oapifly.SecurityRequirement{scheme: {models.CapMailWrite, models.CapMailSend}}
