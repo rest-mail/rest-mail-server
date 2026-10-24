@@ -40,7 +40,7 @@ func TestOwnerRegistry_DatabaseFailureFailsClosed(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	rr := httptest.NewRecorder()
-	h.Challenge(rr, httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx))
+	ownerRoute(h, "challenge")(rr, httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx))
 	if rr.Code != http.StatusInternalServerError || errorCodeOf(rr) != "internal_error" {
 		t.Fatalf("unavailable database = %d %s, want a closed failure", rr.Code, rr.Body)
 	}

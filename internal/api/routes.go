@@ -406,10 +406,10 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// Sign-in, refresh and recovery (below) are throttled like login; logout is
 	// unthrottled, so only a logout that names a session is recorded.
 	signInChecks := handlers.SessionRouteChecks{Throttle: describedThrottle(authThrottle), Audit: describedAudit(auditLog)}
-	// Redeem a single-use token minted by the operator command (restmail-api
-	// mint-token) or for an owner key: reset an admin who has lost every way
-	// in. Throttled like login: it guesses at a secret.
-	r.With(authThrottle, auditLog("auth.reset", middleware.AuditStartedSession())).Post("/api/v1/auth/reset", authH.Reset)
+	// Redeeming a single-use token minted by the operator command (restmail-api
+	// mint-token) or for an owner key, reset (registered with sign-in), lets an
+	// admin who has lost every way in back in. Throttled like login: it
+	// guesses at a secret.
 	// Self-service password reset with the authenticator and a recovery code
 	// the account set up in advance (#124). Throttled like login, and each
 	// address may be refused only 5 times, then once per 15 minutes, so
@@ -436,12 +436,10 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	}
 	statusKeys, _ := bootstrap.ParseStatusKeys(cfg.StatusKeys)
 	ownerH := handlers.NewOwnerHandler(db, statusKeys, cfg.JWTSecret)
-	r.With(ownerThrottle).Post("/api/v1/auth/owner/challenge", ownerH.Challenge)
-	r.With(ownerThrottle, auditLog("auth.owner_token", middleware.AuditSignIn())).Post("/api/v1/auth/owner/token", ownerH.Token)
 	// The same challenge, signed for "status" with a key in
 	// RESTMAIL_STATUS_KEYS (or an owner key), reads the version, commit, build
 	// and start time: a deploy confirmed from outside. Same bucket.
-	r.With(ownerThrottle, auditLog("auth.owner_status")).Post("/api/v1/auth/owner/status", ownerH.Status)
+	ownerH.Register(endpoint.Routes{Router: r, Registry: registry}, describedOwnerThrottle(ownerThrottle), describedAudit(auditLog))
 
 	// What this server is, for anyone who can reach it: how `restmail status`
 	// and the app confirm what is running. Shares the owner endpoints' bucket,
