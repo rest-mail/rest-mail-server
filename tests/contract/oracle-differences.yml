@@ -2063,6 +2063,11 @@
   reason: >-
     The mail routes throttle refused HTTP Basic credentials at login's rate (429
     rate_limited).
+- operation: updateMessage
+  difference: "request body application/json.properties.folder.minLength: openapi.yaml 1, generated absent"
+  reason: >-
+    A folder is held to the folder rule in the handler, an empty one refused with 422 folder
+    required as createFolder refuses an empty name; a minLength would word it differently (#759).
 - operation: deleteMessage
   difference: "response 429: generated only"
   reason: >-

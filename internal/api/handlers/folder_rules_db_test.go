@@ -165,3 +165,47 @@ func TestDeleteFolder_InboxInAnyCase(t *testing.T) {
 		t.Fatalf("INBOX holds %d messages, want 1", got)
 	}
 }
+
+// A move names its folder by the same rule, since it makes the folder when there is none,
+// and lands in INBOX for inbox in any case (#759).
+func TestUpdateMessage_FolderName(t *testing.T) {
+	fx := newFolderRulesFixture(t)
+	var msg models.Message
+	if err := fx.db.Where("mailbox_id = ? AND folder = ?", fx.mailbox, "Work").First(&msg).Error; err != nil {
+		t.Fatal(err)
+	}
+	router := chi.NewRouter()
+	router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := context.WithValue(r.Context(), middleware.ClaimsKey, &auth.Claims{AccountID: fx.mailbox})
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	})
+	NewMessageHandler(fx.db, nil, nil, "", nil).RegisterMessages(endpoint.Routes{Router: router, Registry: endpoint.NewRegistry()})
+	move := func(body string) *httptest.ResponseRecorder {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPatch, fmt.Sprintf("/api/v1/messages/%d", msg.ID), strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(rr, req)
+		return rr
+	}
+	for body, want := range map[string]string{
+		`{"folder":" Work"}`:            "must not begin or end with a space",
+		`{"folder":"Work/../Personal"}`: `must not contain \"..\"`,
+		`{"folder":"a\u0000b"}`:         "must not contain a control character",
+		`{"folder":""}`:                 "required",
+		fmt.Sprintf(`{"folder":%q}`, strings.Repeat("x", 256)): "must be at most 255 bytes",
+	} {
+		wantRefusal(t, move(body), http.StatusUnprocessableEntity, `"folder":"`+want+`"`)
+	}
+	if got := fx.count(t, "Work"); got != 2 {
+		t.Fatalf("a refused move moved the message: Work holds %d, want 2", got)
+	}
+	rr := move(`{"folder":"inbox"}`)
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), `"folder":"INBOX"`) {
+		t.Fatalf("move to inbox: got %d %s", rr.Code, rr.Body)
+	}
+	if got := fx.count(t, "inbox"); got != 0 {
+		t.Fatalf("a lowercase inbox was made: %d rows", got)
+	}
+}
