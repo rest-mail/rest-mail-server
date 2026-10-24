@@ -574,10 +574,18 @@ tasks:
       - |
         set -eu
         if [ -z "${CONTRACT_ENDPOINT:-}" ]; then chore e2e:up; fi
+        if [ ! -s .cache/contract-principals.json ]; then
+          E2E_REQUIRE_STACK=1 chore test:e2e -- -run '^TestContractPrincipals$'
+        fi
         chore test:contract-fixtures
         chore test:contract-api-keys
-        tests/contract/run.sh gate {{.CLI_ARGS}}
+        code=0
+        tests/contract/run.sh gate {{.CLI_ARGS}} || code=$?
+        scan=0
+        python3 tests/contract/secret_scan.py .cache/contract/examples.har --audit-from .cache/contract/vertrag-run.yml || scan=$?
         tests/contract/run.sh authorization {{.CLI_ARGS}} || echo "the authorization phase is a report, not a gate"
+        if [ "$code" -ne 0 ]; then exit "$code"; fi
+        exit "$scan"
 
   contract:run:
     desc: 'The contract gates against a running topology; narrow with -- --tag Domains, --operation-id getDomain or --only-matching REGEX'
@@ -622,7 +630,7 @@ tasks:
         mkdir -p .cache/contract
         docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test --api-keys > .cache/contract/api-key-fixture.log
         sed -n 's/^API_KEY_FIXTURE=//p' .cache/contract/api-key-fixture.log > .cache/contract/api-key-fixture.json
-        python3 tests/contract/api_keys_live.py http://10.99.0.20:8080 --fixture .cache/contract/api-key-fixture.json
+        python3 tests/contract/api_keys_live.py "${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}" --fixture .cache/contract/api-key-fixture.json
 
   test:contract-link-fixture:
     desc: Prepare the generated link proof only after account-creation probes
@@ -656,8 +664,9 @@ tasks:
           -v rest-mail-e2e-gocache:/root/.cache/go-build \
           -e GOFLAGS=-buildvcs=false \
           -e E2E_REQUIRE_STACK \
+          -e API_BASE_URL="${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}" \
           golang:1.25 \
-          go test -race -count=1 -v -timeout 8m ./tests/e2e/...
+          go test -race -count=1 -v -timeout 8m ./tests/e2e/... {{.CLI_ARGS}}
 
   e2e:
     desc: 'Full e2e run: bring up the topology, run the tests, tear it down'

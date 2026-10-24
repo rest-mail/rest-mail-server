@@ -36,8 +36,29 @@ fi
 out=.cache/contract
 logs=${CONTRACT_LOGS:-$out}
 mkdir -p "$out" "$logs"
+# Save the document this server actually serves, with the reports, and fail on a
+# fetch error. The phases still read openapi.yaml: the generated document gives no
+# example to most path and required query parameters, and Vertrag builds no request
+# without one (2,876 refusals in E2E run 40111450987, 2026-10-24). #670 moves the
+# phases onto the served document once every parameter carries its example.
+served="$PWD/$out/openapi.json"
+export CONTRACT_SPEC="$PWD/openapi.yaml"
+if [ "$phase" != authorization ]; then
+  # Do not report an earlier run's transactions after this run fails early.
+  names=(fuzz)
+  if [ "$phase" = gate ]; then names=(examples coverage authorization); fi
+  for name in "${names[@]}"; do
+    rm -f "$out/$name.xml" "$out/$name.html" "$out/$name.md" "$out/$name.har" "$out/$name.json"
+  done
+  rm -f "$served"
+fi
+trap 'python3 tests/contract/summary.py "$out"' EXIT
 python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
 vertrag version
+if [ "$phase" != authorization ]; then
+  python3 tests/contract/description.py vertrag.yml "$served"
+fi
+test -s "$served"
 
 # vertrag.yml as this run uses it: absolute paths, the endpoint, and the surface
 # gate only for a whole-API run.
@@ -64,7 +85,7 @@ gate)
   if [ "$code" -ne 0 ] && [ "$code" -ne 2 ]; then exit "$code"; fi
   if [ ${#select[@]} -eq 0 ]; then
     # The coverage baseline only shrinks.
-    python3 tests/contract/gate.py openapi.yaml vertrag.yml "$out/coverage.xml" tests/contract/coverage-baseline.txt
+    python3 tests/contract/gate.py "$CONTRACT_SPEC" vertrag.yml "$out/coverage.xml" tests/contract/coverage-baseline.txt
   else
     echo "a narrowed run: the coverage baseline is not applied"
   fi
@@ -72,7 +93,7 @@ gate)
 authorization)
   # Examples always run first, then the matrix repeats destructive requests as
   # the admin, so this runs after the gate.
-  python3 tests/contract/authorization.py openapi.yaml "$out/vertrag-run.yml" \
+  python3 tests/contract/authorization.py "$CONTRACT_SPEC" "$out/vertrag-run.yml" \
     .cache/contract-principals.json "$out/vertrag-authorization.yml" "$out/authorization.xml"
   python3 tests/contract/reports.py "$out/vertrag-authorization.yml" "$out/vertrag-authorization.yml" "$out/authorization" "${narrowed[@]}"
   code=0
@@ -80,7 +101,6 @@ authorization)
     >"$logs/contract-authorization.log" 2>&1 || code=$?
   cat "$logs/contract-authorization.log"
   echo "vertrag authorization exited $code (report only)"
-  python3 tests/contract/summary.py "$out"
   exit "$code"
   ;;
 fuzz)
@@ -91,5 +111,3 @@ fuzz)
   cat "$logs/contract-fuzz.log"
   ;;
 esac
-
-python3 tests/contract/summary.py "$out"

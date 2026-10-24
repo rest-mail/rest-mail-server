@@ -1,8 +1,9 @@
 # Contract tests
 
 [vertrag](https://github.com/antimatter-studios/vertrag) sends every request
-`openapi.yaml` documents to a running API and checks each answer against what
-the spec promises: the status, the headers and the body's schema (#376).
+the generated `/api/docs/openapi.json` documents to a running API and checks
+each answer against what the spec promises: the status, the headers and the
+body's schema (#376).
 
 ## Where it runs
 
@@ -46,8 +47,8 @@ These checks detect missing routes and contract drift. Full mobile parity also
 needs request/response field, permission, UI and live integration evidence for
 each operation; route counts alone do not establish that evidence.
 
-The three API-key operations run in a separate required step,
-`chore test:contract-api-keys`, before the examples gate. It creates a fresh
+The three API-key operations run in a required check,
+`chore test:contract-api-keys`, inside `chore contract` before the examples gate. It creates a fresh
 disposable `restmail.test` account with a domain-scoped admin grant, enrolls
 2FA through the public API, confirms a real TOTP and signs in with a recovery
 code. The suite checks create/list/revoke, metadata without secrets, password
@@ -597,16 +598,32 @@ chore contract:fuzz -- --seed 42    # the fuzz phase; replay a finding by its se
 chore contract:diff                 # the generated description against openapi.yaml, no server
 ```
 
-`chore contract` prepares the fixtures, proves the API key lifecycle, then runs
+`chore contract` prepares the fixtures, proves the API key lifecycle, fetches
+`/api/docs/openapi.json` into `.cache/contract/openapi.json`, then runs
 `tests/contract/run.sh gate` (the examples phase, then the coverage phase held to
 `coverage-baseline.txt`) and `tests/contract/run.sh authorization` (a report).
-CI's E2E job calls the same script, so a run here gives the verdict CI gives for
+CI's E2E job calls `chore contract`, so a run here gives the verdict CI gives for
 the same commit. A narrowed run (`--tag`, `--operation-id`, `--only-matching`)
 reports without the surface gate and the baseline, which are about the whole API.
 
-Each phase writes JUnit, HTML and Markdown to `.cache/contract/` (`examples.html`,
+The secret scan also runs locally, including after a failing examples gate.
+The API key proof and every Vertrag phase honor `CONTRACT_ENDPOINT`. A fetch
+failure stops the run. The phases themselves still read `openapi.yaml`: the
+generated description gives no example to most path and required query
+parameters, and Vertrag builds no request without one. The saved description is
+published with the reports, and #670 moves the phases onto it once every
+parameter carries its example. `openapi.yaml` is also the independent oracle for
+`chore contract:diff`.
+
+When the shared principal fixture is absent, `chore contract` runs only
+`TestContractPrincipals` from the E2E suite to create it. CI reuses the fixture
+its earlier E2E stages created. Lifecycle and scope gates remain #626.
+
+Each phase writes JUnit, JSON, HTML and Markdown to `.cache/contract/` (`examples.html`,
 `coverage.md`, …), and the run ends with a summary, also in
-`.cache/contract/summary.md`:
+`.cache/contract/summary.md`. The summary includes Vertrag's own operation
+counts and each operation/status exclusion with its reason; it also runs when
+a gate fails:
 
 ```
 | Phase | Transactions | Passed | Failed | Skipped |
