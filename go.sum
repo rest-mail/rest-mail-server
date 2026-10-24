@@ -150,6 +150,8 @@ github.com/rest-mail/go-imap v0.7.0 h1:rPoU7pU7UV2kPXO3LXPLMqKCxuDjPtYoH2OuOftgm
 github.com/rest-mail/go-imap v0.7.0/go.mod h1:VJQuITi9O1dEh2ouVcBR/IyMdivs+SKUe5G9XfF4dTI=
 github.com/rest-mail/go-mtasts v0.3.1 h1:kSOSwb658MRjv829Ca9rGqQ1siw8kZXrzNvUjKhDFyk=
 github.com/rest-mail/go-mtasts v0.3.1/go.mod h1:2jtzwtnBD7BM+MpyDdpq5SwlYZtVQEqAzLKIf2lbVBY=
+github.com/rest-mail/go-mtasts v0.4.0 h1:Ttski64idfygdpUOTOrXjPLWRfFyfylO1Sh1RUbfkKk=
+github.com/rest-mail/go-mtasts v0.4.0/go.mod h1:2jtzwtnBD7BM+MpyDdpq5SwlYZtVQEqAzLKIf2lbVBY=
 github.com/rest-mail/go-pop3 v0.3.0 h1:1lb6Dv9o3ydS74+gzNeJGjRpfmju1BdK01PpBxgeqfE=
 github.com/rest-mail/go-pop3 v0.3.0/go.mod h1:fH/VVM73Bq7WEue4T/sIolhTa+uWsmD+v/vyb5R8EM8=
 github.com/rest-mail/go-sieve v0.6.0 h1:ge9N/soTHFWmt3IVqfRuR9Ph20ZcliSEYDw11XHJJ9I=

@@ -128,10 +128,13 @@ func HasDKIMSignature(raw string) bool {
 	return false
 }
 
-// signedHeaders is the h= set SignDKIM signs: go-dkim's default set and the
+// signedHeaders is the h= set SignDKIM signs: go-dkim's default set, the
 // RFC 8058 one-click field, so a one-click claim is covered alongside the
-// List-Unsubscribe target it applies to.
-var signedHeaders = append(append([]string{}, dkim.DefaultSignedHeaders...), "list-unsubscribe-post")
+// List-Unsubscribe target it applies to, and the TLS-RPT report fields, which
+// RFC 8460 §5.3 says a report's signature should cover. A field a message
+// lacks is not signed.
+var signedHeaders = append(append([]string{}, dkim.DefaultSignedHeaders...),
+	"list-unsubscribe-post", "tls-report-domain", "tls-report-submitter")
 
 // HasDKIMKey reports whether SignDKIM would sign mail from senderDomain: the
 // domain is hosted here with a selector and a key configured. Whether the key

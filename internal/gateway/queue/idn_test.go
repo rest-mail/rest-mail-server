@@ -90,7 +90,7 @@ func TestInvalidSMTPEnvelopeBeforeNetwork(t *testing.T) {
 			// routing/storage/network a failure instead of a false positive.
 			for _, deliver := range []func() error{
 				func() error { return w.deliver(item) },
-				func() error { return w.deliverSMTP("invalid", "invalid", item, nil) },
+				func() error { return w.deliverSMTP("invalid", "invalid", item, nil, nil) },
 				func() error {
 					return w.deliverToRelay(context.Background(), relaySettings{host: "example.test", port: 25, mode: relaySTARTTLS}, item)
 				},

@@ -184,6 +184,11 @@ type Worker struct {
 	// restmailRoots holds system roots plus any configured operator/testbed CA
 	// for both RESTMAIL discovery and delivery. Nil uses system roots.
 	restmailRoots *x509.CertPool
+	// txtResolver answers the TXT lookups TLS-RPT reporting makes, and
+	// tlsReportClient sends its HTTPS reports; nil is the system resolver and
+	// a guarded client. Tests only.
+	txtResolver     func(ctx context.Context, name string) ([]string, error)
+	tlsReportClient *http.Client
 
 	// Bounce/DSN anti-mailbomb controls (OSI-25). bounceMax caps how many DSNs
 	// may be delivered into a single recipient mailbox within bounceWindow;
@@ -382,6 +387,12 @@ func (w *Worker) Start() {
 			w.processLoop(workerID)
 		}(i)
 	}
+	// The daily TLS-RPT reports on the sessions the workers record (#726).
+	w.wg.Add(1)
+	go func() {
+		defer w.wg.Done()
+		w.tlsReportLoop()
+	}()
 }
 
 // Shutdown stops the queue workers gracefully.
@@ -649,11 +660,16 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 	// nil and delivery proceeds with ordinary opportunistic TLS.
 	var stsPolicy *mtasts.Policy
 	stsCtx, stsCancel := context.WithTimeout(context.Background(), 15*time.Second)
-	policy, err := w.sts.Resolve(stsCtx, dnsDomain)
+	policy, stsErr := w.sts.Resolve(stsCtx, dnsDomain)
 	stsCancel()
-	if err != nil {
+	if item.TLSReport {
+		// A TLS-RPT report goes despite any TLS failure, MTA-STS included:
+		// it may be what tells the domain its TLS is broken (RFC 8460 §3).
+		policy, stsErr = nil, mtasts.ErrNoPolicy
+	}
+	if stsErr != nil {
 		slog.Debug("queue: MTA-STS not available, proceeding normally",
-			"domain", item.Domain, "error", err)
+			"domain", item.Domain, "error", stsErr)
 	} else {
 		stsPolicy = policy
 		slog.Info("queue: MTA-STS policy found",
@@ -732,7 +748,7 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 				"host", host, "domain", item.Domain, "mode", stsPolicy.Mode)
 		}
 
-		lastErr = w.deliverToHost(host, item, stsPolicy)
+		lastErr = w.deliverToHost(host, item, stsPolicy, stsErr)
 		if lastErr == nil {
 			return nil
 		}
@@ -1356,13 +1372,15 @@ func dsnRecipientField(addr string) string {
 //     MX offers STARTTLS, whatever its certificate, and record whether it
 //     verified; a handshake that fails is retried on a new connection without
 //     TLS. A would-fail under "testing" is logged but delivery proceeds.
-func (w *Worker) deliverToHost(host string, item models.OutboundQueue, stsPolicy *mtasts.Policy) error {
-	return w.deliverSMTP(net.JoinHostPort(host, "25"), host, item, stsPolicy)
+func (w *Worker) deliverToHost(host string, item models.OutboundQueue, stsPolicy *mtasts.Policy, stsErr error) error {
+	return w.deliverSMTP(net.JoinHostPort(host, "25"), host, item, stsPolicy, stsErr)
 }
 
 // deliverSMTP keeps the socket address separate from the MX identity used for
 // EHLO/TLS policy, as probeRESTMAIL does. Production uses the MX's port 25.
-func (w *Worker) deliverSMTP(addr, host string, item models.OutboundQueue, stsPolicy *mtasts.Policy) error {
+// stsErr is why MTA-STS discovery found no policy (nil when stsPolicy is
+// set), recorded with the session for the domain's TLS-RPT report.
+func (w *Worker) deliverSMTP(addr, host string, item models.OutboundQueue, stsPolicy *mtasts.Policy, stsErr error) error {
 	// Strip Bcc and DKIM-sign before transmission (#171). Fail closed on a key
 	// that cannot be loaded so the send retries rather than going out unsigned.
 	prepared, err := w.prepareOutbound(item)
@@ -1401,6 +1419,11 @@ func (w *Worker) deliverSMTP(addr, host string, item models.OutboundQueue, stsPo
 	link, err := w.openSMTP(ctx, addr, host, attemptDeadline, true, enforce)
 	if err != nil {
 		return err
+	}
+	// What this session's TLS came to, for the recipient's TLS-RPT report
+	// (RFC 8460): a report itself is not counted (§3).
+	if !item.TLSReport {
+		w.recordTLSSession(item.Domain, host, stsPolicy, stsErr, link, time.Now())
 	}
 	if link.tlsErr != nil && !enforce {
 		// The failed handshake has left that connection unusable: net/smtp has
@@ -1532,6 +1555,11 @@ type smtpLink struct {
 	// tlsErr is the STARTTLS failure, when the upgrade was tried and failed; the
 	// connection is then unusable, and the caller decides what to do.
 	tlsErr error
+	// certErr is why the certificate did not verify on a connection that is
+	// encrypted but not authenticated, for TLS-RPT (RFC 8460 §4.3).
+	certErr error
+	// localIP and remoteIP are this end's and the MX's address.
+	localIP, remoteIP string
 }
 
 // openSMTP dials addr, which the guarded dialer refuses when it resolves to a
@@ -1560,16 +1588,16 @@ func (w *Worker) openSMTP(ctx context.Context, addr, host string, deadline time.
 		_ = client.Close()
 		return nil, fmt.Errorf("EHLO to %s: %w", host, err)
 	}
-	link := &smtpLink{client: client, security: transportCleartext}
+	link := &smtpLink{client: client, security: transportCleartext, localIP: addrIP(conn.LocalAddr()), remoteIP: addrIP(conn.RemoteAddr())}
 	if ok, _ := client.Extension("STARTTLS"); !tryTLS || !ok {
 		return link, nil
 	}
 	tlsConfig := &tls.Config{ServerName: host}
-	verified := requireVerified
+	var verifyErr error
 	if !requireVerified {
 		tlsConfig.InsecureSkipVerify = true //nolint:gosec // verified below, recorded rather than required
 		tlsConfig.VerifyConnection = func(cs tls.ConnectionState) error {
-			verified = verifyPeerCertificate(cs, host) == nil
+			verifyErr = verifyPeerCertificate(cs, host)
 			return nil
 		}
 	}
@@ -1577,9 +1605,9 @@ func (w *Worker) openSMTP(ctx context.Context, addr, host string, deadline time.
 		link.tlsErr = err
 		return link, nil
 	}
-	link.security = transportEncrypted
-	if verified {
-		link.security = transportAuthenticated
+	link.security = transportAuthenticated
+	if verifyErr != nil {
+		link.security, link.certErr = transportEncrypted, verifyErr
 	}
 	return link, nil
 }

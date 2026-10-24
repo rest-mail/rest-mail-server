@@ -148,6 +148,8 @@ func autoMigrate(db *gorm.DB) error {
 		&models.PushDevice{},
 		// DMARC aggregate (rua) reporting
 		&models.DMARCAggregateRecord{},
+		// The outbound SMTP sessions REST Mail reports on in TLS-RPT (#726)
+		&models.TLSRPTSession{},
 	)
 	if err != nil {
 		return fmt.Errorf("auto-migration failed: %w", err)

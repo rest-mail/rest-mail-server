@@ -177,8 +177,13 @@ dig +dnssec +short TLSA _25._tcp.mx1.example.org
   `/.well-known/smtp-tlsrpt`, with limits on size and rate
   ([`tlsrpt.go`](../../../internal/api/handlers/tlsrpt.go)), and `chore
   dns:show` prints each domain's `_smtp._tls` record pointing there, on the
-  mail host. It does not yet send reports about its own deliveries, or accept
-  them by email:
+  mail host. It sends them too: the queue counts what each outbound SMTP
+  session's TLS came to, and once a day every recipient domain that publishes
+  an `_smtp._tls` record gets the day before's report, by HTTPS or by mail
+  signed with the DKIM key of REST Mail's own domain
+  ([`tlsrpt_report.go`](../../../internal/gateway/queue/tlsrpt_report.go)).
+  An MTA-STS policy it could not fetch, authenticate or read is reported as
+  that failure. It does not yet accept reports by email:
   [#726](https://github.com/rest-mail/rest-mail-server/issues/726).
 - **DANE** is not supported yet, for sending or receiving:
   [#725](https://github.com/rest-mail/rest-mail-server/issues/725).

@@ -58,6 +58,11 @@ type OutboundQueue struct {
 	// that is not a forward has no ARCResults, and nothing is sealed (#731).
 	ARCResults string `gorm:"type:text" json:"-"`
 	ARCChain   string `gorm:"size:8" json:"-"`
+
+	// TLSReport marks a TLS-RPT report REST Mail sends by mail: it is
+	// delivered despite any TLS failure, with MTA-STS not enforced, and its
+	// session is left out of the next report (RFC 8460 §3).
+	TLSReport bool `gorm:"not null;default:false" json:"-"`
 }
 
 func (OutboundQueue) TableName() string { return "outbound_queue" }
