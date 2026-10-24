@@ -87,7 +87,7 @@ func TestNewProvider_ExternalDNSWithOpts(t *testing.T) {
 func TestManualProvider_EnsureRecords(t *testing.T) {
 	p := NewManualProvider()
 	ctx := context.Background()
-	records := RequiredRecords("example.test", "10.0.0.1")
+	records := sampleRecords("example.test", "10.0.0.1")
 
 	err := p.EnsureRecords(ctx, "example.test", records)
 	if err != nil {
@@ -420,130 +420,8 @@ func TestExternalDNSProvider_SanitizeDomain(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// RequiredRecords helper tests
-// ---------------------------------------------------------------------------
 
-func TestRequiredRecords(t *testing.T) {
-	records := RequiredRecords("mail.test", "10.0.0.1")
 
-	if len(records) != 4 {
-		t.Fatalf("expected 4 records, got %d", len(records))
-	}
-
-	// A record
-	a := records[0]
-	if a.Type != "A" || a.Name != "mail.test" || a.Value != "10.0.0.1" {
-		t.Errorf("unexpected A record: %+v", a)
-	}
-
-	// MX record
-	mx := records[1]
-	if mx.Type != "MX" || mx.Name != "mail.test" || mx.Value != "mail.test" || mx.Priority != 10 {
-		t.Errorf("unexpected MX record: %+v", mx)
-	}
-
-	// SPF TXT record
-	spf := records[2]
-	if spf.Type != "TXT" || spf.Name != "mail.test" || spf.Value != "v=spf1 ip4:10.0.0.1 -all" {
-		t.Errorf("unexpected SPF record: %+v", spf)
-	}
-
-	// DMARC TXT record
-	dmarc := records[3]
-	if dmarc.Type != "TXT" || dmarc.Name != "_dmarc.mail.test" {
-		t.Errorf("unexpected DMARC record: %+v", dmarc)
-	}
-	if !strings.Contains(dmarc.Value, "v=DMARC1") {
-		t.Errorf("DMARC record value should contain v=DMARC1, got %s", dmarc.Value)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// FullRequiredRecords helper tests
-// ---------------------------------------------------------------------------
-
-func TestFullRequiredRecords_WithAPIIP(t *testing.T) {
-	records := FullRequiredRecords("mail.test", "10.0.0.1", "10.0.0.5")
-
-	byName := map[string]DNSRecord{}
-	for _, r := range records {
-		byName[r.Type+":"+r.Name] = r
-	}
-
-	// Core records should be present
-	if _, ok := byName["A:mail.test"]; !ok {
-		t.Error("missing A record for mail.test")
-	}
-	if _, ok := byName["MX:mail.test"]; !ok {
-		t.Error("missing MX record")
-	}
-	if _, ok := byName["TXT:mail.test"]; !ok {
-		t.Error("missing SPF record")
-	}
-	if _, ok := byName["TXT:_dmarc.mail.test"]; !ok {
-		t.Error("missing DMARC record")
-	}
-
-	// Autoconfig records must point to apiIP
-	ac := byName["A:autoconfig.mail.test"]
-	if ac.Value != "10.0.0.5" {
-		t.Errorf("autoconfig A should point to apiIP 10.0.0.5, got %s", ac.Value)
-	}
-	ad := byName["A:autodiscover.mail.test"]
-	if ad.Value != "10.0.0.5" {
-		t.Errorf("autodiscover A should point to apiIP 10.0.0.5, got %s", ad.Value)
-	}
-
-	// SRV records
-	for _, srvName := range []string{
-		"SRV:_submission._tcp.mail.test",
-		"SRV:_imap._tcp.mail.test",
-		"SRV:_imaps._tcp.mail.test",
-		"SRV:_pop3._tcp.mail.test",
-		"SRV:_pop3s._tcp.mail.test",
-	} {
-		if _, ok := byName[srvName]; !ok {
-			t.Errorf("missing SRV record: %s", srvName)
-		}
-	}
-
-	// MTA-STS records
-	mtas := byName["TXT:_mta-sts.mail.test"]
-	if !strings.Contains(mtas.Value, "v=STSv1") {
-		t.Errorf("_mta-sts TXT should contain v=STSv1, got %s", mtas.Value)
-	}
-	mtaA := byName["A:mta-sts.mail.test"]
-	if mtaA.Value != "10.0.0.5" {
-		t.Errorf("mta-sts A should point to apiIP, got %s", mtaA.Value)
-	}
-
-	// TLS-RPT record
-	tlsrpt := byName["TXT:_smtp._tls.mail.test"]
-	if !strings.Contains(tlsrpt.Value, "v=TLSRPTv1") {
-		t.Errorf("_smtp._tls TXT should contain v=TLSRPTv1, got %s", tlsrpt.Value)
-	}
-}
-
-func TestFullRequiredRecords_DefaultsAPIIPToMailIP(t *testing.T) {
-	records := FullRequiredRecords("mail.test", "10.0.0.1", "")
-
-	byName := map[string]DNSRecord{}
-	for _, r := range records {
-		byName[r.Type+":"+r.Name] = r
-	}
-
-	// When apiIP is empty, autoconfig should point to mailIP
-	ac := byName["A:autoconfig.mail.test"]
-	if ac.Value != "10.0.0.1" {
-		t.Errorf("autoconfig A should default to mailIP 10.0.0.1, got %s", ac.Value)
-	}
-
-	mtas := byName["A:mta-sts.mail.test"]
-	if mtas.Value != "10.0.0.1" {
-		t.Errorf("mta-sts A should default to mailIP, got %s", mtas.Value)
-	}
-}
 
 // ---------------------------------------------------------------------------
 // Integration-style: roundtrip EnsureRecords -> RemoveRecords for dnsmasq
@@ -555,7 +433,7 @@ func TestDnsmasqProvider_Roundtrip(t *testing.T) {
 	p := NewDnsmasqProvider(configPath)
 	ctx := context.Background()
 
-	records := RequiredRecords("roundtrip.test", "192.168.1.1")
+	records := sampleRecords("roundtrip.test", "192.168.1.1")
 
 	// Ensure
 	if err := p.EnsureRecords(ctx, "roundtrip.test", records); err != nil {
@@ -583,7 +461,7 @@ func TestExternalDNSProvider_Roundtrip(t *testing.T) {
 	p := NewExternalDNSProvider(tmpDir)
 	ctx := context.Background()
 
-	records := RequiredRecords("roundtrip.test", "192.168.1.1")
+	records := sampleRecords("roundtrip.test", "192.168.1.1")
 
 	// Ensure
 	if err := p.EnsureRecords(ctx, "roundtrip.test", records); err != nil {
@@ -608,41 +486,6 @@ func TestExternalDNSProvider_Roundtrip(t *testing.T) {
 // SRV record correctness tests
 // ---------------------------------------------------------------------------
 
-func TestFullRequiredRecords_SRVPortsAreCorrect(t *testing.T) {
-	records := FullRequiredRecords("mail.test", "10.0.0.1", "10.0.0.5")
-
-	expected := map[string]int{
-		"_submission._tcp.mail.test": 587,
-		"_imap._tcp.mail.test":       143,
-		"_imaps._tcp.mail.test":      993,
-		"_pop3._tcp.mail.test":       110,
-		"_pop3s._tcp.mail.test":      995,
-	}
-
-	seen := map[string]bool{}
-	for _, r := range records {
-		if r.Type != "SRV" {
-			continue
-		}
-		port, ok := expected[r.Name]
-		if !ok {
-			t.Errorf("unexpected SRV record: %s", r.Name)
-			continue
-		}
-		seen[r.Name] = true
-		if r.Port != port {
-			t.Errorf("SRV %s: expected Port=%d, got %d", r.Name, port, r.Port)
-		}
-		if r.Weight != 1 {
-			t.Errorf("SRV %s: expected Weight=1, got %d", r.Name, r.Weight)
-		}
-	}
-	for name := range expected {
-		if !seen[name] {
-			t.Errorf("missing SRV record: %s", name)
-		}
-	}
-}
 
 func TestDnsmasqProvider_WritesSRVRecord(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -692,5 +535,42 @@ func TestExternalDNSProvider_WritesSRVRecord(t *testing.T) {
 	expected := `"10 1 587 mail.test"`
 	if !strings.Contains(string(content), expected) {
 		t.Errorf("expected YAML to contain %q\ngot:\n%s", expected, content)
+	}
+}
+
+// sampleRecords is a small record set for exercising a provider: an address,
+// an MX and two TXT records.
+func sampleRecords(domain, ip string) []DNSRecord {
+	return []DNSRecord{
+		{Type: "A", Name: domain, Value: ip, TTL: 3600},
+		{Type: "MX", Name: domain, Value: domain, TTL: 3600, Priority: 10},
+		{Type: "TXT", Name: domain, Value: "v=spf1 mx -all", TTL: 3600},
+		{Type: "TXT", Name: "_dmarc." + domain, Value: "v=DMARC1; p=none; rua=mailto:postmaster@" + domain, TTL: 3600},
+	}
+}
+
+// A client service that is not offered gets the "." target (RFC 6186 §3.4),
+// so a client does not try a port nothing listens on (#712).
+func TestMailRecords_SRV(t *testing.T) {
+	records := MailRecords("example.com", "mail.example.com", "", "", "", ClientPorts{Submission: 465, IMAP: 993})
+	srv := map[string]DNSRecord{}
+	for _, r := range records {
+		if r.Type == "SRV" {
+			srv[r.Name] = r
+		}
+	}
+	if r := srv["_submissions._tcp.example.com"]; r.Value != "mail.example.com" || r.Port != 465 || r.Weight != 1 {
+		t.Errorf("submissions: %+v, want the mail host on 465", r)
+	}
+	if r := srv["_imaps._tcp.example.com"]; r.Value != "mail.example.com" || r.Port != 993 {
+		t.Errorf("imaps: %+v, want the mail host on 993", r)
+	}
+	for _, name := range []string{"_pop3s._tcp.example.com", "_submission._tcp.example.com", "_imap._tcp.example.com", "_pop3._tcp.example.com"} {
+		if r, ok := srv[name]; !ok || r.Value != "." || r.Port != 0 {
+			t.Errorf("%s: %+v, want the \".\" target: not offered", name, r)
+		}
+	}
+	if len(srv) != 6 {
+		t.Errorf("%d SRV records, want 6", len(srv))
 	}
 }

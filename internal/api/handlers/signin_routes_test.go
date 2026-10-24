@@ -43,6 +43,25 @@ func recoverHandler(h *AuthHandler) http.HandlerFunc {
 	}
 }
 
+// resetHandler is redeeming a reset token through its registration, for a request to any path.
+func resetHandler(h *AuthHandler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = "/api/v1/auth/reset"
+		serveAuth(h, w, r)
+	}
+}
+
+// ownerRoute is the owner endpoint named, challenge, token or status, through their
+// registration, for a request to any path.
+func ownerRoute(h *OwnerHandler, name string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		routes := chi.NewRouter()
+		h.Register(endpoint.Routes{Router: routes, Registry: endpoint.NewRegistry()}, passingSignInChecks.Throttle, passingSignInChecks.Audit)
+		r.URL.Path = "/api/v1/auth/owner/" + name
+		routes.ServeHTTP(w, r)
+	}
+}
+
 // authRoute is the sign-in routes through their registration, as a handler.
 func authRoute(h *AuthHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) { serveAuth(h, w, r) }

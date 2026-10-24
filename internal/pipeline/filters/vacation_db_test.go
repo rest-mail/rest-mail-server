@@ -76,3 +76,36 @@ func TestVacation_ReplyLeavesWithNullSender(t *testing.T) {
 		t.Errorf("the reply is not From: the mailbox:\n%s", reply.RawMessage)
 	}
 }
+
+// defaultVacationStep is the vacation step of the default inbound pipeline, built from the
+// config the pipeline gives it.
+func defaultVacationStep(t *testing.T) pipeline.FilterConfig {
+	t.Helper()
+	for _, step := range pipeline.DefaultInboundPipeline(1).Filters {
+		if step.Name == "vacation" {
+			return step
+		}
+	}
+	t.Fatal("the default inbound pipeline has no vacation step (#772)")
+	return pipeline.FilterConfig{}
+}
+
+// The default inbound pipeline's vacation step builds from its own config, with the RFC 5230
+// default interval, and runs after Sieve, so a message Sieve refuses gets no reply (#772).
+func TestDefaultInboundPipeline_RunsVacationAfterSieve(t *testing.T) {
+	step := defaultVacationStep(t)
+	f, err := NewVacation(nil)(step.Config)
+	if err != nil {
+		t.Fatalf("the default vacation config does not build: %v", err)
+	}
+	if days := f.(*vacationFilter).cfg.Days; days != 7 {
+		t.Errorf("default interval = %d days, want 7", days)
+	}
+	names := []string{}
+	for _, s := range pipeline.DefaultInboundPipeline(1).Filters {
+		names = append(names, s.Name)
+	}
+	if strings.Join(names, ",") == "" || names[len(names)-1] != "vacation" || names[len(names)-2] != "sieve" {
+		t.Fatalf("vacation does not follow sieve last: %v", names)
+	}
+}

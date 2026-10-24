@@ -60,6 +60,18 @@ var (
 		[]string{"transport"},
 	)
 
+	// OutboundTransport counts SMTP deliveries by transport security (RFC 7435):
+	// authenticated (TLS with a certificate verified for the MX host),
+	// encrypted (TLS whose certificate did not verify, where no policy required
+	// it) or cleartext. The label is bounded to those three.
+	OutboundTransport = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "restmail_outbound_transport_total",
+			Help: "SMTP deliveries by transport security",
+		},
+		[]string{"security"},
+	)
+
 	// MessagesSent counts total outbound messages sent.
 	MessagesSent = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "restmail_messages_sent_total",
@@ -234,6 +246,7 @@ func init() {
 		ActiveConnections,
 		MessagesReceived,
 		MessagesSent,
+		OutboundTransport,
 		PipelineFilterDuration,
 		PipelineStageDecisions,
 		PipelineTerminal,

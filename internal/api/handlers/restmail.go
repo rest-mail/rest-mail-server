@@ -130,6 +130,12 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 	if req.From == "" && req.Sender != "" {
 		req.From = req.Sender
 	}
+	// The envelope sender is what the peer sent as from (or sender), and only
+	// that: empty is the null reverse path of a bounce or another notice. The
+	// From: header below may fill req.From for display and checks, but never the
+	// envelope, or a bounce would look like personal mail and get a vacation
+	// reply (RFC 3834 §2, #716).
+	envelopeFrom := req.From
 	if len(to) == 0 && req.Recipients != nil && len(*req.Recipients) > 0 {
 		to = *req.Recipients
 	}
@@ -251,7 +257,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 	// (with its real headers, including Headers.Raw) seeds the message so
 	// header-dependent filters see the actual headers, mirroring the SMTP inbound
 	// path; the structured request fields fill any gaps.
-	emailJSON := buildInboundEmail(parsed, req.From, to, req.Subject, req.Date, req.MessageID, req.BodyText, req.BodyHTML, req.RawMessage, restmailClientIP(r))
+	emailJSON := buildInboundEmail(parsed, envelopeFrom, req.From, to, req.Subject, req.Date, req.MessageID, req.BodyText, req.BodyHTML, req.RawMessage, restmailClientIP(r))
 
 	// Look up inbound pipeline for the recipient domain
 	var domainName string
@@ -497,10 +503,11 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 // request fields fill any header the parse left empty, and are the sole source
 // when there was no parseable raw message (parsed == nil).
 //
-// The SMTP envelope is not part of the message body: it is set from the request,
-// with clientIP the connecting RESTMAIL peer so spf_check/dmarc_check have a
-// genuine local verdict to work from rather than "none".
-func buildInboundEmail(parsed *pipeline.EmailJSON, from string, to []string, subject, date, messageID, bodyText, bodyHTML, rawMessage, clientIP string) *pipeline.EmailJSON {
+// The SMTP envelope is not part of the message body: it is set from the request.
+// envelopeFrom is the peer's from, empty for a null reverse path, and never the
+// From: header; clientIP is the connecting RESTMAIL peer, so spf_check and
+// dmarc_check have a genuine local verdict to work from rather than "none".
+func buildInboundEmail(parsed *pipeline.EmailJSON, envelopeFrom, from string, to []string, subject, date, messageID, bodyText, bodyHTML, rawMessage, clientIP string) *pipeline.EmailJSON {
 	toAddrs := make([]pipeline.Address, len(to))
 	for i, rcpt := range to {
 		toAddrs[i] = pipeline.Address{Address: rcpt}
@@ -526,7 +533,7 @@ func buildInboundEmail(parsed *pipeline.EmailJSON, from string, to []string, sub
 	}
 
 	emailJSON.Envelope = pipeline.Envelope{
-		MailFrom:  from,
+		MailFrom:  envelopeFrom,
 		RcptTo:    to,
 		ClientIP:  clientIP,
 		Direction: "inbound",

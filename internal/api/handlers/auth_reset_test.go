@@ -89,7 +89,7 @@ func TestReset_HandsTheServerOverAndLocksOutWhoeverSetItUp(t *testing.T) {
 	const agentPassword = "the agent's own password"
 	agentSecret, agent := f.signInFirstTime(t, agentPassword)
 
-	rr := post(f.auth.Reset, map[string]string{"token": mintReset(t, f), "password": ownerPassword, "client": "native"})
+	rr := post(resetHandler(f.auth), map[string]string{"token": mintReset(t, f), "password": ownerPassword, "client": "native"})
 	if rr.Code != http.StatusOK {
 		t.Fatalf("reset = %d %s", rr.Code, rr.Body)
 	}
@@ -145,16 +145,16 @@ func TestReset_RefusesBadTokensAndKeepsTheGoodOneForARetry(t *testing.T) {
 		{"short password", map[string]string{"token": token, "password": "short"}, 422, "validation_failed"},
 	}
 	for _, c := range cases {
-		if rr := post(f.auth.Reset, c.body); rr.Code != c.want || errorCodeOf(rr) != c.code {
+		if rr := post(resetHandler(f.auth), c.body); rr.Code != c.want || errorCodeOf(rr) != c.code {
 			t.Errorf("%s: = %d %s, want %d %s", c.name, rr.Code, rr.Body, c.want, c.code)
 		}
 	}
 	// None of that spent the token.
-	if rr := post(f.auth.Reset, map[string]string{"token": token, "password": ownerPassword}); rr.Code != http.StatusOK {
+	if rr := post(resetHandler(f.auth), map[string]string{"token": token, "password": ownerPassword}); rr.Code != http.StatusOK {
 		t.Fatalf("reset after refused attempts = %d %s", rr.Code, rr.Body)
 	}
 	// Spent now.
-	rr := post(f.auth.Reset, map[string]string{"token": token, "password": "yet another passphrase"})
+	rr := post(resetHandler(f.auth), map[string]string{"token": token, "password": "yet another passphrase"})
 	if rr.Code != http.StatusUnauthorized || errorCodeOf(rr) != "invalid_token" {
 		t.Errorf("reused token = %d %s, want 401 invalid_token", rr.Code, rr.Body)
 	}
