@@ -31,6 +31,10 @@ type ClientPorts struct {
 // one whose users write ordinary mail to move to reject only after reading those reports, and
 // not to at all when its users post to mailing lists (#729).
 //
+// The _smtp._tls record (RFC 8460 §3) asks senders to post their daily TLS reports to
+// https://<mailHost>/.well-known/smtp-tlsrpt, which REST Mail reads and stores for the domain
+// (#726): the API is served on the mail host, the name RESTMAIL discovery is fetched from too.
+//
 // The SRV records point clients at the implicit-TLS services on the mail host
 // (RFC 8314 §5.1 names submissions), and say outright that the cleartext ones
 // are not offered, with the target "." (RFC 6186 §3.4), so a client does not
@@ -51,6 +55,8 @@ func MailRecords(domain, mailHost, ip, dkimSelector, dkimValue, dmarcPolicy stri
 	if dkimSelector != "" && dkimValue != "" {
 		records = append(records, DNSRecord{Type: "TXT", Name: dkimSelector + "._domainkey." + domain, Value: dkimValue, TTL: 3600})
 	}
+	records = append(records, DNSRecord{Type: "TXT", Name: "_smtp._tls." + domain,
+		Value: "v=TLSRPTv1; rua=https://" + mailHost + "/.well-known/smtp-tlsrpt", TTL: 3600})
 	srv := func(service string, port int) DNSRecord {
 		if port <= 0 {
 			return DNSRecord{Type: "SRV", Name: service + "._tcp." + domain, Value: ".", TTL: 3600}

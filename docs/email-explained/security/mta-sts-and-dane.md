@@ -175,8 +175,10 @@ dig +dnssec +short TLSA _25._tcp.mx1.example.org
   [#727](https://github.com/rest-mail/rest-mail-server/issues/727).
 - **TLS-RPT:** REST Mail accepts reports sent to it over HTTPS, at
   `/.well-known/smtp-tlsrpt`, with limits on size and rate
-  ([`tlsrpt.go`](../../../internal/api/handlers/tlsrpt.go)). It does not yet
-  send reports about its own deliveries, or accept them by email:
+  ([`tlsrpt.go`](../../../internal/api/handlers/tlsrpt.go)), and `chore
+  dns:show` prints each domain's `_smtp._tls` record pointing there, on the
+  mail host. It does not yet send reports about its own deliveries, or accept
+  them by email:
   [#726](https://github.com/rest-mail/rest-mail-server/issues/726).
 - **DANE** is not supported yet, for sending or receiving:
   [#725](https://github.com/rest-mail/rest-mail-server/issues/725).

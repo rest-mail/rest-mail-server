@@ -591,3 +591,17 @@ func TestMailRecords_DMARCPolicy(t *testing.T) {
 		}
 	}
 }
+
+// The TLS-RPT record sends a domain's reports to the endpoint REST Mail reads, on the mail
+// host (RFC 8460 §3, #726).
+func TestMailRecords_TLSRPT(t *testing.T) {
+	var got []string
+	for _, r := range MailRecords("example.com", "mail.example.net", "", "", "", "", ClientPorts{}) {
+		if r.Type == "TXT" && r.Name == "_smtp._tls.example.com" {
+			got = append(got, r.Value)
+		}
+	}
+	if want := "v=TLSRPTv1; rua=https://mail.example.net/.well-known/smtp-tlsrpt"; len(got) != 1 || got[0] != want {
+		t.Fatalf("TLS-RPT records %q, want %q", got, want)
+	}
+}
