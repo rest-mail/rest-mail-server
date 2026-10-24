@@ -39,8 +39,8 @@ func queued(t *testing.T, gdb *gorm.DB, attempts int, age time.Duration, now tim
 	item := models.OutboundQueue{
 		Sender:    fmt.Sprintf("sender-%d@nowhere.invalid", now.UnixNano()),
 		Recipient: "someone@remote.test", Domain: "remote.test", RawMessage: "Subject: hi\r\n\r\nhi\r\n",
-		Status: "delivering", Attempts: attempts, MaxRetries: 30,
-		ExpiresAt: now.Add(72*time.Hour - age),
+		Status: "delivering", Attempts: attempts, MaxRetries: models.DefaultMaxRetries,
+		ExpiresAt: now.Add(models.QueueLifetime - age),
 	}
 	if err := gdb.Create(&item).Error; err != nil {
 		t.Fatal(err)
@@ -91,7 +91,7 @@ func TestRecordFailure(t *testing.T) {
 		}
 	})
 	t.Run("a transient failure bounces once its category's maximum age is up", func(t *testing.T) {
-		item := queued(t, gdb, 6, 47*time.Hour, now)
+		item := queued(t, gdb, 6, 116*time.Hour, now) // 8h to the next try, past five days
 		w.recordFailure(item, rcptRefusal(452, "4.2.2 The recipient's inbox is out of storage space."), now)
 		if got := reload(item); got.Status != "bounced" || got.FailureCategory != models.FailureMailboxFull {
 			t.Errorf("status %q, category %q; want bounced, mailbox_full", got.Status, got.FailureCategory)

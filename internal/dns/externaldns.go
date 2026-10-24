@@ -108,8 +108,8 @@ func (p *ExternalDNSProvider) VerifyRecords(ctx context.Context, domain string) 
 		return nil, fmt.Errorf("no DNSEndpoint file for domain %s", domain)
 	}
 
-	// Re-derive expected records from RequiredRecords is not possible since we
-	// don't know the IP. Instead, use DNS lookups for the standard record types.
+	// The expected records cannot be derived here: the provider does not know
+	// the IP. Instead, use DNS lookups for the standard record types.
 	var results []VerifyResult
 
 	// Verify A records

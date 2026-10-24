@@ -3,7 +3,6 @@ package handlers
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	oapifly "github.com/antimatter-studios/go-oapifly"
@@ -16,7 +15,6 @@ import (
 
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
-	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/bootstrap"
 	"github.com/restmail/restmail/internal/db/models"
@@ -657,6 +655,13 @@ func (h *AuthHandler) RegisterSignIn(rs endpoint.Routes, checks SessionRouteChec
 		Description: "The refresh token rotates: the one presented stops working, and a reused one ends the session.",
 		Security:    oapifly.Public, Headers: sessionCookies, Errors: []int{http.StatusUnauthorized},
 		Middleware: []endpoint.Middleware{checks.Throttle, checks.Audit("auth.refresh", middleware.AuditRefreshToken(), middleware.AuditFailuresOnly())}}, h.refresh)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/auth/reset",
+		OperationID: "resetAdmin", Summary: "Let an account back in with a reset token; also hands a server over", Tags: tags,
+		Description: "Redeems a single-use reset_admin token (restmail reset-admin, or an owner key's). The account it names " +
+			"gets the password the redeemer chose, loses its authenticator and must enroll a new one, and its app passwords " +
+			"and every token it was issued are dead at once. A password under 12 bytes is 422 and does not spend the token.",
+		Security: oapifly.Public, Headers: sessionCookies, Errors: []int{http.StatusUnauthorized},
+		Middleware: []endpoint.Middleware{checks.Throttle, checks.Audit("auth.reset", middleware.AuditStartedSession())}}, h.reset)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/auth/recover",
 		OperationID: "recoverAccount", Summary: "Reset a forgotten password with the authenticator and a recovery code", Tags: tags,
 		Description: "Each address may be refused 5 times, then once per 15 minutes: 429 rate_limited with Retry-After.",
@@ -766,7 +771,7 @@ func setAccountPassword(tx *gorm.DB, r *http.Request, accountID uint, hash strin
 	return endSessions(tx, accountID)
 }
 
-// startSession answers with a fresh session for an account whose identity is
+// newSession is a fresh session for an account whose identity is
 // already proven — by password and second factor at login, or by a single-use
 // token at reset — with amr saying how. An account still in setup gets a
 // session that can only finish the setup.
@@ -820,69 +825,46 @@ func (h *AuthHandler) newSession(account *models.Mailbox, native bool, amr []str
 	return endpoint.Headed[loginResponse]{Header: http.Header(cookies), Value: resp}, nil
 }
 
-// startSession is newSession for a route not yet registered (reset): it writes the answer.
-func (h *AuthHandler) startSession(w http.ResponseWriter, account *models.Mailbox, native bool, amr []string) {
-	session, err := h.newSession(account, native, amr)
-	if err != nil {
-		endpoint.WriteError(w, err)
-		return
-	}
-	for name, values := range session.Header {
-		for _, v := range values {
-			w.Header().Add(name, v)
-		}
-	}
-	respond.Data(w, http.StatusOK, session.Value)
-}
-
-// resetRequest is the body of POST /api/v1/auth/reset.
+// resetRequest is the body of POST /api/v1/auth/reset. Redeeming checks the token and the
+// password: a missing token is the 401 a wrong one is, a missing password the 422 a short one
+// is.
 type resetRequest struct {
-	Token    string `json:"token"`
-	Password string `json:"password"`
+	Token    string `json:"token,omitempty"`
+	Password string `json:"password,omitempty"`
 	Client   string `json:"client,omitempty"`
 }
 
-// Reset redeems a reset_admin token — minted by `restmail-api mint-token
+// reset redeems a reset_admin token — minted by `restmail-api mint-token
 // --purpose reset-admin`, or for an owner key. The account it names gets the
 // password the redeemer chose, loses its authenticator and must enroll a new
 // one, and every session and app password it had ends: whoever held the old
 // credentials, a person or an agent that set the server up, is locked out.
-func (h *AuthHandler) Reset(w http.ResponseWriter, r *http.Request) {
-	var req resetRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
+func (h *AuthHandler) reset(_ *http.Request, req resetRequest) (endpoint.Headed[loginResponse], error) {
+	var zero endpoint.Headed[loginResponse]
 	if req.Client != "" && req.Client != clientNative {
-		respond.ValidationError(w, map[string]string{"client": `must be "native" or omitted`})
-		return
+		return zero, endpoint.Invalid(map[string]string{"client": `must be "native" or omitted`})
 	}
 	account, err := bootstrap.ResetAdmin(h.db, req.Token, req.Password)
-	if h.redeemFailed(w, err) {
-		return
+	if err != nil {
+		return zero, redeemRefusal(err)
 	}
 	h.sessions.Forget(account.ID)
 	// Redeeming a token is neither a password nor a second factor: the
 	// session records neither, and is in setup until a new authenticator is
 	// enrolled anyway.
-	h.startSession(w, account, req.Client == clientNative, nil)
+	return h.newSession(account, req.Client == clientNative, nil)
 }
 
-// redeemFailed answers for a token that could not be redeemed, and says
-// whether it did.
-func (h *AuthHandler) redeemFailed(w http.ResponseWriter, err error) bool {
+// redeemRefusal is the answer for a token that could not be redeemed.
+func redeemRefusal(err error) error {
 	switch {
-	case err == nil:
-		return false
 	case errors.Is(err, bootstrap.ErrTokenInvalid):
-		respond.Error(w, http.StatusUnauthorized, "invalid_token", err.Error())
+		return endpoint.Refuse(http.StatusUnauthorized, "invalid_token", err.Error())
 	case errors.Is(err, bootstrap.ErrPasswordTooShort):
-		respond.ValidationError(w, map[string]string{"password": err.Error()})
-	default:
-		slog.Error("redeeming a one-time token failed", "error", err)
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to redeem the token")
+		return endpoint.Invalid(map[string]string{"password": err.Error()})
 	}
-	return true
+	slog.Error("redeeming a one-time token failed", "error", err)
+	return endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to redeem the token")
 }
 
 // SessionCurrent is the database's answer to whether an access token is still
