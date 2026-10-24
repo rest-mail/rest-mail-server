@@ -1,0 +1,30 @@
+# The sidecar held to its description (#677). js-filter-sidecar.json is generated
+# from the API client's own types and js-filter-sidecar-example.json
+# (internal/pipeline/filters, TestSidecarDescriptionIsCommitted); CI's JS Filter
+# job starts the sidecar and runs this against it. To run it by hand:
+#
+#   python3 ../../scripts/vertrag_pin.py install /tmp/bin
+#   JS_FILTER_TOKEN=local-token-0123456789 JS_FILTER_MAX_BODY_BYTES=2048 node server.js &
+#   JS_FILTER_TOKEN=local-token-0123456789 /tmp/bin/vertrag run --config vertrag.yml --phases examples
+#
+# JS_FILTER_MAX_BODY_BYTES is 2048 for the run, so the too_large examples are
+# refused with 413 and every other example fits.
+
+spec: ./js-filter-sidecar.json
+endpoint: http://127.0.0.1:3100
+
+auth:
+  # The token the sidecar was started with, from the environment.
+  header: 'Authorization: Bearer ${JS_FILTER_TOKEN}'
+  # Sent with no credential: the documented 401s.
+  except:
+    - '/execute > Run a filter script against an email > 401 > application/json'
+    - '/validate > Check a filter script, and run it once against an email > 401 > application/json'
+
+checks:
+  # Every request is sent again without the token, and one answered anyway fails.
+  ignored-auth: true
+
+skip:
+  - name: '/validate > Check a filter script, and run it once against an email > 500 > application/json'
+    reason: a worker that failed; no request makes one

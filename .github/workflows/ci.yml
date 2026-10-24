@@ -292,6 +292,25 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: The sidecar against its description (Vertrag)
+        # js-filter-sidecar.json is generated from the API client's own types
+        # (TestSidecarDescriptionIsCommitted); here the running sidecar is held to
+        # it and to its example pairs, the token check included (#677). The body
+        # cap is small so the too_large examples are refused with 413.
+        env:
+          JS_FILTER_TOKEN: ci-sidecar-token-0123456789
+          JS_FILTER_MAX_BODY_BYTES: "2048"
+          PORT: "3100"
+        run: |
+          set -euo pipefail
+          python3 ../../scripts/vertrag_pin.py install "$RUNNER_TEMP/bin"
+          node server.js > "$RUNNER_TEMP/sidecar.log" 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:3100/health >/dev/null 2>&1 && break
+            sleep 1
+          done
+          "$RUNNER_TEMP/bin/vertrag" run --config vertrag.yml --phases examples
+
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:

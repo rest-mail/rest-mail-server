@@ -627,6 +627,21 @@ func (h *PipelineHandler) deleteCustomFilter(r *http.Request, in pipelinePath) (
 	return deletedStatus{Status: "deleted"}, nil
 }
 
+// testFilterSample is the email a custom filter's test gives its script when the request
+// sends none: a short message, as the pipeline holds one.
+var testFilterSample = func() json.RawMessage {
+	raw, _ := json.Marshal(pipeline.EmailJSON{
+		Envelope: pipeline.Envelope{MailFrom: "test@example.com", RcptTo: []string{"user@example.com"}, Direction: "inbound"},
+		Headers: pipeline.Headers{
+			From:    []pipeline.Address{{Address: "test@example.com"}},
+			To:      []pipeline.Address{{Address: "user@example.com"}},
+			Subject: "Test email",
+		},
+		Body: pipeline.Body{ContentType: "text/plain", Content: "This is a test email for filter testing."},
+	})
+	return raw
+}()
+
 // TestCustomFilter loads a custom filter from the DB and runs its script against a sample email
 // via the JS filter sidecar.
 func (h *PipelineHandler) testCustomFilter(r *http.Request, in testCustomFilterRequest) (endpoint.Forwarded[ScriptExecution], error) {
@@ -653,18 +668,11 @@ func (h *PipelineHandler) testCustomFilter(r *http.Request, in testCustomFilterR
 		return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "Filter config does not contain a script")
 	}
 
-	// Build sidecar request
-	sidecarBody := map[string]any{"script": config.Script}
+	// The script is given the sample it was sent, else one in the shape the pipeline
+	// gives it a real message in (pipeline.EmailJSON).
+	sidecarBody := filters.SidecarExecute{Script: config.Script, Email: testFilterSample}
 	if req.Email != nil {
-		sidecarBody["email"] = req.Email
-	} else {
-		// Provide a minimal sample email for testing
-		sidecarBody["email"] = map[string]any{
-			"from":    "test@example.com",
-			"to":      []string{"user@example.com"},
-			"subject": "Test email",
-			"body":    "This is a test email for filter testing.",
-		}
+		sidecarBody.Email = *req.Email
 	}
 	bodyBytes, _ := json.Marshal(sidecarBody)
 
@@ -691,10 +699,9 @@ func (h *PipelineHandler) validateCustomFilter(r *http.Request, in validateCusto
 		return zero, endpoint.Invalid(map[string]string{"script": "required"})
 	}
 
-	// Build sidecar request
-	sidecarBody := map[string]any{"script": req.Script}
+	sidecarBody := filters.SidecarValidate{Script: req.Script}
 	if req.Email != nil {
-		sidecarBody["email"] = req.Email
+		sidecarBody.Email = *req.Email
 	}
 	bodyBytes, _ := json.Marshal(sidecarBody)
 
