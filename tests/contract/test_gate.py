@@ -232,6 +232,10 @@ class MissingResourceRefusals(unittest.TestCase):
                 "getAlias",
                 "getCustomFilter",
                 "getMailbox",
+                "getDKIMRotation",
+                "domainDNSCheck",
+                "getMtaStsPolicy",
+                "getDomainRelay",
             },
         )
 
