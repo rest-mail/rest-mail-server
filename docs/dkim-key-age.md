@@ -34,7 +34,7 @@ process metrics; key inventory is exported only by the API process.
 
 The nullable `domains.dkim_created_at` column is added by the API's existing
 additive migration on startup. There is no backfill or configuration change.
-Key rotation, DNS publishing and alert rules are separate work tracked in #151.
+Key rotation is the worker described below; alert rules on key age are still to come (#728).
 
 ## Per-domain rotation policy
 
@@ -64,19 +64,43 @@ existing domains therefore start with rotation disabled. Changing the interval
 preserves the current selector, encrypted key and installation timestamp.
 Installing or deleting a signing key preserves the saved interval.
 
-These endpoints persist policy for the planned worker; **scheduled rotation is
-not implemented yet**. A nonzero interval does not currently generate keys,
-publish DNS records or switch signing. The rotation worker, use of staged and
-previous keys, DNS TTL handling, rollback and rotation status remain tracked
-in #151.
+The rotation worker (below) acts on a nonzero interval. Rotation status in
+the admin API and the mobile admin, alerts, rollback and manual-key
+reconciliation are still to come (#728).
+
+## The rotation worker
+
+The API runs `dkimrotate.Worker` every 15 minutes. It never writes DNS: the
+records a rotation needs are in the operator's record list (`restmail-api dns`,
+which `tasks/lifecycle/dns.sh` prints and checks), and the worker moves on
+when they resolve. Each tick takes every domain with an interval, or with a
+rotation under way, one step:
+
+1. **Stage.** A domain whose key has reached its interval gets a staged key
+   (`dkimrotate.Stage`, with the DKIM record TTL of one hour). Its record,
+   `restmail-<n>._domainkey.<domain>`, joins the record list beside the
+   current one.
+2. **Wait for publication.** On each tick the worker resolves the staged
+   record. The first time it carries the staged key, its publication time is
+   recorded. Until then nothing moves.
+3. **Activate.** One TTL after publication, `dkimrotate.Activate` re-checks
+   the record and makes the staged key the signing key. The old key is kept
+   as the previous key, still in the record list.
+4. **Retire.** One TTL after the switch, the previous key is let go and its
+   record leaves the record list, so mail signed just before the switch has
+   had a TTL to be verified.
+
+A step that fails is logged and retried on the next tick. Several API
+replicas can run the worker at once: staging and activation lock the
+domain's row, and recording publication only fills an empty time.
 
 ## Durable rotation key slots
 
 The additive startup migration creates `dkim_rotation_keys` for the planned
 worker. The current signing key stays in `domains`; writing a rotation row
-cannot change signing. There are no worker or HTTP operations on these slots
-yet; `dkimrotate.Stage` and `dkimrotate.Activate` (below) implement staging and
-activation for the future worker.
+cannot change signing. There are no HTTP operations on these slots yet; the
+worker (above) uses `dkimrotate.Stage` and `dkimrotate.Activate` (below) for
+staging and activation.
 
 Each domain can retain one `staged` key and one `previous` key. A database
 constraint rejects other slots, and unique indexes prevent duplicate slots or
@@ -85,8 +109,8 @@ domain. Each row stores its selector, private key, original installation time
 (nullable for legacy keys), DNS publication time, DNS TTL in seconds, retirement deadline and row
 creation/update times. An unpublished key has a null publication time. A staged
 key has no retirement deadline; a previous key requires one. TTLs must be
-between 1 and 2147483647 seconds. These fields record state; the future worker
-must enforce the waits and verify propagation before activation.
+between 1 and 2147483647 seconds. These fields record state; the worker
+enforces the waits and verifies propagation before activation.
 
 Private material uses the existing `dkim:v1:` encryption helpers and is excluded
 from JSON. The model's `SetPrivateKey` helper follows the current key's
@@ -99,7 +123,7 @@ changed by the migration.
 
 ## Staging the next key
 
-`dkimrotate.Stage` is the first step of a rotation; nothing calls it yet. Under
+`dkimrotate.Stage` is the first step of a rotation. Under
 a lock on the domain row it does nothing when the domain has no current key,
 its interval is zero, or its key is younger than the interval (a key with an
 unknown installation time is due). When a staged key already exists it returns
@@ -112,7 +136,7 @@ changes the current key.
 
 ## Activating a published key
 
-`dkimrotate.Activate` implements the signing switch; nothing calls it yet. It
+`dkimrotate.Activate` implements the signing switch. It
 locks the domain row, rechecks that rotation is enabled and the current key is
 still due, and requires a staged key whose publication time is recorded and at
 least one staged TTL in the past. It then decrypts and checks both keys for
@@ -137,9 +161,9 @@ key. A staged selector matching the current selector case-insensitively returns
 replacing the current key with a fresh key prevents activation; existing
 staged state is retained for later reconciliation.
 
-The scheduled worker, DNS publication and publication timestamps, retirement,
-rollback, manual-key reconciliation, and rotation status still need to be
-implemented. DNS publication must preserve the entire existing record set:
+Rollback, manual-key reconciliation and rotation status still need to be
+implemented. Should REST Mail ever publish records itself, publication must
+preserve the entire existing record set:
 the current dnsmasq and external-dns providers replace their output when
 `EnsureRecords` runs, so passing only a staged TXT record would lose existing
 records. Successful provider submission alone also does not prove propagation;

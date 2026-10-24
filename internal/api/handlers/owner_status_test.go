@@ -23,7 +23,7 @@ import (
 func askForStatus(t *testing.T, h *OwnerHandler, s ssh.Signer, purpose, username string) *httptest.ResponseRecorder {
 	t.Helper()
 	rr := httptest.NewRecorder()
-	h.Challenge(rr, httptest.NewRequest(http.MethodPost, "/", nil))
+	ownerRoute(h, "challenge")(rr, httptest.NewRequest(http.MethodPost, "/", nil))
 	var ch struct {
 		Data struct {
 			Challenge string `json:"challenge"`
@@ -42,7 +42,7 @@ func askForStatus(t *testing.T, h *OwnerHandler, s ssh.Signer, purpose, username
 		"signature":  base64.StdEncoding.EncodeToString(ssh.Marshal(sig)),
 	})
 	rr = httptest.NewRecorder()
-	h.Status(rr, httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(b)))
+	ownerRoute(h, "status")(rr, httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(b)))
 	return rr
 }
 
@@ -101,12 +101,12 @@ func TestStatus_Refusals(t *testing.T) {
 		t.Errorf("challenge with no keys listed = %d %s, want 409 no_owner_keys", rr.Code, rr.Body)
 	}
 	rr := httptest.NewRecorder()
-	none.Status(rr, httptest.NewRequest(http.MethodPost, "/", bytes.NewReader([]byte(`{"challenge":"x","public_key":"y","signature":""}`))))
+	ownerRoute(none, "status")(rr, httptest.NewRequest(http.MethodPost, "/", bytes.NewReader([]byte(`{"challenge":"x","public_key":"y","signature":""}`))))
 	if rr.Code != http.StatusConflict || errorCodeOf(rr) != "no_status_keys" {
 		t.Errorf("status with no keys listed = %d %s, want 409 no_status_keys", rr.Code, rr.Body)
 	}
 	rr = httptest.NewRecorder()
-	h.Status(rr, httptest.NewRequest(http.MethodPost, "/", bytes.NewReader([]byte(`{"signature":"not base64!"}`))))
+	ownerRoute(h, "status")(rr, httptest.NewRequest(http.MethodPost, "/", bytes.NewReader([]byte(`{"signature":"not base64!"}`))))
 	if rr.Code != http.StatusUnprocessableEntity && rr.Code != http.StatusBadRequest {
 		t.Errorf("a signature that is not base64 = %d %s, want a validation error", rr.Code, rr.Body)
 	}
