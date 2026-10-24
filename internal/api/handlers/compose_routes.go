@@ -152,20 +152,22 @@ func (h *MessageHandler) RegisterCompose(rs endpoint.Routes) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPut, Path: "/api/v1/messages/draft/{id}",
 		OperationID: "updateDraft", Summary: "Update an existing draft", Tags: []string{"Drafts"},
 		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.updateDraft)
-	// The scheduled sends are the signed-in account's own; no capability is checked yet
-	// (#743), so the routes state only the mail routes' schemes.
+	// A scheduled send is seen and called back with what sending it takes: mail:send as its
+	// from address, checked in the handler (#743).
+	sends := handlerChecked(models.CapMailSend, folderSchemes...)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/messages/scheduled",
 		OperationID: "listScheduledMessages", Summary: "List the messages waiting to be sent", Tags: []string{"Messages"},
-		Errors: []int{http.StatusUnauthorized}}, h.listScheduledSends)
+		Description: "The account's waiting sends from the addresses the session may send as (mail:send); the others are left out.",
+		Errors:      []int{http.StatusUnauthorized}, Security: sends}, h.listScheduledSends)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/messages/scheduled/{id}",
 		OperationID: "cancelScheduledMessage", Summary: "Cancel a scheduled message", Tags: []string{"Messages"},
-		Status: http.StatusNoContent, Errors: []int{http.StatusUnauthorized, http.StatusNotFound}}, h.cancelScheduledSend)
+		Description: "A waiting send from an address the session may not send as (mail:send) is not found, as the list leaves it out.",
+		Status:      http.StatusNoContent, Errors: []int{http.StatusUnauthorized, http.StatusNotFound}, Security: sends}, h.cancelScheduledSend)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/{id}/calendar-reply",
 		OperationID: "respondToCalendar", Summary: "Reply to a calendar invitation", Tags: []string{"Calendar"},
 		Description: "The invitation's message is read with mail:read; the reply is sent from an address the session may send as (mail:send).",
 		Errors:      []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusServiceUnavailable},
 		Security:    readAndSend}, h.respondToCalendar)
-	sends := handlerChecked(models.CapMailSend, folderSchemes...)
 	writeAndSend := make([]oapifly.SecurityRequirement, len(folderSchemes))
 	for i, scheme := range folderSchemes {
 		writeAndSend[i] = oapifly.SecurityRequirement{scheme: {models.CapMailWrite, models.CapMailSend}}

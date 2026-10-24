@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,7 @@ import (
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
+	"gorm.io/gorm"
 )
 
 const (
@@ -181,8 +183,23 @@ func truncateForStore(s string) string {
 	return s[:max]
 }
 
-// ListScheduledSends returns the messages still waiting (or being sent) for
-// this account, soonest first.
+// errNoScheduledSend is the answer for a scheduled message that is not waiting, or that the
+// request may not send as: the same for both, as the list leaves the second out.
+var errNoScheduledSend = endpoint.Refuse(http.StatusNotFound, "not_found", "No scheduled message with that ID is waiting")
+
+// mayCallBack reports whether the request may see and cancel a scheduled message from
+// address: what sending it takes, mail:send as that address (#743). A credential scoped
+// elsewhere, an API key without mail:send or an app password of another mailbox, may not.
+func (h *MessageHandler) mayCallBack(claims *auth.Claims, address string) (bool, error) {
+	_, err := mayActAs(h.db, claims, address, models.CapMailSend)
+	if errors.Is(err, errNoAccess) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+// listScheduledSends returns the messages still waiting (or being sent) for this account,
+// soonest first: those the request may send as.
 func (h *MessageHandler) listScheduledSends(r *http.Request, _ struct{}) ([]ScheduledMessage, error) {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
@@ -195,28 +212,54 @@ func (h *MessageHandler) listScheduledSends(r *http.Request, _ struct{}) ([]Sche
 		Find(&rows).Error; err != nil {
 		return nil, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to list scheduled messages")
 	}
-	out := make([]ScheduledMessage, len(rows))
-	for i, row := range rows {
-		out[i] = scheduledMessageOf(row)
+	allowed := map[string]bool{}
+	out := make([]ScheduledMessage, 0, len(rows))
+	for _, row := range rows {
+		may, seen := allowed[row.From]
+		if !seen {
+			var err error
+			if may, err = h.mayCallBack(claims, row.From); err != nil {
+				return nil, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to list scheduled messages")
+			}
+			allowed[row.From] = may
+		}
+		if may {
+			out = append(out, scheduledMessageOf(row))
+		}
 	}
 	return out, nil
 }
 
-// CancelScheduledSend takes a waiting message out of the queue. One already
-// being sent cannot be called back.
+// cancelScheduledSend takes a waiting message out of the queue. One already being sent
+// cannot be called back.
 func (h *MessageHandler) cancelScheduledSend(r *http.Request, in scheduledPath) (endpoint.Empty, error) {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
 		return endpoint.Empty{}, errNotSignedIn
 	}
+	var row models.ScheduledSend
+	err := h.db.Where("id = ? AND account_id = ? AND status = ?", in.ID, claims.AccountID, "pending").Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return endpoint.Empty{}, errNoScheduledSend
+	}
+	if err != nil {
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to cancel the scheduled message")
+	}
+	may, err := h.mayCallBack(claims, row.From)
+	if err != nil {
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to cancel the scheduled message")
+	}
+	if !may {
+		return endpoint.Empty{}, errNoScheduledSend
+	}
 	result := h.db.Model(&models.ScheduledSend{}).
-		Where("id = ? AND account_id = ? AND status = ?", in.ID, claims.AccountID, "pending").
+		Where("id = ? AND status = ?", row.ID, "pending").
 		Update("status", "cancelled")
 	if result.Error != nil {
 		return endpoint.Empty{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to cancel the scheduled message")
 	}
 	if result.RowsAffected == 0 {
-		return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "No scheduled message with that ID is waiting")
+		return endpoint.Empty{}, errNoScheduledSend // it started sending meanwhile
 	}
 	return endpoint.Empty{}, nil
 }
