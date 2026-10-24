@@ -7,13 +7,11 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"sync"
 	"time"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
-	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
 )
@@ -191,46 +189,40 @@ func truncateForStore(s string) string {
 
 // ListScheduledSends returns the messages still waiting (or being sent) for
 // this account, soonest first.
-func (h *MessageHandler) ListScheduledSends(w http.ResponseWriter, r *http.Request) {
+func (h *MessageHandler) listScheduledSends(r *http.Request, _ struct{}) ([]ScheduledMessage, error) {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
+		return nil, errNotSignedIn
 	}
 	var rows []models.ScheduledSend
 	if err := h.db.
 		Where("account_id = ? AND status IN ?", claims.AccountID, []string{"pending", "sending"}).
 		Order("send_at").
 		Find(&rows).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list scheduled messages")
-		return
+		return nil, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to list scheduled messages")
 	}
-	respond.Data(w, http.StatusOK, rows)
+	out := make([]ScheduledMessage, len(rows))
+	for i, row := range rows {
+		out[i] = scheduledMessageOf(row)
+	}
+	return out, nil
 }
 
 // CancelScheduledSend takes a waiting message out of the queue. One already
 // being sent cannot be called back.
-func (h *MessageHandler) CancelScheduledSend(w http.ResponseWriter, r *http.Request) {
+func (h *MessageHandler) cancelScheduledSend(r *http.Request, in scheduledPath) (endpoint.Empty, error) {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
-	}
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid scheduled message ID")
-		return
+		return endpoint.Empty{}, errNotSignedIn
 	}
 	result := h.db.Model(&models.ScheduledSend{}).
-		Where("id = ? AND account_id = ? AND status = ?", id, claims.AccountID, "pending").
+		Where("id = ? AND account_id = ? AND status = ?", in.ID, claims.AccountID, "pending").
 		Update("status", "cancelled")
 	if result.Error != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to cancel the scheduled message")
-		return
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to cancel the scheduled message")
 	}
 	if result.RowsAffected == 0 {
-		respond.Error(w, http.StatusNotFound, "not_found", "No scheduled message with that ID is waiting")
-		return
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "No scheduled message with that ID is waiting")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return endpoint.Empty{}, nil
 }

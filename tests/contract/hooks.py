@@ -738,6 +738,27 @@ def give_each_rename_probe_a_folder(transaction):
         if response.status != 201:
             raise RuntimeError("could not create a folder for the rename probe")
     transaction["fullPath"] = parent + "/" + folder
+    # A rename onto a folder that exists is 409 already_exists (#757), and the
+    # earlier probes left the destination behind: remove it, as createFolder's
+    # hook does.
+    body = hooks.get_json(transaction)
+    target = body.get("name") if isinstance(body, dict) else None
+    if not isinstance(target, str) or not target.strip():
+        return
+    if target.upper() == "INBOX" or target in ("Sent", "Drafts", "Trash", "Spam", "Archive"):
+        return
+    request = urllib.request.Request(
+        origin + parent + "/" + urllib.parse.quote(target, safe=""),
+        headers={"Authorization": "Bearer " + admin_token(origin)},
+        method="DELETE",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            if response.status != 204:
+                raise RuntimeError("could not remove the previous rename's folder")
+    except urllib.error.HTTPError as error:
+        if error.code not in (400, 404):
+            raise
 
 
 AUTODISCOVER_REQUEST = """<?xml version="1.0" encoding="utf-8"?>
