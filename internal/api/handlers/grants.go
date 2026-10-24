@@ -286,7 +286,7 @@ func grantChangeFailed(w http.ResponseWriter, err error) bool {
 	}
 	e := refusal.(*endpoint.Error)
 	if e.Fields != nil {
-		respond.ValidationError(w, e.Fields)
+		respond.ValidationFailed(w, e.Message, e.Fields)
 	} else {
 		respond.Error(w, e.Status, e.Code, e.Message)
 	}

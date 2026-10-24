@@ -29,6 +29,7 @@ func TestListPipelineLogs_RejectInvalidEnums(t *testing.T) {
 				var body struct {
 					Error struct {
 						Code    string `json:"code"`
+						Message string `json:"message"`
 						Details struct {
 							Fields map[string]string `json:"fields"`
 						} `json:"details"`
@@ -39,6 +40,10 @@ func TestListPipelineLogs_RejectInvalidEnums(t *testing.T) {
 				}
 				if body.Error.Code != "validation_failed" || body.Error.Details.Fields[name] == "" {
 					t.Fatalf("missing %s validation error: %s", name, rr.Body)
+				}
+				// The refused field is a query parameter, and the message says so (#786).
+				if body.Error.Message != "Query parameters failed validation" {
+					t.Fatalf("message = %q, want the query parameters named", body.Error.Message)
 				}
 			})
 		}

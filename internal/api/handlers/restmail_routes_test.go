@@ -48,7 +48,7 @@ func TestRestmailCheckMailbox_AddressRequired(t *testing.T) {
 	for _, query := range []string{"", "?address="} {
 		rr := httptest.NewRecorder()
 		h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/restmail/mailboxes"+query, nil))
-		want := parseShapeJSON(t, `{"error":{"code":"validation_failed","message":"Request body failed validation","details":{"fields":{"address":"address query parameter required"}}}}`)
+		want := parseShapeJSON(t, `{"error":{"code":"validation_failed","message":"Query parameters failed validation","details":{"fields":{"address":"address query parameter required"}}}}`)
 		if rr.Code != http.StatusUnprocessableEntity || !reflect.DeepEqual(parseShapeJSON(t, rr.Body.String()), want) {
 			t.Errorf("%q: got %d %s, want the address refused", query, rr.Code, rr.Body)
 		}

@@ -80,12 +80,22 @@ func Error(w http.ResponseWriter, status int, code, message string) {
 	})
 }
 
-// ValidationError writes a 422 validation error with field details.
+// BodyFailedValidation is the message of a 422 whose fields are in the request body.
+const BodyFailedValidation = "Request body failed validation"
+
+// ValidationError writes a 422 validation error with field details, for fields of the
+// request body.
 func ValidationError(w http.ResponseWriter, fields map[string]string) {
+	ValidationFailed(w, BodyFailedValidation, fields)
+}
+
+// ValidationFailed writes a 422 validation error with field details and a message saying
+// which part of the request the fields are in (#786).
+func ValidationFailed(w http.ResponseWriter, message string, fields map[string]string) {
 	JSON(w, http.StatusUnprocessableEntity, ValidationErrorResponse{
 		Error: ValidationErrorBody{
 			Code:    "validation_failed",
-			Message: "Request body failed validation",
+			Message: message,
 			Details: ValidationDetails{Fields: fields},
 		},
 	})
