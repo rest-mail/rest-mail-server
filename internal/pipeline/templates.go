@@ -8,7 +8,8 @@ import (
 // DefaultInboundPipeline returns a sensible default inbound pipeline
 // configuration that gets applied when a new domain is created. It includes
 // authentication checks, allowlists, greylisting, header validation,
-// recipient verification, attachment extraction, and Sieve filtering.
+// recipient verification, attachment extraction, Sieve filtering and the
+// account's vacation reply.
 func DefaultInboundPipeline(domainID uint) *PipelineConfig {
 	now := time.Now()
 	return &PipelineConfig{
@@ -139,6 +140,15 @@ func defaultInboundFilters() []FilterConfig {
 			Type:    FilterTypeTransform,
 			Enabled: true,
 			Config:  json.RawMessage(`{}`),
+		},
+		// The account's vacation reply, after Sieve, so a message the script rejects
+		// or discards is not answered. Without it a reply set in the apps is never
+		// sent (#772).
+		{
+			Name:    "vacation",
+			Type:    FilterTypeAction,
+			Enabled: true,
+			Config:  json.RawMessage(`{"days": 7}`),
 		},
 	}
 }

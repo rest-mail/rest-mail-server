@@ -19,6 +19,10 @@ type Domain struct {
 	DKIMSelector      string `gorm:"size:63" json:"dkim_selector"`
 	DKIMPrivateKey    string `gorm:"type:text" json:"-"`
 	SendingPolicy     string `gorm:"size:20;not null;default:''" json:"sending_policy"` // see SendingPolicyTransactional, SendingPolicyBulk; empty: no rule (#144)
+	// DMARCPolicy is the p= the domain's DMARC record asks receivers to apply to mail
+	// that fails it: DMARCPolicyNone (the default), DMARCPolicyQuarantine or
+	// DMARCPolicyReject (#729).
+	DMARCPolicy string `gorm:"size:16;not null;default:none;check:dmarc_policy_values,dmarc_policy IN ('none','quarantine','reject')" json:"dmarc_policy"`
 	// DKIMCreatedAt is when the current key was installed, not the domain age.
 	// Legacy keys have no known installation time and remain NULL.
 	DKIMCreatedAt *time.Time `json:"-"`
@@ -36,6 +40,17 @@ type Domain struct {
 // MaxDKIMRotationIntervalDays bounds configuration and keeps conversion to a
 // time.Duration safe. Keep the domains check constraint in sync.
 const MaxDKIMRotationIntervalDays = 3650
+
+// A domain's DMARC policies (Domain.DMARCPolicy, RFC 9989 §4.7), what a receiver is asked to
+// do with mail from it that fails DMARC. A new domain starts at none, which changes no one's
+// delivery and brings the aggregate reports in; RFC 9989 §7.4 asks a domain whose users write
+// ordinary mail to read a month of them at none, then at quarantine, before moving to reject,
+// and not to publish reject at all when its users post to mailing lists (#729).
+const (
+	DMARCPolicyNone       = "none"
+	DMARCPolicyQuarantine = "quarantine"
+	DMARCPolicyReject     = "reject"
+)
 
 // A domain's sending policies (Domain.SendingPolicy, #144).
 const (

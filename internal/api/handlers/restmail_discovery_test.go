@@ -8,17 +8,38 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
+
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/db/models"
 )
 
+// discoverRoute is discovery through its registration.
+func discoverRoute(h *RestmailDiscoveryHandler) http.HandlerFunc {
+	routes := chi.NewRouter()
+	h.Register(endpoint.Routes{Router: routes, Registry: endpoint.NewRegistry()})
+	return routes.ServeHTTP
+}
+
 func TestRESTMAILDiscoveryInvalidDomain(t *testing.T) {
-	h := NewRestmailDiscoveryHandler(nil, "mx.example.test")
-	for _, query := range []string{"", "domain=", "domain=alice%40example.test", "domain=example.test%2Fpath", "domain=example.test&domain=other.test"} {
+	h := discoverRoute(NewRestmailDiscoveryHandler(nil, "mx.example.test"))
+	for query, want := range map[string]int{
+		// No domain at all is binding's: 422 on domain.
+		"":                                      http.StatusUnprocessableEntity,
+		"domain=":                               http.StatusBadRequest,
+		"domain=alice%40example.test":           http.StatusBadRequest,
+		"domain=example.test%2Fpath":            http.StatusBadRequest,
+		"domain=example.test&domain=other.test": http.StatusBadRequest,
+	} {
 		t.Run(query, func(t *testing.T) {
 			rr := httptest.NewRecorder()
-			h.Discover(rr, httptest.NewRequest(http.MethodGet, "/.well-known/restmail?"+query, nil))
-			if rr.Code != http.StatusBadRequest {
-				t.Fatalf("status = %d, want 400: %s", rr.Code, rr.Body.String())
+			h(rr, httptest.NewRequest(http.MethodGet, "/.well-known/restmail?"+query, nil))
+			if rr.Code != want {
+				t.Fatalf("status = %d, want %d: %s", rr.Code, want, rr.Body.String())
+			}
+			// Every answer, binding's refusal too, stays out of caches.
+			if rr.Header().Get("Cache-Control") != "no-store" {
+				t.Errorf("Cache-Control = %q, want no-store", rr.Header().Get("Cache-Control"))
 			}
 		})
 	}
@@ -28,7 +49,8 @@ func TestRESTMAILDiscoveryInvalidHostname(t *testing.T) {
 	for _, host := range []string{"", "localhost", "https://mx.example.test", "mx.example.test/path", "mx.example.test@evil.test"} {
 		t.Run(host, func(t *testing.T) {
 			rr := httptest.NewRecorder()
-			NewRestmailDiscoveryHandler(nil, host).Discover(rr, httptest.NewRequest(http.MethodGet, "/.well-known/restmail?domain=example.test", nil))
+			// A query parameter discovery does not take is ignored, as it always was.
+			discoverRoute(NewRestmailDiscoveryHandler(nil, host))(rr, httptest.NewRequest(http.MethodGet, "/.well-known/restmail?domain=example.test&address=a%40b.test", nil))
 			if rr.Code != http.StatusServiceUnavailable {
 				t.Fatalf("status = %d, want 503: %s", rr.Code, rr.Body.String())
 			}
@@ -62,7 +84,7 @@ func TestRESTMAILDiscoveryHostedDomain(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	h := NewRestmailDiscoveryHandler(tx, "MX.Example.Test.")
+	h := discoverRoute(NewRestmailDiscoveryHandler(tx, "MX.Example.Test."))
 	for _, tc := range []struct {
 		domain string
 		status int
@@ -79,7 +101,7 @@ func TestRESTMAILDiscoveryHostedDomain(t *testing.T) {
 			req.Header.Set("X-Forwarded-Host", "attacker.test")
 			req.Header.Set("Forwarded", "host=attacker.test;proto=http")
 			rr := httptest.NewRecorder()
-			h.Discover(rr, req)
+			h(rr, req)
 			if rr.Code != tc.status {
 				t.Fatalf("status = %d, want %d: %s", rr.Code, tc.status, rr.Body.String())
 			}

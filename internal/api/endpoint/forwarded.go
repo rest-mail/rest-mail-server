@@ -5,9 +5,11 @@ import (
 	"reflect"
 )
 
-// Forwarded describes an upstream JSON answer as T while forwarding its exact bytes and
-// status. It deliberately bypasses the data envelope and empty-list normalization: the
-// JavaScript sidecar owns its response contract, including user-defined script results.
+// Forwarded describes a JSON answer as T while writing its exact bytes and status. It
+// deliberately bypasses the data envelope and empty-list normalization, for an answer whose
+// contract is not the API's: an upstream's (the JavaScript sidecar owns its response
+// contract, including user-defined script results), or a protocol document another server
+// parses (RESTMAIL discovery).
 type Forwarded[T any] struct {
 	Status int
 	Body   []byte

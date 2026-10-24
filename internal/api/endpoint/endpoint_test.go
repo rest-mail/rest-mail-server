@@ -369,3 +369,32 @@ func TestRegisterUpsertResponse(t *testing.T) {
 		}
 	}
 }
+
+type namedFolder struct {
+	Folder string `path:"folder"`
+}
+
+// A path parameter reaches the handler decoded, an escaped slash among it (#760): chi
+// routes such a request on its escaped path and leaves its parameters escaped. One already
+// decoded is not decoded again.
+func TestPathParametersAreDecoded(t *testing.T) {
+	r := chi.NewRouter()
+	Register(Routes{Router: r, Registry: NewRegistry()}, Operation{Method: http.MethodGet, Path: "/folders/{folder}/messages",
+		OperationID: "listFolderMessages", Summary: "List a folder"},
+		func(_ *http.Request, in namedFolder) (widget, error) { return widget{Name: in.Folder}, nil })
+	for target, want := range map[string]string{
+		"/folders/Work%2FProjects/messages":    "Work/Projects",
+		"/folders/Work%2F2026%2FQ1/messages":   "Work/2026/Q1",
+		"/folders/a%25b%2Fc/messages":          "a%b/c",
+		"/folders/Paid%20receipts/messages":    "Paid receipts",
+		"/folders/%C3%84rchiv/messages":        "Ärchiv",
+		"/folders/a%25b/messages":              "a%b",
+		"/folders/%5BGmail%5D%2FSent/messages": "[Gmail]/Sent",
+	} {
+		status, body := call(t, r, http.MethodGet, target, "")
+		var got struct{ Data widget }
+		if err := json.Unmarshal([]byte(body), &got); status != http.StatusOK || err != nil || got.Data.Name != want {
+			t.Errorf("%s: %d %s, want the folder %q", target, status, body, want)
+		}
+	}
+}

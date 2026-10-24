@@ -3,7 +3,7 @@ module github.com/restmail/restmail
 go 1.25.0
 
 require (
-	github.com/antimatter-studios/go-oapifly v0.23.1
+	github.com/antimatter-studios/go-oapifly v0.24.0
 	github.com/aws/aws-sdk-go-v2 v1.47.3
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.9
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.3
@@ -25,7 +25,7 @@ require (
 	github.com/rest-mail/go-arc v0.3.1
 	github.com/rest-mail/go-dkim v0.4.0
 	github.com/rest-mail/go-dmarc v0.4.1
-	github.com/rest-mail/go-imap v0.6.0
+	github.com/rest-mail/go-imap v0.7.0
 	github.com/rest-mail/go-mtasts v0.3.1
 	github.com/rest-mail/go-pop3 v0.3.0
 	github.com/rest-mail/go-sieve v0.6.0
