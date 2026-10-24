@@ -86,7 +86,7 @@ var (
 func rateLimited(description string) oapifly.EndpointResponse {
 	limited := refusal(http.StatusTooManyRequests, description)
 	limited.Headers = map[string]oapifly.ResponseHeader{
-		"Retry-After": {Description: "Seconds until a request may be made again", Type: oapifly.TypeOf[int]()},
+		"Retry-After": {Description: "Seconds until a request may be made again", Required: true, Type: oapifly.TypeOf[int]()},
 	}
 	return limited
 }
@@ -212,7 +212,7 @@ var describedSessionOnly = oapifly.Middleware{
 
 var describedAuthThrottle = oapifly.Middleware{Responses: []oapifly.EndpointResponse{
 	{Status: http.StatusTooManyRequests, Description: "rate_limited: login's per-IP limit", Type: errorBody,
-		Headers: map[string]oapifly.ResponseHeader{"Retry-After": {Description: "Seconds until another try is allowed", Required: true}}},
+		Headers: map[string]oapifly.ResponseHeader{"Retry-After": {Description: "Seconds until another try is allowed", Required: true, Type: oapifly.TypeOf[int]()}}},
 }}
 
 // describedAuditRead records every audit read, including a capability refusal.
