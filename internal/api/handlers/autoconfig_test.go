@@ -30,7 +30,7 @@ func TestMicrosoftAutodiscover_XMLInjection(t *testing.T) {
 		t.Fatalf("seed domain: %v", err)
 	}
 
-	h := NewAutoconfigHandler(tx)
+	h := NewAutoconfigHandler(tx, "mail.restmail.test")
 
 	// Malicious local-part with XML metacharacters. Sent via the query-param
 	// fallback (empty body → the request XML decode fails → the handler reads

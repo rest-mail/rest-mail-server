@@ -330,7 +330,7 @@ func dnsRecords(args []string, stdout, stderr io.Writer) int {
 		Domains []domainRecords `json:"domains"`
 	}{Domains: []domainRecords{}}
 	for _, d := range domains {
-		out.Domains = append(out.Domains, recordsForDomain(d, host, *ip, cfg.MasterKey))
+		out.Domains = append(out.Domains, recordsForDomain(d, host, *ip, cfg.MasterKey, clientPorts(cfg)))
 	}
 	_ = json.NewEncoder(stdout).Encode(out)
 	return exitOK
@@ -347,7 +347,7 @@ type domainRecords struct {
 // recordsForDomain lists one domain's records under its A-label name, so an
 // internationalized domain's records can be pasted into a zone and checked
 // with dig. The heading keeps the name as the domain was added.
-func recordsForDomain(d models.Domain, mailHost, ip, masterKey string) domainRecords {
+func recordsForDomain(d models.Domain, mailHost, ip, masterKey string, ports dns.ClientPorts) domainRecords {
 	entry := domainRecords{Domain: d.Name, Records: []dns.DNSRecord{}}
 	name, err := mail.DomainASCII(d.Name)
 	if err != nil {
@@ -365,8 +365,14 @@ func recordsForDomain(d models.Domain, mailHost, ip, masterKey string) domainRec
 		}
 		dkimValue = value
 	}
-	entry.Records = dns.MailRecords(name, mailHost, ip, d.DKIMSelector, dkimValue)
+	entry.Records = dns.MailRecords(name, mailHost, ip, d.DKIMSelector, dkimValue, ports)
 	return entry
+}
+
+// clientPorts are the client listeners the gateways bind, from the same
+// settings, so a record cannot name a port nothing listens on.
+func clientPorts(cfg *config.Config) dns.ClientPorts {
+	return dns.ClientPorts{Submission: cfg.SMTPPortSubmissionTLS, IMAP: cfg.IMAPTLSPort, POP3: cfg.POP3TLSPort}
 }
 
 func dkimRecordValue(stored, masterKey string) (string, error) {
