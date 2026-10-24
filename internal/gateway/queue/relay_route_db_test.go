@@ -137,3 +137,45 @@ func TestDeliverRoutesThroughConfiguredRelay(t *testing.T) {
 		})
 	}
 }
+
+// TestDeliverRelaysNullSenderAsItsSendingDomain (#716): a vacation reply leaves
+// with MAIL FROM:<>, yet goes through, and is DKIM-signed for, the replying
+// mailbox's domain, which the queue row names.
+func TestDeliverRelaysNullSenderAsItsSendingDomain(t *testing.T) {
+	cert, roots := relayTestCertificate(t, false)
+	tx := openRelayRouteDB(t)
+	domainName := seedSignedDomain(t, tx, relayRouteMasterKey)
+	peer, finish := relayTestPeer(t, cert, relayPeerOptions{requireAUTH: true})
+	enc, err := models.EncryptRelayPassword(relayTestPassword, relayRouteMasterKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedRelay(t, tx, domainName, models.DomainRelay{
+		Transport: models.OutboundTransportRelay, Host: peer.host, Port: peer.port,
+		TLSMode: models.RelayTLSStartTLS, Username: relayTestUser, PasswordEnc: enc,
+	})
+	w := &Worker{db: tx, masterKey: relayRouteMasterKey, hostname: "sender.test", sendDeadline: defaultSendDeadline, relayRoots: roots}
+	item := models.OutboundQueue{
+		Sender:        "",
+		SendingDomain: domainName,
+		Recipient:     "bob@example.net",
+		Domain:        "example.invalid",
+		RawMessage: "From: alice@" + domainName + "\r\n" +
+			"To: bob@example.net\r\n" +
+			"Subject: Away\r\n" +
+			"Auto-Submitted: auto-replied\r\n" +
+			"\r\n" +
+			"Back on Monday.\r\n",
+	}
+
+	if err := w.deliver(item); err != nil {
+		t.Fatalf("deliver: %v", err)
+	}
+	result := finish()
+	if commands := strings.Join(result.commands, "\n"); !strings.Contains(commands, "MAIL FROM:<>") {
+		t.Fatalf("the reply did not leave with a null reverse path:\n%s", commands)
+	}
+	if !strings.Contains(result.data, "d="+domainName) {
+		t.Fatalf("the reply is not DKIM-signed for %s:\n%s", domainName, result.data)
+	}
+}

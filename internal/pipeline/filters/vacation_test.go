@@ -116,3 +116,24 @@ func TestVacationSuppress_AuthFailingSender(t *testing.T) {
 		t.Errorf("Authentication-Results text suppressed the reply: %s", reason)
 	}
 }
+
+// ── #716: the envelope sender only ───────────────────────────────────
+
+// A bounce comes with a null reverse path and an ordinary From:, and gets no
+// reply (RFC 3834 §2, RFC 5230 §4.2). The filter has no database: reaching a
+// lookup would panic, so the refusal comes first.
+func TestVacation_NullEnvelopeSenderGetsNoReply(t *testing.T) {
+	for _, mailFrom := range []string{"", "<>", "  "} {
+		email := &pipeline.EmailJSON{
+			Envelope: pipeline.Envelope{MailFrom: mailFrom, RcptTo: []string{"dana@hosted.test"}},
+			Headers:  pipeline.Headers{From: []pipeline.Address{{Address: "postmaster@example.org"}}},
+		}
+		res, err := vacFilter().Execute(context.Background(), email)
+		if err != nil {
+			t.Fatalf("MAIL FROM %q: %v", mailFrom, err)
+		}
+		if res.Log.Result != "skip" || res.Log.Detail != "empty or null sender" {
+			t.Errorf("MAIL FROM %q: %+v, want skipped for a null sender", mailFrom, res.Log)
+		}
+	}
+}
