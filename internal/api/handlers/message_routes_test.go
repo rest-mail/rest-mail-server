@@ -12,7 +12,7 @@ import (
 )
 
 // A message is written as the model wrote it, its raw source never: the gateways, webmail and
-// the mobile app all read these bytes. The same holds for an attachment's metadata.
+// the mobile app all read these bytes.
 func TestMessageResponseJSONParity(t *testing.T) {
 	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	encrypted := true
@@ -23,15 +23,12 @@ func TestMessageResponseJSONParity(t *testing.T) {
 		SizeBytes: 10, RawSize: 12, ReceivedTLS: &encrypted, TLSVersion: "TLS1.3", HasAttachments: true, IsRead: true,
 		IsDSN: true, IsFlagged: true, IsStarred: true, IsDraft: true, IsDeleted: true, ReceivedAt: now, DateHeader: &now,
 		CreatedAt: now, UpdatedAt: now}
-	attachment := models.Attachment{ID: 5, MessageID: 3, Filename: "a.pdf", ContentType: "application/pdf", SizeBytes: 99,
-		StorageType: "s3", StorageRef: "bucket/key", Checksum: "abc", CreatedAt: now}
 	for _, tc := range []struct {
 		name         string
 		old, current interface{}
 	}{
 		{"every field", full, messageOf(full)},
 		{"empty message", models.Message{}, messageOf(models.Message{})},
-		{"attachment", attachment, attachmentOf(attachment)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			old, err := json.Marshal(tc.old)
@@ -49,6 +46,22 @@ func TestMessageResponseJSONParity(t *testing.T) {
 				t.Fatalf("raw message answered: %s", current)
 			}
 		})
+	}
+}
+
+// An attachment's answer says what it is, never where it is stored (#658): no path on the
+// server's disk or S3 key, and no storage backend.
+func TestAttachmentAnswerLeavesOutStorage(t *testing.T) {
+	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	attachment := models.Attachment{ID: 5, MessageID: 3, Filename: "a.pdf", ContentType: "application/pdf", SizeBytes: 99,
+		StorageType: "s3", StorageRef: "bucket/key", Checksum: "abc", CreatedAt: now}
+	got, err := json.Marshal(attachmentOf(attachment))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"id":5,"message_id":3,"filename":"a.pdf","content_type":"application/pdf","size_bytes":99,"checksum":"abc","created_at":"2026-01-02T03:04:05Z"}`
+	if string(got) != want {
+		t.Fatalf("attachment answered as %s, want %s", got, want)
 	}
 }
 

@@ -10310,7 +10310,7 @@ components:
     # ─────────────────────────────────────────────────────────────
     Attachment:
       type: object
-      required: [id, message_id, filename, content_type, size_bytes, storage_type, storage_ref, checksum, created_at]
+      required: [id, message_id, filename, content_type, size_bytes, checksum, created_at]
       properties:
         id:
           type: integer
@@ -10323,11 +10323,6 @@ components:
         size_bytes:
           type: integer
           format: int64
-        storage_type:
-          type: string
-          enum: [filesystem, s3]
-        storage_ref:
-          type: string
         checksum:
           type: string
           description: SHA-256 hex digest
