@@ -9,6 +9,13 @@ on:
   # opens with the workflow's own token starts no checks by itself.
   workflow_dispatch:
 
+# A pull request's run for an older push or an older base answers nothing: GitHub
+# judges the required check by the newest run, so that one supersedes it. Each run
+# on main or by dispatch has a group of its own, so every merged commit keeps its result.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('ci-{0}', github.ref) || format('ci-run-{0}', github.run_id) }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
