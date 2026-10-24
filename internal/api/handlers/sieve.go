@@ -62,7 +62,7 @@ type SieveValidation struct {
 // putSieveRequest replaces the account's script. script is required (null is refused like a
 // missing one); active defaults to true.
 type putSieveRequest struct {
-	ID   uint32       `path:"id" minimum:"1"`
+	ID   uint32       `path:"id" minimum:"1" example:"1"`
 	Body putSieveBody `body:""`
 }
 
@@ -72,7 +72,7 @@ type putSieveBody struct {
 }
 
 type validateSieveRequest struct {
-	ID   uint32            `path:"id" minimum:"1"`
+	ID   uint32            `path:"id" minimum:"1" example:"1"`
 	Body validateSieveBody `body:""`
 }
 

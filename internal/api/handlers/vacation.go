@@ -32,7 +32,7 @@ type vacationSetting struct {
 
 // setVacationRequest replaces the account's vacation reply.
 type setVacationRequest struct {
-	ID   uint32          `path:"id" minimum:"1"`
+	ID   uint32          `path:"id" minimum:"1" example:"1"`
 	Body setVacationBody `body:""`
 }
 

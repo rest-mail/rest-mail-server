@@ -66,7 +66,7 @@ func NewAttachmentHandler(db *gorm.DB, s3 *attachmentstore.S3) *AttachmentHandle
 
 // attachmentPath names an attachment by the path's {id}.
 type attachmentPath struct {
-	ID uint32 `path:"id" minimum:"1"`
+	ID uint32 `path:"id" minimum:"1" example:"1"`
 }
 
 // getAttachment streams an attachment file from storage, with Range and conditional requests

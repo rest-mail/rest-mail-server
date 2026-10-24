@@ -90,14 +90,14 @@ type CalendarReplied struct {
 
 // scheduledPath names a scheduled message by its id.
 type scheduledPath struct {
-	ID uint32 `path:"id" minimum:"1"`
+	ID uint32 `path:"id" minimum:"1" example:"1"`
 }
 
 // calendarReplyRequest replies to the invitation in a message. response is ACCEPTED,
 // DECLINED or TENTATIVE in any case; from is the address the reply is sent from. Both are
 // checked in the handler, after the message is found, as they always were.
 type calendarReplyRequest struct {
-	ID   uint32            `path:"id" minimum:"1"`
+	ID   uint32            `path:"id" minimum:"1" example:"1"`
 	Body calendarReplyBody `body:""`
 }
 
@@ -122,7 +122,7 @@ type saveDraftBody struct {
 // updateDraftRequest changes what is given. in_reply_to and references are accepted and
 // left as the draft was saved: the mobile app sends a reply's draft whole.
 type updateDraftRequest struct {
-	ID   uint32          `path:"id" minimum:"1"`
+	ID   uint32          `path:"id" minimum:"1" example:"1"`
 	Body updateDraftBody `body:""`
 }
 

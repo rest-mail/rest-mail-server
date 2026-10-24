@@ -35,7 +35,7 @@ type RestmailDiscovery struct {
 
 // restmailDiscoverQuery names the recipient domain, once.
 type restmailDiscoverQuery struct {
-	Domain string `query:"domain,required"`
+	Domain string `query:"domain,required" example:"restmail.test"`
 }
 
 // Register mounts discovery. Like the rest of RESTMAIL, any server may ask.

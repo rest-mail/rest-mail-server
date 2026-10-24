@@ -143,7 +143,7 @@ func (h *DomainHandler) Register(rs endpoint.Routes, checks DomainRouteChecks) {
 
 // domainPath names a domain by the path's {id}.
 type domainPath struct {
-	ID uint32 `path:"id" minimum:"1"`
+	ID uint32 `path:"id" minimum:"1" example:"1"`
 }
 
 var errDomainNotFound = endpoint.Refuse(http.StatusNotFound, "domain_not_found", "Domain not found")
@@ -258,7 +258,7 @@ func (h *DomainHandler) get(_ *http.Request, in domainPath) (Domain, error) {
 }
 
 type updateDomainRequest struct {
-	ID   uint32           `path:"id" minimum:"1"`
+	ID   uint32           `path:"id" minimum:"1" example:"1"`
 	Body updateDomainBody `body:""`
 }
 

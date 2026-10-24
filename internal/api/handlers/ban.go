@@ -122,7 +122,7 @@ func (h *BanHandler) create(_ *http.Request, req createBanRequest) (endpoint.Sta
 // banPath names the ban to delete.
 // DELETE /api/v1/admin/bans/{id}
 type banPath struct {
-	ID uint32 `path:"id" minimum:"1"`
+	ID uint32 `path:"id" minimum:"1" example:"1"`
 }
 
 func (h *BanHandler) delete(_ *http.Request, in banPath) (endpoint.Empty, error) {
@@ -138,7 +138,7 @@ func (h *BanHandler) delete(_ *http.Request, in banPath) (endpoint.Empty, error)
 // unbanIPRequest names the address to unban.
 // DELETE /api/v1/admin/bans/ip/{ip}
 type unbanIPRequest struct {
-	IP string `path:"ip" minLength:"1" message:"IP address required" missing:"IP address required"`
+	IP string `path:"ip" minLength:"1" message:"IP address required" missing:"IP address required" example:"192.0.2.10"`
 }
 
 func (h *BanHandler) unbanIP(_ *http.Request, in unbanIPRequest) (endpoint.Empty, error) {

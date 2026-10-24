@@ -22,7 +22,7 @@ func NewSearchHandler(db *gorm.DB) *SearchHandler {
 // searchRequest filters an account's messages: q searches subject and body, from the
 // sender, after and before the time it was received, has_attachment those with any.
 type searchRequest struct {
-	ID            uint32     `path:"id" minimum:"1"`
+	ID            uint32     `path:"id" minimum:"1" example:"1"`
 	Q             string     `query:"q"`
 	Folder        string     `query:"folder"`
 	From          string     `query:"from"`

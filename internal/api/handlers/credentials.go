@@ -93,8 +93,8 @@ var noStore = endpoint.Middleware{Wrap: func(next http.Handler) http.Handler {
 // credentialPath names one of an account's credentials by the path's {id} and
 // {credential_id}.
 type credentialPath struct {
-	ID           uint32 `path:"id" minimum:"1"`
-	CredentialID uint32 `path:"credential_id" minimum:"1"`
+	ID           uint32 `path:"id" minimum:"1" example:"1"`
+	CredentialID uint32 `path:"credential_id" minimum:"1" example:"1"`
 }
 
 // credentialResponse is a credential as its owner sees it. Never the hash.
@@ -181,7 +181,7 @@ type createCredentialBody struct {
 }
 
 type createCredentialRequest struct {
-	ID   uint32               `path:"id" minimum:"1"`
+	ID   uint32               `path:"id" minimum:"1" example:"1"`
 	Body createCredentialBody `body:""`
 }
 

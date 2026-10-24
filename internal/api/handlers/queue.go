@@ -97,7 +97,7 @@ func (h *QueueHandler) listQueue(_ *http.Request, in listQueueRequest) (QueueLis
 }
 
 type queuePath struct {
-	ID uint32 `path:"id" minimum:"1"`
+	ID uint32 `path:"id" minimum:"1" example:"1"`
 }
 
 var errQueueNotFound = endpoint.Refuse(http.StatusNotFound, "not_found", "Queue entry not found")

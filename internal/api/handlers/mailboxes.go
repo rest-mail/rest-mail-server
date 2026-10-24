@@ -255,7 +255,7 @@ type AddressCheck struct {
 
 // addressCheckQuery names the recipient to check. A blank one is the handler's 400.
 type addressCheckQuery struct {
-	Address string `query:"address,required"`
+	Address string `query:"address,required" example:"admin@restmail.test"`
 }
 
 // RegisterAddressCheck mounts the recipient check the protocol gateways ask before they take a

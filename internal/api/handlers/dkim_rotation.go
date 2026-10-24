@@ -111,7 +111,7 @@ type setDKIMRotationBody struct {
 	RotationIntervalDays int `json:"rotation_interval_days" minimum:"0" maximum:"3650" message:"Must be an integer between 0 and 3650 days; 0 disables rotation"`
 }
 type setDKIMRotationRequest struct {
-	ID   uint32              `path:"id" minimum:"1"`
+	ID   uint32              `path:"id" minimum:"1" example:"1"`
 	Body setDKIMRotationBody `body:""`
 }
 

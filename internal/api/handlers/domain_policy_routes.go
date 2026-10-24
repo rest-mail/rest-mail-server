@@ -15,19 +15,19 @@ type DomainPolicyRouteChecks struct {
 	At func(string) endpoint.Middleware
 }
 type senderRulePath struct {
-	ID  uint32 `path:"id" minimum:"1"`
-	EID uint32 `path:"eid" minimum:"1"`
+	ID  uint32 `path:"id" minimum:"1" example:"1"`
+	EID uint32 `path:"eid" minimum:"1" example:"1"`
 }
 type suppressionPath struct {
-	ID  uint32 `path:"id" minimum:"1"`
-	SID uint32 `path:"sid" minimum:"1"`
+	ID  uint32 `path:"id" minimum:"1" example:"1"`
+	SID uint32 `path:"sid" minimum:"1" example:"1"`
 }
 type addSenderRuleInput struct {
-	ID   uint32               `path:"id" minimum:"1"`
+	ID   uint32               `path:"id" minimum:"1" example:"1"`
 	Body addSenderRuleRequest `body:""`
 }
 type setMTASTSInput struct {
-	ID   uint32        `path:"id" minimum:"1"`
+	ID   uint32        `path:"id" minimum:"1" example:"1"`
 	Body setMTASTSBody `body:""`
 }
 type setMTASTSBody struct {
@@ -37,7 +37,7 @@ type setMTASTSBody struct {
 	Active  *bool  `json:"active,omitempty"`
 }
 type setRelayInput struct {
-	ID   uint32       `path:"id" minimum:"1"`
+	ID   uint32       `path:"id" minimum:"1" example:"1"`
 	Body setRelayBody `body:""`
 }
 type setRelayBody struct {

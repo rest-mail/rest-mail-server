@@ -106,14 +106,14 @@ type adminAddressListRequest struct {
 	Offset   *int `query:"offset"`
 }
 type adminAddressPath struct {
-	ID uint32 `path:"id" minimum:"1"`
+	ID uint32 `path:"id" minimum:"1" example:"1"`
 }
 type updateMailboxInput struct {
-	ID   uint32               `path:"id" minimum:"1"`
+	ID   uint32               `path:"id" minimum:"1" example:"1"`
 	Body updateMailboxRequest `body:""`
 }
 type updateAliasInput struct {
-	ID   uint32             `path:"id" minimum:"1"`
+	ID   uint32             `path:"id" minimum:"1" example:"1"`
 	Body updateAliasRequest `body:""`
 }
 
