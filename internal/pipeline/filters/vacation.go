@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	rmail "github.com/restmail/restmail/internal/mail"
 	"github.com/restmail/restmail/internal/pipeline"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // vacationConfig holds the per-step JSON configuration for the vacation filter.
@@ -46,7 +48,7 @@ func NewVacation(db *gorm.DB) pipeline.FilterFactory {
 	}
 }
 
-func (f *vacationFilter) Name() string             { return "vacation" }
+func (f *vacationFilter) Name() string              { return "vacation" }
 func (f *vacationFilter) Type() pipeline.FilterType { return pipeline.FilterTypeAction }
 
 func (f *vacationFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
@@ -115,11 +117,15 @@ func (f *vacationFilter) Execute(ctx context.Context, email *pipeline.EmailJSON)
 		}
 
 		// ── 3b. Record the response for dedup ─────────────────────
-		db.Table("vacation_responses").Create(map[string]interface{}{
-			"mailbox_id":   mailboxID,
-			"sender":       sender,
-			"responded_at": now,
-		})
+		// The row takes this reply's time, so the interval runs from the latest reply. A
+		// plain insert hit the (mailbox_id, sender) unique index once a first interval had
+		// passed, kept the first reply's time, and every later message was answered (#809).
+		if err := db.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "mailbox_id"}, {Name: "sender"}},
+			DoUpdates: clause.Assignments(map[string]interface{}{"responded_at": now}),
+		}).Create(&models.VacationResponse{MailboxID: mailboxID, Sender: sender, RespondedAt: now}).Error; err != nil {
+			slog.Warn("vacation: could not record the reply; sending it anyway", "mailbox_id", mailboxID, "error", err)
+		}
 
 		// ── 3c. Queue the actual reply via outbound_queue ─────────
 		senderDomain := parts[1]
