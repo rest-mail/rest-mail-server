@@ -88,3 +88,26 @@ func TestPrepare_AlreadySignedPassthrough(t *testing.T) {
 		t.Fatalf("Prepare disturbed already-signed mail:\n got: %q\nwant: %q", got, raw)
 	}
 }
+
+// A message asks for the recipient's TLS policy to be ignored with exactly one
+// "TLS-Required: No" field in its header, in any case, folded or not; a second
+// field, another value, or the words in the body do not (RFC 8689 §3).
+func TestTLSOptional(t *testing.T) {
+	for raw, want := range map[string]bool{
+		"Subject: x\r\nTLS-Required: No\r\n\r\nbody\r\n":                     true,
+		"tls-required:no\r\nSubject: x\r\n\r\nbody\r\n":                      true,
+		"Subject: x\r\nTLS-Required:\r\n\tNO \r\n\r\nbody\r\n":               true,
+		"Subject: x\nTLS-Required: No\n\nbody\n":                             true,
+		"Subject: x\r\nTLS-Required: No\r\nTLS-Required: No\r\n\r\nbody\r\n": false,
+		"Subject: x\r\nTLS-Required: Yes\r\n\r\nbody\r\n":                    false,
+		"Subject: x\r\nTLS-Required: No thanks\r\n\r\nbody\r\n":              false,
+		"Subject: x\r\nX-TLS-Required: No\r\n\r\nbody\r\n":                   false,
+		"Subject: x\r\n\r\nTLS-Required: No\r\n":                             false,
+		"Subject: TLS-Required: No\r\n\r\nbody\r\n":                          false,
+		"Subject: x\r\nTLS-Required: No\r\n":                                 true,
+	} {
+		if got := TLSOptional(raw); got != want {
+			t.Errorf("%q: %v, want %v", raw, got, want)
+		}
+	}
+}

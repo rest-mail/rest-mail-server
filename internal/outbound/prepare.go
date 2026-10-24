@@ -128,6 +128,32 @@ func HasDKIMSignature(raw string) bool {
 	return false
 }
 
+// TLSOptional reports whether a message carries "TLS-Required: No": its
+// sender asks that the recipient domain's TLS policy (MTA-STS, DANE) be
+// ignored for it, while STARTTLS is still attempted (RFC 8689 §3, §4.2.2).
+// The field may appear only once, so a message with more than one, or with
+// any other value, keeps the policy. The name and "No" match in any case
+// (RFC 5234 §2.3), and the value may be folded.
+func TLSOptional(raw string) bool {
+	bodyStart, eol := headerBodySplit(raw)
+	var values []string
+	inField := false
+	for _, line := range strings.Split(raw[:bodyStart], eol) {
+		if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
+			if inField {
+				values[len(values)-1] += line
+			}
+			continue
+		}
+		inField = hasHeaderName(line, "TLS-Required")
+		if inField {
+			_, value, _ := strings.Cut(line, ":")
+			values = append(values, value)
+		}
+	}
+	return len(values) == 1 && strings.EqualFold(strings.TrimSpace(values[0]), "No")
+}
+
 // signedHeaders is the h= set SignDKIM signs: go-dkim's default set, the
 // RFC 8058 one-click field, so a one-click claim is covered alongside the
 // List-Unsubscribe target it applies to, and the TLS-RPT report fields, which

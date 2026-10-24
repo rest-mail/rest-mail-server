@@ -31,7 +31,7 @@ it. Each row links to the chapter that explains it.
 | [Delivery to servers with bad certificates](../security/encryption-in-transit.md#certificates-nobody-checks) | Solved by opportunistic TLS | Opportunistic: encrypts, and records the certificate as unverified (#723) |
 | [STARTTLS downgrade](../security/encryption-in-transit.md#the-downgrade) | Being solved: MTA-STS and DANE, adopted slowly | MTA-STS enforced when sending; the `_mta-sts` record printed with an `id` that follows the policy, the `mta-sts.` host and its certificate not yet ([#727](https://github.com/rest-mail/rest-mail-server/issues/727)); no DANE ([#725](https://github.com/rest-mail/rest-mail-server/issues/725)) |
 | [Hearing about TLS failures](../security/mta-sts-and-dane.md#tls-rpt-being-told-what-went-wrong) | Solved by TLS-RPT, where published | Receives reports over HTTPS; does not send them ([#726](https://github.com/rest-mail/rest-mail-server/issues/726)) |
-| [Encryption required per message](../security/encryption-in-transit.md#asking-for-encryption-per-message) | Standard exists (REQUIRETLS), little deployed | Not supported ([#724](https://github.com/rest-mail/rest-mail-server/issues/724)) |
+| [Encryption required per message](../security/encryption-in-transit.md#asking-for-encryption-per-message) | Standard exists (REQUIRETLS), little deployed | `TLS-Required: No` honoured; REQUIRETLS not supported yet ([#724](https://github.com/rest-mail/rest-mail-server/issues/724)) |
 | [End-to-end encryption](modernising-email.md#end-to-end-encryption) | Still open: S/MIME and OpenPGP exist; key discovery remains hard | Not addressed |
 
 ## Authentication
