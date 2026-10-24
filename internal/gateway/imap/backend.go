@@ -124,9 +124,21 @@ func (m *mailbox) Folders() ([]imapsrv.Folder, error) {
 	}
 	out := make([]imapsrv.Folder, 0, len(resp.Data))
 	for _, f := range resp.Data {
-		out = append(out, imapsrv.Folder{Name: f.Name})
+		out = append(out, imapsrv.Folder{Name: f.Name, SpecialUse: specialUse[f.Name]})
 	}
 	return out, nil
+}
+
+// specialUse is the role (RFC 6154) of each of REST Mail's standard folders,
+// the ones every mailbox has and none can delete (the API's standardFolders):
+// a mail app then files junk into Spam and archives into Archive rather than
+// making folders of its own beside them. Any other folder has no role.
+var specialUse = map[string]string{
+	"Sent":    imapsrv.SpecialUseSent,
+	"Drafts":  imapsrv.SpecialUseDrafts,
+	"Trash":   imapsrv.SpecialUseTrash,
+	"Spam":    imapsrv.SpecialUseJunk,
+	"Archive": imapsrv.SpecialUseArchive,
 }
 
 // Messages returns a folder's messages oldest-first, mapped onto the library's
