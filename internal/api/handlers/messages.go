@@ -1350,39 +1350,21 @@ func (h *MessageHandler) resolveSenderMailbox(from string, claims *auth.Claims) 
 
 // SaveDraft creates a new draft message.
 // POST /api/v1/messages/draft
-func (h *MessageHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
+func (h *MessageHandler) saveDraft(r *http.Request, req saveDraftBody) (Message, error) {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
-	}
-
-	var req struct {
-		From       string   `json:"from"`
-		To         []string `json:"to"`
-		Cc         []string `json:"cc"`
-		Subject    string   `json:"subject"`
-		BodyText   string   `json:"body_text"`
-		BodyHTML   string   `json:"body_html"`
-		InReplyTo  string   `json:"in_reply_to"`
-		References string   `json:"references"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
+		return Message{}, errNotSignedIn
 	}
 	// A draft's recipients become its To:/Cc: when it is sent: each must be an
 	// address, as the schema says (#388).
 	for _, addr := range req.To {
 		if rmail.ValidateAddress(addr) != nil {
-			respond.Error(w, http.StatusBadRequest, "bad_request", "invalid recipient address in to")
-			return
+			return Message{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "invalid recipient address in to")
 		}
 	}
 	for _, addr := range req.Cc {
 		if rmail.ValidateAddress(addr) != nil {
-			respond.Error(w, http.StatusBadRequest, "bad_request", "invalid recipient address in cc")
-			return
+			return Message{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "invalid recipient address in cc")
 		}
 	}
 
@@ -1392,8 +1374,7 @@ func (h *MessageHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 	if req.From != "" {
 		mb, err := mayActAs(h.db, claims, req.From, models.CapMailWrite)
 		if err != nil {
-			respond.Error(w, http.StatusForbidden, "forbidden", "You are not authorized to send from this address")
-			return
+			return Message{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "You are not authorized to send from this address")
 		}
 		mailboxID = mb.ID
 	}
@@ -1425,64 +1406,41 @@ func (h *MessageHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.db.Create(&draft).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to save draft")
-		return
+		return Message{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to save draft")
 	}
 
-	respond.Data(w, http.StatusCreated, draft)
+	return messageOf(draft), nil
 }
 
 // UpdateDraft updates an existing draft message.
 // PUT /api/v1/messages/draft/{id}
-func (h *MessageHandler) UpdateDraft(w http.ResponseWriter, r *http.Request) {
+func (h *MessageHandler) updateDraft(r *http.Request, in updateDraftRequest) (Message, error) {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
-	}
-
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid message ID")
-		return
+		return Message{}, errNotSignedIn
 	}
 
 	var draft models.Message
-	if err := h.db.Where("id = ? AND is_draft = ?", id, true).First(&draft).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "Draft not found")
-		return
+	if err := h.db.Where("id = ? AND is_draft = ?", in.ID, true).First(&draft).Error; err != nil {
+		return Message{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Draft not found")
 	}
 
-	if !h.verifyMessageOwnership(w, r, &draft, models.CapMailWrite) {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
+	if !h.verifyMessageOwnership(nil, r, &draft, models.CapMailWrite) {
+		return Message{}, errMessageAccess
 	}
 
-	var req struct {
-		From     *string  `json:"from"`
-		To       []string `json:"to"`
-		Cc       []string `json:"cc"`
-		Subject  *string  `json:"subject"`
-		BodyText *string  `json:"body_text"`
-		BodyHTML *string  `json:"body_html"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
+	req := in.Body
 
 	// A draft's recipients become its To:/Cc: when it is sent: each must be an
 	// address, as it must be when the draft is saved.
 	for _, addr := range req.To {
 		if rmail.ValidateAddress(addr) != nil {
-			respond.Error(w, http.StatusBadRequest, "bad_request", "invalid recipient address in to")
-			return
+			return Message{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "invalid recipient address in to")
 		}
 	}
 	for _, addr := range req.Cc {
 		if rmail.ValidateAddress(addr) != nil {
-			respond.Error(w, http.StatusBadRequest, "bad_request", "invalid recipient address in cc")
-			return
+			return Message{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "invalid recipient address in cc")
 		}
 	}
 
@@ -1492,11 +1450,9 @@ func (h *MessageHandler) UpdateDraft(w http.ResponseWriter, r *http.Request) {
 	if req.From != nil && *req.From != "" {
 		if _, err := mayActAs(h.db, claims, *req.From, models.CapMailWrite); err != nil {
 			if errors.Is(err, errNoAccess) {
-				respond.Error(w, http.StatusForbidden, "forbidden", "You are not authorized to send from this address")
-			} else {
-				respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to check the sender")
+				return Message{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "You are not authorized to send from this address")
 			}
-			return
+			return Message{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to check the sender")
 		}
 	}
 
@@ -1526,8 +1482,8 @@ func (h *MessageHandler) UpdateDraft(w http.ResponseWriter, r *http.Request) {
 		h.db.Model(&draft).Updates(updates)
 	}
 
-	h.db.First(&draft, id)
-	respond.Data(w, http.StatusOK, draft)
+	h.db.First(&draft, in.ID)
+	return messageOf(draft), nil
 }
 
 // SendDraft converts a draft to a sent message by deleting it and delegating to SendMessage.
@@ -1767,44 +1723,23 @@ func forwardBodies(note string, original *models.Message) (text, htmlBody string
 
 // RespondToCalendar handles Accept/Decline/Tentative responses to calendar invites.
 // POST /api/v1/messages/{id}/calendar-reply
-func (h *MessageHandler) RespondToCalendar(w http.ResponseWriter, r *http.Request) {
+func (h *MessageHandler) respondToCalendar(r *http.Request, in calendarReplyRequest) (CalendarReplied, error) {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
+		return CalendarReplied{}, errNotSignedIn
 	}
 
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	msg, err := h.ownedMessage(r, in.ID, models.CapMailRead)
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid message ID")
-		return
+		return CalendarReplied{}, err
 	}
 
-	var msg models.Message
-	if err := h.db.First(&msg, id).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "message_not_found", "Message not found")
-		return
-	}
-
-	if !h.verifyMessageOwnership(w, r, &msg, models.CapMailRead) {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
-	}
-
-	var req struct {
-		Response string `json:"response"` // "ACCEPTED", "DECLINED", or "TENTATIVE"
-		From     string `json:"from"`     // Sender address for the reply
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
+	req := in.Body
 
 	// Validate response
 	response := strings.ToUpper(req.Response)
 	if response != "ACCEPTED" && response != "DECLINED" && response != "TENTATIVE" {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "response must be ACCEPTED, DECLINED, or TENTATIVE")
-		return
+		return CalendarReplied{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "response must be ACCEPTED, DECLINED, or TENTATIVE")
 	}
 
 	// Parse calendar events from the message
@@ -1814,22 +1749,19 @@ func (h *MessageHandler) RespondToCalendar(w http.ResponseWriter, r *http.Reques
 	}
 
 	if len(calEvents) == 0 {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Message does not contain calendar events")
-		return
+		return CalendarReplied{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "Message does not contain calendar events")
 	}
 
 	event := calEvents[0]
 
 	if req.From == "" {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "from is required")
-		return
+		return CalendarReplied{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "from is required")
 	}
 
 	// Verify sender belongs to authenticated user
 	senderMailbox, err := h.resolveSenderMailbox(req.From, claims)
 	if err != nil {
-		respond.Error(w, http.StatusForbidden, "forbidden", "You are not authorized to send from this address")
-		return
+		return CalendarReplied{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "You are not authorized to send from this address")
 	}
 
 	// Build the iCalendar REPLY body
@@ -1846,8 +1778,7 @@ func (h *MessageHandler) RespondToCalendar(w http.ResponseWriter, r *http.Reques
 	// To: header and queued as an SMTP envelope recipient, or a CRLF-bearing
 	// organizer would enable header forgery / SMTP command injection (#166).
 	if err := rmail.ValidateAddress(organizer); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "invalid organizer address in calendar event")
-		return
+		return CalendarReplied{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "invalid organizer address in calendar event")
 	}
 
 	subject := event.Summary
@@ -1900,8 +1831,7 @@ func (h *MessageHandler) RespondToCalendar(w http.ResponseWriter, r *http.Reques
 	// OSI-8: fail closed if the DKIM key cannot sign (see signOutboundDKIM).
 	signedRaw, signErr := h.signOutboundDKIM(rmail.DomainFromAddress(req.From), rawMessage)
 	if signErr != nil {
-		respond.Error(w, http.StatusServiceUnavailable, "deferred", "Try again later")
-		return
+		return CalendarReplied{}, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Try again later")
 	}
 	rawMessage = signedRaw
 
@@ -1925,8 +1855,7 @@ func (h *MessageHandler) RespondToCalendar(w http.ResponseWriter, r *http.Reques
 	}
 
 	if err := h.db.Create(&sentMsg).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to save calendar reply")
-		return
+		return CalendarReplied{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to save calendar reply")
 	}
 
 	// Deliver to organizer if local, else queue for remote delivery
@@ -1965,10 +1894,7 @@ func (h *MessageHandler) RespondToCalendar(w http.ResponseWriter, r *http.Reques
 		h.db.Create(&queueEntry)
 	}
 
-	respond.Data(w, http.StatusOK, map[string]string{
-		"status":   "sent",
-		"response": response,
-	})
+	return CalendarReplied{Response: response, Status: "sent"}, nil
 }
 
 // verifyMessageOwnership checks that the caller may act on the message with
@@ -2493,23 +2419,10 @@ func (h *MessageHandler) resolveAccountMailbox(accountID uint, claims *auth.Clai
 // ListCalendarEvents returns calendar event versions for a mailbox,
 // grouped by UID with the latest sequence number, enabling the frontend
 // to detect superseded or cancelled events.
-func (h *MessageHandler) ListCalendarEvents(w http.ResponseWriter, r *http.Request) {
-	claims := middleware.GetClaims(r)
-	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
-	}
-
-	accountID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+func (h *MessageHandler) listCalendarEvents(r *http.Request, in accountPath) ([]CalendarEventSummary, error) {
+	mailboxID, err := h.accountMailbox(r, in.ID, models.CapMailRead)
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
-		return
-	}
-
-	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims, models.CapMailRead)
-	if err != nil {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
+		return nil, err
 	}
 
 	var versions []models.CalendarEventVersion
@@ -2517,30 +2430,17 @@ func (h *MessageHandler) ListCalendarEvents(w http.ResponseWriter, r *http.Reque
 		Order("uid, sequence DESC").
 		Find(&versions)
 
-	// Group by UID: for each UID, mark which is the latest version
-	type calEventSummary struct {
-		UID         string `json:"uid"`
-		Method      string `json:"method"`
-		Status      string `json:"status"`
-		Summary     string `json:"summary"`
-		Sequence    int    `json:"sequence"`
-		IsCancelled bool   `json:"is_cancelled"`
-		MessageID   *uint  `json:"message_id,omitempty"`
-		Versions    int    `json:"versions"`
-	}
-
-	seen := map[string]*calEventSummary{}
+	seen := map[string]*CalendarEventSummary{}
 	var order []string // preserve insertion order
 	for _, v := range versions {
 		if existing, ok := seen[v.UID]; ok {
 			existing.Versions++
-			// Check if any version is a CANCEL
 			if v.Method == "CANCEL" {
 				existing.IsCancelled = true
 			}
 			continue
 		}
-		s := &calEventSummary{
+		s := &CalendarEventSummary{
 			UID:         v.UID,
 			Method:      v.Method,
 			Status:      v.Status,
@@ -2554,10 +2454,10 @@ func (h *MessageHandler) ListCalendarEvents(w http.ResponseWriter, r *http.Reque
 		order = append(order, v.UID)
 	}
 
-	result := make([]calEventSummary, 0, len(order))
+	result := make([]CalendarEventSummary, 0, len(order))
 	for _, uid := range order {
 		result = append(result, *seen[uid])
 	}
 
-	respond.Data(w, http.StatusOK, result)
+	return result, nil
 }

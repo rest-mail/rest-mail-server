@@ -1,13 +1,12 @@
 package handlers
 
 import (
-	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
+	oapifly "github.com/antimatter-studios/go-oapifly"
 	"log/slog"
 	"math"
 	"net/http"
@@ -224,8 +223,8 @@ func (h *AuthHandler) revokeAllForAccount(accountID uint) {
 
 type loginRequest struct {
 	// Email is the account's address.
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Email    string `json:"email,omitempty"`
+	Password string `json:"password,omitempty"`
 	// TOTPCode / RecoveryCode carry the second factor for accounts with 2FA
 	// active (OSI-19). Both are optional and ignored for accounts without 2FA,
 	// so non-2FA logins are byte-for-byte unchanged. A single-step login that
@@ -245,7 +244,13 @@ const clientNative = "native"
 // refreshRequest is the body a native client sends to /auth/refresh and
 // /auth/logout. Browsers send no body; their refresh token is the cookie.
 type refreshRequest struct {
-	RefreshToken string `json:"refresh_token"`
+	RefreshToken string `json:"refresh_token,omitempty"`
+}
+
+// sessionTokenRequest is the optional body of /auth/refresh and /auth/logout: a native
+// client's refresh token. A browser sends none; its token is the cookie.
+type sessionTokenRequest struct {
+	Body *refreshRequest `body:""`
 }
 
 // loginResponse is the login/refresh success body. For a browser it carries NO
@@ -305,16 +310,23 @@ func deliverSession(w http.ResponseWriter, tokens *auth.TokenPair, native bool, 
 // that carries restmail_refresh is a browser's, and is answered with cookies
 // only, so script running in a page can never trade the httpOnly cookie for a
 // readable token by adding a body.
-func presentedRefreshToken(r *http.Request) (token string, native bool) {
+func presentedRefreshToken(r *http.Request, body *refreshRequest) (token string, native bool) {
 	if c, err := r.Cookie(auth.RefreshCookieName); err == nil && c.Value != "" {
 		return c.Value, false
 	}
-	var body refreshRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err == nil && body.RefreshToken != "" {
+	if body != nil && body.RefreshToken != "" {
 		return body.RefreshToken, true
 	}
 	return "", false
 }
+
+// headerSink is a ResponseWriter that keeps only the headers written to it: the cookie
+// helpers set cookies on it, and a registered route answers them (endpoint.Headed).
+type headerSink http.Header
+
+func (s headerSink) Header() http.Header       { return http.Header(s) }
+func (headerSink) Write(b []byte) (int, error) { return len(b), nil }
+func (headerSink) WriteHeader(int)             {}
 
 // setSessionCookies issues the browser session cookies for a freshly minted
 // access token: the httpOnly, Secure, SameSite=Strict restmail_access cookie
@@ -390,13 +402,8 @@ type userInfo struct {
 // Login signs an account in: its address, a password matching one of its
 // password credentials, and a code from one of its TOTP credentials when it
 // has one.
-func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
-	var req loginRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
-
+func (h *AuthHandler) login(r *http.Request, req loginRequest) (endpoint.Headed[loginResponse], error) {
+	var zero endpoint.Headed[loginResponse]
 	problems := map[string]string{}
 	if strings.TrimSpace(req.Email) == "" {
 		problems["email"] = "required: the account's address"
@@ -408,8 +415,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		problems["client"] = `must be "native" or omitted`
 	}
 	if len(problems) > 0 {
-		respond.ValidationError(w, problems)
-		return
+		return zero, endpoint.Invalid(problems)
 	}
 
 	// Find the account. A miss does NOT short-circuit: MatchPassword still runs
@@ -419,41 +425,36 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var account models.Mailbox
 	lookupErr := repositories.FindMailboxByAddress(h.db, req.Email, &account)
 	if lookupErr != nil && !errors.Is(lookupErr, gorm.ErrRecordNotFound) {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to verify the password")
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to verify the password")
 	}
 	now := time.Now()
 	cred, err := repositories.NewCredentialRepository(h.db).MatchPassword(account.ID, req.Password, now)
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to verify the password")
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to verify the password")
 	}
 	if lookupErr != nil || cred == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid email or password")
-		return
+		return zero, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Invalid email or password")
 	}
 
 	// Credentials verified. Account-state checks (which legitimately surface a
 	// distinct message) run only after a correct password, so they never leak
 	// account existence to an unauthenticated guesser.
 	if !account.Active {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Account is disabled")
-		return
+		return zero, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Account is disabled")
 	}
 	if account.BootstrapExpired(now) {
-		respond.Error(w, http.StatusUnauthorized, "bootstrap_expired",
+		return zero, endpoint.Refuse(http.StatusUnauthorized, "bootstrap_expired",
 			"This server's bootstrap password has expired. Deploy it again with a new one, then sign in with that.")
-		return
 	}
 
 	// Second factor (OSI-19): only reached with a correct password, so a 2FA
 	// challenge never leaks account existence. No-op for accounts without 2FA.
-	ok, verified := h.enforce2FA(w, account.ID, req)
-	if !ok {
-		return
+	verified, err := h.enforce2FA(account.ID, req)
+	if err != nil {
+		return zero, err
 	}
 
-	h.startSession(w, &account, req.Client == clientNative, signInMethods(verified))
+	return h.newSession(&account, req.Client == clientNative, signInMethods(verified))
 }
 
 // enforce2FA gates token issuance on the second factor when an account has TOTP
@@ -461,30 +462,27 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 // enrollment lookup happens here, so whether 2FA is enabled never leaks to a
 // caller who has not already proven the password (OSI-19 + OSI-24). Returns
 // true when login may proceed (no active 2FA, or a valid TOTP/recovery code was
-// supplied), and whether a second factor was verified. On failure it writes the
-// response and returns false — with a distinct totp_required code when no
-// second factor was supplied, so a client knows to prompt for one.
-func (h *AuthHandler) enforce2FA(w http.ResponseWriter, accountID uint, req loginRequest) (proceed, verified bool) {
+// supplied), and whether a second factor was verified. Otherwise it refuses — with a
+// distinct totp_required code when no second factor was supplied, so a client knows to
+// prompt for one.
+func (h *AuthHandler) enforce2FA(accountID uint, req loginRequest) (verified bool, err error) {
 	if h.twoFactorStore == nil {
-		return true, false
+		return false, nil
 	}
-	_, err := h.twoFactorStore.GetActive(accountID)
+	_, err = h.twoFactorStore.GetActive(accountID)
 	if errors.Is(err, repositories.ErrTwoFactorNotFound) {
-		return true, false // account has no active 2FA — unchanged behaviour
+		return false, nil // account has no active 2FA — unchanged behaviour
 	}
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to verify two-factor authentication")
-		return false, false
+		return false, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to verify two-factor authentication")
 	}
 	if verifyTOTPOrRecovery(h.twoFactorStore, h.masterKey, accountID, req.TOTPCode, req.RecoveryCode) {
-		return true, true
+		return true, nil
 	}
 	if req.TOTPCode == "" && req.RecoveryCode == "" {
-		respond.Error(w, http.StatusUnauthorized, "totp_required", "Two-factor authentication code required")
-	} else {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid two-factor authentication code")
+		return false, endpoint.Refuse(http.StatusUnauthorized, "totp_required", "Two-factor authentication code required")
 	}
-	return false, false
+	return false, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Invalid two-factor authentication code")
 }
 
 // signInMethods is the amr of a session that signed in with a password, and a
@@ -496,27 +494,15 @@ func signInMethods(verified bool) []string {
 	return []string{auth.AMRPassword}
 }
 
-func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+func (h *AuthHandler) logout(r *http.Request, in sessionTokenRequest) (endpoint.Headed[endpoint.Empty], error) {
 	// Revoke the presented refresh token server-side so it can no longer be
 	// exchanged (OSI-10: logout was previously client-side only). The token is
 	// the cookie, or for a native client the body. Best-effort: a missing or
 	// invalid token still clears client state below. Idempotent, so a double
 	// logout is harmless. A body whose refresh_token is not a string is a
-	// client bug, refused with 422 rather than silently treated as no token.
-	if r.Body != nil {
-		body, err := io.ReadAll(io.LimitReader(r.Body, 1<<16))
-		if err != nil {
-			respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-			return
-		}
-		var typeErr *json.UnmarshalTypeError
-		if err := json.Unmarshal(body, &refreshRequest{}); errors.As(err, &typeErr) {
-			respond.ValidationError(w, map[string]string{"refresh_token": "must be a string"})
-			return
-		}
-		r.Body = io.NopCloser(bytes.NewReader(body))
-	}
-	if token, _ := presentedRefreshToken(r); token != "" && h.refreshStore != nil {
+	// client bug, refused by binding with 422 rather than silently treated as
+	// no token.
+	if token, _ := presentedRefreshToken(r, in.Body); token != "" && h.refreshStore != nil {
 		if claims, err := h.jwtService.ValidateRefreshToken(token); err == nil && claims.ID != "" {
 			_ = h.refreshStore.Revoke(claims.ID)
 			// The phones the session registered for push go with it.
@@ -528,7 +514,8 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	http.SetCookie(w, &http.Cookie{
+	cookies := headerSink{}
+	http.SetCookie(cookies, &http.Cookie{
 		Name:     auth.RefreshCookieName,
 		Value:    "",
 		Path:     "/api/v1/auth",
@@ -539,21 +526,20 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	})
 	// Also expire the access + CSRF session cookies so the browser holds no
 	// usable session material after logout.
-	clearSessionCookies(w)
-	w.WriteHeader(http.StatusNoContent)
+	clearSessionCookies(cookies)
+	return endpoint.Headed[endpoint.Empty]{Header: http.Header(cookies)}, nil
 }
 
-func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
-	token, native := presentedRefreshToken(r)
+func (h *AuthHandler) refresh(r *http.Request, in sessionTokenRequest) (endpoint.Headed[loginResponse], error) {
+	var zero endpoint.Headed[loginResponse]
+	token, native := presentedRefreshToken(r, in.Body)
 	if token == "" {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "No refresh token")
-		return
+		return zero, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "No refresh token")
 	}
 
 	claims, err := h.jwtService.ValidateRefreshToken(token)
 	if err != nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid or expired refresh token")
-		return
+		return zero, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Invalid or expired refresh token")
 	}
 
 	// Re-read live account state BEFORE consuming the rotation, so a token that
@@ -575,21 +561,18 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		var stateErr error
 		state, stateErr = h.accountState.AccountState(claims.AccountID)
 		if stateErr != nil {
-			respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid or expired refresh token")
-			return
+			return zero, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Invalid or expired refresh token")
 		}
 		if !state.Active {
 			h.revokeAllForAccount(claims.AccountID)
-			respond.Error(w, http.StatusUnauthorized, "unauthorized", "Account is disabled")
-			return
+			return zero, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Account is disabled")
 		}
 		// A refresh token from before the account's sessions last ended (a
 		// new password, a reset, 2FA turned off, an admin ending them) is as
 		// dead as the access tokens of its time: it must not mint one at the
 		// new epoch.
 		if state.CredentialEpoch != claims.CredentialEpoch {
-			respond.Error(w, http.StatusUnauthorized, "unauthorized", "This session has ended; sign in again")
-			return
+			return zero, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "This session has ended; sign in again")
 		}
 	}
 
@@ -600,8 +583,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	// the refresh. A nil store (no DB, some unit tests) skips this check.
 	if h.refreshStore != nil {
 		if err := h.refreshStore.Rotate(claims.ID); err != nil {
-			respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid or expired refresh token")
-			return
+			return zero, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Invalid or expired refresh token")
 		}
 	}
 
@@ -612,14 +594,12 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	// same sid.
 	tokens, err := h.jwtService.GenerateSession(claims.AccountID, state.Address, state.CredentialEpoch, claims.AMR, state.SetupPending, auth.ContinueSession(claims.SessionID))
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to generate tokens")
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to generate tokens")
 	}
 
 	// Record the replacement refresh token as the new active ledger row.
 	if err := h.persistRefreshToken(tokens, claims.AccountID); err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to persist session")
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to persist session")
 	}
 
 	// For a browser the body carries only what the SPA needs to restore session
@@ -641,16 +621,48 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		resp.Capabilities = state.Capabilities
 		resp.ScopedCapabilities = state.ScopedCapabilities
 	}
-	if err := deliverSession(w, tokens, native, &resp); err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to establish session")
-		return
+	cookies := headerSink{}
+	if err := deliverSession(cookies, tokens, native, &resp); err != nil {
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to establish session")
 	}
-	respond.Data(w, http.StatusOK, resp)
+	return endpoint.Headed[loginResponse]{Header: http.Header(cookies), Value: resp}, nil
 }
 
 // minChosenPasswordLength is bootstrap's, so every way of choosing an admin
 // password asks the same of it.
 const minChosenPasswordLength = bootstrap.MinChosenPasswordLength
+
+// sessionCookies is how a browser's session is delivered, rotated and ended: the httpOnly
+// restmail_access and restmail_refresh cookies and the readable restmail_csrf one. A native
+// client gets the tokens in the body instead, and no cookies.
+var sessionCookies = map[string]oapifly.ResponseHeader{
+	"Set-Cookie": {Description: "For a browser: restmail_access and restmail_refresh (httpOnly) and restmail_csrf, set or, on logout, expired"},
+}
+
+// RegisterSignIn registers signing in, refreshing the session, signing out and recovering a
+// forgotten password. None takes a credential; sign-in, refresh and recovery check one, so
+// they are throttled like login, and each is audited as it always was.
+func (h *AuthHandler) RegisterSignIn(rs endpoint.Routes, checks SessionRouteChecks) {
+	tags := []string{"Auth"}
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/auth/login",
+		OperationID: "login", Summary: "Sign an account in with its address and password", Tags: tags,
+		Security: oapifly.Public, Headers: sessionCookies, Errors: []int{http.StatusUnauthorized},
+		Middleware: []endpoint.Middleware{checks.Throttle, checks.Audit("auth.sign_in", middleware.AuditSignIn())}}, h.login)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/auth/logout",
+		OperationID: "logout", Summary: "Log out — revoke the session and clear the auth cookies", Tags: tags,
+		Status: http.StatusNoContent, Security: oapifly.Public, Headers: sessionCookies,
+		Middleware: []endpoint.Middleware{checks.Audit("auth.sign_out", middleware.AuditRefreshToken(), middleware.AuditIdentifiedOnly())}}, h.logout)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/auth/refresh",
+		OperationID: "refreshToken", Summary: "Refresh the session (cookie, or body token for native clients)", Tags: tags,
+		Description: "The refresh token rotates: the one presented stops working, and a reused one ends the session.",
+		Security:    oapifly.Public, Headers: sessionCookies, Errors: []int{http.StatusUnauthorized},
+		Middleware: []endpoint.Middleware{checks.Throttle, checks.Audit("auth.refresh", middleware.AuditRefreshToken(), middleware.AuditFailuresOnly())}}, h.refresh)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/auth/recover",
+		OperationID: "recoverAccount", Summary: "Reset a forgotten password with the authenticator and a recovery code", Tags: tags,
+		Description: "Each address may be refused 5 times, then once per 15 minutes: 429 rate_limited with Retry-After.",
+		Security:    oapifly.Public, Headers: sessionCookies, Errors: []int{http.StatusUnauthorized, http.StatusTooManyRequests},
+		Middleware: []endpoint.Middleware{checks.Throttle, checks.Audit("auth.recover", middleware.AuditStartedSession())}}, h.recoverAccount)
+}
 
 // RegisterPasswordChange registers an account replacing its own password, which a session
 // still in setup reaches. It checks a password, so it is throttled like login.
@@ -758,20 +770,19 @@ func setAccountPassword(tx *gorm.DB, r *http.Request, accountID uint, hash strin
 // already proven — by password and second factor at login, or by a single-use
 // token at reset — with amr saying how. An account still in setup gets a
 // session that can only finish the setup.
-func (h *AuthHandler) startSession(w http.ResponseWriter, account *models.Mailbox, native bool, amr []string) {
+func (h *AuthHandler) newSession(account *models.Mailbox, native bool, amr []string) (endpoint.Headed[loginResponse], error) {
+	var zero endpoint.Headed[loginResponse]
 	// What the grants give at "*", for the client to show.
 	held, err := grants.Load(h.db, account.ID, time.Now())
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to load the account's capabilities")
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to load the account's capabilities")
 	}
 	capNames := held.Capabilities()
 	scoped := held.ScopedCapabilities()
 
 	setupSteps, err := accountSetupSteps(h.twoFactorStore, account)
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to read account state")
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to read account state")
 	}
 	if len(setupSteps) > 0 {
 		capNames = nil
@@ -779,15 +790,13 @@ func (h *AuthHandler) startSession(w http.ResponseWriter, account *models.Mailbo
 	}
 	tokens, err := h.jwtService.GenerateSession(account.ID, account.Address, account.CredentialEpoch, amr, len(setupSteps) > 0)
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to generate tokens")
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to generate tokens")
 	}
 
 	// Record the refresh token in the rotation ledger before handing it out, so
 	// it can later be rotated on use and revoked on logout (OSI-10).
 	if err := h.persistRefreshToken(tokens, account.ID); err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to persist session")
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to persist session")
 	}
 
 	resp := loginResponse{
@@ -801,14 +810,29 @@ func (h *AuthHandler) startSession(w http.ResponseWriter, account *models.Mailbo
 			DisplayName: account.DisplayName,
 		},
 	}
-	if err := deliverSession(w, tokens, native, &resp); err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to establish session")
-		return
+	cookies := headerSink{}
+	if err := deliverSession(cookies, tokens, native, &resp); err != nil {
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to establish session")
 	}
 
 	h.db.Model(account).Update("last_login_at", time.Now())
 
-	respond.Data(w, http.StatusOK, resp)
+	return endpoint.Headed[loginResponse]{Header: http.Header(cookies), Value: resp}, nil
+}
+
+// startSession is newSession for a route not yet registered (reset): it writes the answer.
+func (h *AuthHandler) startSession(w http.ResponseWriter, account *models.Mailbox, native bool, amr []string) {
+	session, err := h.newSession(account, native, amr)
+	if err != nil {
+		endpoint.WriteError(w, err)
+		return
+	}
+	for name, values := range session.Header {
+		for _, v := range values {
+			w.Header().Add(name, v)
+		}
+	}
+	respond.Data(w, http.StatusOK, session.Value)
 }
 
 // resetRequest is the body of POST /api/v1/auth/reset.
@@ -879,10 +903,10 @@ func SessionCurrent(db *gorm.DB) middleware.SessionCurrent {
 
 // recoverRequest is the body of POST /api/v1/auth/recover.
 type recoverRequest struct {
-	Email        string `json:"email"`
-	TOTPCode     string `json:"totp_code"`
-	RecoveryCode string `json:"recovery_code"`
-	NewPassword  string `json:"new_password"`
+	Email        string `json:"email,omitempty"`
+	TOTPCode     string `json:"totp_code,omitempty"`
+	RecoveryCode string `json:"recovery_code,omitempty"`
+	NewPassword  string `json:"new_password,omitempty"`
 	Client       string `json:"client,omitempty"`
 }
 
@@ -895,12 +919,8 @@ type recoverRequest struct {
 // authenticator stays. An account without 2FA has no self-service path: an
 // admin resets it. Every refusal looks the same, so it says nothing about
 // which addresses exist or have 2FA.
-func (h *AuthHandler) Recover(w http.ResponseWriter, r *http.Request) {
-	var req recoverRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
+func (h *AuthHandler) recoverAccount(r *http.Request, req recoverRequest) (endpoint.Headed[loginResponse], error) {
+	var zero endpoint.Headed[loginResponse]
 	problems := map[string]string{}
 	if strings.TrimSpace(req.Email) == "" {
 		problems["email"] = "required: the account's address"
@@ -918,8 +938,7 @@ func (h *AuthHandler) Recover(w http.ResponseWriter, r *http.Request) {
 		problems["client"] = `must be "native" or omitted`
 	}
 	if len(problems) > 0 {
-		respond.ValidationError(w, problems)
-		return
+		return zero, endpoint.Invalid(problems)
 	}
 	// Refusals are charged to the address, known or not, so the budget says
 	// nothing about which addresses exist; once it is spent, the address is
@@ -927,43 +946,38 @@ func (h *AuthHandler) Recover(w http.ResponseWriter, r *http.Request) {
 	address := strings.ToLower(strings.TrimSpace(req.Email))
 	if h.recoverFailures != nil {
 		if ok, retry := h.recoverFailures.Available(address); !ok {
-			w.Header().Set("Retry-After", strconv.Itoa(max(1, int(math.Ceil(retry.Seconds())))))
-			respond.Error(w, http.StatusTooManyRequests, "rate_limited", "Too many failed recoveries for this address; try again later")
-			return
+			return zero, &endpoint.Error{Status: http.StatusTooManyRequests, Code: "rate_limited",
+				Message: "Too many failed recoveries for this address; try again later",
+				Header:  http.Header{"Retry-After": {strconv.Itoa(max(1, int(math.Ceil(retry.Seconds()))))}}}
 		}
 	}
-	refuse := func() {
+	refuse := func() error {
 		if h.recoverFailures != nil {
 			h.recoverFailures.Charge(address)
 		}
-		respond.Error(w, http.StatusUnauthorized, "recovery_failed", "Invalid address, authenticator code or recovery code")
+		return endpoint.Refuse(http.StatusUnauthorized, "recovery_failed", "Invalid address, authenticator code or recovery code")
 	}
 	if h.twoFactorStore == nil {
-		refuse()
-		return
+		return zero, refuse()
 	}
 
 	var account models.Mailbox
 	err := h.db.Where("address = ?", address).First(&account).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		refuse()
-		return
+		return zero, refuse()
 	}
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to read the account")
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to read the account")
 	}
 	if !account.Active ||
 		!verifyTOTPOrRecovery(h.twoFactorStore, h.masterKey, account.ID, req.TOTPCode, "") ||
 		!verifyTOTPOrRecovery(h.twoFactorStore, h.masterKey, account.ID, "", req.RecoveryCode) {
-		refuse()
-		return
+		return zero, refuse()
 	}
 
 	hash, err := hashPassword(req.NewPassword)
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to set password")
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to set password")
 	}
 	now := time.Now()
 	err = h.db.Transaction(func(tx *gorm.DB) error {
@@ -977,14 +991,12 @@ func (h *AuthHandler) Recover(w http.ResponseWriter, r *http.Request) {
 		return setAccountPassword(tx, r, account.ID, hash, &account.ID, now)
 	})
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to set password")
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to set password")
 	}
 	h.sessions.Forget(account.ID)
 	// The new session carries the moved-on credential epoch.
 	if err := h.db.First(&account, account.ID).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to read the account")
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to read the account")
 	}
-	h.startSession(w, &account, req.Client == clientNative, signInMethods(true))
+	return h.newSession(&account, req.Client == clientNative, signInMethods(true))
 }

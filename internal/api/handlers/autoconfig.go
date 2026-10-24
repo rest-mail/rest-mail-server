@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/xml"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 
@@ -10,16 +11,67 @@ import (
 	"gorm.io/gorm"
 )
 
+// AutoconfigHandler tells mail apps where to connect. The server is the mail
+// host, the name REST Mail answers mail on and the MX points to, never the
+// email domain itself (#722): that is usually a website, and the certificate a
+// client checks is the mail host's.
 type AutoconfigHandler struct {
 	db *gorm.DB
+	// mailHost is GATEWAY_HOSTNAME, as RESTMAIL discovery uses it; empty when
+	// it is not a fully-qualified name, and then there is nothing to advertise.
+	mailHost string
 }
 
-func NewAutoconfigHandler(db *gorm.DB) *AutoconfigHandler {
-	return &AutoconfigHandler{db: db}
+func NewAutoconfigHandler(db *gorm.DB, gatewayHostname string) *AutoconfigHandler {
+	h := &AutoconfigHandler{db: db}
+	if host, err := validateDomainName(gatewayHostname); err == nil {
+		h.mailHost = host
+	}
+	return h
+}
+
+// requestDomain is the email domain a lookup asks about: the domain of
+// emailaddress when the client sends it, else the host the request was made
+// to (draft-ietf-mailmaint-autoconfig §4.1, #721): autoconfig.<domain> for
+// /mail/config-v1.1.xml, <domain> itself for the .well-known URL. Its A-label
+// form, lowercased, as hosted domains are stored.
+func requestDomain(r *http.Request, email string) (string, bool) {
+	name := ""
+	if email != "" {
+		at := strings.LastIndex(email, "@")
+		if at < 0 {
+			return "", false
+		}
+		name = email[at+1:]
+	} else {
+		name = r.Host
+		if host, _, err := net.SplitHostPort(name); err == nil {
+			name = host
+		}
+		if !strings.HasPrefix(r.URL.Path, "/.well-known/") {
+			lower := strings.ToLower(name)
+			if !strings.HasPrefix(lower, "autoconfig.") {
+				return "", false
+			}
+			name = name[len("autoconfig."):]
+		}
+	}
+	domain, err := validateDomainName(name)
+	if err != nil {
+		return "", false
+	}
+	return strings.ToLower(domain), true
+}
+
+// hostedDomain reports whether REST Mail hosts the active domain name.
+func (h *AutoconfigHandler) hostedDomain(name string) bool {
+	var domain models.Domain
+	return h.db.Where("name = ? AND active = ?", name, true).First(&domain).Error == nil
 }
 
 // MozillaAutoconfig serves Mozilla Thunderbird autoconfig XML.
-// GET /mail/config-v1.1.xml?emailaddress=user@domain
+// GET /mail/config-v1.1.xml[?emailaddress=user@domain] on autoconfig.<domain>,
+// and GET /.well-known/autoconfig/mail/config-v1.1.xml on <domain>.
 // The ports rest-mail advertises to mail clients. Client access is implicit TLS only —
 // there is no listener on 587, 143 or 110 — and autoconfig is where that has to be
 // stated, because whatever a client reads here is what it saves and keeps using.
@@ -66,10 +118,10 @@ type acClientConfig struct {
 	Provider acEmailProvider `xml:"emailProvider"`
 }
 
-// mozillaClientConfig builds the Thunderbird autoconfig document for a domain. Split out
-// from the handler so what it advertises can be asserted without a database, since the
-// ports have nothing to do with one.
-func mozillaClientConfig(domainName string) acClientConfig {
+// mozillaClientConfig builds the Thunderbird autoconfig document for a domain served on
+// mailHost. Split out from the handler so what it advertises can be asserted without a
+// database, since the ports have nothing to do with one.
+func mozillaClientConfig(domainName, mailHost string) acClientConfig {
 	return acClientConfig{
 		Version: "1.1",
 		Provider: acEmailProvider{
@@ -78,7 +130,7 @@ func mozillaClientConfig(domainName string) acClientConfig {
 			DisplayName: domainName + " Mail",
 			Incoming: acServer{
 				Type:     "imap",
-				Hostname: domainName,
+				Hostname: mailHost,
 				Port:     autoconfigIMAPPort,
 				// The password travels inside TLS; "cleartext" here describes the SASL
 				// mechanism, not the connection.
@@ -88,7 +140,7 @@ func mozillaClientConfig(domainName string) acClientConfig {
 			},
 			Outgoing: acOutServer{
 				Type:           "smtp",
-				Hostname:       domainName,
+				Hostname:       mailHost,
 				Port:           autoconfigSMTPPort,
 				SocketType:     "SSL",
 				Authentication: "password-cleartext",
@@ -99,26 +151,21 @@ func mozillaClientConfig(domainName string) acClientConfig {
 }
 
 func (h *AutoconfigHandler) MozillaAutoconfig(w http.ResponseWriter, r *http.Request) {
-	email := r.URL.Query().Get("emailaddress")
-	if email == "" {
-		http.Error(w, "emailaddress parameter required", http.StatusBadRequest)
+	domainName, ok := requestDomain(r, r.URL.Query().Get("emailaddress"))
+	if !ok {
+		http.Error(w, "no email domain in the address or the host name", http.StatusBadRequest)
 		return
 	}
-
-	parts := strings.SplitN(email, "@", 2)
-	if len(parts) != 2 {
-		http.Error(w, "invalid email address", http.StatusBadRequest)
+	if h.mailHost == "" {
+		http.Error(w, "mail host not configured", http.StatusServiceUnavailable)
 		return
 	}
-	domainName := parts[1]
-
-	var domain models.Domain
-	if err := h.db.Where("name = ? AND active = ?", domainName, true).First(&domain).Error; err != nil {
+	if !h.hostedDomain(domainName) {
 		http.Error(w, "domain not found", http.StatusNotFound)
 		return
 	}
 
-	config := mozillaClientConfig(domainName)
+	config := mozillaClientConfig(domainName, h.mailHost)
 
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
@@ -163,7 +210,7 @@ type adRoot struct {
 //
 // SSL=on with Encryption=SSL is implicit TLS. Encryption=TLS is how the schema spells
 // STARTTLS, which is what this used to send for SMTP on 587.
-func autodiscoverResponse(domainName, email string) adRoot {
+func autodiscoverResponse(mailHost, email string) adRoot {
 	return adRoot{
 		Xmlns: "http://schemas.microsoft.com/exchange/autodiscover/responseschema/2006",
 		Response: adResponse{
@@ -172,8 +219,8 @@ func autodiscoverResponse(domainName, email string) adRoot {
 				AccountType: "email",
 				Action:      "settings",
 				Protocol: []adProtocol{
-					{Type: "IMAP", Server: domainName, Port: autoconfigIMAPPort, SSL: "on", Encryption: "SSL", LoginName: email},
-					{Type: "SMTP", Server: domainName, Port: autoconfigSMTPPort, SSL: "on", Encryption: "SSL", LoginName: email},
+					{Type: "IMAP", Server: mailHost, Port: autoconfigIMAPPort, SSL: "on", Encryption: "SSL", LoginName: email},
+					{Type: "SMTP", Server: mailHost, Port: autoconfigSMTPPort, SSL: "on", Encryption: "SSL", LoginName: email},
 				},
 			},
 		},
@@ -205,16 +252,16 @@ func (h *AutoconfigHandler) MicrosoftAutodiscover(w http.ResponseWriter, r *http
 		http.Error(w, "email address required", http.StatusBadRequest)
 		return
 	}
-
-	parts := strings.SplitN(email, "@", 2)
-	if len(parts) != 2 {
+	domainName, ok := requestDomain(r, email)
+	if !ok {
 		http.Error(w, "invalid email address", http.StatusBadRequest)
 		return
 	}
-	domainName := parts[1]
-
-	var domain models.Domain
-	if err := h.db.Where("name = ? AND active = ?", domainName, true).First(&domain).Error; err != nil {
+	if h.mailHost == "" {
+		http.Error(w, "mail host not configured", http.StatusServiceUnavailable)
+		return
+	}
+	if !h.hostedDomain(domainName) {
 		http.Error(w, "domain not found", http.StatusNotFound)
 		return
 	}
@@ -224,7 +271,7 @@ func (h *AutoconfigHandler) MicrosoftAutodiscover(w http.ResponseWriter, r *http
 	// the response as markup (element injection). The namespaces are carried as
 	// explicit xmlns attributes to reproduce the exact two-namespace document
 	// shape Outlook expects. Mirrors the safe Mozilla path above.
-	resp := autodiscoverResponse(domainName, email)
+	resp := autodiscoverResponse(h.mailHost, email)
 
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
 	w.WriteHeader(http.StatusOK)

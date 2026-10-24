@@ -131,8 +131,8 @@ func (s *dbStore) EnqueueOutbound(msg OutboundMessage) error {
 		RawMessage: msg.RawMessage,
 		BodyType:   msg.BodyType,
 		Status:     "pending",
-		MaxRetries: 30,
-		ExpiresAt:  time.Now().Add(72 * time.Hour),
+		MaxRetries: models.DefaultMaxRetries,
+		ExpiresAt:  time.Now().Add(models.QueueLifetime),
 	}
 	return s.db.Create(&entry).Error
 }
