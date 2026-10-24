@@ -269,5 +269,6 @@ surface:
       status: "500"
       reason: "Database or cryptography failure needs fault injection; normal enrollment and missing-session refusal remain counted."
 
-reporter: [cli, junit]
-output: ["", .cache/contract/examples.xml]
+# The HAR records the traffic for the secret scan (tests/contract/secret_scan.py, #673).
+reporter: [cli, junit, har]
+output: ["", .cache/contract/examples.xml, .cache/contract/examples.har]
