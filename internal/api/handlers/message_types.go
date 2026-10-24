@@ -101,16 +101,15 @@ func messagesOf(rows []models.Message) []Message {
 	return out
 }
 
-// MessageAttachment is a message's attachment as its list answers it: what it is called, its type
-// and size, and where it is stored. Its content is answered by GET /attachments/{id}.
+// MessageAttachment is a message's attachment as its list answers it: what it is called, its type,
+// size and checksum. Where it is stored, a path on the server's disk or an S3 key, stays on the
+// server (#658). Its content is answered by GET /attachments/{id}.
 type MessageAttachment struct {
 	ID          uint      `json:"id"`
 	MessageID   uint      `json:"message_id"`
 	Filename    string    `json:"filename"`
 	ContentType string    `json:"content_type"`
 	SizeBytes   int64     `json:"size_bytes"`
-	StorageType string    `json:"storage_type" enums:"filesystem,s3"`
-	StorageRef  string    `json:"storage_ref"`
 	Checksum    string    `json:"checksum" description:"SHA-256 hex"`
 	CreatedAt   time.Time `json:"created_at"`
 }
@@ -122,8 +121,6 @@ func attachmentOf(m models.Attachment) MessageAttachment {
 		Filename:    m.Filename,
 		ContentType: m.ContentType,
 		SizeBytes:   m.SizeBytes,
-		StorageType: m.StorageType,
-		StorageRef:  m.StorageRef,
 		Checksum:    m.Checksum,
 		CreatedAt:   m.CreatedAt,
 	}
