@@ -10171,7 +10171,9 @@ components:
         is_starred:
           type: boolean
         folder:
+          # The folder rule createFolder applies: a move makes the folder if there is none.
           type: string
+          minLength: 1
 
     SendMessageRequest:
       type: object

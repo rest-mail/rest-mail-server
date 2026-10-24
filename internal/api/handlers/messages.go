@@ -117,7 +117,8 @@ type messagePath struct {
 }
 
 // updateMessageRequest changes what is given; null or left out leaves a flag as it is, and a
-// folder moves the message.
+// folder moves the message, into a folder the name makes if there is none: the name is held to
+// the folder rule (rmail.FolderNameProblem), 422 on folder.
 type updateMessageRequest struct {
 	ID   uint32            `path:"id" minimum:"1"`
 	Body updateMessageBody `body:""`
@@ -286,8 +287,13 @@ func (h *MessageHandler) updateMessage(r *http.Request, in updateMessageRequest)
 	if req.IsDraft != nil {
 		updates["is_draft"] = *req.IsDraft
 	}
+	// A move into a folder that does not exist makes it, so the name follows the folder rule
+	// createFolder applies, and INBOX in any case is INBOX (#759).
 	if req.Folder != nil {
-		updates["folder"] = *req.Folder
+		if problem := rmail.FolderNameProblem(*req.Folder); problem != "" {
+			return Message{}, endpoint.Invalid(map[string]string{"folder": problem})
+		}
+		updates["folder"] = rmail.CanonicalFolder(*req.Folder)
 	}
 
 	if len(updates) > 0 {
