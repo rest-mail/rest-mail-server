@@ -46,23 +46,28 @@ class ProbeConfig(unittest.TestCase):
         self.assertEqual(self.config["output"], ["", str(self.report)])
 
     def test_workflow_enforces_unpinned_examples_before_coverage_and_uses_coverage_report(self):
+        # The contract run is tests/contract/run.sh, which CI's E2E job and
+        # `chore contract` both call (#627).
         workflow = (ROOT / ".github/workflows/e2e-suite.yml").read_text()
-        examples = workflow.index("vertrag run --sequence --phases examples")
-        generated = workflow.index("python3 tests/contract/probes.py")
-        coverage = workflow.index("--sequence --phases coverage")
-        repeated = workflow.index("python3 tests/contract/repeat_fixtures.py")
-        queue = workflow.index("chore test:contract-fixtures", repeated)
+        self.assertIn("run: tests/contract/run.sh gate", workflow)
+        script = (ROOT / "tests/contract/run.sh").read_text()
+        examples = script.index("--sequence --phases examples")
+        generated = script.index("python3 tests/contract/probes.py")
+        coverage = script.index("--sequence --phases coverage")
+        repeated = script.index("python3 tests/contract/repeat_fixtures.py")
+        queue = script.index("chore test:contract-fixtures", repeated)
         self.assertLess(examples, repeated)
         self.assertLess(repeated, queue)
         self.assertLess(queue, generated)
         self.assertLess(examples, generated)
         self.assertLess(generated, coverage)
-        self.assertIn("gate.py openapi.yaml vertrag.yml .cache/contract/coverage.xml", workflow)
+        self.assertIn('gate.py openapi.yaml vertrag.yml "$out/coverage.xml" tests/contract/coverage-baseline.txt', script)
         # The first command must fail the job immediately on any example or
         # surface failure; only coverage findings may defer to the ratchet.
-        command = workflow[examples:generated].splitlines()[0]
+        command = script[script.rindex("\n", 0, examples):generated].strip().splitlines()[0]
+        self.assertTrue(command.startswith("vertrag run"), command)
         self.assertNotIn("||", command)
-
+        self.assertIn("set -euo pipefail", script)
 
 if __name__ == "__main__":
     unittest.main()
