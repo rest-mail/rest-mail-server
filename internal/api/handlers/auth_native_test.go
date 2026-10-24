@@ -55,7 +55,7 @@ func TestRefresh_NativeBodyTokenGetsBodyTokens(t *testing.T) {
 	seedActive(store, pair, 42)
 
 	rr := httptest.NewRecorder()
-	h.Refresh(rr, bodyRequest("/api/v1/auth/refresh", pair.RefreshToken))
+	serveAuth(h, rr, bodyRequest("/api/v1/auth/refresh", pair.RefreshToken))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d (%s)", rr.Code, rr.Body.String())
 	}
@@ -76,12 +76,12 @@ func TestRefresh_NativeBodyTokenGetsBodyTokens(t *testing.T) {
 	// Rotation holds on the body channel too: the old token is spent, the new
 	// one works.
 	rr2 := httptest.NewRecorder()
-	h.Refresh(rr2, bodyRequest("/api/v1/auth/refresh", pair.RefreshToken))
+	serveAuth(h, rr2, bodyRequest("/api/v1/auth/refresh", pair.RefreshToken))
 	if rr2.Code != http.StatusUnauthorized {
 		t.Fatalf("reuse of rotated token: expected 401, got %d", rr2.Code)
 	}
 	rr3 := httptest.NewRecorder()
-	h.Refresh(rr3, bodyRequest("/api/v1/auth/refresh", b.Data.RefreshToken))
+	serveAuth(h, rr3, bodyRequest("/api/v1/auth/refresh", b.Data.RefreshToken))
 	if rr3.Code != http.StatusOK {
 		t.Fatalf("refresh with rotated token: expected 200, got %d (%s)", rr3.Code, rr3.Body.String())
 	}
@@ -110,7 +110,7 @@ func TestRefresh_CookieWinsOverBody(t *testing.T) {
 	req := bodyRequest("/api/v1/auth/refresh", bodyPair.RefreshToken)
 	req.AddCookie(&http.Cookie{Name: auth.RefreshCookieName, Value: cookiePair.RefreshToken})
 	rr := httptest.NewRecorder()
-	h.Refresh(rr, req)
+	serveAuth(h, rr, req)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d (%s)", rr.Code, rr.Body.String())
 	}
@@ -143,7 +143,7 @@ func TestLogout_NativeBodyTokenRevoked(t *testing.T) {
 	seedActive(store, pair, 5)
 
 	rr := httptest.NewRecorder()
-	h.Logout(rr, bodyRequest("/api/v1/auth/logout", pair.RefreshToken))
+	serveAuth(h, rr, bodyRequest("/api/v1/auth/logout", pair.RefreshToken))
 	if rr.Code != http.StatusNoContent {
 		t.Fatalf("expected 204, got %d", rr.Code)
 	}
@@ -162,7 +162,7 @@ func TestRefresh_NoTokenAnywhere(t *testing.T) {
 		bodyRequest("/api/v1/auth/refresh", ""),
 	} {
 		rr := httptest.NewRecorder()
-		h.Refresh(rr, req)
+		serveAuth(h, rr, req)
 		if rr.Code != http.StatusUnauthorized {
 			t.Errorf("expected 401, got %d", rr.Code)
 		}

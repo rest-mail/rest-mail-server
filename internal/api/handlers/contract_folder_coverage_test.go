@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail"
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/auth"
@@ -66,9 +67,7 @@ func TestCreateFolder_ContractProbes(t *testing.T) {
 		})
 	})
 	router.Post("/api/v1/auth/login", contractSetupLogin(t))
-	router.Post("/api/v1/accounts/{id}/folders", h.CreateFolder)
-	router.Get("/api/v1/accounts/{id}/folders", h.ListFolders)
-	router.Delete("/api/v1/accounts/{id}/folders/{folder}", h.DeleteFolder)
+	h.RegisterFolders(endpoint.Routes{Router: router, Registry: endpoint.NewRegistry()})
 	server := httptest.NewServer(router)
 	defer server.Close()
 	hookFile, err := filepath.Abs("../../../tests/contract/hooks.py")
@@ -154,9 +153,9 @@ probes = [
     ("minimum name length", account, '{"name":"a"}', 201),
     ("valid account ID repeated", account, '{"name":"Receipts"}', 201),
     ("minimum name repeated", account, '{"name":"a"}', 201),
-    ("below minimum account ID", "0", '{"name":"Receipts"}', 403),
-    ("wrong account ID type", "abc", '{"name":"Receipts"}', 400),
-    ("fractional account ID", "1.5", '{"name":"Receipts"}', 400),
+    ("below minimum account ID", "0", '{"name":"Receipts"}', 422),
+    ("wrong account ID type", "abc", '{"name":"Receipts"}', 422),
+    ("fractional account ID", "1.5", '{"name":"Receipts"}', 422),
     ("preexisting folder is preserved", account, '{"name":"Existing"}', 409),
     ("failed create is not tracked", account, '{"name":"Existing"}', 409),
 ]

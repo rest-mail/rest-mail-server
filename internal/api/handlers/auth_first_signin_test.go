@@ -115,7 +115,7 @@ func (f *firstSignIn) refresh(refreshToken string) (*httptest.ResponseRecorder, 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
-	f.auth.Refresh(rr, req)
+	serveAuth(f.auth, rr, req)
 	return rr, sessionFrom(rr)
 }
 
