@@ -2535,3 +2535,110 @@
   reason: >-
     The body is optional: a browser sends none, its refresh token being the cookie; a native
     client sends its refresh token.
+
+# Owner keys and the reset token (#633)
+
+- operation: ownerChallenge
+  difference: "response 429: generated only"
+  reason: >-
+    The owner endpoints are throttled at login's per-IP rate in a bucket of their own, so the
+    CLI's requests do not use up what the owner then needs to sign in: 429 rate_limited with
+    Retry-After.
+- operation: ownerToken
+  difference: "response 429: generated only"
+  reason: >-
+    The owner endpoints are throttled at login's per-IP rate in a bucket of their own, so the
+    CLI's requests do not use up what the owner then needs to sign in: 429 rate_limited with
+    Retry-After.
+- operation: ownerStatus
+  difference: "response 429: generated only"
+  reason: >-
+    The owner endpoints are throttled at login's per-IP rate in a bucket of their own, so the
+    CLI's requests do not use up what the owner then needs to sign in: 429 rate_limited with
+    Retry-After.
+- operation: resetAdmin
+  difference: "response 429: generated only"
+  reason: >-
+    Throttled at login's per-IP rate: it guesses at a secret. 429 rate_limited with Retry-After.
+- operation: ownerToken
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON, or not an object, is 400 bad_request.
+- operation: ownerStatus
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON, or not an object, is 400 bad_request.
+- operation: resetAdmin
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON, or not an object, is 400 bad_request.
+- operation: ownerToken
+  difference: "request body application/json.required: openapi.yaml [\"address\",\"challenge\",\"public_key\",\"purpose\",\"signature\"], generated absent"
+  reason: >-
+    Checked in the handler with their documented wording: a purpose other than reset-admin is
+    422 purpose, a missing address 422 address ("required for reset-admin: the account to
+    reset"), and a missing challenge, key or signature fails the signed message as a wrong one
+    does (401 invalid_challenge or 403 not_owner).
+- operation: ownerToken
+  difference: "request body application/json.properties.purpose.enum: openapi.yaml [\"reset-admin\"], generated absent"
+  reason: >-
+    Any other purpose is 422 purpose in the handler (must be "reset-admin"); the purpose is part
+    of what is signed.
+- operation: ownerToken
+  difference: "request body application/json.properties.address.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    The address is part of what is signed and is looked up as given; one that is not an
+    account is 404 no_such_account.
+- operation: ownerToken
+  difference: "request body application/json.properties.lifetime_seconds.minimum: openapi.yaml 0, generated absent"
+  reason: >-
+    Checked in the handler with one message for both bounds: must be between 0 (the default,
+    15 minutes) and 86400.
+- operation: ownerToken
+  difference: "request body application/json.properties.lifetime_seconds.maximum: openapi.yaml 86400, generated absent"
+  reason: >-
+    Checked in the handler with one message for both bounds: must be between 0 (the default,
+    15 minutes) and 86400.
+- operation: ownerToken
+  difference: "request body application/json.properties.signature.format: openapi.yaml \"byte\", generated absent"
+  reason: >-
+    Decoded in the handler, where a signature that is not base64 is 422 signature (must be
+    base64).
+- operation: ownerStatus
+  difference: "request body application/json.properties.signature.format: openapi.yaml \"byte\", generated absent"
+  reason: >-
+    Decoded in the handler, where a signature that is not base64 is 422 signature (must be
+    base64).
+- operation: ownerStatus
+  difference: "request body application/json.required: openapi.yaml [\"challenge\",\"public_key\",\"signature\"], generated absent"
+  reason: >-
+    A missing challenge, key or signature fails the signed message as a wrong one does: 401
+    invalid_challenge or 403 not_status_key.
+- operation: resetAdmin
+  difference: "request body application/json.required: openapi.yaml [\"password\",\"token\"], generated absent"
+  reason: >-
+    Checked when the token is redeemed: a missing token is the 401 invalid_token a wrong one
+    is, and a missing password the 422 password a short one is, which does not spend the token.
+- operation: resetAdmin
+  difference: "request body application/json.properties.password.minLength: openapi.yaml 12, generated absent"
+  reason: >-
+    The password is counted in bytes, as bootstrap and a password change count it, when the
+    token is redeemed; minLength would count characters.
+- operation: resetAdmin
+  difference: "request body application/json.properties.client.enum: openapi.yaml [\"native\"], generated absent"
+  reason: >-
+    An empty client means a browser, as an absent one does; any other value is 422 client in
+    the handler (must be "native" or omitted).
+- operation: resetAdmin
+  difference: "response 200 application/json.properties.data.properties.setup_required.items.enum: openapi.yaml [\"password\",\"two_factor\"], generated absent"
+  reason: >-
+    The steps an account in setup still owes; the type states the list, not its two values.
+- operation: resetAdmin
+  difference: "response 200 application/json.properties.data.properties.user.properties.email.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    The account's address as stored; the answer does not promise a format.
+- operation: resetAdmin
+  difference: "response 200 header Set-Cookie: generated only"
+  reason: >-
+    A browser's session is set, rotated and ended with cookies: restmail_access and
+    restmail_refresh (httpOnly) and restmail_csrf. The oracle describes them in prose only.
