@@ -170,6 +170,11 @@ func (h *MessageHandler) RegisterMessages(rs endpoint.Routes) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/threads/{threadID}",
 		OperationID: "getThread", Summary: "Get all messages in a thread", Tags: tags,
 		Errors: []int{http.StatusForbidden}, Security: reads}, h.getThread)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/messages/{id}/raw",
+		OperationID: "getRawMessage", Summary: "Get the raw RFC 2822 message source", Tags: tags,
+		Description: "The message as it arrived, headers and all. 404 not_found when no source was kept.",
+		MediaType:   "message/rfc822",
+		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.getRawMessage)
 }
 
 // listMessages returns messages in a folder with cursor-based pagination.
@@ -1575,40 +1580,17 @@ func (h *MessageHandler) getThread(r *http.Request, in threadRequest) (endpoint.
 	return endpoint.List[Message]{Data: messagesOf(messages)}, nil
 }
 
-// GetRawMessage returns the raw RFC 2822 message content.
+// getRawMessage returns the raw RFC 2822 message content, byte for byte.
 // GET /api/v1/messages/{id}/raw
-func (h *MessageHandler) GetRawMessage(w http.ResponseWriter, r *http.Request) {
-	claims := middleware.GetClaims(r)
-	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
-	}
-
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+func (h *MessageHandler) getRawMessage(r *http.Request, in messagePath) (endpoint.Document, error) {
+	msg, err := h.ownedMessage(r, in.ID, models.CapMailRead)
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid message ID")
-		return
+		return endpoint.Document{}, err
 	}
-
-	var msg models.Message
-	if err := h.db.First(&msg, id).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "message_not_found", "Message not found")
-		return
-	}
-
-	if !h.verifyMessageOwnership(w, r, &msg, models.CapMailRead) {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
-	}
-
 	if msg.RawMessage == "" {
-		respond.Error(w, http.StatusNotFound, "not_found", "Raw message not available")
-		return
+		return endpoint.Document{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Raw message not available")
 	}
-
-	w.Header().Set("Content-Type", "message/rfc822")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(msg.RawMessage))
+	return endpoint.Document{ContentType: "message/rfc822", Body: []byte(msg.RawMessage)}, nil
 }
 
 // ForwardMessage forwards an existing message to new recipients.

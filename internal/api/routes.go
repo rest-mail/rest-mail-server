@@ -623,7 +623,6 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 
 		// Messages
 		r.Post("/api/v1/messages/send", messageH.SendMessage)
-		r.Get("/api/v1/messages/{id}/raw", messageH.GetRawMessage)
 		r.Post("/api/v1/messages/{id}/forward", messageH.ForwardMessage)
 
 		// Drafts
