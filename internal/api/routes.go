@@ -356,9 +356,9 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// Email client auto-configuration (no auth)
 	// ═══════════════════════════════════════════════════════════════
 	autoconfigH := handlers.NewAutoconfigHandler(db, cfg.GatewayHostname)
-	r.Get("/mail/config-v1.1.xml", autoconfigH.MozillaAutoconfig)
-	r.Get("/.well-known/autoconfig/mail/config-v1.1.xml", autoconfigH.MozillaAutoconfig)
-	r.Post("/autodiscover/autodiscover.xml", autoconfigH.MicrosoftAutodiscover)
+	autoconfigH.Register(endpoint.Routes{Router: r, Registry: registry}, handlers.AutoconfigRouteChecks{
+		AutodiscoverBody: endpoint.Middleware{Wrap: middleware.MaxBodyBytes(handlers.AutodiscoverMaxBody), Describes: describedBodyCap},
+	})
 
 	// ═══════════════════════════════════════════════════════════════
 	// MTA-STS policy (no auth — served to external MTAs per RFC 8461)

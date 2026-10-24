@@ -3119,3 +3119,23 @@
   reason: >-
     A browser's session is set, rotated and ended with cookies: restmail_access and
     restmail_refresh (httpOnly) and restmail_csrf. The oracle describes them in prose only.
+
+# Mail-client discovery: autoconfig and Autodiscover (#631)
+
+- operation: microsoftAutodiscover
+  difference: "response 400 text/plain.enum: openapi.yaml [\"email address required\\n\",\"invalid email address\\n\",\"invalid request\\n\"], generated absent"
+  reason: >-
+    The three refusals are plain text, as http.Error writes them; go-oapifly cannot give a
+    plain-text answer's schema an enum. The handler writes exactly those three.
+- operation: mozillaAutoconfig
+  difference: "parameter query emailaddress schema.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    The handler reads the domain after the last @ and checks that, not the address as an email
+    address, so an internationalised address (EAI) is looked up too; one with no @ is the
+    400 "no email domain in the address or the host name".
+- operation: mozillaAutoconfigWellKnown
+  difference: "parameter query emailaddress schema.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    The handler reads the domain after the last @ and checks that, not the address as an email
+    address, so an internationalised address (EAI) is looked up too; one with no @ is the
+    400 "no email domain in the address or the host name".

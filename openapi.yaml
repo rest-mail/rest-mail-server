@@ -7691,10 +7691,22 @@ paths:
                 type: string
         "400":
           description: No email domain in the address or the host name
+          content:
+            text/plain:
+              schema:
+                type: string
         "404":
           description: Domain not found
+          content:
+            text/plain:
+              schema:
+                type: string
         "503":
           description: The mail host (GATEWAY_HOSTNAME) is not configured
+          content:
+            text/plain:
+              schema:
+                type: string
 
   /.well-known/autoconfig/mail/config-v1.1.xml:
     get:
@@ -7725,10 +7737,22 @@ paths:
                 type: string
         "400":
           description: No email domain in the address or the host name
+          content:
+            text/plain:
+              schema:
+                type: string
         "404":
           description: Domain not found
+          content:
+            text/plain:
+              schema:
+                type: string
         "503":
           description: The mail host (GATEWAY_HOSTNAME) is not configured
+          content:
+            text/plain:
+              schema:
+                type: string
 
   /autodiscover/autodiscover.xml:
     post:
@@ -7736,6 +7760,13 @@ paths:
       tags: [System]
       summary: Microsoft Outlook autodiscover
       security: []
+      parameters:
+        - name: emailaddress
+          in: query
+          required: false
+          description: The address to look up when the body is not Autodiscover XML.
+          schema:
+            type: string
       requestBody:
         required: false
         content:
@@ -7784,8 +7815,18 @@ paths:
               examples:
                 malformed:
                   value: "invalid request\n"
+        "404":
+          description: Domain not found
+          content:
+            text/plain:
+              schema:
+                type: string
         "503":
           description: The mail host (GATEWAY_HOSTNAME) is not configured
+          content:
+            text/plain:
+              schema:
+                type: string
 
   /.well-known/mta-sts.txt:
     get:
