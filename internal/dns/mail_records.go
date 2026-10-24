@@ -76,3 +76,10 @@ func MailRecords(domain, mailHost, ip, dkimSelector, dkimValue, dmarcPolicy stri
 	}
 	return records
 }
+
+// MTASTSRecord is the TXT record that tells senders a domain has an MTA-STS policy, and which
+// one (RFC 8461 §3.1): "v=STSv1; id=<id>", id being the policy's own (MTASTSPolicy.RecordID),
+// so a sender that cached the policy fetches it again exactly when it has changed.
+func MTASTSRecord(domain, id string) DNSRecord {
+	return DNSRecord{Type: "TXT", Name: "_mta-sts." + domain, Value: "v=STSv1; id=" + id, TTL: 3600}
+}

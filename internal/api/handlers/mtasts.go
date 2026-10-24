@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"strings"
@@ -180,45 +179,13 @@ func (h *MTASTSHandler) servePolicy(r *http.Request, _ endpoint.Empty) (endpoint
 		return endpoint.Document{}, endpoint.Refuse(http.StatusNotFound, "not_found", "No MTA-STS policy configured")
 	}
 
-	// Build the policy text
-	var sb strings.Builder
-	sb.WriteString("version: STSv1\n")
-	sb.WriteString(fmt.Sprintf("mode: %s\n", policy.Mode))
-
-	// Write each MX host on its own line. A policy's mx patterns are DNS names
-	// (RFC 8461 section 3.2), so an internationalized host is written as its
-	// A-label. One that is not a valid name fails the fetch rather than serve
-	// a policy that silently allows fewer hosts: a sending MTA then keeps the
-	// policy it has cached.
-	if policy.MXHosts != "" {
-		for _, mx := range strings.Split(policy.MXHosts, ",") {
-			mx = strings.TrimSpace(mx)
-			if mx == "" {
-				continue
-			}
-			pattern, err := mxPatternASCII(mx)
-			if err != nil {
-				return endpoint.Document{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "MTA-STS policy has an invalid mx host")
-			}
-			sb.WriteString(fmt.Sprintf("mx: %s\n", pattern))
-		}
-	}
-
-	sb.WriteString(fmt.Sprintf("max_age: %d\n", policy.MaxAge))
-
-	return endpoint.Document{ContentType: "text/plain; charset=utf-8", Body: []byte(sb.String())}, nil
-}
-
-// mxPatternASCII is an MTA-STS mx pattern, a host name or a "*." wildcard over
-// one, in A-label form.
-func mxPatternASCII(pattern string) (string, error) {
-	wildcard := strings.HasPrefix(pattern, "*.")
-	ascii, err := rmail.DomainASCII(strings.TrimPrefix(pattern, "*."))
+	// The policy file, as the _mta-sts record's id is derived from it. One whose
+	// mx host is not a valid name fails the fetch rather than serve a policy that
+	// silently allows fewer hosts: a sending MTA then keeps the policy it has
+	// cached.
+	text, err := policy.Text()
 	if err != nil {
-		return "", err
+		return endpoint.Document{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "MTA-STS policy has an invalid mx host")
 	}
-	if wildcard {
-		return "*." + ascii, nil
-	}
-	return ascii, nil
+	return endpoint.Document{ContentType: "text/plain; charset=utf-8", Body: []byte(text)}, nil
 }
