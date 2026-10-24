@@ -43,10 +43,11 @@ func activeSieveScript(db *gorm.DB, mailboxID uint) (models.SieveScript, bool, e
 	return stored, true, nil
 }
 
-// accountSieveOnly is the pipeline that runs mailboxID's own Sieve script by itself, for a
-// delivery whose domain pipeline cfg has already run once for all of its recipients
-// (RESTMAIL, #787). It is nil when the mailbox has no active script, or cfg has no enabled
-// sieve step, which is how an administrator turns Sieve off for the domain.
+// accountSieveOnly is the pipeline that runs mailboxID's own Sieve script, for a delivery whose
+// domain pipeline cfg has already run once for all of its recipients (RESTMAIL, #787): the
+// script, then cfg's vacation steps after its sieve step, which send what the script's
+// vacation action asks (#748). It is nil when the mailbox has no active script, or cfg has no
+// enabled sieve step, which is how an administrator turns Sieve off for the domain.
 func accountSieveOnly(db *gorm.DB, cfg *pipeline.PipelineConfig, mailboxID uint) (*pipeline.PipelineConfig, error) {
 	if cfg == nil || !hasSieveStep(cfg) {
 		return nil, nil
@@ -58,6 +59,15 @@ func accountSieveOnly(db *gorm.DB, cfg *pipeline.PipelineConfig, mailboxID uint)
 	only := &pipeline.PipelineConfig{
 		ID: cfg.ID, DomainID: cfg.DomainID, Direction: cfg.Direction, Active: true,
 		Filters: []pipeline.FilterConfig{{Name: "sieve", Type: pipeline.FilterTypeTransform, Enabled: true}},
+	}
+	afterSieve := false
+	for _, step := range cfg.Filters {
+		switch {
+		case step.Name == "sieve" && step.Enabled:
+			afterSieve = true
+		case afterSieve && step.Name == "vacation" && step.Enabled:
+			only.Filters = append(only.Filters, step)
+		}
 	}
 	return withSieveScript(only, mailboxID, stored.Script, stored.ScriptHash)
 }
@@ -71,15 +81,11 @@ func hasSieveStep(cfg *pipeline.PipelineConfig) bool {
 	return false
 }
 
-// onceOnlyActions are the metadata a Sieve run leaves for actions a delivery carries out
-// once: its redirects, its notification and its vacation reply. A recipient's copy of a
-// message the domain's pipeline already ran on drops them, so the recipient's own script
-// does not repeat them; the folder and the flags stay, for its script to build on.
-var onceOnlyActions = []string{
-	"redirect_to", "redirect_suppress_keep", "notify_method", "notify_message",
-	"vacation_days", "vacation_reply_body", "vacation_reply_from", "vacation_reply_mime",
-	"vacation_reply_subject", "vacation_reply_to",
-}
+// onceOnlyActions are the prefixes of the metadata a Sieve run leaves for actions a delivery
+// carries out once: its redirects, its notification and its vacation reply. A recipient's
+// copy of a message the domain's pipeline already ran on drops them, so the recipient's own
+// script does not repeat them; the folder and the flags stay, for its script to build on.
+var onceOnlyActions = []string{"redirect_", "notify_", "vacation_"}
 
 // recipientCopy is email as one of its recipients' own scripts sees it: a copy whose
 // envelope names that recipient alone, without the once-only actions of the run before.
@@ -93,8 +99,12 @@ func recipientCopy(email *pipeline.EmailJSON, rcpt string) (*pipeline.EmailJSON,
 		return nil, err
 	}
 	out.Envelope.RcptTo = []string{rcpt}
-	for _, key := range onceOnlyActions {
-		delete(out.Metadata, key)
+	for key := range out.Metadata {
+		for _, prefix := range onceOnlyActions {
+			if strings.HasPrefix(key, prefix) {
+				delete(out.Metadata, key)
+			}
+		}
 	}
 	return &out, nil
 }

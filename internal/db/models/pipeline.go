@@ -174,9 +174,12 @@ func (Quarantine) TableName() string { return "quarantine" }
 
 // VacationResponse tracks sent auto-replies to prevent duplicates.
 type VacationResponse struct {
-	ID          uint      `gorm:"primaryKey" json:"id"`
-	MailboxID   uint      `gorm:"not null;index" json:"mailbox_id"`
-	Sender      string    `gorm:"size:255;not null" json:"sender"`
+	ID        uint   `gorm:"primaryKey" json:"id"`
+	MailboxID uint   `gorm:"not null;index" json:"mailbox_id"`
+	Sender    string `gorm:"size:255;not null" json:"sender"`
+	// Handle is the Sieve vacation action's tracking handle (RFC 5230 §4.2), hashed; empty for
+	// a reply from the mailbox's vacation settings.
+	Handle      string    `gorm:"size:64;not null;default:''" json:"-"`
 	RespondedAt time.Time `json:"responded_at"`
 
 	Mailbox Mailbox `gorm:"foreignKey:MailboxID" json:"-"`

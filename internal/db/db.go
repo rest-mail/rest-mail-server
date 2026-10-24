@@ -205,7 +205,11 @@ func autoMigrate(db *gorm.DB) error {
 	db.Exec(`CREATE INDEX IF NOT EXISTS idx_quarantine_mailbox ON quarantine(mailbox_id, released, received_at DESC)`)
 	db.Exec(`CREATE INDEX IF NOT EXISTS idx_quarantine_expiry ON quarantine(expires_at) WHERE released = false`)
 	db.Exec(`CREATE INDEX IF NOT EXISTS idx_attachments_checksum ON attachments(checksum)`)
-	db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_vacation_responses_unique ON vacation_responses(mailbox_id, sender)`)
+	// One row per mailbox, sender and handle: a Sieve vacation action is tracked apart from
+	// the settings' reply (handle '') and from another action (#748). The row's time is the
+	// latest reply, which the interval runs from.
+	db.Exec(`DROP INDEX IF EXISTS idx_vacation_responses_unique`)
+	db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_vacation_responses_handle ON vacation_responses(mailbox_id, sender, handle)`)
 
 	slog.Info("database migration completed")
 	return nil

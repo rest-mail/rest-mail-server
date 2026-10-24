@@ -222,8 +222,8 @@ vacation :days 7 :subject "Out of Office" "I am currently on vacation.";`
 	if m["vacation_reply_body"] != "I am currently on vacation." {
 		t.Errorf("expected vacation_reply_body='I am currently on vacation.', got %q", m["vacation_reply_body"])
 	}
-	if m["vacation_days"] != "7" {
-		t.Errorf("expected vacation_days=7, got %q", m["vacation_days"])
+	if m["vacation_seconds"] != "604800" || len(m["vacation_handle"]) != 32 {
+		t.Errorf("expected vacation_seconds=604800 (7 days) and a handle, got %q and %q", m["vacation_seconds"], m["vacation_handle"])
 	}
 }
 
@@ -476,8 +476,9 @@ func TestSieve_Vacation_IntervalDays(t *testing.T) {
 	script := `require "vacation";
 vacation :days 3 :subject "OOO" "Away.";`
 	r := runSieve(t, script, sieveEmail())
-	if got := r.Message.Metadata["vacation_days"]; got != "3" {
-		t.Errorf("expected vacation_days=3 from :days 3 interval, got %q", got)
+	// The interval is kept exactly, in seconds (RFC 5230 :days, RFC 6131 :seconds, #748).
+	if got := r.Message.Metadata["vacation_seconds"]; got != "259200" {
+		t.Errorf("expected vacation_seconds=259200 from :days 3, got %q", got)
 	}
 }
 
