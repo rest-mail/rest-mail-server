@@ -75,6 +75,9 @@ type session struct {
 	bodyType string
 	// smtpUTF8 applies only to this MAIL transaction, not the connection.
 	smtpUTF8 bool
+	// requireTLS is this transaction's REQUIRETLS: its sender requires TLS on every hop
+	// (RFC 8689 §4.1). go-smtp accepts it only on a TLS session.
+	requireTLS bool
 }
 
 // tarpitReject records one connection-level rejection (an invalid inbound RCPT
@@ -415,6 +418,7 @@ func (s *session) Mail(from string, opts *gosmtp.MailOptions) error {
 	// (never relay 8-bit content to a 7-bit-only next hop). Reset per transaction.
 	s.bodyType = ""
 	s.smtpUTF8 = opts != nil && opts.UTF8
+	s.requireTLS = opts != nil && opts.RequireTLS
 	if opts != nil {
 		s.bodyType = string(opts.Body)
 	}
@@ -696,6 +700,7 @@ func (s *session) Data(r io.Reader) error {
 				RawMessage: string(data),
 				BodyType:   s.bodyType,
 				MessageID:  submittedMsgID,
+				RequireTLS: s.requireTLS,
 			}); err != nil {
 				slog.Error("smtp: failed to queue message", "from", s.mailFrom, "to", rcpt, "error", err)
 				failed++
@@ -744,6 +749,7 @@ func (s *session) Data(r io.Reader) error {
 			ReceivedTLS: receivedTLS,
 			TLSVersion:  tlsVersion,
 			TLSCipher:   tlsCipher,
+			RequireTLS:  s.requireTLS,
 		}
 		if len(toList) > 0 {
 			toJSON, _ := json.Marshal(toList)
@@ -803,6 +809,7 @@ func (s *session) Reset() {
 	s.rcptTo = nil
 	s.bodyType = ""
 	s.smtpUTF8 = false
+	s.requireTLS = false
 }
 
 // Logout is called when the connection is closed.

@@ -63,6 +63,12 @@ type OutboundQueue struct {
 	// delivered despite any TLS failure, with MTA-STS not enforced, and its
 	// session is left out of the next report (RFC 8460 §3).
 	TLSReport bool `gorm:"not null;default:false" json:"-"`
+
+	// RequireTLS marks a message its sender required TLS for, on every hop (RFC 8689,
+	// REQUIRETLS): it goes only to an MX the recipient domain's MTA-STS policy names, over
+	// TLS with a certificate verified for that MX, which offers REQUIRETLS, and never by
+	// RESTMAIL. When no MX meets that, it bounces (§4.2.1).
+	RequireTLS bool `gorm:"not null;default:false" json:"-"`
 }
 
 func (OutboundQueue) TableName() string { return "outbound_queue" }

@@ -330,6 +330,10 @@ type DeliverRequest struct {
 	ReceivedTLS *bool  `json:"received_tls,omitempty"`
 	TLSVersion  string `json:"tls_version,omitempty"`
 	TLSCipher   string `json:"tls_cipher,omitempty"`
+
+	// RequireTLS is the REQUIRETLS tag the message arrived with (RFC 8689 §4.1): a copy
+	// REST Mail sends on goes with TLS required too.
+	RequireTLS bool `json:"require_tls,omitempty"`
 }
 
 type DeliverResponse struct {

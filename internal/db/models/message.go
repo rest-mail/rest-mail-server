@@ -84,6 +84,10 @@ type Message struct {
 	// inbound-MX denominator (received_tls IS NOT NULL) and the plaintext count
 	// stay correct. Always collected for inbound MX; there is no toggle.
 	ReceivedTLS *bool `gorm:"index" json:"received_tls,omitempty"`
+	// RequireTLS is the REQUIRETLS tag the message arrived with (RFC 8689 §4.1): any copy
+	// of it REST Mail sends on, a Sieve redirect or a forward of the message itself, goes
+	// with TLS required too.
+	RequireTLS bool `gorm:"not null;default:false" json:"-"`
 	// TLSVersion is the negotiated TLS version label (e.g. "TLS1.3") for an
 	// encrypted inbound-MX delivery; empty when plaintext or not applicable.
 	TLSVersion     string     `gorm:"size:16" json:"tls_version,omitempty"`

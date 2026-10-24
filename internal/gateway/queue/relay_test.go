@@ -59,6 +59,7 @@ type relayPeerOptions struct {
 	no8BIT            bool
 	noUTF8            bool
 	utf8BeforeTLSOnly bool
+	requireTLS        bool // offer REQUIRETLS once TLS is up (RFC 8689)
 	requireAUTH       bool
 	rejectAt          string
 	reply             string
@@ -163,6 +164,9 @@ func relayTestPeer(t *testing.T, cert tls.Certificate, opts relayPeerOptions) (r
 				}
 				if !opts.noUTF8 && (!opts.utf8BeforeTLSOnly || !tlsActive) {
 					caps = append(caps, "SMTPUTF8")
+				}
+				if opts.requireTLS && tlsActive {
+					caps = append(caps, "REQUIRETLS")
 				}
 				for i, capability := range caps {
 					sep := "-"

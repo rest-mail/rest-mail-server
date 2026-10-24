@@ -130,6 +130,7 @@ func (s *dbStore) EnqueueOutbound(msg OutboundMessage) error {
 		Domain:     msg.Domain,
 		RawMessage: msg.RawMessage,
 		BodyType:   msg.BodyType,
+		RequireTLS: msg.RequireTLS,
 		Status:     "pending",
 		MaxRetries: models.DefaultMaxRetries,
 		ExpiresAt:  time.Now().Add(models.QueueLifetime),

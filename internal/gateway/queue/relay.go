@@ -149,6 +149,14 @@ func (w *Worker) deliverToRelay(parent context.Context, settings relaySettings, 
 	if state, ok := client.TLSConnectionState(); !ok || !state.HandshakeComplete || len(state.VerifiedChains) == 0 {
 		return errors.New("relay: verified TLS required")
 	}
+	// A message that requires TLS goes on only to a relay that carries the requirement
+	// further (RFC 8689 §4.2.1): one that offers REQUIRETLS, over the verified TLS above.
+	if item.RequireTLS && item.Sender != "" {
+		if ok, _ := client.Extension("REQUIRETLS"); !ok {
+			return &SMTPError{Code: 550, Enhanced: "5.7.30", RemoteMTA: settings.host,
+				Message: "REQUIRETLS support required: the relay " + settings.host + " does not offer REQUIRETLS"}
+		}
+	}
 	if settings.username != "" {
 		if ok, mechanisms := client.Extension("AUTH"); !ok || !relayHasMechanism(mechanisms, "PLAIN") {
 			return errors.New("relay: AUTH PLAIN unavailable")
@@ -163,7 +171,11 @@ func (w *Worker) deliverToRelay(parent context.Context, settings relaySettings, 
 	if err := checkSMTPUTF8(client, sender, recipient, item.RawMessage, settings.host); err != nil {
 		return err
 	}
-	if err := client.Mail(sender); err != nil {
+	mail := client.Mail
+	if item.RequireTLS && item.Sender != "" {
+		mail = func(from string) error { return mailRequireTLS(client, from) }
+	}
+	if err := mail(sender); err != nil {
 		return fail("MAIL", err)
 	}
 	if err := client.Rcpt(recipient); err != nil {

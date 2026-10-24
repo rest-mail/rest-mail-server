@@ -10244,6 +10244,14 @@ components:
             minute ahead, and within a year). The response is 202 with the
             stored scheduled message, and the message is not sent until then.
             Omit it to send immediately.
+        require_tls:
+          type: boolean
+          description: >-
+            Require TLS on every hop, as SMTP's REQUIRETLS does (RFC 8689): the
+            message goes only to a recipient host named by MTA-STS, over TLS
+            with a verified certificate, that offers REQUIRETLS, and comes back
+            to the sender as a failure otherwise. Omit it or send false for
+            ordinary delivery.
         # Inline rather than a $ref: vertrag 0.29 validates each boundary probe
         # against the body schema without resolving a nested $ref, and drops
         # every probe of a body that has one (#388).
@@ -10665,6 +10673,11 @@ components:
           type: string
         helo_name:
           type: string
+        require_tls:
+          type: boolean
+          description: >-
+            The message arrived with REQUIRETLS (RFC 8689 §4.1): a copy REST Mail
+            sends on, such as a Sieve redirect, goes with TLS required too.
 
     # ─────────────────────────────────────────────────────────────
     # RESTMAIL Protocol

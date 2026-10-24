@@ -436,6 +436,10 @@ type sendMessageRequest struct {
 	// ListUnsubscribe, when set, publishes where a recipient unsubscribes
 	// (#144). Absent, the message carries no List-Unsubscribe fields.
 	ListUnsubscribe *listUnsubscribe `json:"list_unsubscribe,omitempty"`
+	// RequireTLS asks that every hop carry the message over TLS, as SMTP's
+	// REQUIRETLS does (RFC 8689): it goes only to an MTA-STS host over verified
+	// TLS that offers REQUIRETLS, and fails back to the sender otherwise (#724).
+	RequireTLS bool `json:"require_tls,omitempty"`
 	// ScheduledAt asks the server to send the message at that time instead of
 	// now. It is not part of the replayed request; the stored copy omits it.
 	ScheduledAt *time.Time `json:"scheduled_at,omitempty"`
@@ -890,6 +894,7 @@ func (h *MessageHandler) sendMessage(r *http.Request, req sendMessageRequest) (e
 				MessageID:    messageID,
 				InReplyTo:    req.InReplyTo,
 				RawMessage:   rawMessage,
+				RequireTLS:   req.RequireTLS,
 			})
 			if deliverErr != nil {
 				slog.Warn("local delivery failed for recipient", "recipient", rcpt, "error", deliverErr)
@@ -908,6 +913,7 @@ func (h *MessageHandler) sendMessage(r *http.Request, req sendMessageRequest) (e
 				Domain:     recipientDomain,
 				RawMessage: rawMessage,
 				Status:     "pending",
+				RequireTLS: req.RequireTLS,
 			}
 			h.db.Create(&queueEntry)
 		}
@@ -981,6 +987,9 @@ type deliverMessageBody struct {
 	ReceivedTLS *bool  `json:"received_tls,omitempty"`
 	TLSVersion  string `json:"tls_version,omitempty"`
 	TLSCipher   string `json:"tls_cipher,omitempty"`
+	// RequireTLS is the REQUIRETLS tag the message arrived with (RFC 8689 §4.1): a copy
+	// REST Mail sends on, a Sieve redirect, goes with TLS required too.
+	RequireTLS bool `json:"require_tls,omitempty"`
 }
 
 // DeliveryProcessed is the answer to a delivery the inbound pipeline quarantined or discarded:
@@ -1048,6 +1057,7 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody)
 		ReceivedAt:   req.ReceivedAt,
 		ReceivedTLS:  req.ReceivedTLS,
 		TLSVersion:   req.TLSVersion,
+		RequireTLS:   req.RequireTLS,
 	})
 	if err != nil {
 		errStr := err.Error()
@@ -1875,6 +1885,8 @@ type localDeliveryParams struct {
 	// persisted as NULL, never counted as a plaintext arrival.
 	ReceivedTLS *bool
 	TLSVersion  string
+	// RequireTLS is the message's REQUIRETLS tag (RFC 8689 §4.1).
+	RequireTLS bool
 }
 
 // receivedTLSFlag reports whether an inbound delivery arrived over TLS, for the
@@ -2112,6 +2124,8 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	forwarded := 0
 	for _, fwd := range buildRedirectForwards(emailJSON, params.RawMessage, params.Sender, []string{mailbox.Address}, rmail.DomainFromAddress(mailbox.Address), authResults) {
 		row := fwd
+		// "All instances of the message MUST be tagged in the same manner" (RFC 8689 §4.1).
+		row.RequireTLS = params.RequireTLS
 		if err := h.db.Create(&row).Error; err != nil {
 			slog.Error("deliverToLocal: failed to enqueue sieve redirect",
 				"recipient", row.Recipient, "error", err)
@@ -2198,6 +2212,7 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		// with the Authentication-Results prepended above.
 		ReceivedTLS: params.ReceivedTLS,
 		TLSVersion:  params.TLSVersion,
+		RequireTLS:  params.RequireTLS,
 	}
 
 	// The flags a Sieve script's imap4flags actions set (RFC 5232, #787); the flags a

@@ -75,6 +75,8 @@ type OutboundMessage struct {
 	// verify its sender against the real submission. Nil when no reference was
 	// persisted (e.g. the sender has no local mailbox).
 	MessageID *uint
+	// RequireTLS is the REQUIRETLS tag of the MAIL FROM it came with (RFC 8689 §4.1).
+	RequireTLS bool
 }
 
 // SubmittedMessage is a neutral description of an authenticated submission the
