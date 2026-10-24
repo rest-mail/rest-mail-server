@@ -184,6 +184,9 @@ type Worker struct {
 	// restmailRoots holds system roots plus any configured operator/testbed CA
 	// for both RESTMAIL discovery and delivery. Nil uses system roots.
 	restmailRoots *x509.CertPool
+	// smtpRoots are the roots an MX's certificate is verified against; nil is the system's.
+	// Tests set it to trust their own peer.
+	smtpRoots *x509.CertPool
 	// txtResolver answers the TXT lookups TLS-RPT reporting makes, and
 	// tlsReportClient sends its HTTPS reports; nil is the system resolver and
 	// a guarded client. Tests only.
@@ -673,8 +676,10 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 	// enforce-mode policy restmailUpgradePermitted must approve the MX host the
 	// discovery request goes to; otherwise we skip the upgrade and use the
 	// policy-guarded SMTP fallback.
+	// A message that requires TLS goes by SMTP alone, where REQUIRETLS is checked hop by
+	// hop (RFC 8689 §4.2.1); RESTMAIL's HTTPS cannot carry that promise on.
 	var cap models.RESTMAILCapability
-	found := w.db.Where("domain = ?", item.Domain).First(&cap).Error == nil
+	found := !item.RequireTLS && w.db.Where("domain = ?", item.Domain).First(&cap).Error == nil
 	cacheHit := found && capabilityApplies(cap, item.Domain, firstHost, time.Now())
 
 	if cacheHit {
@@ -702,7 +707,7 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 			}
 		}
 		// cap.Supported == false: skip RESTMAIL, go straight to SMTP
-	} else {
+	} else if !item.RequireTLS {
 		// No cache or expired — do EHLO probe (gated by the policy inside tryRESTMAIL).
 		upgraded, err := w.tryRESTMAIL(firstHost, dnsDomain, item, stsPolicy, enforcing)
 		if upgraded && err == nil {
@@ -715,7 +720,7 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 	}
 
 	// Fall back to SMTP delivery
-	var lastErr error
+	var lastErr, transientErr error
 	for _, mx := range mxRecords {
 		host := strings.TrimSuffix(mx.Host, ".")
 
@@ -736,9 +741,18 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 		if lastErr == nil {
 			return nil
 		}
+		var refused *SMTPError
+		if !errors.As(lastErr, &refused) || refused.Code < 500 {
+			transientErr = lastErr
+		}
 		slog.Debug("queue: MX attempt failed", "host", host, "error", lastErr)
 	}
 
+	// A message that requires TLS bounces when no MX can take it so (RFC 8689 §4.2.1), but an
+	// MX that could not be reached at all might: it is tried again, as any message is.
+	if item.RequireTLS && transientErr != nil {
+		lastErr = transientErr
+	}
 	return fmt.Errorf("all MX hosts failed: %w", lastErr)
 }
 
@@ -754,7 +768,9 @@ func (w *Worker) recipientPolicy(item models.OutboundQueue, dnsDomain string) (*
 		// it may be what tells the domain its TLS is broken (RFC 8460 §3).
 		return nil, mtasts.ErrNoPolicy
 	}
-	if outbound.TLSOptional(item.RawMessage) {
+	// "If the REQUIRETLS MAIL FROM parameter is specified, the TLS-Required header field MUST
+	// be ignored" (RFC 8689 §4.1).
+	if !item.RequireTLS && outbound.TLSOptional(item.RawMessage) {
 		slog.Info("queue: TLS-Required: No, the recipient's MTA-STS policy is not applied", "domain", item.Domain)
 		return nil, errTLSOptional
 	}
@@ -1433,9 +1449,34 @@ func (w *Worker) deliverSMTP(addr, host string, item models.OutboundQueue, stsPo
 	enforce := mode == mtasts.ModeEnforce
 	testingMode := mode == mtasts.ModeTesting
 
+	// REQUIRETLS (RFC 8689 §4.2.1): a message whose sender required TLS goes only to an MX the
+	// domain's MTA-STS policy names (REST Mail validates no DNSSEC), over TLS with a
+	// certificate verified for that MX, which offers REQUIRETLS once TLS is up. A bounce,
+	// with a null reverse path, is not held to it (§5).
+	requireTLS := item.RequireTLS && item.Sender != ""
+	if requireTLS {
+		if stsPolicy == nil || len(stsPolicy.MX) == 0 || !stsPolicy.MatchesMX(host) {
+			return &SMTPError{Code: 550, Enhanced: "5.7.10", RemoteMTA: host,
+				Message: "REQUIRETLS: " + host + " is not an MX the recipient domain's MTA-STS policy names, and REST Mail does not validate DNSSEC"}
+		}
+		enforce = true
+	}
+
 	link, err := w.openSMTP(ctx, addr, host, attemptDeadline, true, enforce)
 	if err != nil {
 		return err
+	}
+	if requireTLS {
+		if link.tlsErr != nil || link.security != transportAuthenticated {
+			_ = link.client.Quit()
+			return &SMTPError{Code: 550, Enhanced: "5.7.10", RemoteMTA: host,
+				Message: "REQUIRETLS: no TLS session with a certificate verified for " + host}
+		}
+		if ok, _ := link.client.Extension("REQUIRETLS"); !ok {
+			_ = link.client.Quit()
+			return &SMTPError{Code: 550, Enhanced: "5.7.30", RemoteMTA: host,
+				Message: "REQUIRETLS support required: " + host + " does not offer REQUIRETLS"}
+		}
 	}
 	// What this session's TLS came to, for the recipient's TLS-RPT report
 	// (RFC 8460): a report itself is not counted (§3).
@@ -1517,8 +1558,12 @@ func (w *Worker) deliverSMTP(addr, host string, item models.OutboundQueue, stsPo
 		return err
 	}
 
-	// Set sender
-	if err := client.Mail(sender); err != nil {
+	// Set sender, with REQUIRETLS when the message requires it (RFC 8689 §4.2.1).
+	mail := client.Mail
+	if requireTLS {
+		mail = func(from string) error { return mailRequireTLS(client, from) }
+	}
+	if err := mail(sender); err != nil {
 		se := parseSMTPError(err)
 		se.RemoteMTA = host
 		return se
@@ -1609,12 +1654,12 @@ func (w *Worker) openSMTP(ctx context.Context, addr, host string, deadline time.
 	if ok, _ := client.Extension("STARTTLS"); !tryTLS || !ok {
 		return link, nil
 	}
-	tlsConfig := &tls.Config{ServerName: host}
+	tlsConfig := &tls.Config{ServerName: host, RootCAs: w.smtpRoots}
 	var verifyErr error
 	if !requireVerified {
 		tlsConfig.InsecureSkipVerify = true //nolint:gosec // verified below, recorded rather than required
 		tlsConfig.VerifyConnection = func(cs tls.ConnectionState) error {
-			verifyErr = verifyPeerCertificate(cs, host)
+			verifyErr = verifyPeerCertificate(cs, host, w.smtpRoots)
 			return nil
 		}
 	}
@@ -1631,14 +1676,38 @@ func (w *Worker) openSMTP(ctx context.Context, addr, host string, deadline time.
 
 // verifyPeerCertificate checks a server's chain against the system roots and
 // host, as crypto/tls would have.
-func verifyPeerCertificate(cs tls.ConnectionState, host string) error {
+func verifyPeerCertificate(cs tls.ConnectionState, host string, roots *x509.CertPool) error {
 	if len(cs.PeerCertificates) == 0 {
 		return errors.New("no certificate")
 	}
-	opts := x509.VerifyOptions{DNSName: host, Intermediates: x509.NewCertPool()}
+	opts := x509.VerifyOptions{DNSName: host, Roots: roots, Intermediates: x509.NewCertPool()}
 	for _, c := range cs.PeerCertificates[1:] {
 		opts.Intermediates.AddCert(c)
 	}
 	_, err := cs.PeerCertificates[0].Verify(opts)
+	return err
+}
+
+// mailRequireTLS issues MAIL FROM with the REQUIRETLS parameter (RFC 8689 §4.2.1), which
+// net/smtp's Mail cannot add, alongside the BODY=8BITMIME and SMTPUTF8 parameters Mail adds
+// when the server offers them.
+func mailRequireTLS(c *smtp.Client, from string) error {
+	if strings.ContainsAny(from, "\r\n") {
+		return errors.New("smtp: a line must not contain CR or LF")
+	}
+	cmd := "MAIL FROM:<" + from + ">"
+	if ok, _ := c.Extension("8BITMIME"); ok {
+		cmd += " BODY=8BITMIME"
+	}
+	if ok, _ := c.Extension("SMTPUTF8"); ok {
+		cmd += " SMTPUTF8"
+	}
+	id, err := c.Text.Cmd("%s REQUIRETLS", cmd)
+	if err != nil {
+		return err
+	}
+	c.Text.StartResponse(id)
+	defer c.Text.EndResponse(id)
+	_, _, err = c.Text.ReadResponse(250)
 	return err
 }

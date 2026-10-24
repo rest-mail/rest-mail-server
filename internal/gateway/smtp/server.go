@@ -184,6 +184,9 @@ func (s *Server) newSMTPServer(isSubmission bool) *smtpserver.Server {
 	// go-smtp parses the MAIL parameter; session enforces UTF-8 use for the
 	// envelope and headers. 8BITMIME is advertised by go-smtp alongside it.
 	srv.EnableSMTPUTF8 = true
+	// REQUIRETLS (RFC 8689): go-smtp offers it on TLS sessions only, and takes the MAIL FROM
+	// parameter there; the queue sends such a message on only as §4.2.1 asks.
+	srv.EnableREQUIRETLS = true
 	// go-smtp v0.28.3 applies MaxLineLength to COMMAND lines only: the per-line
 	// limit is disabled for the duration of the DATA body read (mirroring BDAT),
 	// so a message with unwrapped long lines (8-bit text, HTML — Postfix wraps
