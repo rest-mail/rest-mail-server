@@ -1986,7 +1986,13 @@
   difference: "response 400: generated only"
   reason: >-
     A body that is not JSON, or not an object, is 400 bad_request; before binding it was
-    answered 422 name required.
+    answered 422 name required. A standard folder (INBOX, Sent, Drafts, Trash, Spam, Archive)
+    is not renamed, and no folder is renamed to one: 400 bad_request (#757).
+- operation: renameFolder
+  difference: "response 409: generated only"
+  reason: >-
+    A name another folder has is 409 already_exists: a rename no longer merges two folders
+    into one (#757).
 - operation: renameFolder
   difference: "request body application/json.properties.name.minLength: openapi.yaml 1, generated absent"
   reason: >-
