@@ -2078,6 +2078,16 @@
   reason: >-
     The mail routes throttle refused HTTP Basic credentials at login's rate (429
     rate_limited).
+- operation: getAttachment
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: getAttachment
+  difference: "response 200 application/octet-stream: openapi.yaml {\"format\":\"binary\",\"type\":\"string\"}, generated absent"
+  reason: >-
+    The attachment's bytes are the body, described as OpenAPI 3.1 describes one: the media
+    type with no schema. format binary is OpenAPI 3.0's spelling of the same thing.
 - operation: listMessages
   difference: "response 200 application/json.properties.data*.required: *"
   reason: >-

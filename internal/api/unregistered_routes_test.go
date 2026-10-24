@@ -9,7 +9,6 @@ var unregisteredRoutes = []string{
 	"POST /.well-known/smtp-tlsrpt",
 	"GET /api/mailboxes",
 	"GET /api/v1/accounts/{id}/events",
-	"GET /api/v1/attachments/{id}",
 	"POST /api/v1/messages/deliver",
 	"POST /api/v1/messages/draft/{id}/send",
 	"POST /api/v1/messages/send",

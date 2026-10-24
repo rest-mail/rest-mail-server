@@ -199,13 +199,14 @@ func Register[Req, Resp any](rs Routes, op Operation, handler func(*http.Request
 	if op.Status == 0 {
 		op.Status = http.StatusOK
 	}
-	if documents := reflect.TypeOf((*Resp)(nil)).Elem() == reflect.TypeOf(Document{}); documents != (op.MediaType != "") {
-		panic("endpoint: " + op.Method + " " + op.Path + " needs a MediaType exactly when it answers a Document")
+	respType := reflect.TypeOf((*Resp)(nil)).Elem()
+	if documents := respType == reflect.TypeOf(Document{}) || respType == reflect.TypeOf(Served{}); documents != (op.MediaType != "") {
+		panic("endpoint: " + op.Method + " " + op.Path + " needs a MediaType exactly when it answers a Document or Served")
 	}
 	reqType := reflect.TypeOf((*Req)(nil)).Elem()
 	shape := requestShape(reqType)
 
-	rs.Registry.record(rs.Applied, op, reqType, reflect.TypeOf((*Resp)(nil)).Elem(), reflect.TypeOf((*Data[Resp])(nil)).Elem(), shape)
+	rs.Registry.record(rs.Applied, op, reqType, respType, reflect.TypeOf((*Data[Resp])(nil)).Elem(), shape)
 
 	wraps := make([]func(http.Handler) http.Handler, len(op.Middleware))
 	for i, m := range op.Middleware {
@@ -223,6 +224,10 @@ func Register[Req, Resp any](rs Routes, op Operation, handler func(*http.Request
 			return
 		}
 		answer := any(out)
+		if served, ok := answer.(Served); ok {
+			served.serve(w, req)
+			return
+		}
 		if headed, ok := answer.(headedResponse); ok {
 			_, answer = headed.responseHeader()
 		}
@@ -331,11 +336,17 @@ func described(applied []oapifly.Middleware, own []Middleware) []oapifly.Middlew
 }
 
 // successResponse describes the success answer in the envelope write puts it in: a List as
-// itself, a Document as text in its media type, anything else as Data[Resp], the
-// {"data": ...} body respond.Data writes.
+// itself, a Document as text in its media type, Served as bytes in its media type, anything
+// else as Data[Resp], the {"data": ...} body respond.Data writes.
 func successResponse(op Operation, status int, respType, envelope reflect.Type) oapifly.EndpointResponse {
 	if respType == reflect.TypeOf(Document{}) {
 		return oapifly.EndpointResponse{Status: status, Type: reflect.TypeOf(""), MediaType: op.MediaType}
+	}
+	if respType == reflect.TypeOf(Served{}) {
+		// Stored bytes, not text: go-oapifly describes a []byte in a media type that is not
+		// JSON as that media type with no schema, OpenAPI 3.1's way of saying the bytes are
+		// the body.
+		return oapifly.EndpointResponse{Status: status, Type: reflect.TypeOf([]byte(nil)), MediaType: op.MediaType}
 	}
 	if raw, ok := reflect.Zero(respType).Interface().(forwardedResponse); ok {
 		return oapifly.EndpointResponse{Status: status, Type: raw.responseType()}

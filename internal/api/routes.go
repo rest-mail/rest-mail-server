@@ -618,7 +618,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		messageH.RegisterFolders(mail)
 		messageH.RegisterMessages(mail)
 		searchH.Register(mail)
-		attachmentH.RegisterList(mail)
+		attachmentH.Register(mail)
 		messageH.RegisterCompose(mail)
 
 		// Messages
@@ -629,7 +629,6 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.Post("/api/v1/messages/draft/{id}/send", messageH.SendDraft)
 
 		// Attachments
-		r.Get("/api/v1/attachments/{id}", attachmentH.GetAttachment)
 
 		// Contacts
 		contactH.RegisterContacts(endpoint.Routes{Router: r, Registry: registry}.
