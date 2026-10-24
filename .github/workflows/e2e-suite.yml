@@ -216,6 +216,16 @@ jobs:
           CONTRACT_LOGS: ${{ runner.temp }}
         run: tests/contract/run.sh gate
 
+      - name: Contract secret scan (no secret the run sent is answered back)
+        # Every password, key, recovery code and token the examples phase sent
+        # or was issued, searched for in every answer it recorded and in the
+        # audit log read at the end (#673). A hit fails the run and names the
+        # operation that echoed it.
+        if: always() && steps.contract.outcome != 'skipped' && hashFiles('.cache/contract/examples.har') != ''
+        run: |
+          python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
+          python3 tests/contract/secret_scan.py .cache/contract/examples.har --audit-from vertrag.yml
+
       - name: Contract tests (authorization, report only)
         # Examples always run first, then the matrix repeats destructive
         # requests as the admin, so run after the gates.

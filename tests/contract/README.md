@@ -493,6 +493,15 @@ a hosted domain and mailbox for each address a test send probe uses, and,
   for the report-only authorization phase. Its JUnit report and log are
   included in `e2e-container-logs`; the generated credential-bearing YAML is
   removed after the run and is never uploaded.
+- `secret_scan.py`: the secret scan (#673). The examples phase records its
+  traffic as `.cache/contract/examples.har` (vertrag's `har` reporter); the scan
+  collects every password, private key and recovery code the run sent and every
+  app password, enrollment secret, recovery code, session token and API key the
+  server issued, and fails when any of them appears in another answer or in the
+  audit log, read through the API at the end. vertrag writes its own credentials
+  as `<redacted>`, so that string in any answer but sign-in and refresh is a
+  finding too. Its tests are `test_secret_scan.py`. The HAR holds fixture
+  passwords and is not uploaded with the logs.
 - `coverage-baseline.txt`: the coverage ratchet's baseline.
 - `test_gate.py`: `gate.py`'s own tests (`python3 -m unittest discover -s tests/contract -p test_gate.py`).
 - `test_hooks_save_draft.py`: the saveDraft sender hook's tests, against a stub admin API.
