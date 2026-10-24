@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -1258,5 +1259,39 @@ func TestSignIn_OnePathForEveryPassword(t *testing.T) {
 	}
 	if len(seen) != 2 {
 		t.Errorf("protocol sign-ins seen: %v", seen)
+	}
+}
+
+// The API pages by date, and a copy or a dated APPEND keeps its source's date under a
+// higher id, so the gateway sorts by id, which is the UID: message sequence numbers are
+// "ordered by ascending unique identifier" (RFC 3501 §2.3.1.2, #805).
+func TestListMessages_OrdersByUID(t *testing.T) {
+	srv, mux := newTestServer(t)
+	mux.HandleFunc("/api/v1/accounts/5/folders/INBOX/messages", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		page := func(msgs []map[string]any, cursor string, more bool) {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data":       msgs,
+				"pagination": map[string]any{"cursor": cursor, "has_more": more, "total": 4},
+			})
+		}
+		// Newest first by date: 9 is a copy of 3, with its date.
+		if r.URL.Query().Get("cursor") == "" {
+			page([]map[string]any{{"id": 7}, {"id": 4}}, "c1", true)
+		} else {
+			page([]map[string]any{{"id": 9}, {"id": 3}}, "", false)
+		}
+	})
+
+	resp, err := New(srv.URL).ListMessages("tok", 5, "INBOX")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []uint
+	for _, m := range resp.Data {
+		got = append(got, m.ID)
+	}
+	if want := []uint{3, 4, 7, 9}; !slices.Equal(got, want) {
+		t.Fatalf("ids %v, want %v: ascending UIDs", got, want)
 	}
 }

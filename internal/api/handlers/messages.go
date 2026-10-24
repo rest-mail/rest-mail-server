@@ -177,6 +177,30 @@ func (h *MessageHandler) RegisterMessages(rs endpoint.Routes) {
 		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.getRawMessage)
 }
 
+// messageCursor is where a page of a folder's messages ends: the list is newest first by
+// received_at, the id breaking ties, so the next page starts after this pair.
+type messageCursor struct {
+	ReceivedAt time.Time `json:"received_at"`
+	ID         uint      `json:"id"`
+}
+
+// decodeMessageCursor reads a cursor listMessages wrote. One that does not decode, or does
+// not carry both the date and the id, is not a cursor: the list starts from the newest.
+func decodeMessageCursor(cursor string) (messageCursor, bool) {
+	if cursor == "" {
+		return messageCursor{}, false
+	}
+	raw, err := base64.StdEncoding.DecodeString(cursor)
+	if err != nil {
+		return messageCursor{}, false
+	}
+	var after messageCursor
+	if json.Unmarshal(raw, &after) != nil || after.ID == 0 || after.ReceivedAt.IsZero() {
+		return messageCursor{}, false
+	}
+	return after, true
+}
+
 // listMessages returns messages in a folder with cursor-based pagination.
 func (h *MessageHandler) listMessages(r *http.Request, in listMessagesRequest) (endpoint.List[Message], error) {
 	var zero endpoint.List[Message]
@@ -195,20 +219,14 @@ func (h *MessageHandler) listMessages(r *http.Request, in listMessagesRequest) (
 		limit = *in.Limit
 	}
 
+	// Newest first by received_at, the id breaking ties, and the cursor pages on the same
+	// pair: a page cut by id alone skipped every message whose id is above the cut but whose
+	// date is older, such as a copy, which keeps its source's date (#805).
 	query := h.db.Where("mailbox_id = ? AND folder = ? AND is_deleted = ?", mailboxID, folder, false).
-		Order("received_at DESC").
+		Order("received_at DESC, id DESC").
 		Limit(limit + 1)
-
-	if in.Cursor != "" {
-		decoded, err := base64.StdEncoding.DecodeString(in.Cursor)
-		if err == nil {
-			var cursorData struct {
-				ID uint `json:"id"`
-			}
-			if json.Unmarshal(decoded, &cursorData) == nil {
-				query = query.Where("id < ?", cursorData.ID)
-			}
-		}
+	if after, ok := decodeMessageCursor(in.Cursor); ok {
+		query = query.Where("(received_at < ? OR (received_at = ? AND id < ?))", after.ReceivedAt, after.ReceivedAt, after.ID)
 	}
 
 	var messages []models.Message
@@ -224,7 +242,7 @@ func (h *MessageHandler) listMessages(r *http.Request, in listMessagesRequest) (
 	var nextCursor string
 	if hasMore && len(messages) > 0 {
 		last := messages[len(messages)-1]
-		cursorJSON, _ := json.Marshal(map[string]uint{"id": last.ID})
+		cursorJSON, _ := json.Marshal(messageCursor{ReceivedAt: last.ReceivedAt, ID: last.ID})
 		nextCursor = base64.StdEncoding.EncodeToString(cursorJSON)
 	}
 

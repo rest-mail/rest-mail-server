@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 )
@@ -492,10 +493,11 @@ func (c *Client) ListMessages(token string, accountID uint, folder string) (*Mes
 		}
 		cursor = resp.Pagination.Cursor
 	}
-	// Reverse newest-first → oldest-first so seq/UID are ascending.
-	for i, j := 0, len(all)-1; i < j; i, j = i+1, j-1 {
-		all[i], all[j] = all[j], all[i]
-	}
+	// Message sequence numbers are "ordered by ascending unique identifier" (RFC 3501
+	// §2.3.1.2), and the ID is the UID. The API pages by date, which a copy or a dated
+	// APPEND keeps from its source while getting a higher ID, so sort rather than reverse
+	// (#805).
+	sort.Slice(all, func(i, j int) bool { return all[i].ID < all[j].ID })
 	return &MessageListResponse{Data: all}, nil
 }
 
