@@ -12,7 +12,7 @@ const restmailMessagesPath = "/restmail/messages"
 // looked up, a signature is verified or anything is stored: the handler has no
 // database, and nothing is configured to trust or check.
 func TestRestmailDeliver_DocumentedRefusals(t *testing.T) {
-	deliver := NewRestmailHandler(nil, nil, nil, RestmailTarpitConfig{}, RestmailDeliverAuthConfig{}).Deliver
+	deliver := restmailRoutes(NewRestmailHandler(nil, nil, nil, RestmailTarpitConfig{}, RestmailDeliverAuthConfig{})).ServeHTTP
 	documentedRefusals(t, restmailMessagesPath, "restmailDeliver", deliver)
 }
 

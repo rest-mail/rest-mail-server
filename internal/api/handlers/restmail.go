@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/restmail/restmail/internal/api/respond"
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
 	rmail "github.com/restmail/restmail/internal/mail"
@@ -49,78 +49,93 @@ func (h *RestmailHandler) recordTrace(t models.MessageTrace) {
 	}
 }
 
-// Capabilities returns the RESTMAIL server capabilities.
-// GET /restmail/capabilities
-func (h *RestmailHandler) Capabilities(w http.ResponseWriter, r *http.Request) {
-	respond.Data(w, http.StatusOK, map[string]interface{}{
-		"protocol": "RESTMAIL",
-		"version":  "1.0",
-		"features": []string{
-			"delivery",
-			"recipient-check",
-		},
-	})
+// RestmailCapabilities is what a RESTMAIL server speaks: the protocol, its version and the
+// features it offers. Its fields are in the order the map it replaced was written in.
+type RestmailCapabilities struct {
+	Features []string `json:"features"`
+	Protocol string   `json:"protocol"`
+	Version  string   `json:"version"`
 }
 
-// CheckMailbox verifies a recipient mailbox exists.
-// GET /restmail/mailboxes?address=...
-func (h *RestmailHandler) CheckMailbox(w http.ResponseWriter, r *http.Request) {
-	address := r.URL.Query().Get("address")
-	if address == "" {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "address query parameter required")
-		return
-	}
+func (h *RestmailHandler) capabilities(*http.Request, struct{}) (RestmailCapabilities, error) {
+	return RestmailCapabilities{
+		Features: []string{"delivery", "recipient-check"},
+		Protocol: "RESTMAIL",
+		Version:  "1.0",
+	}, nil
+}
 
+// RestmailMailboxCheck answers whether a recipient exists, and if it does, as which address.
+type RestmailMailboxCheck struct {
+	Address string `json:"address,omitempty"`
+	Exists  bool   `json:"exists"`
+}
+
+type restmailMailboxQuery struct {
+	Address string `query:"address,required" minLength:"1" message:"address query parameter required" missing:"address query parameter required"`
+}
+
+// checkMailbox verifies a recipient mailbox exists.
+func (h *RestmailHandler) checkMailbox(r *http.Request, in restmailMailboxQuery) (RestmailMailboxCheck, error) {
 	var mailbox models.Mailbox
-	if err := repositories.FindActiveMailboxByAddress(h.db, address, &mailbox); err != nil {
+	if err := repositories.FindActiveMailboxByAddress(h.db, in.Address, &mailbox); err != nil {
 		// Negative lookup: tarpit the source to throttle recipient enumeration
 		// (OSI-1). The delay escalates per source and is capped; a positive
 		// lookup (below) skips it and returns promptly. Keyed on the request
 		// context so a client disconnect aborts the sleep.
 		h.tarpit.delay(r.Context(), restmailClientIP(r))
-		respond.Data(w, http.StatusOK, map[string]interface{}{
-			"exists": false,
-		})
-		return
+		return RestmailMailboxCheck{Exists: false}, nil
 	}
-
-	respond.Data(w, http.StatusOK, map[string]interface{}{
-		"exists":  true,
-		"address": mailbox.Address,
-	})
+	return RestmailMailboxCheck{Exists: true, Address: mailbox.Address}, nil
 }
 
-// Deliver receives a message from another RESTMAIL server.
-// POST /restmail/messages
-func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		From       string          `json:"from"`
-		To         []string        `json:"to"`
-		Subject    string          `json:"subject"`
-		Date       string          `json:"date"`
-		BodyText   string          `json:"body_text"`
-		BodyHTML   string          `json:"body_html"`
-		MessageID  string          `json:"message_id"`
-		InReplyTo  string          `json:"in_reply_to"`
-		References string          `json:"references"`
-		Headers    json.RawMessage `json:"headers"`
-		// Fields sent by the RESTMAIL queue worker
-		RawMessage string   `json:"raw_message"`
-		Sender     string   `json:"sender"`
-		Recipients []string `json:"recipients"`
-	}
+type restmailDeliverInput struct {
+	Body restmailDeliverBody `body:""`
+}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
+// restmailDeliverBody is a message another RESTMAIL server delivers. Its recipients come from
+// to, else recipients, else the To header of raw_message, so none of the three is required
+// on its own; sender and recipients are what the RESTMAIL queue worker sends for from and to.
+type restmailDeliverBody struct {
+	From       string                     `json:"from,omitempty"`
+	To         *[]string                  `json:"to,omitempty"`
+	Subject    string                     `json:"subject,omitempty"`
+	Date       string                     `json:"date,omitempty"`
+	BodyText   string                     `json:"body_text,omitempty"`
+	BodyHTML   string                     `json:"body_html,omitempty"`
+	MessageID  string                     `json:"message_id,omitempty"`
+	InReplyTo  string                     `json:"in_reply_to,omitempty"`
+	References string                     `json:"references,omitempty"`
+	Headers    map[string]json.RawMessage `json:"headers,omitempty"`
+	RawMessage string                     `json:"raw_message,omitempty"`
+	Sender     string                     `json:"sender,omitempty"`
+	Recipients *[]string                  `json:"recipients,omitempty"`
+}
 
+// RestmailDelivery is the recipients a delivery was stored for, and those it was not.
+type RestmailDelivery struct {
+	Delivered []string `json:"delivered"`
+	Failed    []string `json:"failed"`
+}
+
+// deliver receives a message from another RESTMAIL server. When no recipient takes it, the
+// answer is 422 undeliverable: every recipient failed.
+func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (RestmailDelivery, error) {
+	req := in.Body
+	var to []string
+	if req.To != nil {
+		to = *req.To
+	}
 	// Accept sender/recipients as aliases for from/to
 	if req.From == "" && req.Sender != "" {
 		req.From = req.Sender
 	}
-	if len(req.To) == 0 && len(req.Recipients) > 0 {
-		req.To = req.Recipients
+	if len(to) == 0 && req.Recipients != nil && len(*req.Recipients) > 0 {
+		to = *req.Recipients
+	}
+	var headers json.RawMessage
+	if req.Headers != nil {
+		headers, _ = json.Marshal(req.Headers)
 	}
 
 	// When raw_message is provided, parse RFC 2822 into structured fields. The
@@ -142,12 +157,12 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 			if len(parsed.Headers.From) > 0 && req.From == "" {
 				req.From = parsed.Headers.From[0].Address
 			}
-			if len(parsed.Headers.To) > 0 && len(req.To) == 0 {
+			if len(parsed.Headers.To) > 0 && len(to) == 0 {
 				addrs := make([]string, len(parsed.Headers.To))
 				for i, a := range parsed.Headers.To {
 					addrs[i] = a.Address
 				}
-				req.To = addrs
+				to = addrs
 			}
 			if parsed.Headers.Subject != "" && req.Subject == "" {
 				req.Subject = parsed.Headers.Subject
@@ -175,8 +190,8 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			// Preserve raw headers as JSON
-			if req.Headers == nil && parsed.Headers.Raw != nil {
-				req.Headers, _ = json.Marshal(parsed.Headers.Raw)
+			if headers == nil && parsed.Headers.Raw != nil {
+				headers, _ = json.Marshal(parsed.Headers.Raw)
 			}
 		}
 	}
@@ -185,9 +200,8 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 		req.MessageID = rmail.GenerateMessageID(rmail.DomainFromAddress(req.From))
 	}
 
-	if len(req.To) == 0 {
-		respond.ValidationError(w, map[string]string{"to": "at least one recipient required"})
-		return
+	if len(to) == 0 {
+		return RestmailDelivery{}, endpoint.Invalid(map[string]string{"to": "at least one recipient required"})
 	}
 
 	// OSI-3: authenticate the delivery before accepting it. The RESTMAIL delivery
@@ -223,8 +237,7 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 			"client_ip", clientIP,
 			"dkim_aligned", aligned,
 		)
-		respond.Error(w, http.StatusForbidden, "unauthorized", "Delivery not authenticated")
-		return
+		return RestmailDelivery{}, endpoint.Refuse(http.StatusForbidden, "unauthorized", "Delivery not authenticated")
 	}
 
 	delivered := []string{}
@@ -238,14 +251,14 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 	// (with its real headers, including Headers.Raw) seeds the message so
 	// header-dependent filters see the actual headers, mirroring the SMTP inbound
 	// path; the structured request fields fill any gaps.
-	emailJSON := buildInboundEmail(parsed, req.From, req.To, req.Subject, req.Date, req.MessageID, req.BodyText, req.BodyHTML, req.RawMessage, restmailClientIP(r))
+	emailJSON := buildInboundEmail(parsed, req.From, to, req.Subject, req.Date, req.MessageID, req.BodyText, req.BodyHTML, req.RawMessage, restmailClientIP(r))
 
 	// Look up inbound pipeline for the recipient domain
 	var domainName string
-	if len(req.To) > 0 {
+	if len(to) > 0 {
 		// Use the same identity policy as delivery, including whitespace, so an
 		// equivalent spelling cannot bypass the hosted inbound pipeline.
-		if canonical, err := rmail.CanonicalMailboxAddress(req.To[0]); err == nil {
+		if canonical, err := rmail.CanonicalMailboxAddress(to[0]); err == nil {
 			_, domainName, _ = strings.Cut(canonical, "@")
 		}
 	}
@@ -292,8 +305,7 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 			// Fail-CLOSED on a pipeline error (OSI-18): temp-fail so the peer
 			// retries rather than delivering mail that skipped inbound filtering.
 			slog.Error("restmail: pipeline error, deferring delivery", "error", err)
-			respond.Error(w, http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
-			return
+			return RestmailDelivery{}, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
 		} else {
 			rmTrace := traceInputs{
 				PipelineID:   pipelineCfg.ID,
@@ -307,26 +319,20 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 			case pipeline.ActionReject:
 				rmTrace.Outcome = outcomeRejected
 				h.recordTrace(buildTrace(rmTrace))
-				respond.Error(w, http.StatusForbidden, "rejected", "Message rejected by policy")
-				return
+				return RestmailDelivery{}, endpoint.Refuse(http.StatusForbidden, "rejected", "Message rejected by policy")
 			case pipeline.ActionDefer:
 				// Fail-closed temp-fail (OSI-18): a deferred pipeline outcome (incl. a
 				// filter that failed to instantiate/execute) must not be delivered —
 				// the peer retries.
 				rmTrace.Outcome = outcomeDeferred
 				h.recordTrace(buildTrace(rmTrace))
-				respond.Error(w, http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
-				return
+				return RestmailDelivery{}, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
 			case pipeline.ActionDiscard:
 				rmTrace.Outcome = outcomeDiscarded
 				h.recordTrace(buildTrace(rmTrace))
-				respond.Data(w, http.StatusCreated, map[string]interface{}{
-					"delivered": req.To,
-					"failed":    []string{},
-				})
-				return
+				return RestmailDelivery{Delivered: to, Failed: []string{}}, nil
 			case pipeline.ActionQuarantine:
-				for _, rcpt := range req.To {
+				for _, rcpt := range to {
 					if mailbox, _, ok := h.resolveRecipientMailbox(rcpt); ok {
 						preview := req.BodyText
 						if len(preview) > 200 {
@@ -345,11 +351,7 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 				}
 				rmTrace.Outcome = outcomeQuarantined
 				h.recordTrace(buildTrace(rmTrace))
-				respond.Data(w, http.StatusCreated, map[string]interface{}{
-					"delivered": []string{},
-					"failed":    req.To,
-				})
-				return
+				return RestmailDelivery{Delivered: []string{}, Failed: to}, nil
 			}
 			// Fall-through (continue / any non-terminal action): the message will
 			// be delivered — stash the trace to record post-loop with message_id.
@@ -366,7 +368,7 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 			// actually enqueued, so a redirect that cannot be honoured never loses
 			// the message.
 			forwarded := 0
-			for _, fwd := range buildRedirectForwards(result.FinalEmail, req.RawMessage, req.From, req.To) {
+			for _, fwd := range buildRedirectForwards(result.FinalEmail, req.RawMessage, req.From, to) {
 				row := fwd
 				if err := h.db.Create(&row).Error; err != nil {
 					slog.Error("restmail: failed to enqueue sieve redirect",
@@ -387,11 +389,7 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 			deliveredTrace.Outcome = outcomeDelivered
 			h.recordTrace(buildTrace(*deliveredTrace))
 		}
-		respond.Data(w, http.StatusCreated, map[string]interface{}{
-			"delivered": req.To,
-			"failed":    []string{},
-		})
-		return
+		return RestmailDelivery{Delivered: to, Failed: []string{}}, nil
 	}
 
 	// Store the original raw message (with the pipeline's Authentication-Results
@@ -403,7 +401,7 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 		rawMessage = pipeline.AuthResultsHeader(authResults) + rawMessage
 	}
 
-	for _, rcpt := range req.To {
+	for _, rcpt := range to {
 		mailbox, deliveredTo, ok := h.resolveRecipientMailbox(rcpt)
 		if !ok {
 			failed = append(failed, rcpt)
@@ -445,7 +443,7 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 			Subject:      req.Subject,
 			BodyText:     req.BodyText,
 			BodyHTML:     req.BodyHTML,
-			Headers:      models.JSONB(req.Headers),
+			Headers:      models.JSONB(headers),
 			RawMessage:   rcptRaw,
 			SizeBytes:    sizeBytes,
 			RawSize:      len(rcptRaw), // exact stored-raw octet count for IMAP/POP3 size reporting
@@ -482,15 +480,10 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 		h.recordTrace(buildTrace(*deliveredTrace))
 	}
 
-	status := http.StatusCreated
 	if len(delivered) == 0 {
-		status = http.StatusUnprocessableEntity
+		return RestmailDelivery{}, endpoint.Refuse(http.StatusUnprocessableEntity, "undeliverable", "No recipient accepted the message")
 	}
-
-	respond.Data(w, status, map[string]interface{}{
-		"delivered": delivered,
-		"failed":    failed,
-	})
+	return RestmailDelivery{Delivered: delivered, Failed: failed}, nil
 }
 
 // buildInboundEmail assembles the pipeline EmailJSON for a RESTMAIL inbound

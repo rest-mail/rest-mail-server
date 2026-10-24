@@ -69,7 +69,7 @@ func TestRestmailDeliver_EmptyRecipientSources(t *testing.T) {
 	} {
 		t.Run(body, func(t *testing.T) {
 			rr := httptest.NewRecorder()
-			h.Deliver(rr, httptest.NewRequest(http.MethodPost, restmailMessagesPath, bytes.NewBufferString(body)))
+			restmailRoutes(h).ServeHTTP(rr, httptest.NewRequest(http.MethodPost, restmailMessagesPath, bytes.NewBufferString(body)))
 			want := parseShapeJSON(t, `{"error":{"code":"validation_failed","message":"Request body failed validation","details":{"fields":{"to":"at least one recipient required"}}}}`)
 			if rr.Code != http.StatusUnprocessableEntity || !reflect.DeepEqual(parseShapeJSON(t, rr.Body.String()), want) {
 				t.Fatalf("got %d %s, want recipient validation 422", rr.Code, rr.Body)
@@ -121,7 +121,7 @@ func TestRestmailDeliver_RecipientSources(t *testing.T) {
 			rr := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodPost, restmailMessagesPath, bytes.NewReader(encoded))
 			req.RemoteAddr = "203.0.113.9:5000"
-			h.Deliver(rr, req)
+			restmailRoutes(h).ServeHTTP(rr, req)
 			want := map[string]interface{}{"data": map[string]interface{}{"delivered": []interface{}{mailbox.Address}, "failed": []interface{}{}}}
 			if rr.Code != http.StatusCreated || !reflect.DeepEqual(parseShapeJSON(t, rr.Body.String()), want) {
 				t.Fatalf("got %d %s, want delivery to %s", rr.Code, rr.Body, mailbox.Address)
