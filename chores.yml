@@ -377,6 +377,12 @@ tasks:
     cmds:
       - scripts/am-overview --tsv
 
+  queue:list:
+    desc: Pull requests in merge queues across the REST Mail constellation
+    dotenv: []
+    cmds:
+      - scripts/am-queue {{.CLI_ARGS}}
+
   # ════════════════════════════════════════════════════════
   # Build (Go binaries — used for local development without Docker)
   # ════════════════════════════════════════════════════════
