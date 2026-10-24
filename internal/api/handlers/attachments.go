@@ -6,12 +6,10 @@ import (
 	"mime"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
-	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/attachmentstore"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
@@ -66,48 +64,54 @@ func NewAttachmentHandler(db *gorm.DB, s3 *attachmentstore.S3) *AttachmentHandle
 	return &AttachmentHandler{db: db, s3: s3}
 }
 
-// GetAttachment streams an attachment file from storage.
+// attachmentPath names an attachment by the path's {id}.
+type attachmentPath struct {
+	ID uint32 `path:"id" minimum:"1"`
+}
+
+// getAttachment streams an attachment file from storage, with Range and conditional requests
+// answered as http.ServeContent answers them.
 // GET /api/v1/attachments/{id}
-func (h *AttachmentHandler) GetAttachment(w http.ResponseWriter, r *http.Request) {
+func (h *AttachmentHandler) getAttachment(r *http.Request, in attachmentPath) (endpoint.Served, error) {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
-	}
-
-	id, err := pathID(r, "id")
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid attachment ID")
-		return
+		return endpoint.Served{}, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Authentication required")
 	}
 
 	// Mailbox-scoped: the attachment's message must be in a mailbox the caller
 	// may read: its own, or one it owns or has linked. An attachment it may not
 	// read is answered as one that does not exist.
+	notFound := endpoint.Refuse(http.StatusNotFound, "not_found", "Attachment not found")
 	var att models.Attachment
 	var mailboxIDs []uint
-	if err := h.db.First(&att, id).Error; err == nil {
+	if err := h.db.First(&att, in.ID).Error; err == nil {
 		h.db.Model(&models.Message{}).Where("id = ?", att.MessageID).Pluck("mailbox_id", &mailboxIDs)
 	}
 	if len(mailboxIDs) != 1 {
-		respond.Error(w, http.StatusNotFound, "not_found", "Attachment not found")
-		return
+		return endpoint.Served{}, notFound
 	}
 	if _, err := mayReach(h.db, claims, mailboxIDs[0], models.CapMailRead); err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "Attachment not found")
-		return
+		return endpoint.Served{}, notFound
+	}
+
+	// Always bytes to save, never the type the sender claimed: an HTML or SVG
+	// attachment must not render as a page on the API's origin, even in a
+	// client that ignores Content-Disposition. Its claimed type is in the
+	// attachment's metadata (listAttachments' content_type).
+	served := endpoint.Served{
+		ContentType: "application/octet-stream",
+		Header:      http.Header{"Content-Disposition": {contentDispositionAttachment(att.Filename)}},
+		Name:        att.Filename,
 	}
 
 	// Older extract_attachments configurations could label a disk path as s3.
 	// Keep those readable through the confined legacy path until migration.
 	legacyS3Path := att.StorageType == "s3" && strings.HasPrefix(att.StorageRef, attachmentsRoot+"/")
 	if att.StorageType == "s3" && !legacyS3Path {
-		h.getS3Attachment(w, r, &att)
-		return
+		return h.s3Attachment(r, &att, served)
 	}
 	if att.StorageType != "filesystem" && !legacyS3Path {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Unknown attachment storage type")
-		return
+		return endpoint.Served{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Unknown attachment storage type")
 	}
 
 	// Security: confine retrieval to the attachments tree, following symlinks
@@ -115,68 +119,60 @@ func (h *AttachmentHandler) GetAttachment(w http.ResponseWriter, r *http.Request
 	realPath, err := resolveAttachmentPath(attachmentsRoot, att.StorageRef)
 	if err != nil {
 		if errors.Is(err, errAttachmentPathEscape) {
-			respond.Error(w, http.StatusForbidden, "forbidden", "Invalid storage path")
-		} else {
-			respond.Error(w, http.StatusNotFound, "not_found", "Attachment file not found on disk")
+			return endpoint.Served{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "Invalid storage path")
 		}
-		return
+		return endpoint.Served{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Attachment file not found on disk")
 	}
 
 	file, err := os.Open(realPath)
 	if err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "Attachment file not found on disk")
-		return
+		return endpoint.Served{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Attachment file not found on disk")
 	}
-	defer func() { _ = file.Close() }()
-
 	stat, err := file.Stat()
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to stat attachment")
-		return
+		_ = file.Close()
+		return endpoint.Served{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to stat attachment")
 	}
-
-	// Always bytes to save, never the type the sender claimed: an HTML or SVG
-	// attachment must not render as a page on the API's origin, even in a
-	// client that ignores Content-Disposition. Its claimed type is in the
-	// attachment's metadata (listAttachments' content_type).
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", contentDispositionAttachment(att.Filename))
-	w.Header().Set("Content-Length", strconv.FormatInt(stat.Size(), 10))
-
-	http.ServeContent(w, r, att.Filename, stat.ModTime(), file)
+	served.Modified = stat.ModTime()
+	served.Content = file
+	return served, nil
 }
 
-func (h *AttachmentHandler) getS3Attachment(w http.ResponseWriter, r *http.Request, att *models.Attachment) {
+// s3Attachment is served with the object's bytes streaming from the store, and its ETag.
+func (h *AttachmentHandler) s3Attachment(r *http.Request, att *models.Attachment, served endpoint.Served) (endpoint.Served, error) {
 	if h.s3 == nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Object storage is not configured")
-		return
+		return endpoint.Served{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Object storage is not configured")
 	}
 	file, err := h.s3.Open(r.Context(), att.StorageRef)
 	if errors.Is(err, os.ErrNotExist) {
-		respond.Error(w, http.StatusNotFound, "not_found", "Attachment object not found")
-		return
+		return endpoint.Served{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Attachment object not found")
 	}
 	if err != nil {
 		slog.Error("opening attachment object failed", "attachment_id", att.ID, "error", err)
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to open attachment object")
-		return
+		return endpoint.Served{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to open attachment object")
 	}
-	defer func() { _ = file.Close() }()
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", contentDispositionAttachment(att.Filename))
 	if file.ETag != "" {
-		w.Header().Set("ETag", file.ETag)
+		served.Header.Set("ETag", file.ETag)
 	}
-	http.ServeContent(w, r, att.Filename, file.Modified, file)
+	served.Modified = file.Modified
+	served.Content = file
+	return served, nil
 }
 
-// RegisterList mounts listing a message's attachments. Its route takes what the mail routes
-// take; a message in an account the session cannot read is 404, as one that is not there.
-func (h *AttachmentHandler) RegisterList(rs endpoint.Routes) {
+// Register mounts listing a message's attachments and downloading one. Their routes take what
+// the mail routes take; an attachment, or a message, in an account the session cannot read is
+// 404, as one that is not there.
+func (h *AttachmentHandler) Register(rs endpoint.Routes) {
+	security := handlerChecked(models.CapMailRead, "CookieAuth", "BearerAuth", "APIKeyAuth", "BasicAuth")
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/messages/{id}/attachments",
 		OperationID: "listAttachments", Summary: "List a message's attachments", Tags: []string{"Attachments"},
-		Errors:   []int{http.StatusNotFound},
-		Security: handlerChecked(models.CapMailRead, "CookieAuth", "BearerAuth", "APIKeyAuth", "BasicAuth")}, h.listAttachments)
+		Errors: []int{http.StatusNotFound}, Security: security}, h.listAttachments)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/attachments/{id}",
+		OperationID: "getAttachment", Summary: "Download an attachment", Tags: []string{"Attachments"},
+		Description: "The attachment's bytes, always as application/octet-stream; the type its sender gave it is " +
+			"listAttachments' content_type. Range and conditional requests are answered (206, 304, 412, 416).",
+		MediaType: "application/octet-stream",
+		Errors:    []int{http.StatusForbidden, http.StatusNotFound}, Security: security}, h.getAttachment)
 }
 
 // listAttachments returns attachment metadata for a message.
