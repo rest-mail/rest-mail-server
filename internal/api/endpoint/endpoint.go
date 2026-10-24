@@ -20,6 +20,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"reflect"
 	"regexp"
 	"sort"
@@ -471,8 +472,7 @@ func bind(r *http.Request, dst interface{}, s shape) error {
 	err := oapifly.Bind(dst, func(in, name string) (string, bool) {
 		switch in {
 		case "path":
-			v := chi.URLParam(r, name)
-			return v, v != ""
+			return pathParam(r, name)
 		case "query":
 			values, ok := r.URL.Query()[name]
 			if !ok || len(values) == 0 {
@@ -577,4 +577,21 @@ func missingMessages(t reflect.Type, prefix string, violations oapifly.Violation
 			}
 		}
 	}
+}
+
+// pathParam is the named path parameter, decoded. chi routes on the escaped path when the
+// request has one (r.URL.RawPath, set for an escaped slash): its parameters are then still
+// escaped, and Work%2FProjects is decoded here to the folder Work/Projects. Otherwise they
+// are decoded already, and decoding them again would make a%25b, the folder a%b, into a
+// different name.
+func pathParam(r *http.Request, name string) (string, bool) {
+	v := chi.URLParam(r, name)
+	if r.URL.RawPath != "" {
+		decoded, err := url.PathUnescape(v)
+		if err != nil {
+			return "", false
+		}
+		v = decoded
+	}
+	return v, v != ""
 }

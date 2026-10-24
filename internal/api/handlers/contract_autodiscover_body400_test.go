@@ -131,7 +131,7 @@ func TestMicrosoftAutodiscover_RefusesBeforeLookup(t *testing.T) {
 						t.Fatalf("%s reached the database before it was refused: %v", c.name, r)
 					}
 				}()
-				NewAutoconfigHandler(nil).MicrosoftAutodiscover(rr,
+				NewAutoconfigHandler(nil, "").MicrosoftAutodiscover(rr,
 					httptest.NewRequest(http.MethodPost, autodiscoverPath+c.query, strings.NewReader(c.body)))
 			}()
 			if rr.Code != http.StatusBadRequest {
@@ -173,7 +173,7 @@ func TestMicrosoftAutodiscover_ExamplePairs(t *testing.T) {
 		t.Fatal("malformed request and response need nonempty examples")
 	}
 	rr := httptest.NewRecorder()
-	NewAutoconfigHandler(nil).MicrosoftAutodiscover(rr,
+	NewAutoconfigHandler(nil, "").MicrosoftAutodiscover(rr,
 		httptest.NewRequest(http.MethodPost, autodiscoverPath, strings.NewReader(malformed.Value)))
 	if rr.Code != http.StatusBadRequest || rr.Body.String() != want {
 		t.Fatalf("malformed XML answered %d %q, want 400 %q", rr.Code, rr.Body.String(), want)

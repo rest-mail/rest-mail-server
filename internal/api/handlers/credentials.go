@@ -80,8 +80,9 @@ func (h *CredentialHandler) Register(rs endpoint.Routes, checks SessionRouteChec
 		Middleware: []endpoint.Middleware{checks.Audit(ActionAPIKeyRevoke, middleware.AuditFailuresOnly())}}, h.revokeAPIKey)
 }
 
-// noStore keeps every answer about an account's API keys out of caches: the list, and the
-// one answer that carries a key's secret.
+// noStore keeps every answer of a route out of caches, refusals and binding's among them:
+// about an account's API keys (the list, and the one answer that carries a key's secret), and
+// RESTMAIL discovery, which a sender must not remember, nor a failure as if it were one.
 var noStore = endpoint.Middleware{Wrap: func(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
