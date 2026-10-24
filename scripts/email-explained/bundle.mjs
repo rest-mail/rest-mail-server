@@ -10,7 +10,7 @@
 //
 // - front matter gives a chapter its title, part, summary and diagram;
 // - each `##` heading starts a section, with GitHub's anchor as its id;
-// - an image of diagrams/<name>.png, beside its <name>.<type>.json source,
+// - an image of diagrams/<name>.svg, beside its <name>.<type>.json source,
 //   becomes a placeholder the website fills with the interactive diagram;
 // - links between chapters become site paths, and links to code become
 //   GitHub links pinned to the commit the bundle was built from.
@@ -112,9 +112,9 @@ export function compileChapter({ file, text, commit, files, diagrams }) {
       },
       image({ href, text }) {
         const { resolved } = target(href);
-        const name = resolved?.match(new RegExp(`^${GUIDE}/diagrams/([a-z0-9-]+)\\.png$`))?.[1];
+        const name = resolved?.match(new RegExp(`^${GUIDE}/diagrams/([a-z0-9-]+)\\.svg$`))?.[1];
         if (name && diagrams.has(name)) {
-          return `<figure class="guide-diagram" data-diagram="${name}"><img src="diagrams/${name}.png" alt="${escape(text)}"></figure>`;
+          return `<figure class="guide-diagram" data-diagram="${name}"><img src="diagrams/${name}.svg" alt="${escape(text)}"></figure>`;
         }
         throw new Error(`${file}: only diagram images are supported so far, not ${href}`);
       },
@@ -228,8 +228,8 @@ async function main() {
     await writeFile(join(out, html), page);
     await mkdir(join(out, "diagrams", "fonts"), { recursive: true });
     for (const [file, bytes] of fonts) await writeFile(join(out, "diagrams", file), bytes);
-    await copyFile(join(guide, "diagrams", `${diagram}.png`), join(out, "diagrams", `${diagram}.png`));
-    diagrams.set(diagram, { name: diagram, type, source: `${GUIDE}/diagrams/${name}`, html, image: `diagrams/${diagram}.png` });
+    await copyFile(join(guide, "diagrams", `${diagram}.svg`), join(out, "diagrams", `${diagram}.svg`));
+    diagrams.set(diagram, { name: diagram, type, source: `${GUIDE}/diagrams/${name}`, html, image: `diagrams/${diagram}.svg` });
   }
 
   const files = readingOrder(await readFile(join(guide, "README.md"), "utf8"), await markdownFiles(guide));

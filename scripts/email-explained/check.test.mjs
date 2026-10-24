@@ -1,14 +1,27 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { anchorsOf, checkGuide, linksOf, outsideLinks } from "./check.mjs";
 
 const chapter = (body, front = "title: Open relay\npart: How it goes wrong\nsummary: How it happens.") => `---\n${front}\n---\n\n# Open relay\n\n${body}\n\n## Sources\n\n- [RFC 5321](https://www.rfc-editor.org/rfc/rfc5321)\n`;
 
+const ARCHIFY = "3.2.0 208acba8d412335185b2056fedf54b3405df43fb";
+const SOURCE = '{"title":"Relay"}\n';
+// A static image as svg.mjs exports it: stamped with its source and Archify.
+const image = (source = SOURCE, archify = ARCHIFY) =>
+  `<svg viewBox="0 0 10 10" data-source-sha256="${createHash("sha256").update(source).digest("hex")}" data-archify="${archify}"></svg>`;
+
 // A small guide and repository to check: the front page, one chapter, one
 // diagram, and some code to link to.
-function check(pages, { files = {}, diagrams = ["relay.workflow.json", "relay.png"] } = {}) {
+function check(pages, { files = {}, diagrams = ["relay.workflow.json", "relay.svg"] } = {}) {
   const all = new Map(Object.entries({ "README.md": "# Email, explained\n\n[Open relay](wrong/relay.md)\n", ...pages }));
-  const tracked = { "internal/gateway/session.go": "package gateway\n\nfunc a() {}\n", "docs/MANUAL.md": "# Manual\n\n## Install\n", ...files };
+  const tracked = {
+    "internal/gateway/session.go": "package gateway\n\nfunc a() {}\n",
+    "docs/MANUAL.md": "# Manual\n\n## Install\n",
+    "docs/email-explained/diagrams/relay.workflow.json": SOURCE,
+    "docs/email-explained/diagrams/relay.svg": image(),
+    ...files,
+  };
   const kinds = new Map();
   for (const path of Object.keys(tracked)) {
     kinds.set(path, "file");
@@ -16,10 +29,10 @@ function check(pages, { files = {}, diagrams = ["relay.workflow.json", "relay.pn
   }
   for (const file of all.keys()) kinds.set(`docs/email-explained/${file}`, "file");
   const repo = { kind: (path) => kinds.get(path), text: (path) => tracked[path] };
-  return checkGuide({ pages: all, repo, diagramFiles: new Set(diagrams) }).map((p) => `${p.file}${p.line ? `:${p.line}` : ""}: ${p.message}`);
+  return checkGuide({ pages: all, repo, diagramFiles: new Set(diagrams), archify: ARCHIFY }).map((p) => `${p.file}${p.line ? `:${p.line}` : ""}: ${p.message}`);
 }
 
-const good = chapter("![The relay](../diagrams/relay.png)\n\nSee [the session](../../../internal/gateway/session.go#L3) and [installing](../../MANUAL.md#install).");
+const good = chapter("![The relay](../diagrams/relay.svg)\n\nSee [the session](../../../internal/gateway/session.go#L3) and [installing](../../MANUAL.md#install).");
 
 test("a sound guide has no problems", () => {
   assert.deepEqual(check({ "wrong/relay.md": good }), []);
@@ -37,7 +50,7 @@ test("a link to a page, a heading, a file or a line that is not there is a probl
   const found = check({
     "wrong/relay.md": chapter(
       [
-        "![The relay](../diagrams/relay.png)",
+        "![The relay](../diagrams/relay.svg)",
         "[gone](missing.md)",
         "[no heading](#nowhere)",
         "[front page heading](../README.md#nowhere)",
@@ -65,7 +78,7 @@ test("front matter has what the website reads, and nothing else", () => {
   assert.deepEqual(check({ "wrong/relay.md": good.replace("summary: How it happens.\n", "") }), ["docs/email-explained/wrong/relay.md:1: front matter has no summary"]);
   assert.deepEqual(check({ "wrong/relay.md": good.replace("---\n\n# Open", "colour: red\n---\n\n# Open") }), ["docs/email-explained/wrong/relay.md:1: front matter key colour is not one the website reads"]);
   assert.deepEqual(check({ "wrong/relay.md": good.replace("title: Open relay", "title: Open relay: a story") }), ["docs/email-explained/wrong/relay.md:2: this value needs double quotes for GitHub to read it as YAML"]);
-  assert.deepEqual(check({ "wrong/relay.md": `# Open relay\n\n![The relay](../diagrams/relay.png)\n\n## Sources\n` }), ["docs/email-explained/wrong/relay.md:1: no front matter: a chapter needs title, part and summary"]);
+  assert.deepEqual(check({ "wrong/relay.md": `# Open relay\n\n![The relay](../diagrams/relay.svg)\n\n## Sources\n` }), ["docs/email-explained/wrong/relay.md:1: no front matter: a chapter needs title, part and summary"]);
 });
 
 test("every chapter has its Sources, unless its claims are sourced in the chapters it links", () => {
@@ -79,16 +92,28 @@ test("every chapter has its Sources, unless its claims are sourced in the chapte
 });
 
 test("every diagram is shown somewhere, has its static image, and exists when named", () => {
-  const unshown = good.replace("![The relay](../diagrams/relay.png)\n\n", "");
+  const unshown = good.replace("![The relay](../diagrams/relay.svg)\n\n", "");
   assert.deepEqual(check({ "wrong/relay.md": unshown }), ["docs/email-explained/diagrams/relay.workflow.json: no chapter shows this diagram"]);
   assert.deepEqual(check({ "wrong/relay.md": unshown.replace("summary: How it happens.", "summary: How it happens.\ndiagram: ../diagrams/relay.workflow.json") }), []);
   assert.deepEqual(check({ "wrong/relay.md": good }, { diagrams: ["relay.workflow.json"] }), [
-    "docs/email-explained/wrong/relay.md:9: image ../diagrams/relay.png is not a diagram's static image",
+    "docs/email-explained/wrong/relay.md:9: image ../diagrams/relay.svg is not a diagram's static image",
     "docs/email-explained/diagrams/relay.workflow.json: no chapter shows this diagram",
-    "docs/email-explained/diagrams/relay.workflow.json: no static image (relay.png) beside it",
+    "docs/email-explained/diagrams/relay.workflow.json: no static image (relay.svg) beside it",
   ]);
   assert.deepEqual(check({ "wrong/relay.md": good.replace("summary: How it happens.", "summary: How it happens.\ndiagram: ../diagrams/gone.workflow.json") }), [
     "docs/email-explained/wrong/relay.md:1: front matter names a diagram that does not exist: ../diagrams/gone.workflow.json",
+  ]);
+});
+
+test("a static image must be exported from its source as it is now, by the pinned Archify", () => {
+  assert.deepEqual(check({ "wrong/relay.md": good }, { files: { "docs/email-explained/diagrams/relay.svg": image('{"title":"Old"}\n') } }), [
+    "docs/email-explained/diagrams/relay.svg: was not exported from relay.workflow.json as it is now: run svg.mjs relay",
+  ]);
+  assert.deepEqual(check({ "wrong/relay.md": good }, { files: { "docs/email-explained/diagrams/relay.svg": image(SOURCE, "3.1.0 1c2b42d6") } }), [
+    `docs/email-explained/diagrams/relay.svg: was drawn by Archify 3.1.0 1c2b42d6, not the pinned ${ARCHIFY}: run svg.mjs relay`,
+  ]);
+  assert.deepEqual(check({ "wrong/relay.md": good }, { files: { "docs/email-explained/diagrams/relay.svg": "<svg viewBox=\"0 0 1 1\"></svg>" } }), [
+    "docs/email-explained/diagrams/relay.svg: was not exported from relay.workflow.json as it is now: run svg.mjs relay",
   ]);
 });
 

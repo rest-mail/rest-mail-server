@@ -14,7 +14,7 @@ rest; and **replacements**, which ask everyone to change at once. The first
 kind has mostly succeeded. The second has mostly not, for the same reason email
 itself has survived: anyone can still send mail to anyone.
 
-![Forty years of email standards](../diagrams/standards.png)
+![Forty years of email standards](../diagrams/standards.svg)
 
 *The diagram's source is [`standards.workflow.json`](../diagrams/standards.workflow.json).*
 

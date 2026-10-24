@@ -16,7 +16,7 @@ encoded into that text, because the system it travels through was built for
 There is also a part you never see in that file: the **envelope**, which
 decides where the message actually goes.
 
-![One email, taken apart](../diagrams/message.png)
+![One email, taken apart](../diagrams/message.svg)
 
 *The diagram's source is [`message.tree.json`](../diagrams/message.tree.json).*
 
