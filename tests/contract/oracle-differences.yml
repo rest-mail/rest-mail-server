@@ -2631,18 +2631,6 @@
     The mobile app sends a reply's draft whole, with in_reply_to and references; they are
     accepted and the draft keeps what it was saved with. The oracle omits them.
 - operation: listScheduledMessages
-  difference: "security: *"
-  reason: >-
-    The handler checks only that the session is signed in, and acts on its own account: no
-    capability is required today. #743 is to require mail:send (mail:read to list), as the
-    oracle says.
-- operation: cancelScheduledMessage
-  difference: "security: *"
-  reason: >-
-    The handler checks only that the session is signed in, and acts on its own account: no
-    capability is required today. #743 is to require mail:send (mail:read to list), as the
-    oracle says.
-- operation: listScheduledMessages
   difference: "response 200 application/json.properties.data.items.properties.from.format: openapi.yaml \"email\", generated absent"
   reason: >-
     The from is stored as the send request gave it, which the send checked; the answer does
