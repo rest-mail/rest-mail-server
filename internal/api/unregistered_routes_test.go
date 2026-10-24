@@ -25,7 +25,6 @@ var unregisteredRoutes = []string{
 	"POST /api/v1/messages/send",
 	"POST /api/v1/messages/{id}/calendar-reply",
 	"POST /api/v1/messages/{id}/forward",
-	"GET /api/v1/messages/{id}/raw",
 	"POST /autodiscover/autodiscover.xml",
 	"GET /mail/config-v1.1.xml",
 }

@@ -626,7 +626,6 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.Post("/api/v1/messages/send", messageH.SendMessage)
 		r.Get("/api/v1/messages/scheduled", messageH.ListScheduledSends)
 		r.Delete("/api/v1/messages/scheduled/{id}", messageH.CancelScheduledSend)
-		r.Get("/api/v1/messages/{id}/raw", messageH.GetRawMessage)
 		r.Post("/api/v1/messages/{id}/forward", messageH.ForwardMessage)
 		r.Post("/api/v1/messages/{id}/calendar-reply", messageH.RespondToCalendar)
 		r.Get("/api/v1/accounts/{id}/calendar-events", messageH.ListCalendarEvents)

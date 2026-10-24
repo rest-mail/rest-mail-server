@@ -2042,6 +2042,11 @@
   reason: >-
     The mail routes throttle refused HTTP Basic credentials at login's rate (429
     rate_limited).
+- operation: getRawMessage
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
 - operation: updateMessage
   difference: "response 429: generated only"
   reason: >-
