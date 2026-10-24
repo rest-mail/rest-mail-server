@@ -19,6 +19,7 @@ import (
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/digest"
+	"github.com/restmail/restmail/internal/dkimrotate"
 	"github.com/restmail/restmail/internal/dmarcreport"
 	"github.com/restmail/restmail/internal/dns"
 	"github.com/restmail/restmail/internal/dnsbl"
@@ -350,6 +351,12 @@ func main() {
 	vacationPurger := vacation.NewPurger(database, time.Hour, vacation.DefaultRetention)
 	vacationPurger.Start()
 
+	// Rotate the DKIM key of every domain with an interval (#728). The worker never writes
+	// DNS: a staged key's record joins the operator's records (restmail-api dns), and the
+	// rotation moves on once the record resolves.
+	dkimRotation := dkimrotate.NewWorker(database, cfg.MasterKey, net.DefaultResolver.LookupTXT, 15*time.Minute)
+	dkimRotation.Start()
+
 	// Check the operator's sending IPs against their blocklists until shutdown.
 	if dnsblMonitor != nil {
 		dnsblMonitor.start(context.Background())
@@ -415,6 +422,7 @@ func main() {
 	tracePruner.Shutdown()
 	greylistPurger.Shutdown()
 	vacationPurger.Shutdown()
+	dkimRotation.Shutdown()
 	digestWorker.Shutdown()
 	// Stop sending scheduled mail before the trace recorder it reports to.
 	scheduledSender.Shutdown()

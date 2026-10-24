@@ -46,6 +46,9 @@ config/*/dkim.conf
 # chore's fingerprint cache, how it decides whether a task's sources changed.
 .chore/
 
+# Compiled binaries are built, never committed: `chore build` writes build/, air writes tmp/.
+/bin/
+
 # `go build ./cmd/instance` with no -o leaves an 11MB binary here, named after the
 # package. Anchored to the repository root so it cannot match the config/<domain>/
 # instance directories re-included above.

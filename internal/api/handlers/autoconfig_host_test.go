@@ -50,7 +50,7 @@ func TestAutoconfig_NamesTheMailHost(t *testing.T) {
 	for _, p := range ad.Response.Account.Protocol {
 		names = append(names, p.Server)
 	}
-	for _, r := range dns.MailRecords(domain, host, "", "", "", dns.ClientPorts{Submission: 465, IMAP: 993}) {
+	for _, r := range dns.MailRecords(domain, host, "", "", "", "", dns.ClientPorts{Submission: 465, IMAP: 993}) {
 		if r.Type == "MX" {
 			names = append(names, r.Value)
 		}
@@ -70,7 +70,7 @@ func TestAutoconfig_WithoutAMailHost(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/.well-known/autoconfig/mail/config-v1.1.xml", nil)
 	r.Host = "example.org"
 	rr := httptest.NewRecorder()
-	NewAutoconfigHandler(nil, "localhost").MozillaAutoconfig(rr, r)
+	autoconfigRoutes(NewAutoconfigHandler(nil, "localhost")).ServeHTTP(rr, r)
 	if rr.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status %d, want 503: %s", rr.Code, rr.Body)
 	}
@@ -94,7 +94,7 @@ func TestMozillaAutoconfig_WithoutEmailAddress(t *testing.T) {
 		r := httptest.NewRequest(http.MethodGet, tc.path, nil)
 		r.Host = tc.host
 		rr := httptest.NewRecorder()
-		h.MozillaAutoconfig(rr, r)
+		autoconfigRoutes(h).ServeHTTP(rr, r)
 		body := rr.Body.String()
 		if rr.Code != http.StatusOK {
 			t.Fatalf("%s on %s: %d %s", tc.path, tc.host, rr.Code, body)

@@ -6,8 +6,8 @@ import (
 )
 
 // The pairs vertrag compiles for createDomain (#386): created with the 201,
-// body_array with the 400, and name_missing, sending_policy_invalid and
-// server_type_invalid with the 422, nothing else.
+// body_array with the 400, and name_missing, sending_policy_invalid,
+// dmarc_policy_invalid and server_type_invalid with the 422, nothing else.
 // contract_domain_body_examples_test.go checks body_array.
 // server_type_invalid is the created request with a server type that is
 // neither traditional nor restmail, so the server type is the only reason it
@@ -17,10 +17,10 @@ func TestDomainCreate_ExamplePairs(t *testing.T) {
 	requests, responses := postExamples(t, "/api/v1/admin/domains", "createDomain")
 
 	want := map[string][]string{
-		"request": {"body_array", "created", "name_missing", "sending_policy_invalid", "server_type_invalid"},
+		"request": {"body_array", "created", "dmarc_policy_invalid", "name_missing", "sending_policy_invalid", "server_type_invalid"},
 		"201":     {"created"},
 		"400":     {"body_array"},
-		"422":     {"name_missing", "sending_policy_invalid", "server_type_invalid"},
+		"422":     {"dmarc_policy_invalid", "name_missing", "sending_policy_invalid", "server_type_invalid"},
 	}
 	got := map[string][]string{"request": names(requests)}
 	for status, examples := range responses {
@@ -61,6 +61,16 @@ func TestDomainCreate_ExamplePairs(t *testing.T) {
 			mustJSON(requests["sending_policy_invalid"]), mustJSON(invalidPolicy))
 	}
 
+	invalidDMARC := map[string]interface{}{}
+	for k, v := range created {
+		invalidDMARC[k] = v
+	}
+	invalidDMARC["dmarc_policy"] = "strict"
+	if !reflect.DeepEqual(requests["dmarc_policy_invalid"], invalidDMARC) {
+		t.Errorf("dmarc_policy_invalid is %s, want created with DMARC policy strict: %s",
+			mustJSON(requests["dmarc_policy_invalid"]), mustJSON(invalidDMARC))
+	}
+
 	createdBody := map[string]interface{}{
 		"data": map[string]interface{}{
 			"id":                  float64(1),
@@ -69,6 +79,7 @@ func TestDomainCreate_ExamplePairs(t *testing.T) {
 			"active":              false,
 			"default_quota_bytes": float64(0),
 			"sending_policy":      "",
+			"dmarc_policy":        "none",
 			"created_at":          "2026-01-01T00:00:00Z",
 			"updated_at":          "2026-01-01T00:00:00Z",
 		},
@@ -80,6 +91,7 @@ func TestDomainCreate_ExamplePairs(t *testing.T) {
 	for name, field := range map[string]map[string]interface{}{
 		"name_missing":           {"name": "required"},
 		"sending_policy_invalid": {"sending_policy": "must be 'transactional', 'bulk' or empty"},
+		"dmarc_policy_invalid":   {"dmarc_policy": "must be 'none', 'quarantine' or 'reject'"},
 		"server_type_invalid":    {"server_type": "must be 'traditional' or 'restmail'"},
 	} {
 		refused := map[string]interface{}{

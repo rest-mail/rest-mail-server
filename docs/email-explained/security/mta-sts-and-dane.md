@@ -165,13 +165,20 @@ dig +dnssec +short TLSA _25._tcp.mx1.example.org
   and REST Mail serves it at `/.well-known/mta-sts.txt` for
   `mta-sts.<domain>`, internationalised domains included
   ([`internal/api/handlers/mtasts.go`](../../../internal/api/handlers/mtasts.go)).
-  The `_mta-sts` and `mta-sts` records are not yet printed or checked by
-  `chore dns:show`, so the `id` is left to the operator:
+  `chore dns:show` prints the domain's `_mta-sts` record, `v=STSv1; id=<id>`,
+  with an `id` derived from the policy file itself (a SHA-256 of what senders
+  fetch), so it changes exactly when the policy does and the operator never
+  picks one; `chore dns:check` reports a published `id` the policy has moved on
+  from ([`internal/db/models/mtasts.go`](../../../internal/db/models/mtasts.go)).
+  The `mta-sts.<domain>` host record, and a certificate covering that name, are
+  not printed or obtained yet:
   [#727](https://github.com/rest-mail/rest-mail-server/issues/727).
 - **TLS-RPT:** REST Mail accepts reports sent to it over HTTPS, at
   `/.well-known/smtp-tlsrpt`, with limits on size and rate
-  ([`tlsrpt.go`](../../../internal/api/handlers/tlsrpt.go)). It does not yet
-  send reports about its own deliveries, or accept them by email:
+  ([`tlsrpt.go`](../../../internal/api/handlers/tlsrpt.go)), and `chore
+  dns:show` prints each domain's `_smtp._tls` record pointing there, on the
+  mail host. It does not yet send reports about its own deliveries, or accept
+  them by email:
   [#726](https://github.com/rest-mail/rest-mail-server/issues/726).
 - **DANE** is not supported yet, for sending or receiving:
   [#725](https://github.com/rest-mail/rest-mail-server/issues/725).

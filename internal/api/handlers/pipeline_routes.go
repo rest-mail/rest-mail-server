@@ -22,6 +22,7 @@ type PipelineDomain struct {
 	DefaultQuotaBytes int64     `json:"default_quota_bytes"`
 	DKIMSelector      string    `json:"dkim_selector"`
 	SendingPolicy     string    `json:"sending_policy" enums:",transactional,bulk"`
+	DMARCPolicy       string    `json:"dmarc_policy" enums:",none,quarantine,reject"`
 	CreatedAt         time.Time `json:"created_at"`
 	UpdatedAt         time.Time `json:"updated_at"`
 }

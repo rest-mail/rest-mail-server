@@ -162,11 +162,14 @@ and look for `dmarc=pass` in its `Authentication-Results`.
   receivers not to do.
 - **Reports:** REST Mail sends aggregate reports to the domains that ask for
   them ([`internal/dmarcreport/`](../../../internal/dmarcreport/)).
-- **Your domain's record:** `chore dns:show` prints a DMARC record with
-  `p=reject` for every domain. REST Mail always signs with DKIM, which `p=reject`
-  requires, but RFC 9989 advises `p=none` first, and not `reject` for domains
-  whose users write to mailing lists:
-  [#729](https://github.com/rest-mail/rest-mail-server/issues/729).
+- **Your domain's record:** `chore dns:show` prints a DMARC record with the
+  domain's own policy, `dmarc_policy` in the admin API. A new domain starts at
+  `p=none`, so its reports come in from the first day and no one's delivery
+  changes. An admin raises it to `quarantine`, then `reject`, once the reports
+  show the domain's mail passes, as RFC 9989 §7.4 advises, and leaves a domain
+  whose users write to mailing lists below `reject`. REST Mail always signs with
+  DKIM, which `p=reject` requires
+  ([#729](https://github.com/rest-mail/rest-mail-server/issues/729)).
 - **The standard:** REST Mail implements RFC 7489, finding a domain's
   organisation with the Public Suffix List and honouring `pct`. Moving to RFC
   9989 and RFC 9990 (the DNS tree walk, `np`, `psd`, `t`, no rejection on policy

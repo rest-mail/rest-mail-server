@@ -176,7 +176,7 @@ func TestMTASTSPolicy_PersistedLifecycle(t *testing.T) {
 			}
 			if !tc.active {
 				rr = httptest.NewRecorder()
-				h.ServePolicy(rr, httptest.NewRequest(http.MethodGet, "https://mta-sts."+domain.Name+"/.well-known/mta-sts.txt", nil))
+				policyFile(h)(rr, httptest.NewRequest(http.MethodGet, "https://mta-sts."+domain.Name+"/.well-known/mta-sts.txt", nil))
 				if rr.Code != http.StatusNotFound {
 					t.Fatalf("new unpublished policy served: %d %s", rr.Code, rr.Body.String())
 				}
@@ -206,7 +206,7 @@ func TestMTASTSPolicy_PersistedLifecycle(t *testing.T) {
 			}
 			rr = httptest.NewRecorder()
 			serve := httptest.NewRequest(http.MethodGet, "https://mta-sts."+domain.Name+"/.well-known/mta-sts.txt", nil)
-			h.ServePolicy(rr, serve)
+			policyFile(h)(rr, serve)
 			if rr.Code != http.StatusNotFound {
 				t.Fatalf("unpublished policy served: %d %s", rr.Code, rr.Body.String())
 			}

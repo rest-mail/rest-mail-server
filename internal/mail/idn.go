@@ -80,3 +80,17 @@ func SMTPAddressASCII(address string) (string, error) {
 	}
 	return address[:at+1] + ascii, nil
 }
+
+// MXPatternASCII is an MTA-STS mx pattern (RFC 8461 §3.2), a host name or a "*." wildcard
+// over one, in A-label form.
+func MXPatternASCII(pattern string) (string, error) {
+	wildcard := strings.HasPrefix(pattern, "*.")
+	ascii, err := DomainASCII(strings.TrimPrefix(pattern, "*."))
+	if err != nil {
+		return "", err
+	}
+	if wildcard {
+		return "*." + ascii, nil
+	}
+	return ascii, nil
+}
