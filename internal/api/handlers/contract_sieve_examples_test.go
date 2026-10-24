@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/restmail/restmail"
@@ -108,9 +109,10 @@ func TestSieve_DocumentedExamples(t *testing.T) {
 			t.Cleanup(func() { tx.Rollback() })
 			fx := seedAuthzFixture(t, tx)
 			h := NewSieveHandler(tx)
-			path, operation, verb, handle := "/api/v1/accounts/{id}/sieve", "putSieveScript", http.MethodPut, h.PutScript
+			handle := func(w http.ResponseWriter, r *http.Request) { serveSieve(h, w, r) }
+			path, operation, verb := "/api/v1/accounts/{id}/sieve", "putSieveScript", http.MethodPut
 			if method == "post" {
-				path, operation, verb, handle = path+"/validate", "validateSieveScript", http.MethodPost, h.ValidateScript
+				path, operation, verb = path+"/validate", "validateSieveScript", http.MethodPost
 			}
 			requests, responses := sieveExamples(t, method, path, operation)
 			send := func(name string) *httptest.ResponseRecorder {
@@ -120,7 +122,7 @@ func TestSieve_DocumentedExamples(t *testing.T) {
 					t.Fatal(err)
 				}
 				rr := httptest.NewRecorder()
-				handle(rr, authzRequest(verb, path, fx.ownerMailbox.ID,
+				handle(rr, authzRequest(verb, strings.TrimPrefix(path, "/api/v1/accounts/{id}"), fx.ownerMailbox.ID,
 					map[string]string{"id": uintToStr(fx.ownerMailbox.ID)}, string(body)))
 				return rr
 			}

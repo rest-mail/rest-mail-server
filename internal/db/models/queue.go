@@ -12,6 +12,11 @@ type OutboundQueue struct {
 	Sender        string     `gorm:"size:255;not null" json:"sender"`
 	Recipient     string     `gorm:"size:255;not null" json:"recipient"`
 	Domain        string     `gorm:"size:255;not null;index" json:"domain"` // destination domain for MX lookup
+	// SendingDomain is the hosted domain the message is sent as when its envelope
+	// sender does not say: a vacation reply goes with a null reverse path (RFC
+	// 5230 §5.1), yet is signed as, routed for and suppressed by the replying
+	// mailbox's domain. Empty means the envelope sender's domain.
+	SendingDomain string     `gorm:"size:255" json:"-"`
 	RawMessage    string     `gorm:"type:text" json:"-"`                   // RFC 2822 formatted message
 	// BodyType is the SMTP BODY= parameter declared for this message at submission
 	// (7BIT, 8BITMIME, or BINARYMIME; empty when the client declared none). The

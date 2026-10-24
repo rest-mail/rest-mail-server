@@ -23,7 +23,7 @@ func validateSieveAs(h *SieveHandler, claims *auth.Claims, id uint) *httptest.Re
 		map[string]string{"id": uintToStr(id)}, `{"script":"keep;"}`)
 	r = r.WithContext(context.WithValue(r.Context(), middleware.ClaimsKey, claims))
 	rr := httptest.NewRecorder()
-	h.ValidateScript(rr, r)
+	serveSieve(h, rr, r)
 	return rr
 }
 
