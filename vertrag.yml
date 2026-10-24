@@ -114,7 +114,7 @@ exclude-matching:
   - '> 409( >|$)'
   # getDomain, getCertificate, getAlias and getCustomFilter select missing IDs through hooks.
   # All other documented 404s still need a request that provokes them.
-  - '^/(api/v1/(auth|accounts|devices|messages|attachments)|restmail|mail|\.well-known)(/| >).* > 404( >|$)'
+  - '^/(api/v1/(auth|accounts|devices|messages|attachments)|restmail|mail|autodiscover|\.well-known)(/| >).* > 404( >|$)'
   # Autoconfig's 400 (no email domain in the address or the host name) needs a
   # request to a host that is not autoconfig.<domain>, which the run cannot make.
   - '^/(mail|\.well-known/autoconfig)(/| >).* > 400( >|$)'

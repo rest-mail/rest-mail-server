@@ -57,6 +57,10 @@ func TestRecipientsEAI(t *testing.T) {
 	rest := NewRestmailHandler(tx, nil, nil, RestmailTarpitConfig{}, RestmailDeliverAuthConfig{})
 	gateway := NewMailboxHandler(tx, nil, nil)
 
+	gatewayCheck := func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = "/api/mailboxes"
+		addressCheckRoute(gateway)(w, r)
+	}
 	for _, tc := range []struct {
 		address string
 		wantID  uint
@@ -76,7 +80,7 @@ func TestRecipientsEAI(t *testing.T) {
 		{"münchen+tag@" + unicodeDomain + "\r\n", 0},
 	} {
 		t.Run(tc.address, func(t *testing.T) {
-			for _, check := range []func(http.ResponseWriter, *http.Request){gateway.CheckAddress, restmailRoute(rest, "/restmail/mailboxes")} {
+			for _, check := range []func(http.ResponseWriter, *http.Request){gatewayCheck, restmailRoute(rest, "/restmail/mailboxes")} {
 				rr := httptest.NewRecorder()
 				check(rr, httptest.NewRequest(http.MethodGet, "/?address="+url.QueryEscape(tc.address), nil))
 				var response struct {
@@ -147,7 +151,7 @@ func TestRecipientsEAI(t *testing.T) {
 		"address": address, "sender": "外部@例え.jp", "raw_message": []byte(raw), "recipients_to": []string{address},
 	})
 	rr := httptest.NewRecorder()
-	NewMessageHandler(tx, nil, nil, "", nil).DeliverMessage(rr, httptest.NewRequest(http.MethodPost, "/api/messages/deliver", bytes.NewReader(body)))
+	deliveryRoute(NewMessageHandler(tx, nil, nil, "", nil))(rr, httptest.NewRequest(http.MethodPost, "/api/v1/messages/deliver", bytes.NewReader(body)))
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("gateway delivery: %d %s", rr.Code, rr.Body.String())
 	}

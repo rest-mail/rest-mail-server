@@ -9,13 +9,12 @@ import (
 	"html"
 	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"net/mail"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
+	oapifly "github.com/antimatter-studios/go-oapifly"
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
@@ -170,6 +169,11 @@ func (h *MessageHandler) RegisterMessages(rs endpoint.Routes) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/threads/{threadID}",
 		OperationID: "getThread", Summary: "Get all messages in a thread", Tags: tags,
 		Errors: []int{http.StatusForbidden}, Security: reads}, h.getThread)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/messages/{id}/raw",
+		OperationID: "getRawMessage", Summary: "Get the raw RFC 2822 message source", Tags: tags,
+		Description: "The message as it arrived, headers and all. 404 not_found when no source was kept.",
+		MediaType:   "message/rfc822",
+		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.getRawMessage)
 }
 
 // listMessages returns messages in a folder with cursor-based pagination.
@@ -393,16 +397,17 @@ func (h *MessageHandler) deleteMessage(r *http.Request, in deleteMessageRequest)
 
 // sendMessageRequest is the body of POST /api/v1/messages/send. It is kept as
 // a named type because a scheduled send stores the same body and replays it
-// through this handler when its time comes.
+// through sendMessage when its time comes. Every field is optional to binding:
+// the handler checks from, to and the addresses, with the refusals it always gave.
 type sendMessageRequest struct {
-	From          string                  `json:"from"`
-	To            []string                `json:"to"`
-	Cc            []string                `json:"cc"`
-	Bcc           []string                `json:"bcc"`
-	Subject       string                  `json:"subject"`
-	BodyText      string                  `json:"body_text"`
-	BodyHTML      string                  `json:"body_html"`
-	InReplyTo     string                  `json:"in_reply_to"`
+	From          string                  `json:"from,omitempty"`
+	To            []string                `json:"to,omitempty"`
+	Cc            []string                `json:"cc,omitempty"`
+	Bcc           []string                `json:"bcc,omitempty"`
+	Subject       string                  `json:"subject,omitempty"`
+	BodyText      string                  `json:"body_text,omitempty"`
+	BodyHTML      string                  `json:"body_html,omitempty"`
+	InReplyTo     string                  `json:"in_reply_to,omitempty"`
 	CalendarEvent *pipeline.CalendarEvent `json:"calendar_event,omitempty"`
 	// ListUnsubscribe, when set, publishes where a recipient unsubscribes
 	// (#144). Absent, the message carries no List-Unsubscribe fields.
@@ -413,26 +418,18 @@ type sendMessageRequest struct {
 }
 
 // SendMessage composes and sends a message from an authenticated user.
-func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
+func (h *MessageHandler) sendMessage(r *http.Request, req sendMessageRequest) (endpoint.Status[any], error) {
+	var zero endpoint.Status[any]
 	claims := middleware.GetClaims(r)
 	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
-	}
-
-	var req sendMessageRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
+		return zero, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Authentication required")
 	}
 
 	if req.From == "" {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "from is required")
-		return
+		return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "from is required")
 	}
 	if len(req.To) == 0 {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "to is required and must not be empty")
-		return
+		return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "to is required and must not be empty")
 	}
 
 	// Per-message recipient cap (#184): a single API send must not fan out to an
@@ -443,9 +440,8 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	// work so an oversized fan-out is rejected cheaply. maxRecipients <= 0 disables.
 	if h.maxRecipients > 0 {
 		if total := len(req.To) + len(req.Cc) + len(req.Bcc); total > h.maxRecipients {
-			respond.Error(w, http.StatusBadRequest, "too_many_recipients",
+			return zero, endpoint.Refuse(http.StatusBadRequest, "too_many_recipients",
 				fmt.Sprintf("too many recipients: %d exceeds the per-message limit of %d", total, h.maxRecipients))
-			return
 		}
 	}
 
@@ -457,32 +453,27 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	// injection (#166).
 	for _, addr := range req.To {
 		if err := rmail.ValidateAddress(addr); err != nil {
-			respond.Error(w, http.StatusBadRequest, "bad_request", "invalid recipient address in to")
-			return
+			return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "invalid recipient address in to")
 		}
 	}
 	for _, addr := range req.Cc {
 		if err := rmail.ValidateAddress(addr); err != nil {
-			respond.Error(w, http.StatusBadRequest, "bad_request", "invalid recipient address in cc")
-			return
+			return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "invalid recipient address in cc")
 		}
 	}
 	for _, addr := range req.Bcc {
 		if err := rmail.ValidateAddress(addr); err != nil {
-			respond.Error(w, http.StatusBadRequest, "bad_request", "invalid recipient address in bcc")
-			return
+			return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "invalid recipient address in bcc")
 		}
 	}
 	if err := rmail.ValidateAddress(req.From); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "invalid from address")
-		return
+		return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "invalid from address")
 	}
 	// The unsubscribe targets become header fields, so they are checked here,
 	// with the addresses, before anything is stored or signed.
 	if req.ListUnsubscribe != nil {
 		if err := req.ListUnsubscribe.validate(); err != nil {
-			respond.Error(w, http.StatusBadRequest, "bad_request", err.Error())
-			return
+			return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", err.Error())
 		}
 	}
 
@@ -496,10 +487,8 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	// every request. Both the draft-send and forward paths delegate to SendMessage,
 	// so they inherit this cap.
 	if !h.sendLimiter.Allow(strconv.FormatUint(uint64(claims.AccountID), 10)) {
-		w.Header().Set("Retry-After", "60")
-		respond.Error(w, http.StatusTooManyRequests, "rate_limited",
-			"Account send rate limit exceeded; try again later")
-		return
+		return zero, &endpoint.Error{Status: http.StatusTooManyRequests, Code: "rate_limited",
+			Message: "Account send rate limit exceeded; try again later", Header: http.Header{"Retry-After": {"60"}}}
 	}
 
 	// The sender must be an account the caller may send as: its own, or one
@@ -507,11 +496,9 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	sender, err := mayActAs(h.db, claims, req.From, models.CapMailSend)
 	if err != nil {
 		if errors.Is(err, errNoAccess) {
-			respond.Error(w, http.StatusForbidden, "forbidden", "You are not authorized to send from this address")
-		} else {
-			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to check the sender")
+			return zero, endpoint.Refuse(http.StatusForbidden, "forbidden", "You are not authorized to send from this address")
 		}
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to check the sender")
 	}
 	senderMailbox := *sender
 
@@ -520,18 +507,15 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	// mismatch is refused, never silently dropped or sent without one.
 	var senderDomain models.Domain
 	if err := h.db.Select("sending_policy").First(&senderDomain, senderMailbox.DomainID).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to check the sender domain's sending policy")
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to check the sender domain's sending policy")
 	}
 	switch {
 	case senderDomain.SendingPolicy == models.SendingPolicyBulk && req.ListUnsubscribe == nil:
-		respond.Error(w, http.StatusUnprocessableEntity, "list_unsubscribe_required",
+		return zero, endpoint.Refuse(http.StatusUnprocessableEntity, "list_unsubscribe_required",
 			"The sender domain sends bulk mail, so every message needs list_unsubscribe")
-		return
 	case senderDomain.SendingPolicy == models.SendingPolicyTransactional && req.ListUnsubscribe != nil:
-		respond.Error(w, http.StatusUnprocessableEntity, "list_unsubscribe_not_allowed",
+		return zero, endpoint.Refuse(http.StatusUnprocessableEntity, "list_unsubscribe_not_allowed",
 			"The sender domain sends transactional mail, which carries no List-Unsubscribe field: omit list_unsubscribe")
-		return
 	}
 
 	// RFC 8058 §4: a one-click claim counts only under a DKIM signature that
@@ -542,13 +526,11 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	if req.ListUnsubscribe != nil && req.ListUnsubscribe.HTTPS != "" {
 		signs, err := outbound.HasDKIMKey(h.db, rmail.DomainFromAddress(req.From))
 		if err != nil {
-			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to check the sender domain's DKIM key")
-			return
+			return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to check the sender domain's DKIM key")
 		}
 		if !signs {
-			respond.Error(w, http.StatusUnprocessableEntity, "dkim_required",
+			return zero, endpoint.Refuse(http.StatusUnprocessableEntity, "dkim_required",
 				"list_unsubscribe.https needs the sender domain to have a DKIM key: one-click unsubscribe must be DKIM signed")
-			return
 		}
 	}
 
@@ -560,21 +542,18 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		at := req.ScheduledAt.UTC()
 		now := time.Now().UTC()
 		if at.Before(now.Add(time.Minute)) {
-			respond.Error(w, http.StatusUnprocessableEntity, "validation_failed",
+			return zero, endpoint.Refuse(http.StatusUnprocessableEntity, "validation_failed",
 				"scheduled_at must be at least a minute in the future")
-			return
 		}
 		if at.After(now.Add(365 * 24 * time.Hour)) {
-			respond.Error(w, http.StatusUnprocessableEntity, "validation_failed",
+			return zero, endpoint.Refuse(http.StatusUnprocessableEntity, "validation_failed",
 				"scheduled_at must be within a year")
-			return
 		}
 		stored := req
 		stored.ScheduledAt = nil
 		body, err := json.Marshal(stored)
 		if err != nil {
-			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to store the scheduled message")
-			return
+			return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to store the scheduled message")
 		}
 		toJSON, _ := json.Marshal(req.To)
 		row := models.ScheduledSend{
@@ -587,11 +566,9 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 			Request:   models.JSONB(body),
 		}
 		if err := h.db.Create(&row).Error; err != nil {
-			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to store the scheduled message")
-			return
+			return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to store the scheduled message")
 		}
-		respond.Data(w, http.StatusAccepted, row)
-		return
+		return endpoint.Status[any]{Code: http.StatusAccepted, Value: scheduledMessageOf(row)}, nil
 	}
 
 	// ── Outbound pipeline execution ────────────────────────────────
@@ -676,8 +653,7 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		outPipelineCtx := pipeline.WithDB(r.Context(), h.db)
 		outResult, outErr := h.engine.Execute(outPipelineCtx, outPipelineCfg, outEmailJSON)
 		if outErr != nil {
-			respond.Error(w, http.StatusInternalServerError, "pipeline_error", "Outbound pipeline execution failed")
-			return
+			return zero, endpoint.Refuse(http.StatusInternalServerError, "pipeline_error", "Outbound pipeline execution failed")
 		}
 
 		// Base trace inputs shared by every outbound terminal branch. transport is
@@ -699,23 +675,19 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 			}
 			outTraceBase.Outcome = outcomeRejected
 			h.recordTrace(buildTrace(outTraceBase))
-			respond.Error(w, http.StatusForbidden, "rejected", rejectMsg)
-			return
+			return zero, endpoint.Refuse(http.StatusForbidden, "rejected", rejectMsg)
 		case pipeline.ActionQuarantine:
 			outTraceBase.Outcome = outcomeQuarantined
 			h.recordTrace(buildTrace(outTraceBase))
-			respond.Error(w, http.StatusForbidden, "quarantined", "Message held for review by outbound policy")
-			return
+			return zero, endpoint.Refuse(http.StatusForbidden, "quarantined", "Message held for review by outbound policy")
 		case pipeline.ActionDiscard:
 			outTraceBase.Outcome = outcomeDiscarded
 			h.recordTrace(buildTrace(outTraceBase))
-			respond.Data(w, http.StatusOK, map[string]string{"status": "discarded"})
-			return
+			return endpoint.Status[any]{Code: http.StatusOK, Value: SendDiscarded{Status: "discarded"}}, nil
 		case pipeline.ActionDefer:
 			outTraceBase.Outcome = outcomeDeferred
 			h.recordTrace(buildTrace(outTraceBase))
-			respond.Error(w, http.StatusServiceUnavailable, "deferred", "Try again later")
-			return
+			return zero, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Try again later")
 		case pipeline.ActionContinue:
 			// Stash the trace; recorded as "queued" after the sent Message row is
 			// created so message_id is non-nil.
@@ -765,8 +737,7 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		var icsErr error
 		icsData, icsErr = rmime.GenerateICS(*evt)
 		if icsErr != nil {
-			respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid calendar event: "+icsErr.Error())
-			return
+			return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "Invalid calendar event: "+icsErr.Error())
 		}
 	}
 
@@ -818,8 +789,7 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.db.Create(&sentMsg).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to save sent message")
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to save sent message")
 	}
 
 	// ── Record the queued trace ──────────────────────────────────────
@@ -851,8 +821,7 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		ICSMethod: calendarMethod(req.CalendarEvent),
 	})
 	if rawErr != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to build the outbound message")
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to build the outbound message")
 	}
 
 	// Sign the finalized outbound message over its actual transmitted bytes.
@@ -860,14 +829,12 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	// send (client retries) rather than deliver the message unsigned.
 	signedRaw, signErr := h.signOutboundDKIM(rmail.DomainFromAddress(req.From), rawMessage)
 	if signErr != nil {
-		respond.Error(w, http.StatusServiceUnavailable, "deferred", "Try again later")
-		return
+		return zero, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Try again later")
 	}
 	// The key was there when the request was checked; if the message still
 	// came back unsigned, its one-click claim must not leave.
 	if req.ListUnsubscribe != nil && req.ListUnsubscribe.HTTPS != "" && signedRaw == rawMessage {
-		respond.Error(w, http.StatusServiceUnavailable, "deferred", "Try again later")
-		return
+		return zero, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Try again later")
 	}
 	rawMessage = signedRaw
 
@@ -944,72 +911,93 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		}).FirstOrCreate(&models.Contact{})
 	}
 
-	respond.Data(w, http.StatusCreated, sentMsg)
+	return endpoint.Status[any]{Code: http.StatusCreated, Value: messageOf(sentMsg)}, nil
 }
 
-// DeliverMessage is the inbound delivery endpoint for the gateway.
-func (h *MessageHandler) DeliverMessage(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		MailboxID    uint            `json:"mailbox_id"`
-		Address      string          `json:"address"`
-		Sender       string          `json:"sender"`
-		SenderName   string          `json:"sender_name"`
-		RecipientsTo json.RawMessage `json:"recipients_to"`
-		RecipientsCc json.RawMessage `json:"recipients_cc"`
-		Subject      string          `json:"subject"`
-		BodyText     string          `json:"body_text"`
-		BodyHTML     string          `json:"body_html"`
-		MessageID    string          `json:"message_id"`
-		InReplyTo    string          `json:"in_reply_to"`
-		References   string          `json:"references"`
-		// RawMessage is base64-decoded from the wire ([]byte, not string) so the
-		// pristine RFC 2822 octets survive JSON transport unchanged — a JSON
-		// string field would mangle every non-UTF-8 byte to U+FFFD (see #173).
-		RawMessage []byte `json:"raw_message"`
-		ClientIP   string `json:"client_ip"`
-		HeloName   string `json:"helo_name"`
-		// Folder is the destination folder the message must be created in (empty =
-		// INBOX). Set by the IMAP gateway's COPY/APPEND so the message is created
-		// directly in its destination in one atomic delivery, rather than delivered
-		// to INBOX and then moved. Flags and ReceivedAt (INTERNALDATE) let COPY
-		// preserve the source message's flags/internal date and APPEND apply the
-		// client-supplied flags at creation time. A nil flag pointer / nil (or zero)
-		// ReceivedAt keeps the delivery default, so ordinary inbound mail is
-		// unaffected.
-		Folder     string     `json:"folder"`
-		IsRead     *bool      `json:"is_read"`
-		IsFlagged  *bool      `json:"is_flagged"`
-		IsStarred  *bool      `json:"is_starred"`
-		IsDraft    *bool      `json:"is_draft"`
-		ReceivedAt *time.Time `json:"received_at"`
-		// Inbound transport-security metrics (always-on, inbound-MX only). A nil
-		// ReceivedTLS means the caller is not an inbound-MX delivery, persisted as
-		// NULL. TLSCipher is accepted for wire completeness but only the version is
-		// persisted on the message.
-		ReceivedTLS *bool  `json:"received_tls"`
-		TLSVersion  string `json:"tls_version"`
-		TLSCipher   string `json:"tls_cipher"`
-	}
+// deliverMessageBody is a message a protocol gateway delivers into a mailbox, named by
+// mailbox_id or address. Every field is optional to binding: the handler checks the mailbox,
+// and the gateway sends only what it has.
+type deliverMessageBody struct {
+	MailboxID    uint            `json:"mailbox_id,omitempty"`
+	Address      string          `json:"address,omitempty"`
+	Sender       string          `json:"sender,omitempty"`
+	SenderName   string          `json:"sender_name,omitempty"`
+	RecipientsTo json.RawMessage `json:"recipients_to,omitempty"`
+	RecipientsCc json.RawMessage `json:"recipients_cc,omitempty"`
+	Subject      string          `json:"subject,omitempty"`
+	BodyText     string          `json:"body_text,omitempty"`
+	BodyHTML     string          `json:"body_html,omitempty"`
+	MessageID    string          `json:"message_id,omitempty"`
+	InReplyTo    string          `json:"in_reply_to,omitempty"`
+	References   string          `json:"references,omitempty"`
+	// RawMessage is base64-decoded from the wire ([]byte, not string) so the
+	// pristine RFC 2822 octets survive JSON transport unchanged — a JSON
+	// string field would mangle every non-UTF-8 byte to U+FFFD (see #173).
+	RawMessage []byte `json:"raw_message,omitempty"`
+	ClientIP   string `json:"client_ip,omitempty"`
+	HeloName   string `json:"helo_name,omitempty"`
+	// Folder is the destination folder the message must be created in (empty =
+	// INBOX). Set by the IMAP gateway's COPY/APPEND so the message is created
+	// directly in its destination in one atomic delivery, rather than delivered
+	// to INBOX and then moved. Flags and ReceivedAt (INTERNALDATE) let COPY
+	// preserve the source message's flags/internal date and APPEND apply the
+	// client-supplied flags at creation time. A nil flag pointer / nil (or zero)
+	// ReceivedAt keeps the delivery default, so ordinary inbound mail is
+	// unaffected.
+	Folder     string     `json:"folder,omitempty"`
+	IsRead     *bool      `json:"is_read,omitempty"`
+	IsFlagged  *bool      `json:"is_flagged,omitempty"`
+	IsStarred  *bool      `json:"is_starred,omitempty"`
+	IsDraft    *bool      `json:"is_draft,omitempty"`
+	ReceivedAt *time.Time `json:"received_at,omitempty"`
+	// Inbound transport-security metrics (always-on, inbound-MX only). A nil
+	// ReceivedTLS means the caller is not an inbound-MX delivery, persisted as
+	// NULL. TLSCipher is accepted for wire completeness but only the version is
+	// persisted on the message.
+	ReceivedTLS *bool  `json:"received_tls,omitempty"`
+	TLSVersion  string `json:"tls_version,omitempty"`
+	TLSCipher   string `json:"tls_cipher,omitempty"`
+}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
+// DeliveryProcessed is the answer to a delivery the inbound pipeline quarantined or discarded:
+// accepted, and no message made.
+type DeliveryProcessed struct {
+	Status string `json:"status" enums:"processed"`
+}
+
+// RegisterDelivery mounts inbound delivery, which only the protocol gateways call: on the
+// internal mTLS listener, or the public one where internal mTLS is off. bodyLimit is the
+// delivery body cap, which takes a full max-size message.
+func (h *MessageHandler) RegisterDelivery(rs endpoint.Routes, bodyLimit endpoint.Middleware) {
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/deliver",
+		OperationID: "deliverMessage", Summary: "Deliver a message into a mailbox (protocol gateways)", Tags: []string{"Messages"},
+		Description: "Machine to machine: no user token. The inbound pipeline decides: 201 with the message made, " +
+			"200 processed when it quarantined or discarded it, 550 rejected, 451 deferred, 422 mailbox_full " +
+			"over quota.",
+		Status: http.StatusCreated, SuccessStatuses: []int{http.StatusOK},
+		Responses: []oapifly.EndpointResponse{
+			{Status: http.StatusCreated, Description: "Delivered; the message made", Type: oapifly.TypeOf[endpoint.Data[Message]]()},
+			{Status: http.StatusOK, Description: "Quarantined or discarded by the inbound pipeline", Type: oapifly.TypeOf[endpoint.Data[DeliveryProcessed]]()},
+		},
+		Errors:   []int{http.StatusBadRequest, http.StatusNotFound, 451, 550},
+		Security: oapifly.Public, Middleware: []endpoint.Middleware{bodyLimit}}, h.deliverMessage)
+}
+
+// deliverMessage is the inbound delivery endpoint for the gateway.
+func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody) (endpoint.Status[any], error) {
+	var zero endpoint.Status[any]
 
 	var mailbox models.Mailbox
 	if req.MailboxID > 0 {
 		if err := h.db.First(&mailbox, req.MailboxID).Error; err != nil {
-			respond.Error(w, http.StatusNotFound, "mailbox_not_found", "Mailbox not found")
-			return
+			return zero, endpoint.Refuse(http.StatusNotFound, "mailbox_not_found", "Mailbox not found")
 		}
 	} else if req.Address != "" {
 		if err := repositories.FindActiveMailboxByAddress(h.db, req.Address, &mailbox); err != nil {
-			respond.Error(w, http.StatusNotFound, "mailbox_not_found", "Mailbox not found")
-			return
+			return zero, endpoint.Refuse(http.StatusNotFound, "mailbox_not_found", "Mailbox not found")
 		}
 	} else {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "mailbox_id or address required")
-		return
+		return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "mailbox_id or address required")
 	}
 
 	// Delegate to shared local delivery helper (pipeline + quota + attachments + SSE)
@@ -1041,24 +1029,21 @@ func (h *MessageHandler) DeliverMessage(w http.ResponseWriter, r *http.Request) 
 		errStr := err.Error()
 		switch {
 		case strings.HasPrefix(errStr, "rejected:"):
-			respond.Error(w, 550, "rejected", strings.TrimPrefix(errStr, "rejected: "))
+			return zero, endpoint.Refuse(550, "rejected", strings.TrimPrefix(errStr, "rejected: "))
 		case strings.HasPrefix(errStr, "deferred:"):
-			respond.Error(w, 451, "deferred", "Try again later")
+			return zero, endpoint.Refuse(451, "deferred", "Try again later")
 		case strings.HasPrefix(errStr, "mailbox_full:"):
-			respond.Error(w, http.StatusUnprocessableEntity, "mailbox_full", "Recipient mailbox is over quota")
-		default:
-			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to deliver message")
+			return zero, endpoint.Refuse(http.StatusUnprocessableEntity, "mailbox_full", "Recipient mailbox is over quota")
 		}
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to deliver message")
 	}
 
 	if msg == nil {
 		// Quarantined or discarded
-		respond.Data(w, http.StatusOK, map[string]string{"status": "processed"})
-		return
+		return endpoint.Status[any]{Code: http.StatusOK, Value: DeliveryProcessed{Status: "processed"}}, nil
 	}
 
-	respond.Data(w, http.StatusCreated, msg)
+	return endpoint.Status[any]{Code: http.StatusCreated, Value: messageOf(*msg)}, nil
 }
 
 // FolderSummary is a folder of an account, with how many messages it holds and how many of
@@ -1083,7 +1068,8 @@ type Quota struct {
 	QuotaUsedBytes int64   `json:"quota_used_bytes"`
 }
 
-// folderNameBody names a folder; an empty name is refused in the handler as "required".
+// folderNameBody names a folder; the handler refuses a name rmail.FolderNameProblem finds
+// fault with, an empty one as "required".
 type folderNameBody struct {
 	Name string `json:"name"`
 }
@@ -1110,10 +1096,41 @@ type renameFolderRequest struct {
 var folderSchemes = []string{"CookieAuth", "BearerAuth", "APIKeyAuth", "BasicAuth"}
 
 var (
-	errMailboxAccess  = endpoint.Refuse(http.StatusForbidden, "forbidden", "Access denied")
-	errNotSignedIn    = endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Authentication required")
-	errFolderRequired = endpoint.Invalid(map[string]string{"name": "required"})
+	errMailboxAccess = endpoint.Refuse(http.StatusForbidden, "forbidden", "Access denied")
+	errNotSignedIn   = endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Authentication required")
+	errFolderExists  = endpoint.Refuse(http.StatusConflict, "already_exists", "Folder already exists")
 )
+
+// folderNameRefusal is the 422 for a folder name rmail.FolderNameProblem finds fault with, or
+// nil for a good one.
+func folderNameRefusal(name string) error {
+	if problem := rmail.FolderNameProblem(name); problem != "" {
+		return endpoint.Invalid(map[string]string{"name": problem})
+	}
+	return nil
+}
+
+// listedFolders are listed whether they hold anything or not.
+var listedFolders = []string{"INBOX", "Sent", "Drafts", "Trash"}
+
+// folderExists reports whether the mailbox has the folder: one of the listedFolders, a
+// message in it, or the marker createFolder leaves.
+func (h *MessageHandler) folderExists(mailboxID uint, folder string) bool {
+	for _, listed := range listedFolders {
+		if folder == listed {
+			return true
+		}
+	}
+	var count int64
+	h.db.Model(&models.Message{}).
+		Where("mailbox_id = ? AND folder = ?", mailboxID, folder).
+		Count(&count)
+	return count > 0
+}
+
+// folderNameRule is what createFolder and renameFolder take as a name, as rmail.FolderNameProblem has it.
+const folderNameRule = "The name is valid UTF-8 of at most 255 bytes, neither blank nor beginning or ending with a space, " +
+	`with no control character and no ".."; a "/" is the hierarchy delimiter IMAP clients show. Any other name is 422.`
 
 // RegisterFolders mounts the account's folders and its quota.
 func (h *MessageHandler) RegisterFolders(rs endpoint.Routes) {
@@ -1125,10 +1142,14 @@ func (h *MessageHandler) RegisterFolders(rs endpoint.Routes) {
 		Errors: []int{http.StatusForbidden}, Security: reads}, h.listFolders)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/folders",
 		OperationID: "createFolder", Summary: "Create a new folder", Tags: tags, Status: http.StatusCreated,
+		Description: folderNameRule + " A folder that already exists is 409 already_exists, INBOX in any case, Sent, " +
+			"Drafts and Trash among them: they are listed empty or not.",
 		Errors: []int{http.StatusForbidden, http.StatusConflict}, Security: writes}, h.createFolder)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPatch, Path: "/api/v1/accounts/{id}/folders/{folder}",
 		OperationID: "renameFolder", Summary: "Rename a folder", Tags: tags,
-		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.renameFolder)
+		Description: "A standard folder (INBOX, Sent, Drafts, Trash, Spam, Archive) is not renamed, and no folder is renamed " +
+			"to one: 400 bad_request. A name another folder has is 409 already_exists: folders are not merged. " + folderNameRule,
+		Errors: []int{http.StatusBadRequest, http.StatusForbidden, http.StatusNotFound, http.StatusConflict}, Security: writes}, h.renameFolder)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/accounts/{id}/folders/{folder}",
 		OperationID: "deleteFolder", Summary: "Delete a folder and its messages", Tags: tags, Status: http.StatusNoContent,
 		Description: "A standard folder (INBOX, Sent, Drafts, Trash, Spam, Archive) cannot be deleted: 400 bad_request.",
@@ -1167,12 +1188,11 @@ func (h *MessageHandler) listFolders(r *http.Request, in accountPath) (endpoint.
 		Order("folder ASC").
 		Scan(&folders)
 
-	standardFolders := []string{"INBOX", "Sent", "Drafts", "Trash"}
 	folderMap := make(map[string]bool)
 	for _, f := range folders {
 		folderMap[f.Folder] = true
 	}
-	for _, sf := range standardFolders {
+	for _, sf := range listedFolders {
 		if !folderMap[sf] {
 			folders = append(folders, FolderSummary{Folder: sf, Total: 0, Unread: 0})
 		}
@@ -1188,18 +1208,12 @@ func (h *MessageHandler) createFolder(r *http.Request, in createFolderRequest) (
 	if err != nil {
 		return FolderName{}, err
 	}
-	name := in.Body.Name
-	if name == "" {
-		return FolderName{}, errFolderRequired
+	if err := folderNameRefusal(in.Body.Name); err != nil {
+		return FolderName{}, err
 	}
-
-	// Check if folder already has messages (i.e. exists)
-	var count int64
-	h.db.Model(&models.Message{}).
-		Where("mailbox_id = ? AND folder = ?", mailboxID, name).
-		Count(&count)
-	if count > 0 {
-		return FolderName{}, endpoint.Refuse(http.StatusConflict, "already_exists", "Folder already exists")
+	name := rmail.CanonicalFolder(in.Body.Name)
+	if h.folderExists(mailboxID, name) {
+		return FolderName{}, errFolderExists
 	}
 
 	// Create a placeholder so the folder shows up in ListFolders (store as a message-less folder marker)
@@ -1224,16 +1238,30 @@ func (h *MessageHandler) renameFolder(r *http.Request, in renameFolderRequest) (
 	if err != nil {
 		return FolderName{}, err
 	}
-	name := in.Body.Name
-	if name == "" {
-		return FolderName{}, errFolderRequired
+	from := rmail.CanonicalFolder(in.Folder)
+	if rmail.IsStandardFolder(from) {
+		return FolderName{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "Cannot rename standard folder")
+	}
+	if err := folderNameRefusal(in.Body.Name); err != nil {
+		return FolderName{}, err
+	}
+	name := rmail.CanonicalFolder(in.Body.Name)
+	if rmail.IsStandardFolder(name) {
+		return FolderName{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "Cannot rename a folder to a standard folder")
+	}
+	errNoFolder := endpoint.Refuse(http.StatusNotFound, "not_found", "Folder not found or empty")
+	if !h.folderExists(mailboxID, from) {
+		return FolderName{}, errNoFolder
+	}
+	if h.folderExists(mailboxID, name) {
+		return FolderName{}, errFolderExists
 	}
 
 	result := h.db.Model(&models.Message{}).
-		Where("mailbox_id = ? AND folder = ?", mailboxID, in.Folder).
+		Where("mailbox_id = ? AND folder = ?", mailboxID, from).
 		Update("folder", name)
 	if result.RowsAffected == 0 {
-		return FolderName{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Folder not found or empty")
+		return FolderName{}, errNoFolder
 	}
 
 	return FolderName{Name: name}, nil
@@ -1247,14 +1275,9 @@ func (h *MessageHandler) deleteFolder(r *http.Request, in folderPath) (endpoint.
 		return endpoint.Empty{}, err
 	}
 
-	folderName := in.Folder
-
-	// Prevent deletion of standard folders
-	standardFolders := []string{"INBOX", "Sent", "Drafts", "Trash", "Spam", "Archive"}
-	for _, sf := range standardFolders {
-		if folderName == sf {
-			return endpoint.Empty{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "Cannot delete standard folder")
-		}
+	folderName := rmail.CanonicalFolder(in.Folder)
+	if rmail.IsStandardFolder(folderName) {
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "Cannot delete standard folder")
 	}
 
 	// Sum message sizes for quota adjustment
@@ -1448,75 +1471,45 @@ func (h *MessageHandler) updateDraft(r *http.Request, in updateDraftRequest) (Me
 	return messageOf(draft), nil
 }
 
-// SendDraft converts a draft to a sent message by deleting it and delegating to SendMessage.
-// SendMessage checks the stored sender again, so a draft whose from the
-// caller may not send as is refused and kept (#610).
+// sendDraft sends a draft through sendMessage, and deletes the draft once it is sent.
 // POST /api/v1/messages/draft/{id}/send
-func (h *MessageHandler) SendDraft(w http.ResponseWriter, r *http.Request) {
-	claims := middleware.GetClaims(r)
-	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
-	}
-
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid message ID")
-		return
+func (h *MessageHandler) sendDraft(r *http.Request, in messagePath) (endpoint.Status[any], error) {
+	var zero endpoint.Status[any]
+	if middleware.GetClaims(r) == nil {
+		return zero, errNotSignedIn
 	}
 
 	var draft models.Message
-	if err := h.db.Where("id = ? AND is_draft = ?", id, true).First(&draft).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "Draft not found")
-		return
+	if err := h.db.Where("id = ? AND is_draft = ?", in.ID, true).First(&draft).Error; err != nil {
+		return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "Draft not found")
 	}
-
-	if !h.verifyMessageOwnership(w, r, &draft, models.CapMailWrite) {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
+	if !h.verifyMessageOwnership(nil, r, &draft, models.CapMailWrite) {
+		return zero, errMessageAccess
 	}
 
 	var toList []string
 	_ = json.Unmarshal(draft.RecipientsTo, &toList)
 	if len(toList) == 0 {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Draft has no recipients")
-		return
+		return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "Draft has no recipients")
 	}
-
 	var ccList []string
 	_ = json.Unmarshal(draft.RecipientsCc, &ccList)
 
-	sendBody := map[string]interface{}{
-		"from":        draft.Sender,
-		"to":          toList,
-		"cc":          ccList,
-		"subject":     draft.Subject,
-		"body_text":   draft.BodyText,
-		"body_html":   draft.BodyHTML,
-		"in_reply_to": draft.InReplyTo,
+	sent, err := h.sendMessage(r, sendMessageRequest{
+		From:      draft.Sender,
+		To:        toList,
+		Cc:        ccList,
+		Subject:   draft.Subject,
+		BodyText:  draft.BodyText,
+		BodyHTML:  draft.BodyHTML,
+		InReplyTo: draft.InReplyTo,
+	})
+	if err != nil {
+		return zero, err
 	}
-	bodyBytes, _ := json.Marshal(sendBody)
-
-	// Use a recorder to capture the send response so we only delete the
-	// draft if the send actually succeeds.
-	newReq, _ := http.NewRequestWithContext(r.Context(), "POST", "/api/v1/messages/send", strings.NewReader(string(bodyBytes)))
-	newReq.Header.Set("Content-Type", "application/json")
-	newReq.Header.Set("Authorization", r.Header.Get("Authorization"))
-
-	rec := httptest.NewRecorder()
-	h.SendMessage(rec, newReq)
-
-	// Only delete the draft if send succeeded
-	if rec.Code >= 200 && rec.Code < 300 {
-		h.db.Delete(&draft)
-	}
-
-	// Copy recorded response to the actual ResponseWriter
-	for k, v := range rec.Header() {
-		w.Header()[k] = v
-	}
-	w.WriteHeader(rec.Code)
-	_, _ = w.Write(rec.Body.Bytes())
+	// Only a sent draft is deleted: a refused send keeps it to try again.
+	h.db.Delete(&draft)
+	return sent, nil
 }
 
 // GetThread returns all messages sharing the same thread_id.
@@ -1537,103 +1530,56 @@ func (h *MessageHandler) getThread(r *http.Request, in threadRequest) (endpoint.
 	return endpoint.List[Message]{Data: messagesOf(messages)}, nil
 }
 
-// GetRawMessage returns the raw RFC 2822 message content.
+// getRawMessage returns the raw RFC 2822 message content, byte for byte.
 // GET /api/v1/messages/{id}/raw
-func (h *MessageHandler) GetRawMessage(w http.ResponseWriter, r *http.Request) {
-	claims := middleware.GetClaims(r)
-	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
-	}
-
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+func (h *MessageHandler) getRawMessage(r *http.Request, in messagePath) (endpoint.Document, error) {
+	msg, err := h.ownedMessage(r, in.ID, models.CapMailRead)
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid message ID")
-		return
+		return endpoint.Document{}, err
 	}
-
-	var msg models.Message
-	if err := h.db.First(&msg, id).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "message_not_found", "Message not found")
-		return
-	}
-
-	if !h.verifyMessageOwnership(w, r, &msg, models.CapMailRead) {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
-	}
-
 	if msg.RawMessage == "" {
-		respond.Error(w, http.StatusNotFound, "not_found", "Raw message not available")
-		return
+		return endpoint.Document{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Raw message not available")
 	}
-
-	w.Header().Set("Content-Type", "message/rfc822")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(msg.RawMessage))
+	return endpoint.Document{ContentType: "message/rfc822", Body: []byte(msg.RawMessage)}, nil
 }
 
-// ForwardMessage forwards an existing message to new recipients.
+// forwardRequest forwards message {id}. from and to are checked in the handler, as they always
+// were: both are required.
+type forwardRequest struct {
+	ID   uint32      `path:"id" minimum:"1"`
+	Body forwardBody `body:""`
+}
+
+type forwardBody struct {
+	From     string   `json:"from,omitempty"`
+	To       []string `json:"to,omitempty"`
+	BodyText string   `json:"body_text,omitempty"`
+}
+
+// forwardMessage forwards an existing message to new recipients, through sendMessage.
 // POST /api/v1/messages/{id}/forward
-func (h *MessageHandler) ForwardMessage(w http.ResponseWriter, r *http.Request) {
-	claims := middleware.GetClaims(r)
-	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
-	}
-
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+func (h *MessageHandler) forwardMessage(r *http.Request, in forwardRequest) (endpoint.Status[any], error) {
+	var zero endpoint.Status[any]
+	original, err := h.ownedMessage(r, in.ID, models.CapMailRead)
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid message ID")
-		return
+		return zero, err
 	}
-
-	var original models.Message
-	if err := h.db.First(&original, id).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "message_not_found", "Message not found")
-		return
-	}
-
-	if !h.verifyMessageOwnership(w, r, &original, models.CapMailRead) {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
-	}
-
-	var req struct {
-		From     string   `json:"from"`
-		To       []string `json:"to"`
-		BodyText string   `json:"body_text"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
-
+	req := in.Body
 	if req.From == "" || len(req.To) == 0 {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "from and to are required")
-		return
+		return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "from and to are required")
 	}
 
 	// Build the forwarded bodies. Both parts carry the note and the header, so a
 	// client showing the HTML part sees what a client showing the text part sees
 	// (issue #286).
 	fwdText, fwdHTML := forwardBodies(req.BodyText, &original)
-
-	// Build the send request body and delegate to SendMessage
-	sendBody := map[string]interface{}{
-		"from":      req.From,
-		"to":        req.To,
-		"subject":   "Fwd: " + original.Subject,
-		"body_text": fwdText,
-		"body_html": fwdHTML,
-	}
-	bodyBytes, _ := json.Marshal(sendBody)
-
-	newReq, _ := http.NewRequestWithContext(r.Context(), "POST", "/api/v1/messages/send", strings.NewReader(string(bodyBytes)))
-	newReq.Header.Set("Content-Type", "application/json")
-	newReq.Header.Set("Authorization", r.Header.Get("Authorization"))
-
-	h.SendMessage(w, newReq)
+	return h.sendMessage(r, sendMessageRequest{
+		From:     req.From,
+		To:       req.To,
+		Subject:  "Fwd: " + original.Subject,
+		BodyText: fwdText,
+		BodyHTML: fwdHTML,
+	})
 }
 
 // forwardBodies builds the text and HTML bodies of a forwarded message: the

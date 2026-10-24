@@ -91,8 +91,8 @@ func TestSendDraft_RefusesAStoredSenderTheCallerMayNotSendAs(t *testing.T) {
 
 	h := NewMessageHandler(tx, nil, nil, "", nil)
 	rr := httptest.NewRecorder()
-	h.SendDraft(rr, authzRequest(http.MethodPost, "/api/v1/messages/draft/"+uintToStr(draft.ID)+"/send",
-		fx.attackerMailbox.ID, map[string]string{"id": uintToStr(draft.ID)}, ""))
+	composeRoute(h)(rr, sendingAs(httptest.NewRequest(http.MethodPost,
+		"/api/v1/messages/draft/"+uintToStr(draft.ID)+"/send", nil), fx.attackerMailbox.ID))
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d (%s)", rr.Code, rr.Body.String())
 	}

@@ -336,10 +336,17 @@ first alone.
      --set mailserver.domain=example.com \
      --set api.ingress.enabled=true \
      --set api.ingress.className=nginx \
-     --set api.ingress.host=api.example.com \
+     --set api.ingress.host=mx.example.com \
      --set api.ingress.tls.enabled=true \
      --set api.ingress.tls.secretName=restmail-api-tls
    ```
+
+   Besides `api.ingress.path` (`/api`), the ingress sends two documents at its
+   host's root to the API, exactly: `/.well-known/restmail`, which another
+   REST Mail server fetches from the MX host to learn that a domain speaks
+   RESTMAIL, and `/.well-known/smtp-tlsrpt`, where TLS-RPT reports are posted
+   (RFC 8460). For RESTMAIL discovery to find the server, the API's host has to
+   be the MX host, `mailserver.hostname`.
 
 ## Install (development against rest-mail/testbed in kind/k3s)
 

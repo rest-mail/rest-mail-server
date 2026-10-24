@@ -160,7 +160,8 @@ address.
 - **It prints the records a domain needs, and checks them.** For each domain,
   `chore dns:show` lists the mail host's A record, the MX, an SPF record
   (`v=spf1 mx -all`, naming the MX rather than an address, so moving the server
-  changes one A record), a DMARC record at `p=reject`, the DKIM key, and the
+  changes one A record), a DMARC record at the domain's own policy (`p=none`
+  until an admin raises it), the DKIM key, and the
   PTR to ask the address's owner for. `chore dns:check` compares them with what
   is published ([`internal/dns/mail_records.go`](../../../internal/dns/mail_records.go)).
 - **The server never configures its own public address.** It comes from

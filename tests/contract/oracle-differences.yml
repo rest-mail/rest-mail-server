@@ -49,7 +49,7 @@
 # Domains (#645)
 
 - operation: "*"
-  difference: "response 2* application/json.properties.data*required: openapi.yaml [\"active\",\"created_at\",\"default_quota_bytes\",\"id\",\"name\",\"sending_policy\",\"server_type\",\"updated_at\"], generated [\"active\",\"created_at\",\"default_quota_bytes\",\"dkim_selector\",\"id\",\"name\",\"sending_policy\",\"server_type\",\"updated_at\"]"
+  difference: "response 2* application/json.properties.data*required: openapi.yaml [\"active\",\"created_at\",\"default_quota_bytes\",\"dmarc_policy\",\"id\",\"name\",\"sending_policy\",\"server_type\",\"updated_at\"], generated [\"active\",\"created_at\",\"default_quota_bytes\",\"dkim_selector\",\"dmarc_policy\",\"id\",\"name\",\"sending_policy\",\"server_type\",\"updated_at\"]"
   reason: >-
     A domain always carries dkim_selector, empty while it has no key, so it is required.
     openapi.yaml marks it optional.
@@ -74,6 +74,11 @@
   reason: >-
     go-oapifly does not describe defaults yet. The handler's default for a server_type left
     out, empty or null is traditional.
+- operation: createDomain
+  difference: "request body application/json.properties.dmarc_policy.default: openapi.yaml \"none\", generated absent"
+  reason: >-
+    go-oapifly does not describe defaults yet. The handler's default for a dmarc_policy left
+    out or null is none (#729).
 - operation: updateDomain
   difference: "request body application/json.properties.*.type: openapi.yaml *, generated [*\"null\"*]"
   reason: Null leaves the field unchanged, as the handler always did.
@@ -1279,7 +1284,7 @@
   difference: "request body application/json.properties.key_pem.minLength: openapi.yaml absent, generated 1"
   reason: Binding enforces the existing required positive domain ID and nonempty PEM fields; broken field rules now answer 422 before lookup.
 - operation: createCertificate
-  difference: "response 201 application/json.properties.data.properties.domain: openapi.yaml absent, generated {\"additionalProperties\":false,\"properties\":{\"active\":{\"type\":\"boolean\"},\"created_at\":{\"format\":\"date-time\",\"type\":\"string\"},\"default_quota_bytes\":{\"format\":\"int64\",\"type\":\"integer\"},\"dkim_selector\":{\"type\":\"string\"},\"id\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"sending_policy\":{\"enum\":[\"\",\"bulk\",\"transactional\"],\"type\":\"string\"},\"server_type\":{\"enum\":[\"restmail\",\"traditional\"],\"type\":\"string\"},\"updated_at\":{\"format\":\"date-time\",\"type\":\"string\"}},\"required\":[\"active\",\"created_at\",\"default_quota_bytes\",\"dkim_selector\",\"id\",\"name\",\"sending_policy\",\"server_type\",\"updated_at\"],\"type\":\"object\"}"
+  difference: "response 201 application/json.properties.data.properties.domain: openapi.yaml absent, generated {\"additionalProperties\":false,\"properties\":{\"active\":{\"type\":\"boolean\"},\"created_at\":{\"format\":\"date-time\",\"type\":\"string\"},\"default_quota_bytes\":{\"format\":\"int64\",\"type\":\"integer\"},\"dkim_selector\":{\"type\":\"string\"},\"dmarc_policy\":{\"enum\":[\"none\",\"quarantine\",\"reject\"],\"type\":\"string\"},\"id\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"sending_policy\":{\"enum\":[\"\",\"bulk\",\"transactional\"],\"type\":\"string\"},\"server_type\":{\"enum\":[\"restmail\",\"traditional\"],\"type\":\"string\"},\"updated_at\":{\"format\":\"date-time\",\"type\":\"string\"}},\"required\":[\"active\",\"created_at\",\"default_quota_bytes\",\"dkim_selector\",\"dmarc_policy\",\"id\",\"name\",\"sending_policy\",\"server_type\",\"updated_at\"],\"type\":\"object\"}"
   reason: Certificate list and upload already return their preloaded public domain association. The API now owns this type, with no certificate or domain private keys; the oracle omits the association.
 - operation: createCertificate
   difference: "response 404: generated only"
@@ -1288,7 +1293,7 @@
   difference: "response 200 application/json.properties.data.allOf: openapi.yaml [{\"properties\":{\"auto_renew\":{\"type\":\"boolean\"},\"created_at\":{\"format\":\"date-time\",\"type\":\"string\"},\"domain_id\":{\"type\":\"integer\"},\"id\":{\"type\":\"integer\"},\"issuer\":{\"type\":\"string\"},\"not_after\":{\"format\":\"date-time\",\"type\":\"string\"},\"not_before\":{\"format\":\"date-time\",\"type\":\"string\"},\"updated_at\":{\"format\":\"date-time\",\"type\":\"string\"}},\"required\":[\"auto_renew\",\"created_at\",\"domain_id\",\"id\",\"issuer\",\"not_after\",\"not_before\",\"updated_at\"],\"type\":\"object\"},{\"properties\":{\"cert_pem\":{\"type\":\"string\"}},\"required\":[\"cert_pem\"],\"type\":\"object\"}], generated absent"
   reason: The API details type describes the existing flat certificate response, including its public PEM and preloaded public domain association. The oracle uses allOf and omits the domain; timestamps retain their existing RFC3339 second precision.
 - operation: getCertificate
-  difference: "response 200 application/json.properties.data.properties: openapi.yaml absent, generated {\"auto_renew\":{\"type\":\"boolean\"},\"cert_pem\":{\"type\":\"string\"},\"created_at\":{\"format\":\"date-time\",\"type\":\"string\"},\"domain\":{\"additionalProperties\":false,\"properties\":{\"active\":{\"type\":\"boolean\"},\"created_at\":{\"format\":\"date-time\",\"type\":\"string\"},\"default_quota_bytes\":{\"format\":\"int64\",\"type\":\"integer\"},\"dkim_selector\":{\"type\":\"string\"},\"id\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"sending_policy\":{\"enum\":[\"\",\"bulk\",\"transactional\"],\"type\":\"string\"},\"server_type\":{\"enum\":[\"restmail\",\"traditional\"],\"type\":\"string\"},\"updated_at\":{\"format\":\"date-time\",\"type\":\"string\"}},\"required\":[\"active\",\"created_at\",\"default_quota_bytes\",\"dkim_selector\",\"id\",\"name\",\"sending_policy\",\"server_type\",\"updated_at\"],\"type\":\"object\"},\"domain_id\":{\"type\":\"integer\"},\"id\":{\"type\":\"integer\"},\"issuer\":{\"type\":\"string\"},\"not_after\":{\"format\":\"date-time\",\"type\":\"string\"},\"not_before\":{\"format\":\"date-time\",\"type\":\"string\"},\"updated_at\":{\"format\":\"date-time\",\"type\":\"string\"}}"
+  difference: "response 200 application/json.properties.data.properties: openapi.yaml absent, generated {\"auto_renew\":{\"type\":\"boolean\"},\"cert_pem\":{\"type\":\"string\"},\"created_at\":{\"format\":\"date-time\",\"type\":\"string\"},\"domain\":{\"additionalProperties\":false,\"properties\":{\"active\":{\"type\":\"boolean\"},\"created_at\":{\"format\":\"date-time\",\"type\":\"string\"},\"default_quota_bytes\":{\"format\":\"int64\",\"type\":\"integer\"},\"dkim_selector\":{\"type\":\"string\"},\"dmarc_policy\":{\"enum\":[\"none\",\"quarantine\",\"reject\"],\"type\":\"string\"},\"id\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"sending_policy\":{\"enum\":[\"\",\"bulk\",\"transactional\"],\"type\":\"string\"},\"server_type\":{\"enum\":[\"restmail\",\"traditional\"],\"type\":\"string\"},\"updated_at\":{\"format\":\"date-time\",\"type\":\"string\"}},\"required\":[\"active\",\"created_at\",\"default_quota_bytes\",\"dkim_selector\",\"dmarc_policy\",\"id\",\"name\",\"sending_policy\",\"server_type\",\"updated_at\"],\"type\":\"object\"},\"domain_id\":{\"type\":\"integer\"},\"id\":{\"type\":\"integer\"},\"issuer\":{\"type\":\"string\"},\"not_after\":{\"format\":\"date-time\",\"type\":\"string\"},\"not_before\":{\"format\":\"date-time\",\"type\":\"string\"},\"updated_at\":{\"format\":\"date-time\",\"type\":\"string\"}}"
   reason: The API details type describes the existing flat certificate response, including its public PEM and preloaded public domain association. The oracle uses allOf and omits the domain; timestamps retain their existing RFC3339 second precision.
 - operation: getCertificate
   difference: "response 200 application/json.properties.data.required: openapi.yaml absent, generated [\"auto_renew\",\"cert_pem\",\"created_at\",\"domain_id\",\"id\",\"issuer\",\"not_after\",\"not_before\",\"updated_at\"]"
@@ -1306,7 +1311,7 @@
   difference: "parameter query offset: generated only"
   reason: The existing certificate list reads limit and offset, with the standard defaults and cap; the oracle omits these parameters.
 - operation: listCertificates
-  difference: "response 200 application/json.properties.data.items.properties.domain: openapi.yaml absent, generated {\"additionalProperties\":false,\"properties\":{\"active\":{\"type\":\"boolean\"},\"created_at\":{\"format\":\"date-time\",\"type\":\"string\"},\"default_quota_bytes\":{\"format\":\"int64\",\"type\":\"integer\"},\"dkim_selector\":{\"type\":\"string\"},\"id\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"sending_policy\":{\"enum\":[\"\",\"bulk\",\"transactional\"],\"type\":\"string\"},\"server_type\":{\"enum\":[\"restmail\",\"traditional\"],\"type\":\"string\"},\"updated_at\":{\"format\":\"date-time\",\"type\":\"string\"}},\"required\":[\"active\",\"created_at\",\"default_quota_bytes\",\"dkim_selector\",\"id\",\"name\",\"sending_policy\",\"server_type\",\"updated_at\"],\"type\":\"object\"}"
+  difference: "response 200 application/json.properties.data.items.properties.domain: openapi.yaml absent, generated {\"additionalProperties\":false,\"properties\":{\"active\":{\"type\":\"boolean\"},\"created_at\":{\"format\":\"date-time\",\"type\":\"string\"},\"default_quota_bytes\":{\"format\":\"int64\",\"type\":\"integer\"},\"dkim_selector\":{\"type\":\"string\"},\"dmarc_policy\":{\"enum\":[\"none\",\"quarantine\",\"reject\"],\"type\":\"string\"},\"id\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"sending_policy\":{\"enum\":[\"\",\"bulk\",\"transactional\"],\"type\":\"string\"},\"server_type\":{\"enum\":[\"restmail\",\"traditional\"],\"type\":\"string\"},\"updated_at\":{\"format\":\"date-time\",\"type\":\"string\"}},\"required\":[\"active\",\"created_at\",\"default_quota_bytes\",\"dkim_selector\",\"dmarc_policy\",\"id\",\"name\",\"sending_policy\",\"server_type\",\"updated_at\"],\"type\":\"object\"}"
   reason: Certificate list and upload already return their preloaded public domain association. The API now owns this type, with no certificate or domain private keys; the oracle omits the association.
 - operation: listCertificates
   difference: "response 200 application/json.properties.pagination: openapi.yaml absent, generated {\"additionalProperties\":false,\"properties\":{\"cursor\":{\"type\":\"string\"},\"has_more\":{\"type\":\"boolean\"},\"total\":{\"format\":\"int64\",\"type\":\"integer\"}},\"required\":[\"has_more\"],\"type\":[\"null\",\"object\"]}"
@@ -1986,7 +1991,13 @@
   difference: "response 400: generated only"
   reason: >-
     A body that is not JSON, or not an object, is 400 bad_request; before binding it was
-    answered 422 name required.
+    answered 422 name required. A standard folder (INBOX, Sent, Drafts, Trash, Spam, Archive)
+    is not renamed, and no folder is renamed to one: 400 bad_request (#757).
+- operation: renameFolder
+  difference: "response 409: generated only"
+  reason: >-
+    A name another folder has is 409 already_exists: a rename no longer merges two folders
+    into one (#757).
 - operation: renameFolder
   difference: "request body application/json.properties.name.minLength: openapi.yaml 1, generated absent"
   reason: >-
@@ -2042,6 +2053,11 @@
   reason: >-
     The mail routes throttle refused HTTP Basic credentials at login's rate (429
     rate_limited).
+- operation: getRawMessage
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
 - operation: updateMessage
   difference: "response 429: generated only"
   reason: >-
@@ -2067,6 +2083,16 @@
   reason: >-
     The mail routes throttle refused HTTP Basic credentials at login's rate (429
     rate_limited).
+- operation: getAttachment
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: getAttachment
+  difference: "response 200 application/octet-stream: openapi.yaml {\"format\":\"binary\",\"type\":\"string\"}, generated absent"
+  reason: >-
+    The attachment's bytes are the body, described as OpenAPI 3.1 describes one: the media
+    type with no schema. format binary is OpenAPI 3.0's spelling of the same thing.
 - operation: listMessages
   difference: "response 200 application/json.properties.data*.required: *"
   reason: >-
@@ -2449,6 +2475,11 @@
 - operation: restmailDeliver
   difference: "response 400: generated only"
   reason: Binding answers 400 bad_request for a body that is not JSON or not an object, as the handler did.
+- operation: restmailDiscover
+  difference: "response 200 header Cache-Control: generated only"
+  reason: >-
+    Every answer is no-store, refusals too: a sender must not remember a discovery, nor a
+    failure as if it were one. The oracle says so in prose only.
 
 # Composing: drafts, scheduled sends and calendar replies (#638)
 
@@ -2799,3 +2830,580 @@
   reason: >-
     The body is optional: a browser sends none, its refresh token being the cookie; a native
     client sends its refresh token.
+
+# Inbound delivery from the protocol gateways (#642)
+
+- operation: deliverMessage
+  difference: "response 201 application/json.properties.data*.required: *"
+  reason: >-
+    A message always writes every field its model writes; the oracle marks some of them
+    optional and omits others.
+- operation: deliverMessage
+  difference: "response 201 application/json.properties.data*.properties.tls_version: openapi.yaml absent, generated *"
+  reason: >-
+    The negotiated TLS version of an encrypted inbound-MX delivery; written when known. The
+    oracle omits it.
+- operation: deliverMessage
+  difference: "response 201 application/json.properties.data*.properties.received_tls: openapi.yaml absent, generated *"
+  reason: >-
+    Whether an inbound-MX delivery arrived encrypted; written when known. The oracle omits it.
+- operation: deliverMessage
+  difference: "response 201 application/json.properties.data*.properties.is_dsn: openapi.yaml absent, generated *"
+  reason: >-
+    Marks a delivery status notification this server generated. The oracle omits it.
+- operation: deliverMessage
+  difference: "response 201 application/json.properties.data*.properties.mailbox: openapi.yaml absent, generated *"
+  reason: >-
+    The model always wrote its unloaded mailbox association, as an empty mailbox; the API
+    keeps writing it so the bytes are unchanged. The oracle omits it.
+- operation: deliverMessage
+  difference: "response 201 application/json.properties.data*.properties.recipients_to.*"
+  reason: >-
+    The recipients are the JSON the message was stored with, written as stored: a gateway
+    delivery keeps what the gateway sent, so the API does not narrow it to the oracle's array
+    of strings.
+- operation: deliverMessage
+  difference: "response 201 application/json.properties.data*.properties.recipients_cc.*"
+  reason: >-
+    The recipients are the JSON the message was stored with, written as stored: a gateway
+    delivery keeps what the gateway sent, so the API does not narrow it to the oracle's array
+    of strings.
+- operation: deliverMessage
+  difference: "response 201 application/json.properties.data*.properties.headers.oneOf: *"
+  reason: >-
+    The headers are the JSON the message was stored with, written as stored; the oracle's
+    oneOf describes the usual shapes.
+- operation: deliverMessage
+  difference: "response 201 application/json.properties.data*.properties.calendar_events: openapi.yaml absent, generated *"
+  reason: >-
+    The calendar invitations parsed from the message, stored JSON written as stored; omitted
+    when there are none. The oracle omits them.
+- operation: deliverMessage
+  difference: "request body application/json.properties.folder: openapi.yaml absent, generated *"
+  reason: >-
+    The IMAP gateway's COPY and APPEND, and the inbound MX, send it: the destination folder,
+    the flags and internal date to keep, the mailbox by id, and how the message arrived (TLS).
+    The oracle omits it.
+- operation: deliverMessage
+  difference: "request body application/json.properties.is_draft: openapi.yaml absent, generated *"
+  reason: >-
+    The IMAP gateway's COPY and APPEND, and the inbound MX, send it: the destination folder,
+    the flags and internal date to keep, the mailbox by id, and how the message arrived (TLS).
+    The oracle omits it.
+- operation: deliverMessage
+  difference: "request body application/json.properties.is_flagged: openapi.yaml absent, generated *"
+  reason: >-
+    The IMAP gateway's COPY and APPEND, and the inbound MX, send it: the destination folder,
+    the flags and internal date to keep, the mailbox by id, and how the message arrived (TLS).
+    The oracle omits it.
+- operation: deliverMessage
+  difference: "request body application/json.properties.is_read: openapi.yaml absent, generated *"
+  reason: >-
+    The IMAP gateway's COPY and APPEND, and the inbound MX, send it: the destination folder,
+    the flags and internal date to keep, the mailbox by id, and how the message arrived (TLS).
+    The oracle omits it.
+- operation: deliverMessage
+  difference: "request body application/json.properties.is_starred: openapi.yaml absent, generated *"
+  reason: >-
+    The IMAP gateway's COPY and APPEND, and the inbound MX, send it: the destination folder,
+    the flags and internal date to keep, the mailbox by id, and how the message arrived (TLS).
+    The oracle omits it.
+- operation: deliverMessage
+  difference: "request body application/json.properties.mailbox_id: openapi.yaml absent, generated *"
+  reason: >-
+    The IMAP gateway's COPY and APPEND, and the inbound MX, send it: the destination folder,
+    the flags and internal date to keep, the mailbox by id, and how the message arrived (TLS).
+    The oracle omits it.
+- operation: deliverMessage
+  difference: "request body application/json.properties.received_at: openapi.yaml absent, generated *"
+  reason: >-
+    The IMAP gateway's COPY and APPEND, and the inbound MX, send it: the destination folder,
+    the flags and internal date to keep, the mailbox by id, and how the message arrived (TLS).
+    The oracle omits it.
+- operation: deliverMessage
+  difference: "request body application/json.properties.received_tls: openapi.yaml absent, generated *"
+  reason: >-
+    The IMAP gateway's COPY and APPEND, and the inbound MX, send it: the destination folder,
+    the flags and internal date to keep, the mailbox by id, and how the message arrived (TLS).
+    The oracle omits it.
+- operation: deliverMessage
+  difference: "request body application/json.properties.tls_cipher: openapi.yaml absent, generated *"
+  reason: >-
+    The IMAP gateway's COPY and APPEND, and the inbound MX, send it: the destination folder,
+    the flags and internal date to keep, the mailbox by id, and how the message arrived (TLS).
+    The oracle omits it.
+- operation: deliverMessage
+  difference: "request body application/json.properties.tls_version: openapi.yaml absent, generated *"
+  reason: >-
+    The IMAP gateway's COPY and APPEND, and the inbound MX, send it: the destination folder,
+    the flags and internal date to keep, the mailbox by id, and how the message arrived (TLS).
+    The oracle omits it.
+- operation: deliverMessage
+  difference: "request body application/json.properties.address.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    Addresses are taken as the gateway gives them, internationalised ones included (EAI): the
+    mailbox is looked up as spelled, and a bounce's sender is empty.
+- operation: deliverMessage
+  difference: "request body application/json.properties.sender.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    Addresses are taken as the gateway gives them, internationalised ones included (EAI): the
+    mailbox is looked up as spelled, and a bounce's sender is empty.
+- operation: deliverMessage
+  difference: "request body application/json.properties.recipients_to.*"
+  reason: >-
+    The recipients are the JSON the gateway sent, kept as sent: the API does not narrow it to
+    the oracle's array of addresses.
+- operation: deliverMessage
+  difference: "request body application/json.properties.recipients_cc.*"
+  reason: >-
+    The recipients are the JSON the gateway sent, kept as sent: the API does not narrow it to
+    the oracle's array of addresses.
+- operation: deliverMessage
+  difference: "request body application/json.required: openapi.yaml [\"address\",\"sender\"], generated absent"
+  reason: >-
+    The handler takes a mailbox_id or an address, and refuses neither with 400 (mailbox_id or
+    address required); a bounce's sender is empty.
+- operation: deliverMessage
+  difference: "response 200: generated only"
+  reason: >-
+    The inbound pipeline may quarantine or discard the message: 200 processed, and no message
+    made.
+- operation: deliverMessage
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON, or one that names no mailbox, is 400 bad_request.
+- operation: deliverMessage
+  difference: "response 404: generated only"
+  reason: >-
+    The mailbox named is not here: 404 mailbox_not_found.
+- operation: deliverMessage
+  difference: "response 451: generated only"
+  reason: >-
+    The inbound pipeline deferred the message; the gateway answers its SMTP peer 451, the code
+    this answer carries.
+- operation: deliverMessage
+  difference: "response 550: generated only"
+  reason: >-
+    The inbound pipeline rejected the message; the gateway answers its SMTP peer 550 with the
+    pipeline's words, the code this answer carries.
+- operation: checkMailboxAddress
+  difference: "parameter query address schema.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    Any address is looked up as spelled, internationalised ones included; one that is not a
+    mailbox here is 200 with exists false.
+- operation: checkMailboxAddress
+  difference: "response 200 application/json.properties.data.required: openapi.yaml [\"exists\"], generated [\"address\",\"exists\"]"
+  reason: >-
+    The address is always written: the one asked about, or the mailbox's own spelling of it.
+- operation: checkMailboxAddress
+  difference: "response 400: generated only"
+  reason: >-
+    A blank address is 400 bad_request (address query parameter required); a missing one is
+    binding's 422.
+
+# Owner keys and the reset token (#633)
+
+- operation: ownerChallenge
+  difference: "response 429: generated only"
+  reason: >-
+    The owner endpoints are throttled at login's per-IP rate in a bucket of their own, so the
+    CLI's requests do not use up what the owner then needs to sign in: 429 rate_limited with
+    Retry-After.
+- operation: ownerToken
+  difference: "response 429: generated only"
+  reason: >-
+    The owner endpoints are throttled at login's per-IP rate in a bucket of their own, so the
+    CLI's requests do not use up what the owner then needs to sign in: 429 rate_limited with
+    Retry-After.
+- operation: ownerStatus
+  difference: "response 429: generated only"
+  reason: >-
+    The owner endpoints are throttled at login's per-IP rate in a bucket of their own, so the
+    CLI's requests do not use up what the owner then needs to sign in: 429 rate_limited with
+    Retry-After.
+- operation: resetAdmin
+  difference: "response 429: generated only"
+  reason: >-
+    Throttled at login's per-IP rate: it guesses at a secret. 429 rate_limited with Retry-After.
+- operation: ownerToken
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON, or not an object, is 400 bad_request.
+- operation: ownerStatus
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON, or not an object, is 400 bad_request.
+- operation: resetAdmin
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON, or not an object, is 400 bad_request.
+- operation: ownerToken
+  difference: "request body application/json.required: openapi.yaml [\"address\",\"challenge\",\"public_key\",\"purpose\",\"signature\"], generated absent"
+  reason: >-
+    Checked in the handler with their documented wording: a purpose other than reset-admin is
+    422 purpose, a missing address 422 address ("required for reset-admin: the account to
+    reset"), and a missing challenge, key or signature fails the signed message as a wrong one
+    does (401 invalid_challenge or 403 not_owner).
+- operation: ownerToken
+  difference: "request body application/json.properties.purpose.enum: openapi.yaml [\"reset-admin\"], generated absent"
+  reason: >-
+    Any other purpose is 422 purpose in the handler (must be "reset-admin"); the purpose is part
+    of what is signed.
+- operation: ownerToken
+  difference: "request body application/json.properties.address.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    The address is part of what is signed and is looked up as given; one that is not an
+    account is 404 no_such_account.
+- operation: ownerToken
+  difference: "request body application/json.properties.lifetime_seconds.minimum: openapi.yaml 0, generated absent"
+  reason: >-
+    Checked in the handler with one message for both bounds: must be between 0 (the default,
+    15 minutes) and 86400.
+- operation: ownerToken
+  difference: "request body application/json.properties.lifetime_seconds.maximum: openapi.yaml 86400, generated absent"
+  reason: >-
+    Checked in the handler with one message for both bounds: must be between 0 (the default,
+    15 minutes) and 86400.
+- operation: ownerToken
+  difference: "request body application/json.properties.signature.format: openapi.yaml \"byte\", generated absent"
+  reason: >-
+    Decoded in the handler, where a signature that is not base64 is 422 signature (must be
+    base64).
+- operation: ownerStatus
+  difference: "request body application/json.properties.signature.format: openapi.yaml \"byte\", generated absent"
+  reason: >-
+    Decoded in the handler, where a signature that is not base64 is 422 signature (must be
+    base64).
+- operation: ownerStatus
+  difference: "request body application/json.required: openapi.yaml [\"challenge\",\"public_key\",\"signature\"], generated absent"
+  reason: >-
+    A missing challenge, key or signature fails the signed message as a wrong one does: 401
+    invalid_challenge or 403 not_status_key.
+- operation: resetAdmin
+  difference: "request body application/json.required: openapi.yaml [\"password\",\"token\"], generated absent"
+  reason: >-
+    Checked when the token is redeemed: a missing token is the 401 invalid_token a wrong one
+    is, and a missing password the 422 password a short one is, which does not spend the token.
+- operation: resetAdmin
+  difference: "request body application/json.properties.password.minLength: openapi.yaml 12, generated absent"
+  reason: >-
+    The password is counted in bytes, as bootstrap and a password change count it, when the
+    token is redeemed; minLength would count characters.
+- operation: resetAdmin
+  difference: "request body application/json.properties.client.enum: openapi.yaml [\"native\"], generated absent"
+  reason: >-
+    An empty client means a browser, as an absent one does; any other value is 422 client in
+    the handler (must be "native" or omitted).
+- operation: resetAdmin
+  difference: "response 200 application/json.properties.data.properties.setup_required.items.enum: openapi.yaml [\"password\",\"two_factor\"], generated absent"
+  reason: >-
+    The steps an account in setup still owes; the type states the list, not its two values.
+- operation: resetAdmin
+  difference: "response 200 application/json.properties.data.properties.user.properties.email.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    The account's address as stored; the answer does not promise a format.
+- operation: resetAdmin
+  difference: "response 200 header Set-Cookie: generated only"
+  reason: >-
+    A browser's session is set, rotated and ended with cookies: restmail_access and
+    restmail_refresh (httpOnly) and restmail_csrf. The oracle describes them in prose only.
+
+# Sending: send, a draft's send and forward (#638)
+
+- operation: sendMessage
+  difference: "response 201 application/json.properties.data*.required: *"
+  reason: >-
+    A message always writes every field its model writes; the oracle marks some of them
+    optional and omits others.
+- operation: sendMessage
+  difference: "response 201 application/json.properties.data*.properties.tls_version: openapi.yaml absent, generated *"
+  reason: >-
+    The negotiated TLS version of an encrypted inbound-MX delivery; written when known. The
+    oracle omits it.
+- operation: sendMessage
+  difference: "response 201 application/json.properties.data*.properties.received_tls: openapi.yaml absent, generated *"
+  reason: >-
+    Whether an inbound-MX delivery arrived encrypted; written when known. The oracle omits it.
+- operation: sendMessage
+  difference: "response 201 application/json.properties.data*.properties.is_dsn: openapi.yaml absent, generated *"
+  reason: >-
+    Marks a delivery status notification this server generated. The oracle omits it.
+- operation: sendMessage
+  difference: "response 201 application/json.properties.data*.properties.mailbox: openapi.yaml absent, generated *"
+  reason: >-
+    The model always wrote its unloaded mailbox association, as an empty mailbox; the API
+    keeps writing it so the bytes are unchanged. The oracle omits it.
+- operation: sendMessage
+  difference: "response 201 application/json.properties.data*.properties.recipients_to.*"
+  reason: >-
+    The recipients are the JSON the message was stored with, written as stored; the API does
+    not narrow it to the oracle's array of strings.
+- operation: sendMessage
+  difference: "response 201 application/json.properties.data*.properties.recipients_cc.*"
+  reason: >-
+    The recipients are the JSON the message was stored with, written as stored; the API does
+    not narrow it to the oracle's array of strings.
+- operation: sendMessage
+  difference: "response 201 application/json.properties.data*.properties.headers.oneOf: *"
+  reason: >-
+    The headers are the JSON the message was stored with, written as stored; the oracle's
+    oneOf describes the usual shapes.
+- operation: sendMessage
+  difference: "response 201 application/json.properties.data*.properties.calendar_events: openapi.yaml absent, generated *"
+  reason: >-
+    The calendar invitations parsed from the message, stored JSON written as stored; omitted
+    when there are none. The oracle omits them.
+- operation: sendMessage
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate; a send is also
+    held to the account's send rate (429 rate_limited, Retry-After).
+- operation: sendMessage
+  difference: "response 200: generated only"
+  reason: >-
+    The outbound pipeline may discard the message: 200 with status discarded, nothing sent and
+    nothing kept.
+- operation: sendDraft
+  difference: "response 201 application/json.properties.data*.required: *"
+  reason: >-
+    A message always writes every field its model writes; the oracle marks some of them
+    optional and omits others.
+- operation: sendDraft
+  difference: "response 201 application/json.properties.data*.properties.tls_version: openapi.yaml absent, generated *"
+  reason: >-
+    The negotiated TLS version of an encrypted inbound-MX delivery; written when known. The
+    oracle omits it.
+- operation: sendDraft
+  difference: "response 201 application/json.properties.data*.properties.received_tls: openapi.yaml absent, generated *"
+  reason: >-
+    Whether an inbound-MX delivery arrived encrypted; written when known. The oracle omits it.
+- operation: sendDraft
+  difference: "response 201 application/json.properties.data*.properties.is_dsn: openapi.yaml absent, generated *"
+  reason: >-
+    Marks a delivery status notification this server generated. The oracle omits it.
+- operation: sendDraft
+  difference: "response 201 application/json.properties.data*.properties.mailbox: openapi.yaml absent, generated *"
+  reason: >-
+    The model always wrote its unloaded mailbox association, as an empty mailbox; the API
+    keeps writing it so the bytes are unchanged. The oracle omits it.
+- operation: sendDraft
+  difference: "response 201 application/json.properties.data*.properties.recipients_to.*"
+  reason: >-
+    The recipients are the JSON the message was stored with, written as stored; the API does
+    not narrow it to the oracle's array of strings.
+- operation: sendDraft
+  difference: "response 201 application/json.properties.data*.properties.recipients_cc.*"
+  reason: >-
+    The recipients are the JSON the message was stored with, written as stored; the API does
+    not narrow it to the oracle's array of strings.
+- operation: sendDraft
+  difference: "response 201 application/json.properties.data*.properties.headers.oneOf: *"
+  reason: >-
+    The headers are the JSON the message was stored with, written as stored; the oracle's
+    oneOf describes the usual shapes.
+- operation: sendDraft
+  difference: "response 201 application/json.properties.data*.properties.calendar_events: openapi.yaml absent, generated *"
+  reason: >-
+    The calendar invitations parsed from the message, stored JSON written as stored; omitted
+    when there are none. The oracle omits them.
+- operation: sendDraft
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate; a send is also
+    held to the account's send rate (429 rate_limited, Retry-After).
+- operation: sendDraft
+  difference: "response 200: generated only"
+  reason: >-
+    The outbound pipeline may discard the message: 200 with status discarded, nothing sent and
+    nothing kept.
+- operation: forwardMessage
+  difference: "response 201 application/json.properties.data*.required: *"
+  reason: >-
+    A message always writes every field its model writes; the oracle marks some of them
+    optional and omits others.
+- operation: forwardMessage
+  difference: "response 201 application/json.properties.data*.properties.tls_version: openapi.yaml absent, generated *"
+  reason: >-
+    The negotiated TLS version of an encrypted inbound-MX delivery; written when known. The
+    oracle omits it.
+- operation: forwardMessage
+  difference: "response 201 application/json.properties.data*.properties.received_tls: openapi.yaml absent, generated *"
+  reason: >-
+    Whether an inbound-MX delivery arrived encrypted; written when known. The oracle omits it.
+- operation: forwardMessage
+  difference: "response 201 application/json.properties.data*.properties.is_dsn: openapi.yaml absent, generated *"
+  reason: >-
+    Marks a delivery status notification this server generated. The oracle omits it.
+- operation: forwardMessage
+  difference: "response 201 application/json.properties.data*.properties.mailbox: openapi.yaml absent, generated *"
+  reason: >-
+    The model always wrote its unloaded mailbox association, as an empty mailbox; the API
+    keeps writing it so the bytes are unchanged. The oracle omits it.
+- operation: forwardMessage
+  difference: "response 201 application/json.properties.data*.properties.recipients_to.*"
+  reason: >-
+    The recipients are the JSON the message was stored with, written as stored; the API does
+    not narrow it to the oracle's array of strings.
+- operation: forwardMessage
+  difference: "response 201 application/json.properties.data*.properties.recipients_cc.*"
+  reason: >-
+    The recipients are the JSON the message was stored with, written as stored; the API does
+    not narrow it to the oracle's array of strings.
+- operation: forwardMessage
+  difference: "response 201 application/json.properties.data*.properties.headers.oneOf: *"
+  reason: >-
+    The headers are the JSON the message was stored with, written as stored; the oracle's
+    oneOf describes the usual shapes.
+- operation: forwardMessage
+  difference: "response 201 application/json.properties.data*.properties.calendar_events: openapi.yaml absent, generated *"
+  reason: >-
+    The calendar invitations parsed from the message, stored JSON written as stored; omitted
+    when there are none. The oracle omits them.
+- operation: forwardMessage
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate; a send is also
+    held to the account's send rate (429 rate_limited, Retry-After).
+- operation: forwardMessage
+  difference: "response 200: generated only"
+  reason: >-
+    The outbound pipeline may discard the message: 200 with status discarded, nothing sent and
+    nothing kept.
+- operation: sendDraft
+  difference: "response 400: generated only"
+  reason: >-
+    A draft without recipients is 400 bad_request (Draft has no recipients); the send it makes
+    answers its own 400s.
+- operation: forwardMessage
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON, or not an object, is 400 bad_request, as is a missing from or to
+    (from and to are required); the send it makes answers its own 400s.
+- operation: sendMessage
+  difference: "request body application/json.properties.from.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    Each address is checked in the handler (400 "invalid from address", "invalid recipient
+    address in to/cc/bcc"), and the from by whether the session may send as it (403), with
+    that wording; a format would answer 422 instead.
+- operation: sendMessage
+  difference: "request body application/json.properties.to.items.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    Each address is checked in the handler (400 "invalid from address", "invalid recipient
+    address in to/cc/bcc"), and the from by whether the session may send as it (403), with
+    that wording; a format would answer 422 instead.
+- operation: sendMessage
+  difference: "request body application/json.properties.cc.items.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    Each address is checked in the handler (400 "invalid from address", "invalid recipient
+    address in to/cc/bcc"), and the from by whether the session may send as it (403), with
+    that wording; a format would answer 422 instead.
+- operation: sendMessage
+  difference: "request body application/json.properties.bcc.items.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    Each address is checked in the handler (400 "invalid from address", "invalid recipient
+    address in to/cc/bcc"), and the from by whether the session may send as it (403), with
+    that wording; a format would answer 422 instead.
+- operation: forwardMessage
+  difference: "request body application/json.properties.from.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    Each address is checked in the handler (400 "invalid from address", "invalid recipient
+    address in to/cc/bcc"), and the from by whether the session may send as it (403), with
+    that wording; a format would answer 422 instead.
+- operation: forwardMessage
+  difference: "request body application/json.properties.to.items.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    Each address is checked in the handler (400 "invalid from address", "invalid recipient
+    address in to/cc/bcc"), and the from by whether the session may send as it (403), with
+    that wording; a format would answer 422 instead.
+- operation: sendMessage
+  difference: "request body application/json.required: openapi.yaml [\"from\",\"to\"], generated absent"
+  reason: >-
+    Both are checked in the handler with their documented 400s: from is required; to is
+    required and must not be empty.
+- operation: forwardMessage
+  difference: "request body application/json.required: openapi.yaml [\"from\",\"to\"], generated absent"
+  reason: >-
+    Both are checked in the handler, after the message is found, with their 400: from and to
+    are required.
+- operation: sendMessage
+  difference: "request body application/json.properties.to.minItems: openapi.yaml 1, generated absent"
+  reason: >-
+    An empty to is the handler's 400 (to is required and must not be empty), as a missing one
+    is.
+- operation: sendMessage
+  difference: "request body application/json.properties.calendar_event: openapi.yaml absent, generated *"
+  reason: >-
+    A message can carry an invitation, written as an iCalendar part of the message (RFC 5545,
+    method REQUEST); the oracle omits the field.
+- operation: sendMessage
+  difference: "request body application/json.properties.list_unsubscribe.minProperties: openapi.yaml 1, generated absent"
+  reason: >-
+    An object with neither target is the handler's 400: list_unsubscribe needs a mailto
+    address, an https URL or both.
+- operation: sendMessage
+  difference: "request body application/json.properties.list_unsubscribe.properties.https.format: openapi.yaml \"uri\", generated absent"
+  reason: >-
+    Each target is checked in the handler before it reaches a header field (a plain ASCII
+    address; an https URL with a host, no credentials and no characters a header could break
+    on, at most 2048 bytes), refused 400 with its own words.
+- operation: sendMessage
+  difference: "request body application/json.properties.list_unsubscribe.properties.https.maxLength: openapi.yaml 2048, generated absent"
+  reason: >-
+    Each target is checked in the handler before it reaches a header field (a plain ASCII
+    address; an https URL with a host, no credentials and no characters a header could break
+    on, at most 2048 bytes), refused 400 with its own words.
+- operation: sendMessage
+  difference: "request body application/json.properties.list_unsubscribe.properties.https.pattern: openapi.yaml \"^https://\", generated absent"
+  reason: >-
+    Each target is checked in the handler before it reaches a header field (a plain ASCII
+    address; an https URL with a host, no credentials and no characters a header could break
+    on, at most 2048 bytes), refused 400 with its own words.
+- operation: sendMessage
+  difference: "request body application/json.properties.list_unsubscribe.properties.mailto.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    Each target is checked in the handler before it reaches a header field (a plain ASCII
+    address; an https URL with a host, no credentials and no characters a header could break
+    on, at most 2048 bytes), refused 400 with its own words.
+- operation: sendMessage
+  difference: "request body application/json.properties.list_unsubscribe.type: openapi.yaml \"object\", generated [\"null\",\"object\"]"
+  reason: >-
+    Null sends no List-Unsubscribe field, as an absent list_unsubscribe does; the sender
+    domain's sending policy decides whether that is refused (422).
+- operation: sendMessage
+  difference: "request body application/json.properties.scheduled_at.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    Null sends at once, as an absent scheduled_at does.
+- operation: sendMessage
+  difference: "response 202 application/json.properties.data.properties.from.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    The from is stored as the send request gave it, which the send checked; the answer does
+    not promise a format.
+- operation: sendMessage
+  difference: "response 202 application/json.properties.data.properties.to.*"
+  reason: >-
+    The recipients are the stored JSON list, written as stored ([] when none is).
+- operation: sendMessage
+  difference: "response 202 application/json.properties.data.required: *"
+  reason: >-
+    Every field is always written except sent_message_id and last_error, written once there
+    are any.
+
+# Mail-client discovery: autoconfig and Autodiscover (#631)
+
+- operation: microsoftAutodiscover
+  difference: "response 400 text/plain.enum: openapi.yaml [\"email address required\\n\",\"invalid email address\\n\",\"invalid request\\n\"], generated absent"
+  reason: >-
+    The three refusals are plain text, as http.Error writes them; go-oapifly cannot give a
+    plain-text answer's schema an enum. The handler writes exactly those three.
+- operation: mozillaAutoconfig
+  difference: "parameter query emailaddress schema.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    The handler reads the domain after the last @ and checks that, not the address as an email
+    address, so an internationalised address (EAI) is looked up too; one with no @ is the
+    400 "no email domain in the address or the host name".
+- operation: mozillaAutoconfigWellKnown
+  difference: "parameter query emailaddress schema.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    The handler reads the domain after the last @ and checks that, not the address as an email
+    address, so an internationalised address (EAI) is looked up too; one with no @ is the
+    400 "no email domain in the address or the host name".

@@ -2,6 +2,8 @@ github.com/MakeNowJust/heredoc v1.0.0 h1:cXCdzVdstXyiTqTvfqk9SDHpKNjxuom+DOlyEeQ
 github.com/MakeNowJust/heredoc v1.0.0/go.mod h1:mG5amYoWBHf8vpLOuehzbGGw0EHxpZZ6lCpQ4fNJ8LE=
 github.com/antimatter-studios/go-oapifly v0.23.1 h1:6C/3gOBJfs26UwuYMJq+loIowNJSBH+7/ntnUxwZmIA=
 github.com/antimatter-studios/go-oapifly v0.23.1/go.mod h1:FBfid367Ry+A2LbbhOiJwS0BapxJMuz7RI3I/3KJ5Rk=
+github.com/antimatter-studios/go-oapifly v0.24.0 h1:UpOYXsr99rpqME9FHDadNjC9ENy2YhS6C1wVnIv72GI=
+github.com/antimatter-studios/go-oapifly v0.24.0/go.mod h1:FBfid367Ry+A2LbbhOiJwS0BapxJMuz7RI3I/3KJ5Rk=
 github.com/atotto/clipboard v0.1.4 h1:EH0zSVneZPSuFR11BlR9YppQTVDbh5+16AmcJi4g1z4=
 github.com/atotto/clipboard v0.1.4/go.mod h1:ZY9tmq7sm5xIbd9bOK4onWV4S6X0u6GY7Vn0Yu86PYI=
 github.com/aws/aws-sdk-go-v2 v1.47.3 h1:HRoT/MkNi3bjO5xF4dCzLzvVmkvRGHj3/cLINDnJejk=
@@ -144,8 +146,8 @@ github.com/rest-mail/go-dkim v0.4.0 h1:+d1Hp5UOdjs3O0AVWpNFvHQCWA0iDsKkDCe+nd4ZF
 github.com/rest-mail/go-dkim v0.4.0/go.mod h1:OnDDRqOWGdxnMbD8FXxqQqun0fQABeWVmlTBlAL8Kcw=
 github.com/rest-mail/go-dmarc v0.4.1 h1:fmjZrYy9xAWnz97I7mcTnmrtn2vjzvIorAasknuFY7w=
 github.com/rest-mail/go-dmarc v0.4.1/go.mod h1:Q0+iwDfb++dpj3MObRvmKvcRFpykflPbluXJVGENvIo=
-github.com/rest-mail/go-imap v0.6.0 h1:iBVbSVE/odX2cNLBO5K45PXgRRJ6rriUhoQfGfqlCq8=
-github.com/rest-mail/go-imap v0.6.0/go.mod h1:VJQuITi9O1dEh2ouVcBR/IyMdivs+SKUe5G9XfF4dTI=
+github.com/rest-mail/go-imap v0.7.0 h1:rPoU7pU7UV2kPXO3LXPLMqKCxuDjPtYoH2OuOftgmp0=
+github.com/rest-mail/go-imap v0.7.0/go.mod h1:VJQuITi9O1dEh2ouVcBR/IyMdivs+SKUe5G9XfF4dTI=
 github.com/rest-mail/go-mtasts v0.3.1 h1:kSOSwb658MRjv829Ca9rGqQ1siw8kZXrzNvUjKhDFyk=
 github.com/rest-mail/go-mtasts v0.3.1/go.mod h1:2jtzwtnBD7BM+MpyDdpq5SwlYZtVQEqAzLKIf2lbVBY=
 github.com/rest-mail/go-pop3 v0.3.0 h1:1lb6Dv9o3ydS74+gzNeJGjRpfmju1BdK01PpBxgeqfE=
