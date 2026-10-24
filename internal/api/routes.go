@@ -355,7 +355,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// ═══════════════════════════════════════════════════════════════
 	// Email client auto-configuration (no auth)
 	// ═══════════════════════════════════════════════════════════════
-	autoconfigH := handlers.NewAutoconfigHandler(db)
+	autoconfigH := handlers.NewAutoconfigHandler(db, cfg.GatewayHostname)
 	r.Get("/mail/config-v1.1.xml", autoconfigH.MozillaAutoconfig)
 	r.Get("/.well-known/autoconfig/mail/config-v1.1.xml", autoconfigH.MozillaAutoconfig)
 	r.Post("/autodiscover/autodiscover.xml", autoconfigH.MicrosoftAutodiscover)
@@ -403,10 +403,9 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 			Burst: cfg.AuthRateLimitBurst,
 		})
 	}
-	r.With(authThrottle, auditLog("auth.sign_in", middleware.AuditSignIn())).Post("/api/v1/auth/login", authH.Login)
-	// Unthrottled, so only a logout that names a session is recorded.
-	r.With(auditLog("auth.sign_out", middleware.AuditRefreshToken(), middleware.AuditIdentifiedOnly())).Post("/api/v1/auth/logout", authH.Logout)
-	r.With(authThrottle, auditLog("auth.refresh", middleware.AuditRefreshToken(), middleware.AuditFailuresOnly())).Post("/api/v1/auth/refresh", authH.Refresh)
+	// Sign-in, refresh and recovery (below) are throttled like login; logout is
+	// unthrottled, so only a logout that names a session is recorded.
+	signInChecks := handlers.SessionRouteChecks{Throttle: describedThrottle(authThrottle), Audit: describedAudit(auditLog)}
 	// Redeem a single-use token minted by the operator command (restmail-api
 	// mint-token) or for an owner key: reset an admin who has lost every way
 	// in. Throttled like login: it guesses at a secret.
@@ -422,7 +421,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 			TTL:   2 * time.Hour,
 		}))
 	}
-	r.With(authThrottle, auditLog("auth.recover", middleware.AuditStartedSession())).Post("/api/v1/auth/recover", authH.Recover)
+	authH.RegisterSignIn(endpoint.Routes{Router: r, Registry: registry}, signInChecks)
 	// Owners prove themselves with a key registered in PostgreSQL: sign a
 	// challenge, get a reset-admin token to redeem above. Throttled at
 	// login's rate, but in a bucket of its own: the CLI's requests must not use
@@ -493,11 +492,9 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// ═══════════════════════════════════════════════════════════════
 	restmailDiscoveryH := handlers.NewRestmailDiscoveryHandler(db, cfg.GatewayHostname)
 	r.Get("/.well-known/restmail", restmailDiscoveryH.Discover)
-	r.Get("/restmail/capabilities", restmailH.Capabilities)
-	r.Get("/restmail/mailboxes", restmailH.CheckMailbox)
 	// OSI-7: same delivery-body bound as the machine deliver route — the RESTMAIL
 	// hop must accept up to a full max-size message but not buffer without limit.
-	r.With(deliverBodyLimit).Post("/restmail/messages", restmailH.Deliver)
+	restmailH.Register(endpoint.Routes{Router: r, Registry: registry}, endpoint.Middleware{Wrap: deliverBodyLimit})
 
 	// ═══════════════════════════════════════════════════════════════
 	// SSE — outside the JWT middleware group; the handler authenticates from the
@@ -611,26 +608,21 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		// password, sent with HTTP Basic. Throttled like login; a refused
 		// credential is recorded by basicCredentials, a successful sign-in
 		// here.
-		r.With(authThrottle, auditLog("auth.protocol_sign_in", middleware.AuditBodyFields("protocol"))).
-			Post("/api/v1/auth/protocol-sign-in", credentialH.ProtocolSignIn)
+		credentialH.RegisterProtocolSignIn(endpoint.Routes{Router: r, Registry: registry}.
+			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap), signInChecks)
 
 		accountH.RegisterReads(endpoint.Routes{Router: r, Registry: registry}.
 			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap))
 
-		// Folders
-		r.Get("/api/v1/accounts/{id}/folders", messageH.ListFolders)
-		r.Post("/api/v1/accounts/{id}/folders", messageH.CreateFolder)
-		r.Patch("/api/v1/accounts/{id}/folders/{folder}", messageH.RenameFolder)
-		r.Delete("/api/v1/accounts/{id}/folders/{folder}", messageH.DeleteFolder)
-
-		// Quota
-		r.Get("/api/v1/accounts/{id}/quota", messageH.GetQuota)
+		// Folders and quota
+		mail := endpoint.Routes{Router: r, Registry: registry}.
+			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap)
+		messageH.RegisterFolders(mail)
+		messageH.RegisterMessages(mail)
+		searchH.Register(mail)
+		attachmentH.RegisterList(mail)
 
 		// Messages
-		r.Get("/api/v1/accounts/{id}/folders/{folder}/messages", messageH.ListMessages)
-		r.Get("/api/v1/messages/{id}", messageH.GetMessage)
-		r.Patch("/api/v1/messages/{id}", messageH.UpdateMessage)
-		r.Delete("/api/v1/messages/{id}", messageH.DeleteMessage)
 		r.Post("/api/v1/messages/send", messageH.SendMessage)
 		r.Get("/api/v1/messages/scheduled", messageH.ListScheduledSends)
 		r.Delete("/api/v1/messages/scheduled/{id}", messageH.CancelScheduledSend)
@@ -644,12 +636,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.Put("/api/v1/messages/draft/{id}", messageH.UpdateDraft)
 		r.Post("/api/v1/messages/draft/{id}/send", messageH.SendDraft)
 
-		// Threads
-		r.Get("/api/v1/accounts/{id}/threads/{threadID}", messageH.GetThread)
-
 		// Attachments
 		r.Get("/api/v1/attachments/{id}", attachmentH.GetAttachment)
-		r.Get("/api/v1/messages/{id}/attachments", attachmentH.ListAttachments)
 
 		// Contacts
 		contactH.RegisterContacts(endpoint.Routes{Router: r, Registry: registry}.
@@ -660,9 +648,6 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap)
 		vacationH.Register(mailRules)
 		sieveH.Register(mailRules)
-
-		// Search
-		r.Get("/api/v1/accounts/{id}/search", searchH.Search)
 
 		// Quarantine
 		pipelineH.RegisterQuarantine(endpoint.Routes{Router: r, Registry: registry}.

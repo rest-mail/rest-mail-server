@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -324,10 +325,15 @@ func enforce(h *AuthHandler, accountID uint, req loginRequest) (bool, *httptest.
 	return ok, rr
 }
 
+// enforceVerified runs the check and records its refusal, if any, as a route would answer it.
 func enforceVerified(h *AuthHandler, accountID uint, req loginRequest) (bool, bool, *httptest.ResponseRecorder) {
 	rr := httptest.NewRecorder()
-	ok, verified := h.enforce2FA(rr, accountID, req)
-	return ok, verified, rr
+	verified, err := h.enforce2FA(accountID, req)
+	if err != nil {
+		endpoint.WriteError(rr, err)
+		return false, false, rr
+	}
+	return true, verified, rr
 }
 
 // TestLoginEnforcement_NoTwoFactorProceeds: an account without active 2FA passes
