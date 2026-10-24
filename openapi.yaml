@@ -7941,7 +7941,7 @@ paths:
                   value:
                     error:
                       code: bad_request
-                      message: Invalid TLS-RPT JSON
+                      message: Invalid request body
         "422":
           description: Request body failed validation
           content:

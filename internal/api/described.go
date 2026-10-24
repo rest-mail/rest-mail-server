@@ -105,6 +105,13 @@ func describedOwnerThrottle(wrap func(http.Handler) http.Handler) endpoint.Middl
 	}}}
 }
 
+// describedTLSRPTThrottle is TLS-RPT ingestion's per-IP rate limit (#183).
+func describedTLSRPTThrottle(wrap func(http.Handler) http.Handler) endpoint.Middleware {
+	return endpoint.Middleware{Wrap: wrap, Describes: oapifly.Middleware{Responses: []oapifly.EndpointResponse{
+		rateLimited("rate_limited: too many reports from one address"),
+	}}}
+}
+
 // describedAudit records a route's action in the audit log. Recording does not change the
 // response or the authentication requirement.
 func describedAudit(audit func(action string, options ...middleware.AuditOption) func(http.Handler) http.Handler) func(string, ...middleware.AuditOption) endpoint.Middleware {
