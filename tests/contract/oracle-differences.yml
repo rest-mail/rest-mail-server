@@ -2581,13 +2581,6 @@
 # Mail-client discovery: autoconfig and Autodiscover (#631)
 
 - operation: microsoftAutodiscover
-  difference: "request body: required: openapi.yaml false, generated true"
-  reason: >-
-    The body is optional: without one, the emailaddress query parameter names the address.
-    go-oapifly makes a body optional through a pointer field, and cannot yet bind a pointer
-    for a body that is not JSON (go-oapifly#50), so the field is a string, described as
-    required.
-- operation: microsoftAutodiscover
   difference: "response 400 text/plain.enum: openapi.yaml [\"email address required\\n\",\"invalid email address\\n\",\"invalid request\\n\"], generated absent"
   reason: >-
     The three refusals are plain text, as http.Error writes them; go-oapifly cannot give a

@@ -269,11 +269,11 @@ func (h *AutoconfigHandler) mozillaAutoconfig(r *http.Request, in autoconfigRequ
 	return xmlDocument(mozillaClientConfig(domainName, h.mailHost)), nil
 }
 
-// autodiscoverRequest is an Outlook Autodiscover request: its XML names the address, and a
-// body that is not Autodiscover XML falls back to the emailaddress query parameter.
+// autodiscoverRequest is an Outlook Autodiscover request: its XML names the address, and with
+// no body, or one that is not Autodiscover XML, the emailaddress query parameter does.
 type autodiscoverRequest struct {
-	EmailAddress string `query:"emailaddress" description:"The address to look up when the body is not Autodiscover XML."`
-	Body         string `body:"application/xml"`
+	EmailAddress string  `query:"emailaddress" description:"The address to look up when the body is not Autodiscover XML."`
+	Body         *string `body:"application/xml"`
 }
 
 // microsoftAutodiscover answers Outlook's Autodiscover document for an address at a hosted
@@ -285,7 +285,11 @@ func (h *AutoconfigHandler) microsoftAutodiscover(r *http.Request, in autodiscov
 			EMailAddress string `xml:"EMailAddress"`
 		} `xml:"Request"`
 	}
-	if err := xml.Unmarshal([]byte(in.Body), &adReq); err != nil {
+	var body []byte
+	if in.Body != nil {
+		body = []byte(*in.Body)
+	}
+	if err := xml.Unmarshal(body, &adReq); err != nil {
 		if in.EmailAddress == "" {
 			return endpoint.Document{}, endpoint.RefuseText(http.StatusBadRequest, "invalid request")
 		}
