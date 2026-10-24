@@ -92,10 +92,15 @@ results it then uses "in email authentication checks"
   list of trusted sealers, the DMARC policy is overridden and the override is
   reported, as RFC 8617 and the DMARC reports describe. The list is empty by
   default (#178), so nothing is trusted until an administrator decides to.
-- **Sealing:** REST Mail does not yet seal the mail it forwards, though its
-  library can: [#731](https://github.com/rest-mail/rest-mail-server/issues/731).
-  Until then, mail forwarded by a Sieve `redirect` reaches the next server with
-  no record of how it authenticated on arrival.
+- **Sealing:** mail a Sieve `redirect` forwards leaves with an ARC set, sealed
+  last, with the forwarding domain's DKIM key, over the bytes that leave. Its
+  `ARC-Authentication-Results` are the SPF, DKIM, ARC and DMARC results REST Mail
+  recorded when the message arrived, and its `cv=` is what `arc_verify` found:
+  `none` for the first set, `pass` for a valid chain, `fail` for a broken one. A
+  chain that arrived with `cv=fail` is passed on with no new set (RFC 8617 §5.1)
+  ([`internal/outbound/arc.go`](../../../internal/outbound/arc.go),
+  [#731](https://github.com/rest-mail/rest-mail-server/issues/731)). A domain
+  whose DKIM key is Ed25519 forwards unsealed, as go-arc seals with RSA alone.
 
 ## Sources
 

@@ -40,11 +40,19 @@ func TestBuildRedirectForwards_ForwardsOriginalMessage(t *testing.T) {
 		"\r\n" +
 		"hello body\r\n"
 
+	auth := []pipeline.AuthResult{
+		{Method: pipeline.AuthSPF, Result: "pass", Property: pipeline.PropMailFrom, Domain: "remote.test"},
+		{Method: pipeline.AuthDKIM, Result: "pass", Property: pipeline.PropHeaderD, Domain: "remote.test"},
+		{Method: pipeline.AuthARC, Result: "none"},
+		{Method: pipeline.AuthDMARC, Result: "pass", Property: pipeline.PropHeaderFrom, Domain: "remote.test"},
+	}
 	forwards := buildRedirectForwards(
 		redirectEmail([]string{"fwd@example.com"}, true),
 		originalRaw,
 		"alice@remote.test",
 		[]string{"user@local.test"},
+		"local.test",
+		auth,
 	)
 
 	if len(forwards) != 1 {
@@ -62,6 +70,16 @@ func TestBuildRedirectForwards_ForwardsOriginalMessage(t *testing.T) {
 	}
 	if f.Status != "pending" {
 		t.Errorf("Status = %q, want pending", f.Status)
+	}
+	// Sent as the forwarding domain and sealed with what this server found on arrival (#731).
+	if f.SendingDomain != "local.test" {
+		t.Errorf("SendingDomain = %q, want the forwarding domain local.test", f.SendingDomain)
+	}
+	if want := "restmail; spf=pass smtp.mailfrom=remote.test; dkim=pass header.d=remote.test; arc=none; dmarc=pass header.from=remote.test"; f.ARCResults != want {
+		t.Errorf("ARCResults = %q, want %q", f.ARCResults, want)
+	}
+	if f.ARCChain != "none" {
+		t.Errorf("ARCChain = %q, want none", f.ARCChain)
 	}
 	if !strings.HasPrefix(f.RawMessage, "Delivered-To: fwd@example.com\r\n") {
 		t.Errorf("forwarded message must start with a Delivered-To header for the target, got:\n%s", f.RawMessage)
@@ -85,6 +103,8 @@ func TestBuildRedirectForwards_LoopSuppressed_DeliveredToChain(t *testing.T) {
 		originalRaw,
 		"alice@remote.test",
 		[]string{"user@local.test"},
+		"local.test",
+		nil,
 	)
 	if len(forwards) != 0 {
 		t.Fatalf("got %d forwards, want 0 (loop suppressed)", len(forwards))
@@ -99,6 +119,8 @@ func TestBuildRedirectForwards_LoopSuppressed_SelfRecipient(t *testing.T) {
 		"From: a@b.test\r\n\r\nbody\r\n",
 		"a@b.test",
 		[]string{"user@local.test"},
+		"local.test",
+		nil,
 	)
 	if len(forwards) != 0 {
 		t.Fatalf("got %d forwards, want 0 (self-redirect suppressed)", len(forwards))
@@ -107,16 +129,35 @@ func TestBuildRedirectForwards_LoopSuppressed_SelfRecipient(t *testing.T) {
 
 // TestBuildRedirectForwards_NoMetadata: no redirect metadata yields no forwards.
 func TestBuildRedirectForwards_NoMetadata(t *testing.T) {
-	if f := buildRedirectForwards(&pipeline.EmailJSON{}, "raw", "a@b.test", nil); len(f) != 0 {
+	if f := buildRedirectForwards(&pipeline.EmailJSON{}, "raw", "a@b.test", nil, "local.test", nil); len(f) != 0 {
 		t.Errorf("expected no forwards without redirect metadata, got %d", len(f))
 	}
-	if f := buildRedirectForwards(nil, "raw", "a@b.test", nil); len(f) != 0 {
+	if f := buildRedirectForwards(nil, "raw", "a@b.test", nil, "local.test", nil); len(f) != 0 {
 		t.Errorf("expected no forwards for nil email, got %d", len(f))
 	}
 	// No original bytes to forward: fall back to keeping locally (no forward), so
 	// a redirect that cannot be honoured never loses the message.
-	if f := buildRedirectForwards(redirectEmail([]string{"x@y.test"}, true), "", "a@b.test", nil); len(f) != 0 {
+	if f := buildRedirectForwards(redirectEmail([]string{"x@y.test"}, true), "", "a@b.test", nil, "local.test", nil); len(f) != 0 {
 		t.Errorf("expected no forwards when there is no original message, got %d", len(f))
+	}
+}
+
+// The chain status a forward is sealed with is the arc_verify verdict when it is one an
+// ARC-Seal's cv= can say, and otherwise left for the seal to work out (#731).
+func TestARCChain(t *testing.T) {
+	for _, tc := range []struct {
+		auth []pipeline.AuthResult
+		want string
+	}{
+		{nil, ""},
+		{[]pipeline.AuthResult{{Method: pipeline.AuthSPF, Result: "pass"}}, ""},
+		{[]pipeline.AuthResult{{Method: pipeline.AuthARC, Result: "pass"}}, "pass"},
+		{[]pipeline.AuthResult{{Method: pipeline.AuthARC, Result: "fail"}}, "fail"},
+		{[]pipeline.AuthResult{{Method: pipeline.AuthARC, Result: "temperror"}}, ""},
+	} {
+		if got := arcChain(tc.auth); got != tc.want {
+			t.Errorf("arcChain(%v) = %q, want %q", tc.auth, got, tc.want)
+		}
 	}
 }
 

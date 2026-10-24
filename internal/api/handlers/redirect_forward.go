@@ -35,12 +35,16 @@ func redirectSuppressesKeep(finalEmail *pipeline.EmailJSON) bool {
 // buildRedirectForwards turns the Sieve redirect targets recorded on finalEmail
 // into outbound_queue rows that forward the ORIGINAL message onward, one per
 // target. It reuses the outbound queue the SMTP/vacation paths use — the queue
-// worker applies the standard outbound transforms (Bcc strip, DKIM) and relays.
+// worker applies the standard outbound transforms (Bcc strip, DKIM, the ARC seal) and
+// relays.
 //
 // Semantics (RFC 5228 §4.2, like a .forward):
 //   - The envelope sender is preserved (the original sender), so a DSN for a
 //     failed forward returns to the original sender, not the mailbox owner. When
 //     the original sender is empty (a null reverse-path bounce) it is preserved.
+//   - The forward is sent as domain, the hosted domain that forwards it, and sealed
+//     with an ARC set recording auth, what this server found when it accepted the
+//     message (RFC 8617 §5.1, #731).
 //   - Each forwarded copy gains a Delivered-To header for its target, both to
 //     record the delivery and so a downstream hop can detect a longer loop.
 //   - Loop suppression: a target already in the message's Delivered-To chain, or
@@ -50,7 +54,7 @@ func redirectSuppressesKeep(finalEmail *pipeline.EmailJSON) bool {
 //
 // It performs no I/O; the caller persists the returned rows. Returns nil when
 // there is nothing to forward.
-func buildRedirectForwards(finalEmail *pipeline.EmailJSON, originalRaw, sender string, recipients []string) []models.OutboundQueue {
+func buildRedirectForwards(finalEmail *pipeline.EmailJSON, originalRaw, sender string, recipients []string, domain string, auth []pipeline.AuthResult) []models.OutboundQueue {
 	if finalEmail == nil || finalEmail.Metadata == nil {
 		return nil
 	}
@@ -91,8 +95,8 @@ func buildRedirectForwards(finalEmail *pipeline.EmailJSON, originalRaw, sender s
 		}
 		emitted[key] = struct{}{}
 
-		domain := rmail.DomainFromAddress(target)
-		if domain == "" {
+		targetDomain := rmail.DomainFromAddress(target)
+		if targetDomain == "" {
 			continue
 		}
 		forwardedRaw := originalRaw
@@ -100,14 +104,34 @@ func buildRedirectForwards(finalEmail *pipeline.EmailJSON, originalRaw, sender s
 			forwardedRaw = "Delivered-To: " + target + "\r\n" + forwardedRaw
 		}
 		forwards = append(forwards, models.OutboundQueue{
-			Sender:     sender,
-			Recipient:  target,
-			Domain:     domain,
-			RawMessage: forwardedRaw,
-			Status:     "pending",
+			Sender:        sender,
+			SendingDomain: domain,
+			Recipient:     target,
+			Domain:        targetDomain,
+			RawMessage:    forwardedRaw,
+			Status:        "pending",
+			ARCResults:    pipeline.AuthResultsValue(auth),
+			ARCChain:      arcChain(auth),
 		})
 	}
 	return forwards
+}
+
+// arcChain is the validation status of the ARC chain a message arrived with, as the
+// arc_verify filter found it: none, pass or fail, the values an ARC-Seal's cv= takes
+// (RFC 8617 §4.1.3). Anything else, or no verdict, is empty, and the seal works it out.
+func arcChain(auth []pipeline.AuthResult) string {
+	cv := ""
+	for _, r := range auth {
+		if r.Method == pipeline.AuthARC {
+			cv = r.Result
+		}
+	}
+	switch cv {
+	case "none", "pass", "fail":
+		return cv
+	}
+	return ""
 }
 
 // decodeRedirectTargets parses the JSON-array redirect_to metadata. A malformed

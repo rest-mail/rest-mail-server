@@ -370,7 +370,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 			// actually enqueued, so a redirect that cannot be honoured never loses
 			// the message.
 			forwarded := 0
-			for _, fwd := range buildRedirectForwards(result.FinalEmail, req.RawMessage, req.From, to) {
+			for _, fwd := range buildRedirectForwards(result.FinalEmail, req.RawMessage, req.From, to, domainName, authResults) {
 				row := fwd
 				if err := h.db.Create(&row).Error; err != nil {
 					slog.Error("restmail: failed to enqueue sieve redirect",
@@ -439,7 +439,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 				continue
 			}
 			forwarded := 0
-			for _, fwd := range buildRedirectForwards(final, req.RawMessage, req.From, []string{rcpt}) {
+			for _, fwd := range buildRedirectForwards(final, req.RawMessage, req.From, []string{rcpt}, domainName, authResults) {
 				row := fwd
 				if err := h.db.Create(&row).Error; err != nil {
 					slog.Error("restmail: failed to enqueue sieve redirect", "recipient", row.Recipient, "error", err)

@@ -50,6 +50,14 @@ type OutboundQueue struct {
 	// Message-ID string, models.Message.MsgID) — and auto-migrated that column
 	// to bigint, breaking storage of every inbound message. MessageID above is
 	// a plain indexed column; resolve it manually if you need the message.
+
+	// ARCResults and ARCChain seal a message this server forwards (RFC 8617 §5.1): the
+	// authentication results it recorded when it accepted the message, as an
+	// Authentication-Results value, and the validation status (cv=) of the ARC chain the
+	// message arrived with, none, pass or fail, or empty to work it out when sealing. A row
+	// that is not a forward has no ARCResults, and nothing is sealed (#731).
+	ARCResults string `gorm:"type:text" json:"-"`
+	ARCChain   string `gorm:"size:8" json:"-"`
 }
 
 func (OutboundQueue) TableName() string { return "outbound_queue" }

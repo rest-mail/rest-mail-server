@@ -13,6 +13,7 @@
 package outbound
 
 import (
+	"crypto"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -164,29 +165,12 @@ func HasDKIMKey(db *gorm.DB, senderDomain string) (bool, error) {
 // A nil db or empty senderDomain returns the message unchanged — there is
 // nothing to look a key up with.
 func SignDKIM(db *gorm.DB, masterKey, senderDomain, raw string) (string, error) {
-	if db == nil || senderDomain == "" {
-		return raw, nil
-	}
-	var domain models.Domain
-	if err := db.Where("name = ?", senderDomain).First(&domain).Error; err != nil ||
-		domain.DKIMPrivateKey == "" || domain.DKIMSelector == "" {
-		return raw, nil
-	}
-	keyPEM, err := models.LoadDKIMPrivateKey(domain.DKIMPrivateKey, masterKey)
+	domain, priv, asciiDomain, err := domainKey(db, masterKey, senderDomain, "dkim sign")
 	if err != nil {
-		slog.Error("outbound dkim sign: key load failed (fail-closed)", "domain", senderDomain, "error", err)
 		return "", err
 	}
-	priv, err := ParseDKIMKey(keyPEM)
-	if err != nil {
-		slog.Error("outbound dkim sign: parse key failed (fail-closed)", "domain", senderDomain, "error", err)
-		return "", fmt.Errorf("dkim: the key for %s %w", senderDomain, err)
-	}
-	// Use an A-label signing identity (RFC 8616 §5), while hashing the exact
-	// original UTF-8 header and body bytes. Unicode domains stay in storage.
-	asciiDomain, err := rmail.DomainASCII(domain.Name)
-	if err != nil {
-		return "", fmt.Errorf("dkim: sign for %s: %w", senderDomain, err)
+	if priv == nil {
+		return raw, nil
 	}
 	// go-dkim's defaults sign the RFC 6376 §5.4.1 set and oversign the fields
 	// a reader sees, so a From, Subject or Reply-To added after signing breaks
@@ -207,4 +191,37 @@ func SignDKIM(db *gorm.DB, masterKey, senderDomain, raw string) (string, error) 
 		return "", fmt.Errorf("dkim: sign for %s: %w", senderDomain, err)
 	}
 	return "DKIM-Signature: " + val + "\r\n" + raw, nil
+}
+
+// domainKey loads the key a hosted domain signs its mail with, and the domain's A-label
+// name, the signing identity (RFC 8616 §5). A domain that is not hosted here or has no key
+// gives a nil key and no error: there is nothing to sign with. A key that cannot be loaded
+// (wrong or missing MASTER_KEY, corrupt ciphertext) or parsed is an error, so the caller
+// fails closed. what names the signing in the log.
+func domainKey(db *gorm.DB, masterKey, senderDomain, what string) (models.Domain, crypto.Signer, string, error) {
+	var domain models.Domain
+	if db == nil || senderDomain == "" {
+		return domain, nil, "", nil
+	}
+	if err := db.Where("name = ?", senderDomain).First(&domain).Error; err != nil ||
+		domain.DKIMPrivateKey == "" || domain.DKIMSelector == "" {
+		return domain, nil, "", nil
+	}
+	keyPEM, err := models.LoadDKIMPrivateKey(domain.DKIMPrivateKey, masterKey)
+	if err != nil {
+		slog.Error("outbound "+what+": key load failed (fail-closed)", "domain", senderDomain, "error", err)
+		return domain, nil, "", err
+	}
+	priv, err := ParseDKIMKey(keyPEM)
+	if err != nil {
+		slog.Error("outbound "+what+": parse key failed (fail-closed)", "domain", senderDomain, "error", err)
+		return domain, nil, "", fmt.Errorf("dkim: the key for %s %w", senderDomain, err)
+	}
+	// Use an A-label signing identity, while hashing the exact original UTF-8 header
+	// and body bytes. Unicode domains stay in storage.
+	asciiDomain, err := rmail.DomainASCII(domain.Name)
+	if err != nil {
+		return domain, nil, "", fmt.Errorf("dkim: sign for %s: %w", senderDomain, err)
+	}
+	return domain, priv, asciiDomain, nil
 }

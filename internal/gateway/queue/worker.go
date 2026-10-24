@@ -297,15 +297,22 @@ func (w *Worker) SetMasterKey(key string) {
 // key. This is the single choke point every outbound message passes through, so
 // SMTP-submitted mail (which enqueues raw MUA bytes) gets the same treatment the
 // API path applies at submission (#171); the transforms are idempotent, so
-// already-prepared API mail passes through unchanged. It returns an error only
-// when a configured DKIM key cannot sign, so the caller fails closed
-// (defer/retry) rather than relaying the message unsigned.
+// already-prepared API mail passes through unchanged. A message this server
+// forwards is then ARC-sealed as the forwarding domain, last, over the bytes that
+// leave (RFC 8617 §5.1, #731). It returns an error only when a configured DKIM key
+// cannot sign, so the caller fails closed (defer/retry) rather than relaying the
+// message unsigned.
 func (w *Worker) prepareOutbound(item models.OutboundQueue) (string, error) {
-	return outbound.Prepare(w.db, w.masterKey, sendsAs(item), item.RawMessage)
+	raw, err := outbound.Prepare(w.db, w.masterKey, sendsAs(item), item.RawMessage)
+	if err != nil || item.ARCResults == "" {
+		return raw, err
+	}
+	return outbound.SealARC(w.db, w.masterKey, sendsAs(item), raw, item.ARCResults, item.ARCChain)
 }
 
-// sendsAs is the hosted domain a queued message is sent as: the one the
-// row names when its envelope sender is null, else the envelope sender's.
+// sendsAs is the hosted domain a queued message is sent as: the one the row
+// names, for a reply with a null envelope sender or a forward whose sender is
+// someone else's, else the envelope sender's.
 func sendsAs(item models.OutboundQueue) string {
 	if item.SendingDomain != "" {
 		return item.SendingDomain

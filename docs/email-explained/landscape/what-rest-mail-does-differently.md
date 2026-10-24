@@ -111,8 +111,7 @@ its chapters cover, among others: queue lifetimes and timeouts to RFC 5321
 [#714](https://github.com/rest-mail/rest-mail-server/issues/714)),
 DANE ([#725](https://github.com/rest-mail/rest-mail-server/issues/725)), DMARC to
 RFC 9989 ([#729](https://github.com/rest-mail/rest-mail-server/issues/729),
-[#730](https://github.com/rest-mail/rest-mail-server/issues/730)), ARC sealing
-([#731](https://github.com/rest-mail/rest-mail-server/issues/731)), DKIM rotation
+[#730](https://github.com/rest-mail/rest-mail-server/issues/730)), DKIM rotation
 ([#728](https://github.com/rest-mail/rest-mail-server/issues/728)), and JMAP
 ([#720](https://github.com/rest-mail/rest-mail-server/issues/720)).
 [Solved, solving, still open](solved-solving-open.md) lists them all.
