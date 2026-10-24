@@ -3,15 +3,15 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
-	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
@@ -216,12 +216,10 @@ func (b *SSEBroker) Publish(mailboxID uint, event SSEEvent) {
 
 // EventHandler serves Server-Sent Events for real-time push notifications.
 type EventHandler struct {
-	db         *gorm.DB
-	broker     *SSEBroker
-	jwtService *auth.JWTService
-	// sessionCurrent is RejectStaleSessions' check, which this route, outside
-	// the middleware groups, makes itself: when the stream opens, and again
-	// before every event and keepalive it sends.
+	db     *gorm.DB
+	broker *SSEBroker
+	// sessionCurrent is RejectStaleSessions' check, which the route's middleware makes when
+	// the stream opens and the handler makes again before every event and keepalive it sends.
 	sessionCurrent middleware.SessionCurrent
 	// keepalive is how often an idle stream is sent a comment.
 	keepalive time.Duration
@@ -231,11 +229,10 @@ type EventHandler struct {
 const defaultSSEKeepalive = 30 * time.Second
 
 // NewEventHandler creates a new EventHandler.
-func NewEventHandler(db *gorm.DB, broker *SSEBroker, jwtService *auth.JWTService, sessionCurrent middleware.SessionCurrent) *EventHandler {
+func NewEventHandler(db *gorm.DB, broker *SSEBroker, sessionCurrent middleware.SessionCurrent) *EventHandler {
 	return &EventHandler{
 		db:             db,
 		broker:         broker,
-		jwtService:     jwtService,
 		sessionCurrent: sessionCurrent,
 		keepalive:      defaultSSEKeepalive,
 	}
@@ -251,76 +248,45 @@ func (h *EventHandler) stillCurrent(claims *auth.Claims) bool {
 	return err == nil && current
 }
 
-// Events handles GET /api/v1/accounts/{id}/events as a Server-Sent Events stream.
-// Authentication accepts EITHER the restmail_access httpOnly cookie (browser
-// EventSource, which attaches it automatically) or an Authorization: Bearer
-// header (programmatic clients) — the same dual transport as JWTMiddleware. This
-// removes the old need for a header-capable fetch() SSE shim: a browser can now
-// use the native EventSource, whose cookie rides along, with no token in JS or
-// in the URL.
-func (h *EventHandler) Events(w http.ResponseWriter, r *http.Request) {
-	// 1. Auth via the access cookie or Authorization: Bearer header.
-	token, errMsg := middleware.AccessTokenFromRequest(r)
-	if errMsg != "" {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", errMsg)
-		return
+// Register mounts GET /api/v1/accounts/{id}/events (#636). rs authenticates a session from
+// the restmail_access cookie (what a native browser EventSource sends) or an Authorization:
+// Bearer header, whose token is current, of an account done with setup; the handler checks
+// mail:read on the account.
+func (h *EventHandler) Register(rs endpoint.Routes) {
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/events",
+		OperationID: "accountEvents", Summary: "Server-Sent Events stream for real-time updates", Tags: []string{"SSE"},
+		Description: "A stream of the account's events, new_message, message_updated, message_deleted, message_sent " +
+			"or folder_update, each an id, the event's name and its JSON data. A " +
+			"Last-Event-ID header asks for the events after it that the server still holds. The session is checked when " +
+			"the stream opens, and again before every event and keepalive: once the account's sessions end, the " +
+			"stream ends without sending anything more.",
+		MediaType: "text/event-stream",
+		Errors:    []int{http.StatusForbidden, http.StatusServiceUnavailable},
+		Security:  handlerChecked(models.CapMailRead, "CookieAuth", "BearerAuth")}, h.events)
+}
+
+// events opens the account's event stream, replaying what a reconnecting client missed.
+func (h *EventHandler) events(r *http.Request, in accountPath) (endpoint.Stream, error) {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		return endpoint.Stream{}, errAuthenticationRequired
 	}
 
-	claims, err := h.jwtService.ValidateAccessToken(token)
+	// The mailbox: one the caller may read.
+	mailboxID, err := resolveAccountMailbox(h.db, uint(in.ID), claims, models.CapMailRead)
 	if err != nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid or expired token")
-		return
-	}
-	// As on every other route: a token from before the account's sessions
-	// last ended is dead, and one still in setup reaches nothing.
-	if !h.stillCurrent(claims) {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid or expired token")
-		return
-	}
-	if claims.SetupPending {
-		respond.Error(w, http.StatusForbidden, "setup_required", "Finish setting up this account first: a new password and two-factor authentication")
-		return
+		return endpoint.Stream{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "Access denied")
 	}
 
-	// 2. Parse account ID from URL
-	accountID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
-		return
-	}
-
-	// 3. Resolve the mailbox: one the caller may read.
-	mailboxID, err := resolveAccountMailbox(h.db, uint(accountID), claims, models.CapMailRead)
-	if err != nil {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
-	}
-
-	// 3a. Per-account concurrency cap (#204): bound the number of simultaneous
-	// SSE streams for this mailbox so one account (or a stolen token) cannot open
-	// unbounded streams and exhaust goroutines/FDs. Reserve a slot now that the
-	// caller is authorized for this mailbox; release it on disconnect. Over the
-	// cap we reject with 503 rather than accept without bound.
+	// Per-account concurrency cap (#204): bound the number of simultaneous SSE streams for
+	// this mailbox so one account (or a stolen token) cannot open unbounded streams and
+	// exhaust goroutines/FDs. The slot is held until the stream is over (Done); over the cap
+	// the answer is 503 rather than a stream without bound.
 	if !h.broker.AcquireStream(mailboxID) {
-		respond.Error(w, http.StatusServiceUnavailable, "too_many_streams", "Too many concurrent event streams for this account")
-		return
-	}
-	defer h.broker.ReleaseStream(mailboxID)
-
-	// 4. Ensure the response writer supports flushing
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Streaming not supported")
-		return
+		return endpoint.Stream{}, endpoint.Refuse(http.StatusServiceUnavailable, "too_many_streams", "Too many concurrent event streams for this account")
 	}
 
-	// 5. Set SSE headers
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-
-	// 6. Subscribe to broker for this mailbox (with replay if reconnecting)
+	// Subscribe to the broker for this mailbox, with replay when reconnecting.
 	var ch chan numberedEvent
 	if lastID := r.Header.Get("Last-Event-ID"); lastID != "" {
 		if id, err := strconv.ParseUint(lastID, 10, 64); err == nil {
@@ -330,13 +296,21 @@ func (h *EventHandler) Events(w http.ResponseWriter, r *http.Request) {
 	if ch == nil {
 		ch = h.broker.Subscribe(mailboxID)
 	}
-	defer h.broker.Unsubscribe(mailboxID, ch)
 
-	// 7. Flush immediately so the client knows the connection is open
-	flusher.Flush()
+	return endpoint.Stream{
+		ContentType: "text/event-stream",
+		Header:      http.Header{"Cache-Control": {"no-cache"}, "Connection": {"keep-alive"}, "X-Accel-Buffering": {"no"}},
+		Send:        func(w io.Writer, flush func()) { h.send(r, claims, ch, w, flush) },
+		Done: func() {
+			h.broker.Unsubscribe(mailboxID, ch)
+			h.broker.ReleaseStream(mailboxID)
+		},
+	}, nil
+}
 
-	// 8. Event loop. A session that has ended since the stream opened is sent
-	// nothing more: the stream ends instead.
+// send writes the stream's events and keepalives until the client goes. A session that has
+// ended since the stream opened is sent nothing more: the stream ends instead.
+func (h *EventHandler) send(r *http.Request, claims *auth.Claims, ch chan numberedEvent, w io.Writer, flush func()) {
 	ticker := time.NewTicker(h.keepalive)
 	defer ticker.Stop()
 
@@ -351,14 +325,14 @@ func (h *EventHandler) Events(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			fmt.Fprintf(w, "id: %d\nevent: %s\ndata: %s\n\n", event.ID, event.Event.Type, data)
-			flusher.Flush()
+			flush()
 
 		case <-ticker.C:
 			if !h.stillCurrent(claims) {
 				return
 			}
 			fmt.Fprintf(w, ": keepalive\n\n")
-			flusher.Flush()
+			flush()
 
 		case <-r.Context().Done():
 			return

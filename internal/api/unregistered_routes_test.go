@@ -5,5 +5,4 @@ package api
 // a new route is registered from the start (#669).
 var unregisteredRoutes = []string{
 	"POST /.well-known/smtp-tlsrpt",
-	"GET /api/v1/accounts/{id}/events",
 }

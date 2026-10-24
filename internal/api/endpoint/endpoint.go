@@ -61,8 +61,9 @@ type Operation struct {
 	// that answers Headed: Set-Cookie on a sign-in.
 	Headers map[string]oapifly.ResponseHeader
 
-	// MediaType is the success answer's media type when the handler answers a Document: a
-	// page, a YAML document or a metrics exposition rather than the JSON envelope.
+	// MediaType is the success answer's media type when the handler answers a Document, Served
+	// or a Stream: a page, a YAML document, a metrics exposition, a download or an event
+	// stream rather than the JSON envelope.
 	MediaType string
 
 	// Security is the operation's own requirement, when it differs from what its middleware
@@ -210,8 +211,8 @@ func Register[Req, Resp any](rs Routes, op Operation, handler func(*http.Request
 		op.Status = http.StatusOK
 	}
 	respType := reflect.TypeOf((*Resp)(nil)).Elem()
-	if documents := respType == reflect.TypeOf(Document{}) || respType == reflect.TypeOf(Served{}); documents != (op.MediaType != "") {
-		panic("endpoint: " + op.Method + " " + op.Path + " needs a MediaType exactly when it answers a Document or Served")
+	if documents := respType == reflect.TypeOf(Document{}) || respType == reflect.TypeOf(Served{}) || respType == reflect.TypeOf(Stream{}); documents != (op.MediaType != "") {
+		panic("endpoint: " + op.Method + " " + op.Path + " needs a MediaType exactly when it answers a Document, Served or a Stream")
 	}
 	reqType := reflect.TypeOf((*Req)(nil)).Elem()
 	shape := requestShape(reqType)
@@ -236,6 +237,10 @@ func Register[Req, Resp any](rs Routes, op Operation, handler func(*http.Request
 		answer := any(out)
 		if served, ok := answer.(Served); ok {
 			served.serve(w, req)
+			return
+		}
+		if stream, ok := answer.(Stream); ok {
+			stream.stream(w, op.Status)
 			return
 		}
 		if headed, ok := answer.(headedResponse); ok {
@@ -346,10 +351,10 @@ func described(applied []oapifly.Middleware, own []Middleware) []oapifly.Middlew
 }
 
 // successResponse describes the success answer in the envelope write puts it in: a List as
-// itself, a Document as text in its media type, Served as bytes in its media type, anything
+// itself, a Document or a Stream as text in its media type, Served as bytes in its media type, anything
 // else as Data[Resp], the {"data": ...} body respond.Data writes.
 func successResponse(op Operation, status int, respType, envelope reflect.Type) oapifly.EndpointResponse {
-	if respType == reflect.TypeOf(Document{}) {
+	if respType == reflect.TypeOf(Document{}) || respType == reflect.TypeOf(Stream{}) {
 		return oapifly.EndpointResponse{Status: status, Type: reflect.TypeOf(""), MediaType: op.MediaType}
 	}
 	if respType == reflect.TypeOf(Served{}) {
