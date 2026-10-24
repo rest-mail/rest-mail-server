@@ -48,7 +48,7 @@ func TestDeliverMessage_HonorsFolderFlagsAndInternalDate(t *testing.T) {
 	h := NewMessageHandler(tx, nil, nil, "", nil)
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages/deliver", strings.NewReader(body))
-	h.DeliverMessage(rr, req)
+	deliveryRoute(h)(rr, req)
 
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("deliver: expected 201, got %d (%s)", rr.Code, rr.Body.String())
@@ -100,7 +100,7 @@ func TestDeliverMessage_StripsOurAuthResults(t *testing.T) {
 	h := NewMessageHandler(tx, nil, nil, "", nil)
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages/deliver", strings.NewReader(body))
-	h.DeliverMessage(rr, req)
+	deliveryRoute(h)(rr, req)
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("deliver: expected 201, got %d (%s)", rr.Code, rr.Body.String())
 	}

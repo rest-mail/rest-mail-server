@@ -2577,3 +2577,173 @@
   reason: >-
     The body is optional: a browser sends none, its refresh token being the cookie; a native
     client sends its refresh token.
+
+# Inbound delivery from the protocol gateways (#642)
+
+- operation: deliverMessage
+  difference: "response 201 application/json.properties.data*.required: *"
+  reason: >-
+    A message always writes every field its model writes; the oracle marks some of them
+    optional and omits others.
+- operation: deliverMessage
+  difference: "response 201 application/json.properties.data*.properties.tls_version: openapi.yaml absent, generated *"
+  reason: >-
+    The negotiated TLS version of an encrypted inbound-MX delivery; written when known. The
+    oracle omits it.
+- operation: deliverMessage
+  difference: "response 201 application/json.properties.data*.properties.received_tls: openapi.yaml absent, generated *"
+  reason: >-
+    Whether an inbound-MX delivery arrived encrypted; written when known. The oracle omits it.
+- operation: deliverMessage
+  difference: "response 201 application/json.properties.data*.properties.is_dsn: openapi.yaml absent, generated *"
+  reason: >-
+    Marks a delivery status notification this server generated. The oracle omits it.
+- operation: deliverMessage
+  difference: "response 201 application/json.properties.data*.properties.mailbox: openapi.yaml absent, generated *"
+  reason: >-
+    The model always wrote its unloaded mailbox association, as an empty mailbox; the API
+    keeps writing it so the bytes are unchanged. The oracle omits it.
+- operation: deliverMessage
+  difference: "response 201 application/json.properties.data*.properties.recipients_to.*"
+  reason: >-
+    The recipients are the JSON the message was stored with, written as stored: a gateway
+    delivery keeps what the gateway sent, so the API does not narrow it to the oracle's array
+    of strings.
+- operation: deliverMessage
+  difference: "response 201 application/json.properties.data*.properties.recipients_cc.*"
+  reason: >-
+    The recipients are the JSON the message was stored with, written as stored: a gateway
+    delivery keeps what the gateway sent, so the API does not narrow it to the oracle's array
+    of strings.
+- operation: deliverMessage
+  difference: "response 201 application/json.properties.data*.properties.headers.oneOf: *"
+  reason: >-
+    The headers are the JSON the message was stored with, written as stored; the oracle's
+    oneOf describes the usual shapes.
+- operation: deliverMessage
+  difference: "response 201 application/json.properties.data*.properties.calendar_events: openapi.yaml absent, generated *"
+  reason: >-
+    The calendar invitations parsed from the message, stored JSON written as stored; omitted
+    when there are none. The oracle omits them.
+- operation: deliverMessage
+  difference: "request body application/json.properties.folder: openapi.yaml absent, generated *"
+  reason: >-
+    The IMAP gateway's COPY and APPEND, and the inbound MX, send it: the destination folder,
+    the flags and internal date to keep, the mailbox by id, and how the message arrived (TLS).
+    The oracle omits it.
+- operation: deliverMessage
+  difference: "request body application/json.properties.is_draft: openapi.yaml absent, generated *"
+  reason: >-
+    The IMAP gateway's COPY and APPEND, and the inbound MX, send it: the destination folder,
+    the flags and internal date to keep, the mailbox by id, and how the message arrived (TLS).
+    The oracle omits it.
+- operation: deliverMessage
+  difference: "request body application/json.properties.is_flagged: openapi.yaml absent, generated *"
+  reason: >-
+    The IMAP gateway's COPY and APPEND, and the inbound MX, send it: the destination folder,
+    the flags and internal date to keep, the mailbox by id, and how the message arrived (TLS).
+    The oracle omits it.
+- operation: deliverMessage
+  difference: "request body application/json.properties.is_read: openapi.yaml absent, generated *"
+  reason: >-
+    The IMAP gateway's COPY and APPEND, and the inbound MX, send it: the destination folder,
+    the flags and internal date to keep, the mailbox by id, and how the message arrived (TLS).
+    The oracle omits it.
+- operation: deliverMessage
+  difference: "request body application/json.properties.is_starred: openapi.yaml absent, generated *"
+  reason: >-
+    The IMAP gateway's COPY and APPEND, and the inbound MX, send it: the destination folder,
+    the flags and internal date to keep, the mailbox by id, and how the message arrived (TLS).
+    The oracle omits it.
+- operation: deliverMessage
+  difference: "request body application/json.properties.mailbox_id: openapi.yaml absent, generated *"
+  reason: >-
+    The IMAP gateway's COPY and APPEND, and the inbound MX, send it: the destination folder,
+    the flags and internal date to keep, the mailbox by id, and how the message arrived (TLS).
+    The oracle omits it.
+- operation: deliverMessage
+  difference: "request body application/json.properties.received_at: openapi.yaml absent, generated *"
+  reason: >-
+    The IMAP gateway's COPY and APPEND, and the inbound MX, send it: the destination folder,
+    the flags and internal date to keep, the mailbox by id, and how the message arrived (TLS).
+    The oracle omits it.
+- operation: deliverMessage
+  difference: "request body application/json.properties.received_tls: openapi.yaml absent, generated *"
+  reason: >-
+    The IMAP gateway's COPY and APPEND, and the inbound MX, send it: the destination folder,
+    the flags and internal date to keep, the mailbox by id, and how the message arrived (TLS).
+    The oracle omits it.
+- operation: deliverMessage
+  difference: "request body application/json.properties.tls_cipher: openapi.yaml absent, generated *"
+  reason: >-
+    The IMAP gateway's COPY and APPEND, and the inbound MX, send it: the destination folder,
+    the flags and internal date to keep, the mailbox by id, and how the message arrived (TLS).
+    The oracle omits it.
+- operation: deliverMessage
+  difference: "request body application/json.properties.tls_version: openapi.yaml absent, generated *"
+  reason: >-
+    The IMAP gateway's COPY and APPEND, and the inbound MX, send it: the destination folder,
+    the flags and internal date to keep, the mailbox by id, and how the message arrived (TLS).
+    The oracle omits it.
+- operation: deliverMessage
+  difference: "request body application/json.properties.address.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    Addresses are taken as the gateway gives them, internationalised ones included (EAI): the
+    mailbox is looked up as spelled, and a bounce's sender is empty.
+- operation: deliverMessage
+  difference: "request body application/json.properties.sender.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    Addresses are taken as the gateway gives them, internationalised ones included (EAI): the
+    mailbox is looked up as spelled, and a bounce's sender is empty.
+- operation: deliverMessage
+  difference: "request body application/json.properties.recipients_to.*"
+  reason: >-
+    The recipients are the JSON the gateway sent, kept as sent: the API does not narrow it to
+    the oracle's array of addresses.
+- operation: deliverMessage
+  difference: "request body application/json.properties.recipients_cc.*"
+  reason: >-
+    The recipients are the JSON the gateway sent, kept as sent: the API does not narrow it to
+    the oracle's array of addresses.
+- operation: deliverMessage
+  difference: "request body application/json.required: openapi.yaml [\"address\",\"sender\"], generated absent"
+  reason: >-
+    The handler takes a mailbox_id or an address, and refuses neither with 400 (mailbox_id or
+    address required); a bounce's sender is empty.
+- operation: deliverMessage
+  difference: "response 200: generated only"
+  reason: >-
+    The inbound pipeline may quarantine or discard the message: 200 processed, and no message
+    made.
+- operation: deliverMessage
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON, or one that names no mailbox, is 400 bad_request.
+- operation: deliverMessage
+  difference: "response 404: generated only"
+  reason: >-
+    The mailbox named is not here: 404 mailbox_not_found.
+- operation: deliverMessage
+  difference: "response 451: generated only"
+  reason: >-
+    The inbound pipeline deferred the message; the gateway answers its SMTP peer 451, the code
+    this answer carries.
+- operation: deliverMessage
+  difference: "response 550: generated only"
+  reason: >-
+    The inbound pipeline rejected the message; the gateway answers its SMTP peer 550 with the
+    pipeline's words, the code this answer carries.
+- operation: checkMailboxAddress
+  difference: "parameter query address schema.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    Any address is looked up as spelled, internationalised ones included; one that is not a
+    mailbox here is 200 with exists false.
+- operation: checkMailboxAddress
+  difference: "response 200 application/json.properties.data.required: openapi.yaml [\"exists\"], generated [\"address\",\"exists\"]"
+  reason: >-
+    The address is always written: the one asked about, or the mailbox's own spelling of it.
+- operation: checkMailboxAddress
+  difference: "response 400: generated only"
+  reason: >-
+    A blank address is 400 bad_request (address query parameter required); a missing one is
+    binding's 422.
