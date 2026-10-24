@@ -63,7 +63,7 @@ func TestSaveDraft_OptionalSenderExamples(t *testing.T) {
 				body["from"] = wantSender
 			}
 			rr := httptest.NewRecorder()
-			h.SaveDraft(rr, authzRequest(http.MethodPost, "/api/v1/messages/draft",
+			composeRoutes(h).ServeHTTP(rr, authzRequest(http.MethodPost, "/api/v1/messages/draft",
 				fx.ownerMailbox.ID, nil, string(mustJSON(body))))
 			if rr.Code != http.StatusCreated {
 				t.Fatalf("want 201, got %d: %s", rr.Code, rr.Body)
@@ -90,7 +90,7 @@ func TestSaveDraft_OptionalSenderExamples(t *testing.T) {
 	// Omitting from does not let a caller select somebody else's mailbox.
 	// An explicit address still goes through the mail:write permission check.
 	rr := httptest.NewRecorder()
-	h.SaveDraft(rr, authzRequest(http.MethodPost, "/api/v1/messages/draft",
+	composeRoutes(h).ServeHTTP(rr, authzRequest(http.MethodPost, "/api/v1/messages/draft",
 		fx.attackerMailbox.ID, nil, string(mustJSON(map[string]string{"from": fx.ownerMailbox.Address}))))
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("foreign sender: want 403, got %d: %s", rr.Code, rr.Body)
