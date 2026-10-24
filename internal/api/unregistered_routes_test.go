@@ -11,7 +11,6 @@ var unregisteredRoutes = []string{
 	"GET /api/mailboxes",
 	"GET /api/v1/accounts/{id}/calendar-events",
 	"GET /api/v1/accounts/{id}/events",
-	"GET /api/v1/attachments/{id}",
 	"POST /api/v1/auth/owner/challenge",
 	"POST /api/v1/auth/owner/status",
 	"POST /api/v1/auth/owner/token",

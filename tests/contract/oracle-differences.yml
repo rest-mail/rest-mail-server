@@ -2067,6 +2067,16 @@
   reason: >-
     The mail routes throttle refused HTTP Basic credentials at login's rate (429
     rate_limited).
+- operation: getAttachment
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: getAttachment
+  difference: "response 200 application/octet-stream.format: openapi.yaml \"binary\", generated absent"
+  reason: >-
+    The attachment's bytes, streamed by http.ServeContent; go-oapifly describes a raw body as a
+    string and cannot yet say binary (antimatter-studios/go-oapifly#49).
 - operation: listMessages
   difference: "response 200 application/json.properties.data*.required: *"
   reason: >-
