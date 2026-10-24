@@ -2,7 +2,8 @@
 # chore dns:show / chore dns:check
 #
 # show: every record each domain on the server needs — MX, SPF, DMARC, DKIM,
-# the mail host's address and its reverse. The DKIM record can only come from
+# the SRV records mail clients find the server by, the mail host's address
+# and its reverse. The DKIM record can only come from
 # the server, which made the key; the address from wherever the server is
 # exposed, which the server does not know about itself.
 #
@@ -50,7 +51,7 @@ show)
   jq -r --argjson w "$width" '.domains[] |
     "\(.domain)" + (if .problem then "    (\(.problem))" else "" end),
     (.records[] | "  \(.type + "     " | .[0:5]) \(.name + (" " * ($w - (.name | length))))  "
-      + (if .type == "MX" then "\(.priority) " else "" end) + .value
+      + (if .type == "MX" then "\(.priority) " elif .type == "SRV" then "\(.priority) \(.weight) \(.port) " else "" end) + .value
       + (if .type == "PTR" then "    (set by whoever owns the address, not in your zone)" else "" end)),
     ""' <<<"$records"
   ;;
@@ -63,6 +64,9 @@ check)
     MX) got=$(dig +short @"$resolver" MX "$name" | awk '{ print $2 }' | sed 's/\.$//') ;;
     PTR) got=$(dig +short @"$resolver" -x "$name" | sed 's/\.$//') ;;
     TXT) got=$(dig +short @"$resolver" TXT "$name" | sed 's/" "//g; s/^"//; s/"$//') ;;
+    # priority weight port target; the target's final dot goes, but not a
+    # target that is only ".", which says the service is not offered.
+    SRV) got=$(dig +short @"$resolver" SRV "$name" | sed -E 's/([^ ])\.$/\1/') ;;
     *) got=$(dig +short @"$resolver" "$type" "$name") ;;
     esac
     if grep -qxF -- "$value" <<<"$got"; then
@@ -71,7 +75,8 @@ check)
       printf '  NO   %-5s %s\n         want: %s\n         have: %s\n' "$type" "$name" "$value" "${got:-(nothing)}"
       failures=$((failures + 1))
     fi
-  done < <(jq -r '.domains[].records[] | [.type, .name, .value] | @tsv' <<<"$records")
+  done < <(jq -r '.domains[].records[] | [.type, .name,
+    (if .type == "SRV" then "\(.priority) \(.weight) \(.port) \(.value)" else .value end)] | @tsv' <<<"$records")
   say ""
   if [ "$failures" -gt 0 ]; then
     say "$failures records are missing or different, as $resolver sees them. chore dns:show lists them all." \

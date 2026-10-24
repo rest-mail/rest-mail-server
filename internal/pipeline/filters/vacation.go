@@ -56,11 +56,10 @@ func (f *vacationFilter) Execute(ctx context.Context, email *pipeline.EmailJSON)
 	}
 
 	// ── 1. Determine the sender address to reply to ────────────────
-	sender := email.Envelope.MailFrom
-	if sender == "" && len(email.Headers.From) > 0 {
-		sender = email.Headers.From[0].Address
-	}
-	sender = strings.TrimSpace(strings.ToLower(sender))
+	// Only the envelope sender (RFC 5230 §4.2). A null one is a bounce or
+	// another notice, and gets no reply (RFC 3834 §2): the From: header is
+	// never a fallback, as it was when a bounce from postmaster@ got one.
+	sender := strings.TrimSpace(strings.ToLower(email.Envelope.MailFrom))
 
 	// ── 2. RFC 3834 suppression checks ─────────────────────────────
 	if reason := f.shouldSuppress(ctx, sender, email); reason != "" {
@@ -130,12 +129,17 @@ func (f *vacationFilter) Execute(ctx context.Context, email *pipeline.EmailJSON)
 
 		rawReply := buildVacationReply(rcpt, sender, vacCfg.Subject, vacCfg.Body, email.Headers.MessageID)
 
+		// Sent with a null reverse path (RFC 5230 §5.1, RFC 3834 §3.1.4), so a
+		// reply that bounces or reaches another responder makes no more mail.
+		// From: is still the mailbox, and it is signed as, and routed for, the
+		// mailbox's domain.
 		db.Create(&models.OutboundQueue{
-			Sender:     rcpt,
-			Recipient:  sender,
-			Domain:     senderDomain,
-			RawMessage: rawReply,
-			Status:     "pending",
+			Sender:        "",
+			SendingDomain: parts[1],
+			Recipient:     sender,
+			Domain:        senderDomain,
+			RawMessage:    rawReply,
+			Status:        "pending",
 		})
 
 		replied = true
