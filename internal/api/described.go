@@ -161,6 +161,12 @@ var exampleKinds = map[oapifly.WarningKind]bool{
 // generator is the generator of the API description: the registered routes, and the
 // example pairs in openapi-example.json (#625).
 func (rt *Routers) generator(version string) *oapifly.Generator {
+	return describe(rt.Registry, version)
+}
+
+// describe is the generator of the description of the routes registry holds, with the
+// example pairs in openapi-example.json, as /api/docs/openapi.json serves it.
+func describe(registry *endpoint.Registry, version string) *oapifly.Generator {
 	g := oapifly.New(oapifly.Config{
 		Title:           "REST Mail API",
 		Version:         version,
@@ -169,7 +175,7 @@ func (rt *Routers) generator(version string) *oapifly.Generator {
 		Examples:        restmail.Examples,
 		ExamplesFile:    "openapi-example.json",
 	})
-	g.Register(rt.Registry.Endpoints()...)
+	g.Register(registry.Endpoints()...)
 	return g
 }
 
