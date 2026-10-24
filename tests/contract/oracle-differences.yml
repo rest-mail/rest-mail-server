@@ -1945,6 +1945,438 @@
     An account with no reply set answers the defaults: off, with an empty subject and body,
     which the oracle's anyOf allows; the type states the fields without the request's rules.
 
+# Folders and quota (#637)
+
+- operation: listFolders
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: createFolder
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: renameFolder
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: deleteFolder
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: getQuota
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: createFolder
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON, or not an object, is 400 bad_request; before binding it was
+    answered 422 name required.
+- operation: createFolder
+  difference: "request body application/json.properties.name.minLength: openapi.yaml 1, generated absent"
+  reason: >-
+    An empty name is refused in the handler with its documented 422 name required; a minLength
+    would word it differently.
+- operation: renameFolder
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON, or not an object, is 400 bad_request; before binding it was
+    answered 422 name required.
+- operation: renameFolder
+  difference: "request body application/json.properties.name.minLength: openapi.yaml 1, generated absent"
+  reason: >-
+    An empty name is refused in the handler with its documented 422 name required; a minLength
+    would word it differently.
+- operation: createFolder
+  difference: "response 409: generated only"
+  reason: >-
+    A folder that already holds messages, or its marker, is 409 already_exists.
+- operation: createFolder
+  difference: "response 422 application/json.properties.error.properties.details.properties: openapi.yaml absent, generated {\"fields\":{\"additionalProperties\":{\"type\":\"string\"},\"type\":\"object\"}}"
+  reason: >-
+    The 422 is the API's validation envelope, with the fields at fault under details.fields;
+    the oracle describes this 422 without them.
+- operation: deleteFolder
+  difference: "response 400: generated only"
+  reason: >-
+    A standard folder (INBOX, Sent, Drafts, Trash, Spam, Archive) cannot be deleted: 400
+    bad_request.
+- operation: getQuota
+  difference: "response 404: generated only"
+  reason: >-
+    The account's mailbox was deleted under a live session (404 not_found).
+- operation: getQuota
+  difference: "response 200 application/json.properties.data.properties.message_count.format: openapi.yaml absent, generated \"int64\""
+  reason: >-
+    The count is a Go int64, described with its format; the oracle leaves the size
+    unspecified.
+- operation: getQuota
+  difference: "response 200 application/json.properties.data.properties.percent_used.format: openapi.yaml \"float\", generated \"double\""
+  reason: >-
+    The percentage is a Go float64, a double; the oracle names it float.
+- operation: listFolders
+  difference: "response 200 application/json.properties.data.items.properties.total.format: openapi.yaml absent, generated \"int64\""
+  reason: >-
+    The counts are Go int64s, described with their format; the oracle leaves the size
+    unspecified.
+- operation: listFolders
+  difference: "response 200 application/json.properties.data.items.properties.unread.format: openapi.yaml absent, generated \"int64\""
+  reason: >-
+    The counts are Go int64s, described with their format; the oracle leaves the size
+    unspecified.
+
+# Reading mail: messages, threads, search and attachment lists (#637)
+
+- operation: listMessages
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: getMessage
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: updateMessage
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: deleteMessage
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: getThread
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: searchMessages
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: listAttachments
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: listMessages
+  difference: "response 200 application/json.properties.data*.required: *"
+  reason: >-
+    A message always writes every field its model writes; the oracle marks some of them
+    optional and omits others.
+- operation: listMessages
+  difference: "response 200 application/json.properties.data*.properties.tls_version: openapi.yaml absent, generated *"
+  reason: >-
+    The negotiated TLS version of an encrypted inbound-MX delivery; written when known. The
+    oracle omits it.
+- operation: listMessages
+  difference: "response 200 application/json.properties.data*.properties.received_tls: openapi.yaml absent, generated *"
+  reason: >-
+    Whether an inbound-MX delivery arrived encrypted; written when known. The oracle omits it.
+- operation: listMessages
+  difference: "response 200 application/json.properties.data*.properties.is_dsn: openapi.yaml absent, generated *"
+  reason: >-
+    Marks a delivery status notification this server generated. The oracle omits it.
+- operation: listMessages
+  difference: "response 200 application/json.properties.data*.properties.mailbox: openapi.yaml absent, generated *"
+  reason: >-
+    The model always wrote its unloaded mailbox association, as an empty mailbox; the API
+    keeps writing it so the bytes are unchanged. The oracle omits it.
+- operation: listMessages
+  difference: "response 200 application/json.properties.data*.properties.recipients_to.*"
+  reason: >-
+    The recipients are the JSON the message was stored with, written as stored: a gateway
+    delivery keeps what the gateway sent, so the API does not narrow it to the oracle's array
+    of strings.
+- operation: listMessages
+  difference: "response 200 application/json.properties.data*.properties.recipients_cc.*"
+  reason: >-
+    The recipients are the JSON the message was stored with, written as stored: a gateway
+    delivery keeps what the gateway sent, so the API does not narrow it to the oracle's array
+    of strings.
+- operation: listMessages
+  difference: "response 200 application/json.properties.data*.properties.headers.oneOf: *"
+  reason: >-
+    The headers are the JSON the message was stored with, written as stored; the oracle's
+    oneOf describes the usual shapes.
+- operation: listMessages
+  difference: "response 200 application/json.properties.data*.properties.calendar_events: openapi.yaml absent, generated *"
+  reason: >-
+    The calendar invitations parsed from the message, stored JSON written as stored; omitted
+    when there are none. The oracle omits them.
+- operation: getMessage
+  difference: "response 200 application/json.properties.data*.required: *"
+  reason: >-
+    A message always writes every field its model writes; the oracle marks some of them
+    optional and omits others.
+- operation: getMessage
+  difference: "response 200 application/json.properties.data*.properties.tls_version: openapi.yaml absent, generated *"
+  reason: >-
+    The negotiated TLS version of an encrypted inbound-MX delivery; written when known. The
+    oracle omits it.
+- operation: getMessage
+  difference: "response 200 application/json.properties.data*.properties.received_tls: openapi.yaml absent, generated *"
+  reason: >-
+    Whether an inbound-MX delivery arrived encrypted; written when known. The oracle omits it.
+- operation: getMessage
+  difference: "response 200 application/json.properties.data*.properties.is_dsn: openapi.yaml absent, generated *"
+  reason: >-
+    Marks a delivery status notification this server generated. The oracle omits it.
+- operation: getMessage
+  difference: "response 200 application/json.properties.data*.properties.mailbox: openapi.yaml absent, generated *"
+  reason: >-
+    The model always wrote its unloaded mailbox association, as an empty mailbox; the API
+    keeps writing it so the bytes are unchanged. The oracle omits it.
+- operation: getMessage
+  difference: "response 200 application/json.properties.data*.properties.recipients_to.*"
+  reason: >-
+    The recipients are the JSON the message was stored with, written as stored: a gateway
+    delivery keeps what the gateway sent, so the API does not narrow it to the oracle's array
+    of strings.
+- operation: getMessage
+  difference: "response 200 application/json.properties.data*.properties.recipients_cc.*"
+  reason: >-
+    The recipients are the JSON the message was stored with, written as stored: a gateway
+    delivery keeps what the gateway sent, so the API does not narrow it to the oracle's array
+    of strings.
+- operation: getMessage
+  difference: "response 200 application/json.properties.data*.properties.headers.oneOf: *"
+  reason: >-
+    The headers are the JSON the message was stored with, written as stored; the oracle's
+    oneOf describes the usual shapes.
+- operation: getMessage
+  difference: "response 200 application/json.properties.data*.properties.calendar_events: openapi.yaml absent, generated *"
+  reason: >-
+    The calendar invitations parsed from the message, stored JSON written as stored; omitted
+    when there are none. The oracle omits them.
+- operation: updateMessage
+  difference: "response 200 application/json.properties.data*.required: *"
+  reason: >-
+    A message always writes every field its model writes; the oracle marks some of them
+    optional and omits others.
+- operation: updateMessage
+  difference: "response 200 application/json.properties.data*.properties.tls_version: openapi.yaml absent, generated *"
+  reason: >-
+    The negotiated TLS version of an encrypted inbound-MX delivery; written when known. The
+    oracle omits it.
+- operation: updateMessage
+  difference: "response 200 application/json.properties.data*.properties.received_tls: openapi.yaml absent, generated *"
+  reason: >-
+    Whether an inbound-MX delivery arrived encrypted; written when known. The oracle omits it.
+- operation: updateMessage
+  difference: "response 200 application/json.properties.data*.properties.is_dsn: openapi.yaml absent, generated *"
+  reason: >-
+    Marks a delivery status notification this server generated. The oracle omits it.
+- operation: updateMessage
+  difference: "response 200 application/json.properties.data*.properties.mailbox: openapi.yaml absent, generated *"
+  reason: >-
+    The model always wrote its unloaded mailbox association, as an empty mailbox; the API
+    keeps writing it so the bytes are unchanged. The oracle omits it.
+- operation: updateMessage
+  difference: "response 200 application/json.properties.data*.properties.recipients_to.*"
+  reason: >-
+    The recipients are the JSON the message was stored with, written as stored: a gateway
+    delivery keeps what the gateway sent, so the API does not narrow it to the oracle's array
+    of strings.
+- operation: updateMessage
+  difference: "response 200 application/json.properties.data*.properties.recipients_cc.*"
+  reason: >-
+    The recipients are the JSON the message was stored with, written as stored: a gateway
+    delivery keeps what the gateway sent, so the API does not narrow it to the oracle's array
+    of strings.
+- operation: updateMessage
+  difference: "response 200 application/json.properties.data*.properties.headers.oneOf: *"
+  reason: >-
+    The headers are the JSON the message was stored with, written as stored; the oracle's
+    oneOf describes the usual shapes.
+- operation: updateMessage
+  difference: "response 200 application/json.properties.data*.properties.calendar_events: openapi.yaml absent, generated *"
+  reason: >-
+    The calendar invitations parsed from the message, stored JSON written as stored; omitted
+    when there are none. The oracle omits them.
+- operation: getThread
+  difference: "response 200 application/json.properties.data*.required: *"
+  reason: >-
+    A message always writes every field its model writes; the oracle marks some of them
+    optional and omits others.
+- operation: getThread
+  difference: "response 200 application/json.properties.data*.properties.tls_version: openapi.yaml absent, generated *"
+  reason: >-
+    The negotiated TLS version of an encrypted inbound-MX delivery; written when known. The
+    oracle omits it.
+- operation: getThread
+  difference: "response 200 application/json.properties.data*.properties.received_tls: openapi.yaml absent, generated *"
+  reason: >-
+    Whether an inbound-MX delivery arrived encrypted; written when known. The oracle omits it.
+- operation: getThread
+  difference: "response 200 application/json.properties.data*.properties.is_dsn: openapi.yaml absent, generated *"
+  reason: >-
+    Marks a delivery status notification this server generated. The oracle omits it.
+- operation: getThread
+  difference: "response 200 application/json.properties.data*.properties.mailbox: openapi.yaml absent, generated *"
+  reason: >-
+    The model always wrote its unloaded mailbox association, as an empty mailbox; the API
+    keeps writing it so the bytes are unchanged. The oracle omits it.
+- operation: getThread
+  difference: "response 200 application/json.properties.data*.properties.recipients_to.*"
+  reason: >-
+    The recipients are the JSON the message was stored with, written as stored: a gateway
+    delivery keeps what the gateway sent, so the API does not narrow it to the oracle's array
+    of strings.
+- operation: getThread
+  difference: "response 200 application/json.properties.data*.properties.recipients_cc.*"
+  reason: >-
+    The recipients are the JSON the message was stored with, written as stored: a gateway
+    delivery keeps what the gateway sent, so the API does not narrow it to the oracle's array
+    of strings.
+- operation: getThread
+  difference: "response 200 application/json.properties.data*.properties.headers.oneOf: *"
+  reason: >-
+    The headers are the JSON the message was stored with, written as stored; the oracle's
+    oneOf describes the usual shapes.
+- operation: getThread
+  difference: "response 200 application/json.properties.data*.properties.calendar_events: openapi.yaml absent, generated *"
+  reason: >-
+    The calendar invitations parsed from the message, stored JSON written as stored; omitted
+    when there are none. The oracle omits them.
+- operation: searchMessages
+  difference: "response 200 application/json.properties.data*.required: *"
+  reason: >-
+    A message always writes every field its model writes; the oracle marks some of them
+    optional and omits others.
+- operation: searchMessages
+  difference: "response 200 application/json.properties.data*.properties.tls_version: openapi.yaml absent, generated *"
+  reason: >-
+    The negotiated TLS version of an encrypted inbound-MX delivery; written when known. The
+    oracle omits it.
+- operation: searchMessages
+  difference: "response 200 application/json.properties.data*.properties.received_tls: openapi.yaml absent, generated *"
+  reason: >-
+    Whether an inbound-MX delivery arrived encrypted; written when known. The oracle omits it.
+- operation: searchMessages
+  difference: "response 200 application/json.properties.data*.properties.is_dsn: openapi.yaml absent, generated *"
+  reason: >-
+    Marks a delivery status notification this server generated. The oracle omits it.
+- operation: searchMessages
+  difference: "response 200 application/json.properties.data*.properties.mailbox: openapi.yaml absent, generated *"
+  reason: >-
+    The model always wrote its unloaded mailbox association, as an empty mailbox; the API
+    keeps writing it so the bytes are unchanged. The oracle omits it.
+- operation: searchMessages
+  difference: "response 200 application/json.properties.data*.properties.recipients_to.*"
+  reason: >-
+    The recipients are the JSON the message was stored with, written as stored: a gateway
+    delivery keeps what the gateway sent, so the API does not narrow it to the oracle's array
+    of strings.
+- operation: searchMessages
+  difference: "response 200 application/json.properties.data*.properties.recipients_cc.*"
+  reason: >-
+    The recipients are the JSON the message was stored with, written as stored: a gateway
+    delivery keeps what the gateway sent, so the API does not narrow it to the oracle's array
+    of strings.
+- operation: searchMessages
+  difference: "response 200 application/json.properties.data*.properties.headers.oneOf: *"
+  reason: >-
+    The headers are the JSON the message was stored with, written as stored; the oracle's
+    oneOf describes the usual shapes.
+- operation: searchMessages
+  difference: "response 200 application/json.properties.data*.properties.calendar_events: openapi.yaml absent, generated *"
+  reason: >-
+    The calendar invitations parsed from the message, stored JSON written as stored; omitted
+    when there are none. The oracle omits them.
+- operation: listMessages
+  difference: "response 200 application/json.properties.pagination.type: openapi.yaml \"object\", generated [\"null\",\"object\"]"
+  reason: >-
+    The list envelope's pagination is a pointer, always set on these lists; described as
+    nullable.
+- operation: listMessages
+  difference: "response 200 application/json.properties.pagination.required: openapi.yaml absent, generated [\"has_more\"]"
+  reason: >-
+    has_more is always written in the pagination.
+- operation: listMessages
+  difference: "parameter query limit schema.default: openapi.yaml 50, generated absent"
+  reason: >-
+    Reflection does not describe defaults; the handler keeps 50 for an absent or out-of-range
+    limit (1 to 100).
+- operation: searchMessages
+  difference: "response 200 application/json.properties.pagination.type: openapi.yaml \"object\", generated [\"null\",\"object\"]"
+  reason: >-
+    The list envelope's pagination is a pointer, always set on these lists; described as
+    nullable.
+- operation: searchMessages
+  difference: "response 200 application/json.properties.pagination.required: openapi.yaml absent, generated [\"has_more\"]"
+  reason: >-
+    has_more is always written in the pagination.
+- operation: searchMessages
+  difference: "parameter query limit schema.default: openapi.yaml 50, generated absent"
+  reason: >-
+    Reflection does not describe defaults; the handler keeps 50 for an absent or out-of-range
+    limit (1 to 100).
+- operation: deleteMessage
+  difference: "parameter query permanent: generated only"
+  reason: >-
+    permanent=true deletes for good (the IMAP and POP3 gateways send it); anything else moves
+    the message to Trash. The oracle does not document it.
+- operation: updateMessage
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON, or not an object, is 400 bad_request.
+- operation: updateMessage
+  difference: "request body application/json.properties.is_read.type: openapi.yaml \"boolean\", generated [\"boolean\",\"null\"]"
+  reason: >-
+    Null leaves the flag as it is, as an absent one does.
+- operation: updateMessage
+  difference: "request body application/json.properties.is_flagged.type: openapi.yaml \"boolean\", generated [\"boolean\",\"null\"]"
+  reason: >-
+    Null leaves the flag as it is, as an absent one does.
+- operation: updateMessage
+  difference: "request body application/json.properties.is_starred.type: openapi.yaml \"boolean\", generated [\"boolean\",\"null\"]"
+  reason: >-
+    Null leaves the flag as it is, as an absent one does.
+- operation: updateMessage
+  difference: "request body application/json.properties.folder.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    Null leaves the message where it is, as an absent folder does.
+- operation: updateMessage
+  difference: "request body application/json.properties.is_draft: openapi.yaml absent, generated {\"type\":[\"boolean\",\"null\"]}"
+  reason: >-
+    The IMAP gateway sets \Draft through is_draft (APPEND and STORE); the oracle omits it.
+- operation: getThread
+  difference: "response 404: openapi.yaml only"
+  reason: >-
+    Never written: a thread with no messages in the account is an empty list.
+- operation: searchMessages
+  difference: "response 404: generated only"
+  reason: >-
+    An account the session cannot reach with mail:read is 404 not_found, rather than 403.
+- operation: searchMessages
+  difference: "parameter query cursor: openapi.yaml only"
+  reason: >-
+    Search has never read a cursor: it answers the first page (limit) and has_more, with no
+    next cursor.
+- operation: searchMessages
+  difference: "parameter query has_attachment schema.type: openapi.yaml \"boolean\", generated \"string\""
+  reason: >-
+    Only true and false are accepted, and blank is no filter, as before; a boolean parameter
+    would also take 1, t and the other spellings Go reads as booleans.
+- operation: searchMessages
+  difference: "parameter query has_attachment schema.enum: openapi.yaml absent, generated [\"\",\"false\",\"true\"]"
+  reason: >-
+    true, false, or blank for no filter; anything else is 422 "must be true or false".
+- operation: listAttachments
+  difference: "response 404: generated only"
+  reason: >-
+    A message that is not there, or is in an account the session cannot read, is 404
+    not_found.
+
 # The account's own password and two-factor authentication (#634)
 
 - operation: changeOwnPassword

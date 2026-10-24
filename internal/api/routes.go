@@ -617,20 +617,15 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		accountH.RegisterReads(endpoint.Routes{Router: r, Registry: registry}.
 			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap))
 
-		// Folders
-		r.Get("/api/v1/accounts/{id}/folders", messageH.ListFolders)
-		r.Post("/api/v1/accounts/{id}/folders", messageH.CreateFolder)
-		r.Patch("/api/v1/accounts/{id}/folders/{folder}", messageH.RenameFolder)
-		r.Delete("/api/v1/accounts/{id}/folders/{folder}", messageH.DeleteFolder)
-
-		// Quota
-		r.Get("/api/v1/accounts/{id}/quota", messageH.GetQuota)
+		// Folders and quota
+		mail := endpoint.Routes{Router: r, Registry: registry}.
+			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap)
+		messageH.RegisterFolders(mail)
+		messageH.RegisterMessages(mail)
+		searchH.Register(mail)
+		attachmentH.RegisterList(mail)
 
 		// Messages
-		r.Get("/api/v1/accounts/{id}/folders/{folder}/messages", messageH.ListMessages)
-		r.Get("/api/v1/messages/{id}", messageH.GetMessage)
-		r.Patch("/api/v1/messages/{id}", messageH.UpdateMessage)
-		r.Delete("/api/v1/messages/{id}", messageH.DeleteMessage)
 		r.Post("/api/v1/messages/send", messageH.SendMessage)
 		r.Get("/api/v1/messages/scheduled", messageH.ListScheduledSends)
 		r.Delete("/api/v1/messages/scheduled/{id}", messageH.CancelScheduledSend)
@@ -644,12 +639,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.Put("/api/v1/messages/draft/{id}", messageH.UpdateDraft)
 		r.Post("/api/v1/messages/draft/{id}/send", messageH.SendDraft)
 
-		// Threads
-		r.Get("/api/v1/accounts/{id}/threads/{threadID}", messageH.GetThread)
-
 		// Attachments
 		r.Get("/api/v1/attachments/{id}", attachmentH.GetAttachment)
-		r.Get("/api/v1/messages/{id}/attachments", attachmentH.ListAttachments)
 
 		// Contacts
 		contactH.RegisterContacts(endpoint.Routes{Router: r, Registry: registry}.
@@ -660,9 +651,6 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap)
 		vacationH.Register(mailRules)
 		sieveH.Register(mailRules)
-
-		// Search
-		r.Get("/api/v1/accounts/{id}/search", searchH.Search)
 
 		// Quarantine
 		pipelineH.RegisterQuarantine(endpoint.Routes{Router: r, Registry: registry}.
