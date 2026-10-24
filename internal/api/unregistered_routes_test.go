@@ -4,7 +4,6 @@ package api
 // area issue (#630 to #652) takes its routes off as it registers them, and nothing is added:
 // a new route is registered from the start (#669).
 var unregisteredRoutes = []string{
-	"GET /.well-known/autoconfig/mail/config-v1.1.xml",
 	"GET /.well-known/mta-sts.txt",
 	"GET /.well-known/restmail",
 	"POST /.well-known/smtp-tlsrpt",
@@ -26,6 +25,4 @@ var unregisteredRoutes = []string{
 	"POST /api/v1/messages/{id}/calendar-reply",
 	"POST /api/v1/messages/{id}/forward",
 	"GET /api/v1/messages/{id}/raw",
-	"POST /autodiscover/autodiscover.xml",
-	"GET /mail/config-v1.1.xml",
 }

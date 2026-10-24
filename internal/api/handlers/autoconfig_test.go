@@ -11,8 +11,21 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/restmail/restmail/internal/api/endpoint"
+	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/db/models"
 )
+
+// autoconfigRoutes mounts h's discovery routes as routes.go does, behind the Autodiscover body
+// cap.
+func autoconfigRoutes(h *AutoconfigHandler) http.Handler {
+	r := chi.NewRouter()
+	h.Register(endpoint.Routes{Router: r, Registry: endpoint.NewRegistry()}, AutoconfigRouteChecks{
+		AutodiscoverBody: endpoint.Middleware{Wrap: middleware.MaxBodyBytes(AutodiscoverMaxBody)},
+	})
+	return r
+}
 
 // TestMicrosoftAutodiscover_XMLInjection proves the Microsoft Autodiscover
 // response escapes the caller-controlled email local-part instead of reflecting
@@ -41,7 +54,7 @@ func TestMicrosoftAutodiscover_XMLInjection(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, target, nil)
 	rr := httptest.NewRecorder()
-	h.MicrosoftAutodiscover(rr, req)
+	autoconfigRoutes(h).ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 (body %s)", rr.Code, rr.Body.String())
