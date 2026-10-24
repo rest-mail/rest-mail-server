@@ -584,6 +584,16 @@ handler, on the account they name, so there is no route table to read; their
 roles were taken from the handlers and the authorization phase will check
 them.
 
+## Closed schemas
+
+`TestGeneratedSchemasAreClosedUnlessRecorded` inspects component and inline
+schemas in the generated description, including nested values. Each dictionary,
+opaque JSON value, or explicitly open protocol object is listed by its exact
+JSON pointer in `open-schema-exceptions.yml`, with a reason and an area issue
+where a more precise shape is still needed. A new open schema fails the test;
+closing one requires removing its exception in the same change. Example data
+is not treated as schema.
+
 ## Running it
 
 One command does what CI does (#627), on any machine with Docker, `chore` and the

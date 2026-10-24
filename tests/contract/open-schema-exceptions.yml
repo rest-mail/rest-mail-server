@@ -1,0 +1,107 @@
+# Open schemas in the generated document (#658), each with its reason.
+# TestGeneratedSchemasAreClosedUnlessRecorded rejects new and stale entries.
+# Dictionary fields are permanent exceptions; opaque JSON names its area follow-up.
+'#/components/schemas/AuditEntry/properties/target': Audit targets are a dictionary
+  of target names and string identifiers.
+'#/components/schemas/CustomFilter/properties/config': Filter configuration is plugin
+  specific JSON, validated by the selected filter (#649).
+'#/components/schemas/EmailJSON/properties/metadata': Pipeline metadata is a dictionary
+  of caller and filter supplied string values.
+'#/components/schemas/ErrorBody/properties/details': 'Error details vary by error
+  code; the code registry and conventions are tracked in #656.'
+'#/components/schemas/Headers/properties/extra': Mail header names are supplied by
+  messages, with string values or lists of strings.
+'#/components/schemas/Headers/properties/raw': Mail header names are supplied by messages,
+  with string values or lists of strings.
+'#/components/schemas/Message/properties/calendar_events': 'Message JSON fields preserve
+  stored mail data; more precise shapes are tracked in #637 and #652.'
+'#/components/schemas/Message/properties/headers': 'Message JSON fields preserve stored
+  mail data; more precise shapes are tracked in #637 and #652.'
+'#/components/schemas/Message/properties/recipients_cc': 'Message JSON fields preserve
+  stored mail data; more precise shapes are tracked in #637 and #652.'
+'#/components/schemas/Message/properties/recipients_to': 'Message JSON fields preserve
+  stored mail data; more precise shapes are tracked in #637 and #652.'
+'#/components/schemas/MessageTrace/properties/stages': 'Trace stages contain filter
+  specific result data; more precise shapes are tracked in #649.'
+'#/components/schemas/Pipeline/properties/filters': 'Pipeline definitions hold plugin
+  specific filter configurations; their shapes are tracked in #649 and #652.'
+'#/components/schemas/RestoreSnapshotMessage/properties/calendar_events': 'Message
+  JSON fields preserve stored mail data; more precise shapes are tracked in #637 and
+  #652.'
+'#/components/schemas/RestoreSnapshotMessage/properties/headers': 'Message JSON fields
+  preserve stored mail data; more precise shapes are tracked in #637 and #652.'
+'#/components/schemas/RestoreSnapshotMessage/properties/recipients_cc': 'Message JSON
+  fields preserve stored mail data; more precise shapes are tracked in #637 and #652.'
+'#/components/schemas/RestoreSnapshotMessage/properties/recipients_to': 'Message JSON
+  fields preserve stored mail data; more precise shapes are tracked in #637 and #652.'
+'#/components/schemas/RestoreSnapshotPipeline/properties/filters': 'Pipeline definitions
+  hold plugin specific filter configurations; their shapes are tracked in #649 and
+  #652.'
+'#/components/schemas/ScheduledMessage/properties/to': 'Scheduled recipients preserve
+  their stored JSON representation; tightening this shape is tracked in #638.'
+'#/components/schemas/ScriptExecution/properties/result': 'JavaScript filters may
+  return any JSON value; the sidecar contract is tracked separately in #677.'
+'#/components/schemas/ScriptResult/properties/result': 'JavaScript filters may return
+  any JSON value; the sidecar contract is tracked separately in #677.'
+'#/components/schemas/TLSRPTPolicy': TLS-RPT report objects explicitly accept reporter
+  extensions (oapi:open); the original report is preserved (#631).
+'#/components/schemas/TLSRPTPolicy/properties/failure-details/items': TLS-RPT failure
+  details are reporter supplied dictionaries preserved in the raw report (#631).
+'#/components/schemas/TLSRPTPolicyDesc': TLS-RPT report objects explicitly accept
+  reporter extensions (oapi:open); the original report is preserved (#631).
+'#/components/schemas/TLSRPTRange': TLS-RPT report objects explicitly accept reporter
+  extensions (oapi:open); the original report is preserved (#631).
+'#/components/schemas/TLSRPTReport': TLS-RPT report objects explicitly accept reporter
+  extensions (oapi:open); the original report is preserved (#631).
+'#/components/schemas/TLSRPTSummary': TLS-RPT report objects explicitly accept reporter
+  extensions (oapi:open); the original report is preserved (#631).
+'#/components/schemas/TLSReport/properties/failure_details': Stored TLS-RPT failure
+  details preserve reporter supplied JSON (#646).
+'#/components/schemas/TestSnapshotMessage/properties/calendar_events': 'Message JSON
+  fields preserve stored mail data; more precise shapes are tracked in #637 and #652.'
+'#/components/schemas/TestSnapshotMessage/properties/headers': 'Message JSON fields
+  preserve stored mail data; more precise shapes are tracked in #637 and #652.'
+'#/components/schemas/TestSnapshotMessage/properties/recipients_cc': 'Message JSON
+  fields preserve stored mail data; more precise shapes are tracked in #637 and #652.'
+'#/components/schemas/TestSnapshotMessage/properties/recipients_to': 'Message JSON
+  fields preserve stored mail data; more precise shapes are tracked in #637 and #652.'
+'#/components/schemas/TestSnapshotPipeline/properties/filters': 'Pipeline definitions
+  hold plugin specific filter configurations; their shapes are tracked in #649 and
+  #652.'
+'#/components/schemas/ValidationDetails/properties/fields': Validation failures name
+  arbitrary field paths, each with its refusal message.
+'#/components/schemas/createCustomFilterRequestBody/properties/config': Filter configuration
+  is plugin specific JSON, validated by the selected filter (#649).
+'#/components/schemas/createPipelineRequestBody/properties/filters': Each pipeline
+  filter has plugin specific configuration validated by the pipeline engine (#649).
+'#/components/schemas/deliverMessageBody/properties/recipients_cc': 'Gateway recipients
+  are retained as stored JSON; more precise address shapes are tracked in #642.'
+'#/components/schemas/deliverMessageBody/properties/recipients_to': 'Gateway recipients
+  are retained as stored JSON; more precise address shapes are tracked in #642.'
+'#/components/schemas/restmailDeliverBody/properties/headers': Mail headers use arbitrary
+  header names with lists of string values.
+'#/components/schemas/sampleEmail/properties/metadata': Pipeline metadata is a dictionary
+  of caller and filter supplied string values.
+'#/components/schemas/sampleHeaders/properties/extra': Mail header names are supplied
+  by messages, with string values or lists of strings.
+'#/components/schemas/sampleHeaders/properties/raw': Mail header names are supplied
+  by messages, with string values or lists of strings.
+'#/components/schemas/testCustomFilterRequestBody/properties/email': 'JavaScript test
+  inputs are caller supplied JSON; the sidecar contract is tracked in #677.'
+'#/components/schemas/testFilterRequestBody/properties/config': Filter configuration
+  is plugin specific JSON, validated by the selected filter (#649).
+'#/components/schemas/updateCustomFilterRequestBody/properties/config': Filter configuration
+  is plugin specific JSON, validated by the selected filter (#649).
+'#/components/schemas/updatePipelineRequestBody/properties/filters': Each pipeline
+  filter has plugin specific configuration validated by the pipeline engine (#649).
+'#/components/schemas/validateCustomFilterRequestBody/properties/email': 'JavaScript
+  test inputs are caller supplied JSON; the sidecar contract is tracked in #677.'
+'#/paths/~1api~1v1~1admin~1custom-filters~1{id}~1test/post/responses/400/content/application~1json/schema': 'The
+  API envelope or the sidecar bare error can be forwarded for this status; their union
+  is tracked in #649 and #677.'
+'#/paths/~1api~1v1~1admin~1custom-filters~1{id}~1test/post/responses/413/content/application~1json/schema': 'The
+  API envelope or the sidecar bare error can be forwarded for this status; their union
+  is tracked in #649 and #677.'
+'#/paths/~1api~1v1~1admin~1custom-filters~1{id}~1test/post/responses/500/content/application~1json/schema': 'The
+  API envelope or the sidecar bare error can be forwarded for this status; their union
+  is tracked in #649 and #677.'
