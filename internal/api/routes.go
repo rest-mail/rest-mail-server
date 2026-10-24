@@ -475,9 +475,11 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// is a multiple of SMTP_MAX_MESSAGE_SIZE plus headroom). The recipient-check
 	// GET carries no body, so only the deliver POST is wrapped.
 	deliverBodyLimit := middleware.MaxBodyBytes(cfg.InternalDeliveryBodyLimit())
+	// Registered once, on whichever router serves them, so the description holds them either way.
 	registerInternal := func(rt chi.Router) {
-		rt.Get("/api/mailboxes", mailboxH.CheckAddress)
-		rt.With(deliverBodyLimit).Post("/api/v1/messages/deliver", messageH.DeliverMessage)
+		internal := endpoint.Routes{Router: rt, Registry: registry}
+		mailboxH.RegisterAddressCheck(internal)
+		messageH.RegisterDelivery(internal, endpoint.Middleware{Wrap: deliverBodyLimit})
 	}
 	if !cfg.InternalMTLSEnabled {
 		registerInternal(r)

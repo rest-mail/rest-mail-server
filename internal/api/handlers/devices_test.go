@@ -614,7 +614,7 @@ func TestDeliveryTellsThePushOfNewInboxMail(t *testing.T) {
 	deliver := func(extra string) {
 		t.Helper()
 		rr := httptest.NewRecorder()
-		h.DeliverMessage(rr, httptest.NewRequest(http.MethodPost, "/api/v1/messages/deliver", strings.NewReader(fmt.Sprintf(
+		deliveryRoute(h)(rr, httptest.NewRequest(http.MethodPost, "/api/v1/messages/deliver", strings.NewReader(fmt.Sprintf(
 			`{"mailbox_id":%d,"sender":"someone@remote.test","subject":"hi","body_text":"hello"%s}`, fx.mailbox.ID, extra))))
 		if rr.Code != http.StatusCreated {
 			t.Fatalf("deliver: %d %s", rr.Code, rr.Body.String())
