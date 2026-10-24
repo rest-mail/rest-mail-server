@@ -65,7 +65,7 @@ func TestRecover_ResetsThePasswordWithTheAuthenticatorAndARecoveryCode(t *testin
 	secret, codes := enrollWithRecoveryCodes(t, gdb, before.ID, masterKey)
 
 	const newPassword = "a-new-password-nobody-saw"
-	rr := post(h.Recover, map[string]string{
+	rr := post(recoverHandler(h), map[string]string{
 		"email": addr, "totp_code": totpNow(t, secret), "recovery_code": codes[0],
 		"new_password": newPassword, "client": "native",
 	})
@@ -87,7 +87,7 @@ func TestRecover_ResetsThePasswordWithTheAuthenticatorAndARecoveryCode(t *testin
 		t.Errorf("new password with the same authenticator: status %d (%s), want 200", ok.Code, ok.Body.String())
 	}
 
-	again := post(h.Recover, map[string]string{
+	again := post(recoverHandler(h), map[string]string{
 		"email": addr, "totp_code": totpNow(t, secret), "recovery_code": codes[0], "new_password": "yet-another-password",
 	})
 	if again.Code != http.StatusUnauthorized || errorCode(again) != "recovery_failed" {
@@ -121,23 +121,23 @@ func TestRecover_RefusesWithoutBothFactors(t *testing.T) {
 		{"wrong recovery code", map[string]string{"email": addr, "totp_code": totpNow(t, secret), "recovery_code": "not-a-recovery-code", "new_password": newPassword}},
 	}
 	for _, tc := range refused {
-		rr := post(h.Recover, tc.body)
+		rr := post(recoverHandler(h), tc.body)
 		if rr.Code != http.StatusUnauthorized || errorCode(rr) != "recovery_failed" {
 			t.Errorf("%s: status %d code %q (%s), want 401 recovery_failed", tc.name, rr.Code, errorCode(rr), rr.Body.String())
 		}
 	}
 
-	short := post(h.Recover, map[string]string{"email": addr, "totp_code": totpNow(t, secret), "recovery_code": codes[0], "new_password": "short"})
+	short := post(recoverHandler(h), map[string]string{"email": addr, "totp_code": totpNow(t, secret), "recovery_code": codes[0], "new_password": "short"})
 	if short.Code != http.StatusUnprocessableEntity {
 		t.Errorf("short password: status %d, want 422", short.Code)
 	}
-	missing := post(h.Recover, map[string]string{"email": addr, "recovery_code": codes[0], "new_password": newPassword})
+	missing := post(recoverHandler(h), map[string]string{"email": addr, "recovery_code": codes[0], "new_password": newPassword})
 	if missing.Code != http.StatusUnprocessableEntity {
 		t.Errorf("no authenticator code: status %d, want 422", missing.Code)
 	}
 
 	// None of that spent codes[0].
-	rr := post(h.Recover, map[string]string{"email": addr, "totp_code": totpNow(t, secret), "recovery_code": codes[0], "new_password": newPassword})
+	rr := post(recoverHandler(h), map[string]string{"email": addr, "totp_code": totpNow(t, secret), "recovery_code": codes[0], "new_password": newPassword})
 	if rr.Code != http.StatusOK {
 		t.Fatalf("recover after the refusals: status %d (%s), want 200", rr.Code, rr.Body.String())
 	}
@@ -164,12 +164,12 @@ func TestRecover_RefusalsAreBudgetedPerAddress(t *testing.T) {
 	const newPassword = "a-new-password-nobody-saw"
 	// The budget is the address's however it is spelled.
 	for _, email := range []string{addr, "  " + strings.ToUpper(addr) + " "} {
-		rr := post(h.Recover, map[string]string{"email": email, "totp_code": "000000", "recovery_code": codes[0], "new_password": newPassword})
+		rr := post(recoverHandler(h), map[string]string{"email": email, "totp_code": "000000", "recovery_code": codes[0], "new_password": newPassword})
 		if rr.Code != http.StatusUnauthorized {
 			t.Fatalf("refusal within the budget: status %d (%s), want 401", rr.Code, rr.Body.String())
 		}
 	}
-	right := post(h.Recover, map[string]string{"email": addr, "totp_code": totpNow(t, secret), "recovery_code": codes[0], "new_password": newPassword})
+	right := post(recoverHandler(h), map[string]string{"email": addr, "totp_code": totpNow(t, secret), "recovery_code": codes[0], "new_password": newPassword})
 	if right.Code != http.StatusTooManyRequests || errorCode(right) != "rate_limited" {
 		t.Fatalf("both factors right after the budget: status %d code %q, want 429 rate_limited", right.Code, errorCode(right))
 	}
@@ -179,13 +179,13 @@ func TestRecover_RefusalsAreBudgetedPerAddress(t *testing.T) {
 
 	const unknown = "nobody-here@example.test"
 	for i, want := range []int{http.StatusUnauthorized, http.StatusUnauthorized, http.StatusTooManyRequests} {
-		rr := post(h.Recover, map[string]string{"email": unknown, "totp_code": "000000", "recovery_code": "nope", "new_password": newPassword})
+		rr := post(recoverHandler(h), map[string]string{"email": unknown, "totp_code": "000000", "recovery_code": "nope", "new_password": newPassword})
 		if rr.Code != want {
 			t.Errorf("unknown address, attempt %d: status %d, want %d", i+1, rr.Code, want)
 		}
 	}
 
-	rr := post(h.Recover, map[string]string{"email": other, "totp_code": "000000", "recovery_code": "nope", "new_password": newPassword})
+	rr := post(recoverHandler(h), map[string]string{"email": other, "totp_code": "000000", "recovery_code": "nope", "new_password": newPassword})
 	if rr.Code != http.StatusUnauthorized || errorCode(rr) != "recovery_failed" {
 		t.Errorf("another address: status %d code %q, want 401 recovery_failed", rr.Code, errorCode(rr))
 	}

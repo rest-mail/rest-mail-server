@@ -36,7 +36,7 @@ func doLogin(h *AuthHandler, body map[string]string) *httptest.ResponseRecorder 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
-	h.Login(rr, req)
+	serveAuth(h, rr, req)
 	return rr
 }
 

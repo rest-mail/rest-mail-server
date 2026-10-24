@@ -2407,3 +2407,131 @@
   reason: >-
     Every recovery code is generated, never empty, but a struct tag cannot constrain the items
     of a list, so the generated description states the list's minItems only.
+
+# Sign-in and sessions (#632)
+
+- operation: login
+  difference: "request body application/json.required: openapi.yaml [\"email\",\"password\"], generated absent"
+  reason: >-
+    Checked in the handler, with every missing field reported together and its documented
+    wording ("required: the account's address" and the like); a schema rule would answer them
+    separately, worded otherwise.
+- operation: login
+  difference: "request body application/json.properties.email.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    The address is looked up as given; one that is not an account is the same 401 as a wrong
+    password, so the answer says nothing about which addresses exist.
+- operation: login
+  difference: "request body application/json.properties.client.enum: openapi.yaml [\"native\"], generated absent"
+  reason: >-
+    An empty client means a browser, as an absent one does; any other value is 422 client in
+    the handler (must be "native" or omitted).
+- operation: recoverAccount
+  difference: "request body application/json.properties.client.enum: openapi.yaml [\"native\"], generated absent"
+  reason: >-
+    An empty client means a browser, as an absent one does; any other value is 422 client in
+    the handler (must be "native" or omitted).
+- operation: recoverAccount
+  difference: "request body application/json.required: openapi.yaml [\"email\",\"new_password\",\"recovery_code\",\"totp_code\"], generated absent"
+  reason: >-
+    Checked in the handler, with every missing field reported together and its documented
+    wording ("required: the account's address" and the like); a schema rule would answer them
+    separately, worded otherwise.
+- operation: recoverAccount
+  difference: "request body application/json.properties.new_password.minLength: openapi.yaml 12, generated absent"
+  reason: >-
+    The new password is counted in bytes, as bootstrap and a password change count it, in the
+    handler; minLength would count characters.
+- operation: protocolSignIn
+  difference: "request body application/json.required: openapi.yaml [\"protocol\"], generated absent"
+  reason: >-
+    The protocol is checked in the handler after the credential is: a missing one is 422
+    protocol, worded as before.
+- operation: protocolSignIn
+  difference: "request body application/json.properties.protocol.enum: openapi.yaml [\"imap\",\"pop3\",\"smtp\"], generated absent"
+  reason: >-
+    The protocol is checked in the handler after the credential is, with its own wording (must
+    be "imap", "pop3" or "smtp").
+- operation: login
+  difference: "response 200 application/json.properties.data.properties.setup_required.items.enum: openapi.yaml [\"password\",\"two_factor\"], generated absent"
+  reason: >-
+    The steps an account in setup still owes; the type states the list, not its two values.
+- operation: recoverAccount
+  difference: "response 200 application/json.properties.data.properties.setup_required.items.enum: openapi.yaml [\"password\",\"two_factor\"], generated absent"
+  reason: >-
+    The steps an account in setup still owes; the type states the list, not its two values.
+- operation: refreshToken
+  difference: "response 200 application/json.properties.data.properties.setup_required: openapi.yaml absent, generated {\"items\":{\"type\":\"string\"},\"type\":\"array\"}"
+  reason: >-
+    A refresh of a session in setup lists the steps it still owes, as login does; the oracle
+    omits it for refresh.
+- operation: login
+  difference: "response 200 application/json.properties.data.properties.user.properties.email.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    The account's address as stored; the answer does not promise a format.
+- operation: refreshToken
+  difference: "response 200 application/json.properties.data.properties.user.properties.email.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    The account's address as stored; the answer does not promise a format.
+- operation: recoverAccount
+  difference: "response 200 application/json.properties.data.properties.user.properties.email.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    The account's address as stored; the answer does not promise a format.
+- operation: protocolSignIn
+  difference: "response 200 application/json.properties.data.properties.user.properties.email.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    The account's address as stored; the answer does not promise a format.
+- operation: login
+  difference: "response 200 header Set-Cookie: generated only"
+  reason: >-
+    A browser's session is set, rotated and ended with cookies: restmail_access and
+    restmail_refresh (httpOnly) and restmail_csrf. The oracle describes them in prose only.
+- operation: refreshToken
+  difference: "response 200 header Set-Cookie: generated only"
+  reason: >-
+    A browser's session is set, rotated and ended with cookies: restmail_access and
+    restmail_refresh (httpOnly) and restmail_csrf. The oracle describes them in prose only.
+- operation: recoverAccount
+  difference: "response 200 header Set-Cookie: generated only"
+  reason: >-
+    A browser's session is set, rotated and ended with cookies: restmail_access and
+    restmail_refresh (httpOnly) and restmail_csrf. The oracle describes them in prose only.
+- operation: logout
+  difference: "response 204 header Set-Cookie: generated only"
+  reason: >-
+    A browser's session is set, rotated and ended with cookies: restmail_access and
+    restmail_refresh (httpOnly) and restmail_csrf. The oracle describes them in prose only.
+- operation: login
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON, or not an object, is 400 bad_request.
+- operation: logout
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON, or not an object, is 400 bad_request.
+- operation: refreshToken
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON, or not an object, is 400 bad_request.
+- operation: recoverAccount
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON, or not an object, is 400 bad_request.
+- operation: login
+  difference: "response 429: generated only"
+  reason: >-
+    Throttled at login's per-IP rate: 429 rate_limited with Retry-After.
+- operation: refreshToken
+  difference: "response 429: generated only"
+  reason: >-
+    Throttled at login's per-IP rate: 429 rate_limited with Retry-After.
+- operation: logout
+  difference: "request body application/json.type: openapi.yaml \"object\", generated [\"null\",\"object\"]"
+  reason: >-
+    The body is optional: a browser sends none, its refresh token being the cookie; a native
+    client sends its refresh token.
+- operation: refreshToken
+  difference: "request body application/json.type: openapi.yaml \"object\", generated [\"null\",\"object\"]"
+  reason: >-
+    The body is optional: a browser sends none, its refresh token being the cookie; a native
+    client sends its refresh token.
