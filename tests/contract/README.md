@@ -289,21 +289,20 @@ the Basic credential, so each request body reaches the handler unchanged.
 
 `getDomain` also sends its 404. Its `missing` path-parameter example names
 an unused positive ID in the disposable fixture (2147483647), and the 404
-names the matching `domain_not_found` body. Vertrag 0.29 does not pair named
-parameter examples, and the create link supplies the new domain ID to both
-responses, so a hook selects the missing ID for the 404 alone. The linked
-200 and its boundary probes retain their original IDs. The handler test
+names the matching `domain_not_found` body. Since Vertrag 0.30 a path
+parameter example a response is named after is a request of its own
+(antimatter-studios/vertrag#85): `missing` is sent with 2147483647 against
+the 404 alone, and the create link, which fills the 200's id with the new
+domain's, leaves it as it is. The handler test
 checks both lookups against PostgreSQL and verifies the existing domain
 is unchanged. Other 404s keep their exclusions; `test_gate.py` holds
 the enabled set to exactly `getDomain`, `getCertificate` and `getAlias`.
 
 `getCertificate` sends its documented 404 with the `missing` path parameter
-example. Vertrag 0.29 does not pair parameter example names, and the create
-link supplies its new ID to both responses, so a hook selects the missing ID
-only for the 404. Successful lookups and their boundary probes keep their
-original IDs. `contract_certificate_get_examples_test.go` checks the exact
-refusal, successful detail response, and unchanged stored certificate against
-PostgreSQL; `test_contract_missing_certificate.py` checks the hook.
+example, paired with the 404 alone as `getDomain`'s is, the create link
+filling only the 200's id. `contract_certificate_get_examples_test.go` checks
+the exact refusal, successful detail response, and unchanged stored
+certificate against PostgreSQL.
 
 `login` pairs `wrong_password` with 401 and `email_missing`,
 `password_missing` and `client_invalid` with their 422s. Its 200 is named
@@ -603,10 +602,8 @@ and headers. Coverage does not call after hooks, so ownership is recorded before
 the first create attempt.
 
 `getCustomFilter` sends its documented `missing` 404 using the missing-ID path
-parameter example. Vertrag 0.29 does not pair parameter example names, and the
-create link supplies the created ID to both responses, so a hook selects
-2147483647 only for the 404 transaction. The successful lookup and its boundary
-probes retain their original IDs. The handler test proves the missing row is
+parameter example, paired with the 404 alone by Vertrag 0.30; the create link
+fills only the successful lookup's id. The handler test proves the missing row is
 absent, checks the exact refusal and successful lookup, and verifies no stored
 filter changes. Other missing-resource responses remain excluded (#386).
 
@@ -640,10 +637,9 @@ then leaves both in place: a test send only adds a message. Malformed addresses
 and domains the server will not host are left to the probe, and the request is
 never rewritten.
 
-`getAlias` sends its `missing` path ID (`2147483647`) and exact 404 refusal.
-Its hook selects that ID only for the documented 404 because vertrag 0.29 does
-not pair parameter examples and the create link supplies its created ID to both
-responses. Successes and coverage probes keep their linked IDs. The real-handler
+`getAlias` sends its `missing` path ID (`2147483647`) and exact 404 refusal,
+paired with the 404 alone by Vertrag 0.30; the create link fills only the
+successful lookup's id. The real-handler
 test checks missing and successful lookup, domain association and unchanged
 storage. `test_gate.py` holds the enabled 404 set to `getDomain`,
 `getCertificate` and `getAlias`; sibling exclusions remain in place.
