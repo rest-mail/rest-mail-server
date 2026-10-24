@@ -729,3 +729,43 @@ Failures stop the gate. `browser-sessions.json` records operation, principal and
 status only, with `passed` true only after the whole proof. Local HTTP fixtures
 verify that removing CSRF enforcement or a cookie's Secure attribute fails this
 proof. Live topology and broader mutation workflows still run in GitHub.
+
+### Contract changes in pull requests (#653)
+
+The `API contract changes` CI job generates the description from the exact PR
+head and its target base. It uses the same `TestTheGeneratedDescriptionIsServed`
+export as the UI type builds, without a database. Neither document is committed.
+For a stack, the comparison follows each PR's base, so each layer shows its own
+changes.
+
+The checksum-pinned oasdiff 1.34.0 compares OpenAPI 3.1 operations, parameters,
+schemas, statuses, headers and security requirements, including capability roles.
+The check summary classifies the changes; the `api-contract-changes` artifact
+contains both generated documents and the JSON and Markdown comparison.
+
+- Breaking changes require the `contract-change` PR label. Removing a field or
+  enum value and changing a type require it even when a compatibility checker
+  would allow that direction. Comparator warnings also require deliberate
+  acceptance rather than being called additive.
+- Security changes require `permission-change`, including a removed capability,
+  anonymous access added, or a change to how credentials are sent. A breaking
+  schema change together with a security change requires both labels.
+- Additive changes need neither label.
+
+The existing required `CI` aggregate includes this job. Adding or removing a
+label reruns CI, so removing an acceptance label cannot leave the old verdict
+in place. No branch-protection settings are changed. External references are
+disabled while comparing the documents.
+
+To replay a comparison locally with generated base and revision JSON files:
+
+```sh
+python3 scripts/oasdiff_pin.py install .cache/contract-diff-bin
+python3 scripts/contract_diff.py base.json revision.json \
+  --oasdiff .cache/contract-diff-bin/oasdiff
+# Accept a deliberate change with --label contract-change or --label permission-change.
+```
+
+This is the server PR gate. The mobile client's check against the newest server
+description remains part of #116; #653 stays open until its client requirements
+are met as well.
