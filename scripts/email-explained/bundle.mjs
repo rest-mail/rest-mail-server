@@ -2,7 +2,12 @@
 // rest-mail.com renders: one JSON file holding every chapter, split into its
 // sections as HTML, and every diagram rendered by Archify beside it.
 //
-//   node bundle.mjs --archify <path to archify's bin/archify.mjs> [--out <dir>]
+//   node bundle.mjs --archify <path to archify's bin/archify.mjs> [--out <dir>] [--version <x.y.z>]
+//
+// CI builds it on every change to main and publishes it as
+// ghcr.io/rest-mail/email-explained:<version> (email-explained.yml), which the
+// website picks up by itself. The version's major is FORMAT, so a website that
+// reads one format never takes a bundle of another.
 //
 // The Markdown stays the source of truth, readable on GitHub as it is. This
 // only reads it, following the conventions in
@@ -203,9 +208,10 @@ async function markdownFiles(dir, base = dir) {
 
 async function main() {
   const { values } = parseArgs({
-    options: { out: { type: "string", default: "build/email-explained" }, archify: { type: "string" } },
+    options: { out: { type: "string", default: "build/email-explained" }, archify: { type: "string" }, version: { type: "string" } },
   });
   if (!values.archify) throw new Error("--archify <path to bin/archify.mjs> is required: it renders the diagrams");
+  if (values.version && !new RegExp(`^${FORMAT}\\.\\d+\\.\\d+$`).test(values.version)) throw new Error(`--version ${values.version}: a bundle of format ${FORMAT} is version ${FORMAT}.x.y`);
   const root = git("rev-parse", "--show-toplevel");
   const commit = process.env.GITHUB_SHA || git("rev-parse", "HEAD");
   const guide = join(root, GUIDE);
@@ -239,9 +245,9 @@ async function main() {
     chapters.push(compileChapter({ file, text, commit, files: new Set(files), diagrams }));
   }
 
-  const bundle = { format: FORMAT, source: { repository: REPOSITORY, commit, path: GUIDE }, chapters, diagrams: [...diagrams.values()] };
+  const bundle = { format: FORMAT, version: values.version ?? null, source: { repository: REPOSITORY, commit, path: GUIDE }, chapters, diagrams: [...diagrams.values()] };
   await writeFile(join(out, "bundle.json"), `${JSON.stringify(bundle, null, 2)}\n`);
-  console.log(`${relative(root, out)}: ${chapters.length} chapters, ${diagrams.size} diagrams, from ${commit.slice(0, 12)}`);
+  console.log(`${relative(root, out)}: ${values.version ?? "unversioned"}, ${chapters.length} chapters, ${diagrams.size} diagrams, from ${commit.slice(0, 12)}`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) await main();
