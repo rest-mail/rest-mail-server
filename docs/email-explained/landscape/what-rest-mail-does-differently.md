@@ -108,8 +108,7 @@ its own, each MIT-licensed: [`go-smtp`](https://github.com/rest-mail/go-smtp)
 REST Mail is young, and this guide is honest about it. The issues linked from
 its chapters cover, among others: queue lifetimes and timeouts to RFC 5321
 ([#711](https://github.com/rest-mail/rest-mail-server/issues/711),
-[#714](https://github.com/rest-mail/rest-mail-server/issues/714)), opportunistic
-TLS when sending ([#723](https://github.com/rest-mail/rest-mail-server/issues/723)),
+[#714](https://github.com/rest-mail/rest-mail-server/issues/714)),
 DANE ([#725](https://github.com/rest-mail/rest-mail-server/issues/725)), DMARC to
 RFC 9989 ([#729](https://github.com/rest-mail/rest-mail-server/issues/729),
 [#730](https://github.com/rest-mail/rest-mail-server/issues/730)), ARC sealing
