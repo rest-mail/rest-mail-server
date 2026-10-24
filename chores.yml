@@ -1,9 +1,9 @@
 version: "3"
 
-# `confirm:` (tasks/install.yml) landed in chore 0.17.0. Without this, an older
-# chore refuses the file with "unknown field confirm" — true, but not the useful
-# half of the truth.
-chore_min_version: 0.17.0
+# `cache:` (queue:list) needs chore 0.18.1, `confirm:` (tasks/install.yml)
+# in 0.17.0. Without this, an older chore refuses the file with "unknown field"
+# — true, but not the useful half of the truth.
+chore_min_version: 0.18.1
 
 # silent: true hides the `task: [name] cmd` prelude. Use `chore -v` on the
 # CLI to bring the prelude back when debugging. Each tasks/*.yml include
@@ -381,6 +381,9 @@ tasks:
     desc: Every pull request waiting in a merge queue across REST Mail (add -- --tsv, --project NAME, --no-cache)
     # One request for every repository whose answer is older than
     # AM_GITHUB_CACHE_TTL seconds (300), each repository's default branch (#819).
+    # chore replays the whole answer for five minutes on top of that, per set of
+    # arguments; `chore --force queue:list` asks again.
+    cache: 5m
     dotenv: []
     cmds:
       - scripts/am-queue {{.CLI_ARGS}}
