@@ -46,8 +46,8 @@ func TestAddressCheckJSONParity(t *testing.T) {
 }
 
 // What binding refuses, and what the handlers refuse first, is answered with no database: a
-// body that is not JSON, a field the gateway never sends, a wrong type, no mailbox named, and
-// a recipient check without an address.
+// body that is not JSON, a field the gateway never sends, a wrong type, no mailbox named, a
+// folder the folder rule refuses, and a recipient check without an address.
 func TestDeliveryAndAddressCheckBeforeDatabase(t *testing.T) {
 	deliver := deliveryRoute(&MessageHandler{})
 	for _, tc := range []struct {
@@ -60,6 +60,10 @@ func TestDeliveryAndAddressCheckBeforeDatabase(t *testing.T) {
 		{`{"mailbox_id":"seven"}`, http.StatusUnprocessableEntity, `"mailbox_id":`},
 		{`{"address":"a@b.test","raw_message":"not base64!"}`, http.StatusUnprocessableEntity, `"raw_message":`},
 		{`{"sender":"x@remote.test"}`, http.StatusBadRequest, `mailbox_id or address required`},
+		// The folder follows the folder rule, before the mailbox is looked up (#759).
+		{`{"address":"a@b.test","folder":"Archive/../Other"}`, http.StatusUnprocessableEntity, `"folder":"must not contain \"..\""`},
+		{`{"address":"a@b.test","folder":" Archive"}`, http.StatusUnprocessableEntity, `"folder":"must not begin or end with a space"`},
+		{`{"address":"a@b.test","folder":"a\u0007b"}`, http.StatusUnprocessableEntity, `"folder":"must not contain a control character"`},
 	} {
 		rr := httptest.NewRecorder()
 		deliver(rr, httptest.NewRequest(http.MethodPost, "/api/v1/messages/deliver", strings.NewReader(tc.body)))
