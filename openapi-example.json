@@ -1529,6 +1529,34 @@
       }
     }
   },
+  "getMailbox": {
+    "found": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "mailbox_not_found",
+            "message": "Mailbox not found"
+          }
+        }
+      }
+    }
+  },
   "getTwoFactorStatus": {
     "example": {
       "summary": "The operation's example",
