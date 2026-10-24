@@ -6,7 +6,6 @@ package api
 var unregisteredRoutes = []string{
 	"GET /.well-known/autoconfig/mail/config-v1.1.xml",
 	"GET /.well-known/mta-sts.txt",
-	"GET /.well-known/restmail",
 	"POST /.well-known/smtp-tlsrpt",
 	"GET /api/mailboxes",
 	"GET /api/v1/accounts/{id}/events",
