@@ -53,15 +53,6 @@ interface MailboxState {
       quota_bytes?: number
     }
   ) => Promise<void>
-  updateMailbox: (
-    id: number,
-    data: {
-      display_name?: string
-      quota_bytes?: number
-      enabled?: boolean
-      password?: string
-    }
-  ) => Promise<void>
   deleteMailbox: (id: number) => Promise<void>
   setSelectedDomain: (domain: string | null) => void
   clearError: () => void
@@ -132,34 +123,6 @@ export const useMailboxStore = create<MailboxState>((set, get) => ({
     } catch (error) {
       set({
         error: error instanceof Error ? error.message : 'Failed to create the account',
-        isLoading: false,
-      })
-      throw error
-    }
-  },
-
-  updateMailbox: async (id: number, data) => {
-    set({ isLoading: true, error: null })
-
-    try {
-      const response = await apiV1.request(
-        `/admin/mailboxes/${id}`,
-        {
-          method: 'PUT',
-          body: JSON.stringify(data),
-        }
-      )
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to update mailbox')
-      }
-
-      // Refresh the list
-      await get().fetchMailboxes()
-    } catch (error) {
-      set({
-        error: error instanceof Error ? error.message : 'Failed to update mailbox',
         isLoading: false,
       })
       throw error

@@ -28,28 +28,6 @@ type eligibleGrantRequest struct {
 	Body secondFactorRequest `body:""`
 }
 
-// Blank optional filters have always meant omitted. Strip only those values before
-// typed binding, retaining the first-value semantics of url.Values.Get.
-var blankGrantQuery = endpoint.Middleware{Wrap: func(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		query := r.URL.Query()
-		changed := false
-		for _, name := range []string{"holder_id", "limit", "offset"} {
-			if values, ok := query[name]; ok && len(values) > 0 && values[0] == "" {
-				query.Del(name)
-				changed = true
-			}
-		}
-		if changed {
-			copy := *r.URL
-			copy.RawQuery = query.Encode()
-			r = r.Clone(r.Context())
-			r.URL = &copy
-		}
-		next.ServeHTTP(w, r)
-	})
-}}
-
 // Register serves the permission API with the same capability, session and throttle
 // checks as before. Grant scope and no-escalation checks remain inside the transactions.
 func (h *GrantHandler) Register(rs endpoint.Routes, checks GrantRouteChecks) {
@@ -74,7 +52,7 @@ func (h *GrantHandler) Register(rs endpoint.Routes, checks GrantRouteChecks) {
 		Middleware: read}, h.listCapabilities)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/grants",
 		OperationID: "listGrants", Summary: "List grants, oldest first", Tags: tags,
-		Middleware: []endpoint.Middleware{checks.At(middleware.CapUsersRead), blankGrantQuery}}, h.list)
+		Middleware: read}, h.list)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/grants",
 		OperationID: "createGrant", Summary: "Grant a role at a scope", Tags: tags,
 		Status: http.StatusCreated, Errors: []int{http.StatusForbidden, http.StatusConflict},
