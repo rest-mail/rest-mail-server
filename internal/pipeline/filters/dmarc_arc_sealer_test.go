@@ -27,7 +27,7 @@ func arcEmail(fromDomain, arcStatus, arcSealer string) (context.Context, *pipeli
 // allowlist ARC is purely informational, so an attacker who runs their own ARC
 // sealer cannot launder a spoofed From past the victim domain's p=reject.
 func TestDMARC_UntrustedARCSealerDoesNotOverride(t *testing.T) {
-	stubDMARC(t, func(string) string { return "v=DMARC1; p=reject" })
+	stubDMARC(t, belowTLD("v=DMARC1; p=reject"))
 
 	// Default filter: empty trusted-sealer allowlist.
 	f := &dmarcCheckFilter{}
@@ -47,7 +47,7 @@ func TestDMARC_UntrustedARCSealerDoesNotOverride(t *testing.T) {
 // allowlisted domain rescues an otherwise-failing DMARC evaluation (the
 // legitimate forwarding case ARC exists for). Matching is case-insensitive.
 func TestDMARC_TrustedARCSealerOverrides(t *testing.T) {
-	stubDMARC(t, func(string) string { return "v=DMARC1; p=reject" })
+	stubDMARC(t, belowTLD("v=DMARC1; p=reject"))
 
 	fac := NewDMARCCheckWithSealers([]string{"forwarder.example"})
 	filt, err := fac(nil)

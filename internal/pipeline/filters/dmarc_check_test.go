@@ -40,6 +40,30 @@ func stubDMARC(t *testing.T, publishing func(domain string) string) {
 	t.Cleanup(func() { dmarcTXT = orig })
 }
 
+// belowTLD publishes rec at every name below a top-level domain, and nothing at
+// a TLD itself, so each such name is its own Organizational Domain unless one
+// above it publishes too (RFC 9989 §4.10.2).
+func belowTLD(rec string) func(string) string {
+	return func(domain string) string {
+		if !strings.Contains(domain, ".") {
+			return ""
+		}
+		return rec
+	}
+}
+
+// onlyAt publishes rec at the domains given and nowhere else.
+func onlyAt(rec string, domains ...string) func(string) string {
+	return func(domain string) string {
+		for _, d := range domains {
+			if domain == d {
+				return rec
+			}
+		}
+		return ""
+	}
+}
+
 // fromExampleTest is a message From example.test.
 func fromExampleTest() *pipeline.EmailJSON {
 	return &pipeline.EmailJSON{
@@ -48,7 +72,7 @@ func fromExampleTest() *pipeline.EmailJSON {
 }
 
 func TestDMARC_DKIMAlignment(t *testing.T) {
-	stubDMARC(t, func(string) string { return "v=DMARC1; p=reject" })
+	stubDMARC(t, belowTLD("v=DMARC1; p=reject"))
 
 	f := &dmarcCheckFilter{}
 
@@ -111,7 +135,7 @@ func TestDMARC_DKIMAlignment(t *testing.T) {
 }
 
 func TestDMARC_SPFAlignment(t *testing.T) {
-	stubDMARC(t, func(string) string { return "v=DMARC1; p=reject" })
+	stubDMARC(t, belowTLD("v=DMARC1; p=reject"))
 
 	f := &dmarcCheckFilter{}
 
@@ -196,7 +220,7 @@ func TestDMARC_PolicyIsTheOnlyAuthority(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.policy+" "+tc.config, func(t *testing.T) {
-			stubDMARC(t, func(string) string { return "v=DMARC1; p=" + tc.policy })
+			stubDMARC(t, belowTLD("v=DMARC1; p="+tc.policy))
 			f, err := NewDMARCCheck([]byte(tc.config))
 			if err != nil {
 				t.Fatalf("NewDMARCCheck(%s): %v", tc.config, err)

@@ -95,7 +95,7 @@ REST Mail is an upgrade inside the system, not a replacement:
 - **It adopts every in-system standard** this guide describes, and tracks where
   it does not yet: DANE ([#725](https://github.com/rest-mail/rest-mail-server/issues/725)),
   JMAP ([#720](https://github.com/rest-mail/rest-mail-server/issues/720)),
-  DMARC to RFC 9989 ([#730](https://github.com/rest-mail/rest-mail-server/issues/730)).
+  reading DMARC reports ([#730](https://github.com/rest-mail/rest-mail-server/issues/730)).
 - **Between two REST Mail servers, it upgrades the delivery itself:** the
   [RESTMAIL protocol](restmail-protocol.md) delivers over HTTPS with verified
   endpoints, falling back to ordinary SMTP for everyone else. That is the same
