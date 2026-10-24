@@ -7671,20 +7671,30 @@ paths:
       parameters:
         - name: emailaddress
           in: query
-          required: true
+          required: false
+          description: >-
+            Optional (draft-ietf-mailmaint-autoconfig §4.1). Without it, the
+            email domain is the host the request is made to, autoconfig.<domain>.
           schema:
             type: string
             format: email
           example: admin@restmail.test
       responses:
         "200":
-          description: Autoconfig XML document
+          description: >-
+            Autoconfig XML document. The incoming and outgoing servers are the
+            mail host (GATEWAY_HOSTNAME), on IMAP 993 and SMTP 465 with
+            implicit TLS.
           content:
             application/xml:
               schema:
                 type: string
+        "400":
+          description: No email domain in the address or the host name
         "404":
           description: Domain not found
+        "503":
+          description: The mail host (GATEWAY_HOSTNAME) is not configured
 
   /.well-known/autoconfig/mail/config-v1.1.xml:
     get:
@@ -7695,20 +7705,30 @@ paths:
       parameters:
         - name: emailaddress
           in: query
-          required: true
+          required: false
+          description: >-
+            Optional (draft-ietf-mailmaint-autoconfig §4.1). Without it, the
+            email domain is the host the request is made to, the email domain itself.
           schema:
             type: string
             format: email
           example: admin@restmail.test
       responses:
         "200":
-          description: Autoconfig XML document
+          description: >-
+            Autoconfig XML document. The incoming and outgoing servers are the
+            mail host (GATEWAY_HOSTNAME), on IMAP 993 and SMTP 465 with
+            implicit TLS.
           content:
             application/xml:
               schema:
                 type: string
+        "400":
+          description: No email domain in the address or the host name
         "404":
           description: Domain not found
+        "503":
+          description: The mail host (GATEWAY_HOSTNAME) is not configured
 
   /autodiscover/autodiscover.xml:
     post:
@@ -7764,6 +7784,8 @@ paths:
               examples:
                 malformed:
                   value: "invalid request\n"
+        "503":
+          description: The mail host (GATEWAY_HOSTNAME) is not configured
 
   /.well-known/mta-sts.txt:
     get:

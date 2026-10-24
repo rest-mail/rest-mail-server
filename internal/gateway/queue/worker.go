@@ -1298,8 +1298,10 @@ func dsnRecipientField(addr string) string {
 //     Certificate verification is forced on regardless of the worker's
 //     tlsInsecure flag, and any failure returns a deferrable *EnforceError so
 //     the queue retries rather than delivering in the clear.
-//   - testing / none / no policy: opportunistic TLS as before; a would-fail
-//     under "testing" is logged but delivery proceeds.
+//   - testing / none / no policy: opportunistic TLS (RFC 7435): encrypt when the
+//     MX offers STARTTLS, whatever its certificate, and record whether it
+//     verified; a handshake that fails is retried on a new connection without
+//     TLS. A would-fail under "testing" is logged but delivery proceeds.
 func (w *Worker) deliverToHost(host string, item models.OutboundQueue, stsPolicy *mtasts.Policy) error {
 	return w.deliverSMTP(net.JoinHostPort(host, "25"), host, item, stsPolicy)
 }
@@ -1342,59 +1344,41 @@ func (w *Worker) deliverSMTP(addr, host string, item models.OutboundQueue, stsPo
 	enforce := mode == mtasts.ModeEnforce
 	testingMode := mode == mtasts.ModeTesting
 
-	// Dial with timeout. The guarded dialer refuses non-public resolved
-	// addresses (#167) unless the worker was opted in to private destinations.
-	dialer := w.newGuardedDialer(10 * time.Second)
-	conn, err := dialer.DialContext(ctx, "tcp", addr)
+	link, err := w.openSMTP(ctx, addr, host, attemptDeadline, true, enforce)
 	if err != nil {
-		return fmt.Errorf("connect to %s: %w", addr, err)
+		return err
 	}
-
-	// Bound the ENTIRE conversation — greeting, EHLO, STARTTLS handshake,
-	// MAIL/RCPT, the DATA body write and the final reply — with the single
-	// size-aware absolute deadline. net/smtp sets no deadlines, so without this a
-	// remote that hangs mid-DATA would block the worker indefinitely. The deadline
-	// persists across the StartTLS upgrade (the tls.Conn wraps this same socket).
-	_ = conn.SetDeadline(attemptDeadline)
-
-	client, err := smtp.NewClient(conn, host)
-	if err != nil {
-		conn.Close()
-		return fmt.Errorf("SMTP client for %s: %w", addr, err)
-	}
-	defer func() { _ = client.Close() }()
-
-	// Say hello
-	if err := client.Hello(w.hostname); err != nil {
-		return fmt.Errorf("EHLO to %s: %w", host, err)
-	}
-
-	// Try STARTTLS if available. Under enforce, force certificate verification
-	// on so that a successful handshake proves the cert is valid for host.
-	starttls := false
-	if ok, _ := client.Extension("STARTTLS"); ok {
-		tlsConfig := &tls.Config{
-			ServerName:         host,
-			InsecureSkipVerify: w.tlsInsecure && !enforce, //nolint:gosec // enforce always verifies
-		}
-		if err := client.StartTLS(tlsConfig); err != nil {
-			if testingMode {
-				slog.Warn("queue: MTA-STS testing — STARTTLS failed, delivering anyway",
-					"host", host, "error", err)
-			} else if !enforce {
-				slog.Debug("queue: STARTTLS failed, continuing without TLS", "host", host, "error", err)
-			}
-			// Under enforce, starttls stays false and Evaluate defers below.
+	if link.tlsErr != nil && !enforce {
+		// The failed handshake has left that connection unusable: net/smtp has
+		// already put TLS in its place, and every later command would fail with
+		// it. An opportunistic client starts again on a new connection without
+		// TLS (RFC 7435 §3, as Postfix does) rather than give up on the MX.
+		if testingMode {
+			slog.Warn("queue: MTA-STS testing — STARTTLS failed, delivering without TLS",
+				"host", host, "error", link.tlsErr)
 		} else {
-			starttls = true
+			slog.Info("queue: STARTTLS failed, delivering without TLS", "host", host, "error", link.tlsErr)
 		}
-	} else if testingMode {
-		slog.Warn("queue: MTA-STS testing — host does not support STARTTLS, delivering anyway", "host", host)
+		_ = link.client.Close()
+		if link, err = w.openSMTP(ctx, addr, host, attemptDeadline, false, false); err != nil {
+			return err
+		}
+	}
+	client := link.client
+	defer func() { _ = client.Close() }()
+	starttls := link.security != transportCleartext
+	if testingMode {
+		switch link.security {
+		case transportCleartext:
+			slog.Warn("queue: MTA-STS testing — no TLS with the host, delivering anyway", "host", host)
+		case transportEncrypted:
+			slog.Warn("queue: MTA-STS testing — the host's certificate did not verify, delivering anyway", "host", host)
+		}
 	}
 
 	// MTA-STS enforcement decision point. Under enforce this refuses cleartext
 	// or an unverified certificate by returning a deferrable *EnforceError
-	// (starttls succeeding under enforce implies the cert verified for host).
+	// (under enforce, openSMTP only upgrades with a certificate verified for host).
 	// go-mtasts v0.2.0 removed the caller-supplied Mode override: Evaluate now
 	// gates on the discovered Policy.Mode (RFC 8461 §5). Our operator-facing
 	// downgrade — deliver anyway when MTA-STS enforcement is globally disabled —
@@ -1407,7 +1391,7 @@ func (w *Worker) deliverSMTP(addr, host string, item models.OutboundQueue, stsPo
 		Domain:                 item.Domain,
 		MXHost:                 host,
 		STARTTLS:               starttls,
-		CertValid:              starttls,
+		CertValid:              link.security == transportAuthenticated,
 		AllowInsecureDowngrade: !w.stsEnforce,
 	}); decision != nil {
 		slog.Warn("queue: MTA-STS enforce — refusing delivery", "host", host, "domain", item.Domain, "error", decision)
@@ -1471,5 +1455,91 @@ func (w *Worker) deliverSMTP(addr, host string, item models.OutboundQueue, stsPo
 
 	// Quit
 	_ = client.Quit()
+	// What protected it, never more than it was (RFC 7435 §3): a certificate
+	// that did not verify is encryption, not authentication.
+	metrics.OutboundTransport.WithLabelValues(link.security).Inc()
+	slog.Info("queue: delivered over SMTP", "host", host, "domain", item.Domain, "transport", link.security)
 	return nil
+}
+
+// The transport security of an SMTP delivery (RFC 7435): TLS with a certificate
+// verified for the MX host, TLS whose certificate did not verify, or none.
+const (
+	transportAuthenticated = "authenticated"
+	transportEncrypted     = "encrypted"
+	transportCleartext     = "cleartext"
+)
+
+// smtpLink is an open SMTP conversation with an MX, past EHLO and, when it was
+// asked for and the MX offers it, STARTTLS.
+type smtpLink struct {
+	client   *smtp.Client
+	security string // transportAuthenticated, transportEncrypted or transportCleartext
+	// tlsErr is the STARTTLS failure, when the upgrade was tried and failed; the
+	// connection is then unusable, and the caller decides what to do.
+	tlsErr error
+}
+
+// openSMTP dials addr, which the guarded dialer refuses when it resolves to a
+// non-public address (#167) unless the worker was opted in to private
+// destinations, and says EHLO. With tryTLS it upgrades when the MX offers
+// STARTTLS. With requireVerified (an MTA-STS enforce policy) the certificate
+// must verify for host or the upgrade fails; without it the certificate is
+// checked and its verdict recorded, not required (RFC 7435 §3).
+//
+// One absolute deadline bounds the whole conversation, the greeting, EHLO, the
+// handshake, MAIL/RCPT, the message and the final reply, set on the socket
+// because net/smtp sets none; it persists across the STARTTLS upgrade.
+func (w *Worker) openSMTP(ctx context.Context, addr, host string, deadline time.Time, tryTLS, requireVerified bool) (*smtpLink, error) {
+	dialer := w.newGuardedDialer(10 * time.Second)
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("connect to %s: %w", addr, err)
+	}
+	_ = conn.SetDeadline(deadline)
+	client, err := smtp.NewClient(conn, host)
+	if err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("SMTP client for %s: %w", addr, err)
+	}
+	if err := client.Hello(w.hostname); err != nil {
+		_ = client.Close()
+		return nil, fmt.Errorf("EHLO to %s: %w", host, err)
+	}
+	link := &smtpLink{client: client, security: transportCleartext}
+	if ok, _ := client.Extension("STARTTLS"); !tryTLS || !ok {
+		return link, nil
+	}
+	tlsConfig := &tls.Config{ServerName: host}
+	verified := requireVerified
+	if !requireVerified {
+		tlsConfig.InsecureSkipVerify = true //nolint:gosec // verified below, recorded rather than required
+		tlsConfig.VerifyConnection = func(cs tls.ConnectionState) error {
+			verified = verifyPeerCertificate(cs, host) == nil
+			return nil
+		}
+	}
+	if err := client.StartTLS(tlsConfig); err != nil {
+		link.tlsErr = err
+		return link, nil
+	}
+	link.security = transportEncrypted
+	if verified {
+		link.security = transportAuthenticated
+	}
+	return link, nil
+}
+
+// verifyPeerCertificate checks a server's chain against the system roots and
+// host, as crypto/tls would have.
+func verifyPeerCertificate(cs tls.ConnectionState, host string) error {
+	if len(cs.PeerCertificates) == 0 {
+		return errors.New("no certificate")
+	}
+	opts := x509.VerifyOptions{DNSName: host, Intermediates: x509.NewCertPool()}
+	for _, c := range cs.PeerCertificates[1:] {
+		opts.Intermediates.AddCert(c)
+	}
+	_, err := cs.PeerCertificates[0].Verify(opts)
+	return err
 }

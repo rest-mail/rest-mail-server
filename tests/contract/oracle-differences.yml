@@ -1991,7 +1991,13 @@
   difference: "response 400: generated only"
   reason: >-
     A body that is not JSON, or not an object, is 400 bad_request; before binding it was
-    answered 422 name required.
+    answered 422 name required. A standard folder (INBOX, Sent, Drafts, Trash, Spam, Archive)
+    is not renamed, and no folder is renamed to one: 400 bad_request (#757).
+- operation: renameFolder
+  difference: "response 409: generated only"
+  reason: >-
+    A name another folder has is 409 already_exists: a rename no longer merges two folders
+    into one (#757).
 - operation: renameFolder
   difference: "request body application/json.properties.name.minLength: openapi.yaml 1, generated absent"
   reason: >-
@@ -2454,6 +2460,240 @@
 - operation: restmailDeliver
   difference: "response 400: generated only"
   reason: Binding answers 400 bad_request for a body that is not JSON or not an object, as the handler did.
+
+# Composing: drafts, scheduled sends and calendar replies (#638)
+
+- operation: saveDraft
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: updateDraft
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: listScheduledMessages
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: cancelScheduledMessage
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: respondToCalendar
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: listCalendarEvents
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: saveDraft
+  difference: "response 201 application/json.properties.data*.required: *"
+  reason: >-
+    A message always writes every field its model writes; the oracle marks some of them
+    optional and omits others.
+- operation: saveDraft
+  difference: "response 201 application/json.properties.data*.properties.tls_version: openapi.yaml absent, generated *"
+  reason: >-
+    The negotiated TLS version of an encrypted inbound-MX delivery; written when known. The
+    oracle omits it.
+- operation: saveDraft
+  difference: "response 201 application/json.properties.data*.properties.received_tls: openapi.yaml absent, generated *"
+  reason: >-
+    Whether an inbound-MX delivery arrived encrypted; written when known. The oracle omits it.
+- operation: saveDraft
+  difference: "response 201 application/json.properties.data*.properties.is_dsn: openapi.yaml absent, generated *"
+  reason: >-
+    Marks a delivery status notification this server generated. The oracle omits it.
+- operation: saveDraft
+  difference: "response 201 application/json.properties.data*.properties.mailbox: openapi.yaml absent, generated *"
+  reason: >-
+    The model always wrote its unloaded mailbox association, as an empty mailbox; the API
+    keeps writing it so the bytes are unchanged. The oracle omits it.
+- operation: saveDraft
+  difference: "response 201 application/json.properties.data*.properties.recipients_to.*"
+  reason: >-
+    The recipients are the JSON the message was stored with, written as stored; the API does
+    not narrow it to the oracle's array of strings.
+- operation: saveDraft
+  difference: "response 201 application/json.properties.data*.properties.recipients_cc.*"
+  reason: >-
+    The recipients are the JSON the message was stored with, written as stored; the API does
+    not narrow it to the oracle's array of strings.
+- operation: saveDraft
+  difference: "response 201 application/json.properties.data*.properties.headers.oneOf: *"
+  reason: >-
+    The headers are the JSON the message was stored with, written as stored; the oracle's
+    oneOf describes the usual shapes.
+- operation: saveDraft
+  difference: "response 201 application/json.properties.data*.properties.calendar_events: openapi.yaml absent, generated *"
+  reason: >-
+    The calendar invitations parsed from the message, stored JSON written as stored; omitted
+    when there are none. The oracle omits them.
+- operation: updateDraft
+  difference: "response 200 application/json.properties.data*.required: *"
+  reason: >-
+    A message always writes every field its model writes; the oracle marks some of them
+    optional and omits others.
+- operation: updateDraft
+  difference: "response 200 application/json.properties.data*.properties.tls_version: openapi.yaml absent, generated *"
+  reason: >-
+    The negotiated TLS version of an encrypted inbound-MX delivery; written when known. The
+    oracle omits it.
+- operation: updateDraft
+  difference: "response 200 application/json.properties.data*.properties.received_tls: openapi.yaml absent, generated *"
+  reason: >-
+    Whether an inbound-MX delivery arrived encrypted; written when known. The oracle omits it.
+- operation: updateDraft
+  difference: "response 200 application/json.properties.data*.properties.is_dsn: openapi.yaml absent, generated *"
+  reason: >-
+    Marks a delivery status notification this server generated. The oracle omits it.
+- operation: updateDraft
+  difference: "response 200 application/json.properties.data*.properties.mailbox: openapi.yaml absent, generated *"
+  reason: >-
+    The model always wrote its unloaded mailbox association, as an empty mailbox; the API
+    keeps writing it so the bytes are unchanged. The oracle omits it.
+- operation: updateDraft
+  difference: "response 200 application/json.properties.data*.properties.recipients_to.*"
+  reason: >-
+    The recipients are the JSON the message was stored with, written as stored; the API does
+    not narrow it to the oracle's array of strings.
+- operation: updateDraft
+  difference: "response 200 application/json.properties.data*.properties.recipients_cc.*"
+  reason: >-
+    The recipients are the JSON the message was stored with, written as stored; the API does
+    not narrow it to the oracle's array of strings.
+- operation: updateDraft
+  difference: "response 200 application/json.properties.data*.properties.headers.oneOf: *"
+  reason: >-
+    The headers are the JSON the message was stored with, written as stored; the oracle's
+    oneOf describes the usual shapes.
+- operation: updateDraft
+  difference: "response 200 application/json.properties.data*.properties.calendar_events: openapi.yaml absent, generated *"
+  reason: >-
+    The calendar invitations parsed from the message, stored JSON written as stored; omitted
+    when there are none. The oracle omits them.
+- operation: saveDraft
+  difference: "request body application/json.properties.to.items.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    Each address is checked in the handler (400 "invalid recipient address in to/cc"; the from
+    by whether the session may act as it), with that wording; a format would answer 422
+    instead.
+- operation: saveDraft
+  difference: "request body application/json.properties.cc.items.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    Each address is checked in the handler (400 "invalid recipient address in to/cc"; the from
+    by whether the session may act as it), with that wording; a format would answer 422
+    instead.
+- operation: saveDraft
+  difference: "request body application/json.properties.from.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    Each address is checked in the handler (400 "invalid recipient address in to/cc"; the from
+    by whether the session may act as it), with that wording; a format would answer 422
+    instead.
+- operation: updateDraft
+  difference: "request body application/json.properties.to.items.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    Each address is checked in the handler (400 "invalid recipient address in to/cc"; the from
+    by whether the session may act as it), with that wording; a format would answer 422
+    instead.
+- operation: updateDraft
+  difference: "request body application/json.properties.cc.items.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    Each address is checked in the handler (400 "invalid recipient address in to/cc"; the from
+    by whether the session may act as it), with that wording; a format would answer 422
+    instead.
+- operation: updateDraft
+  difference: "request body application/json.properties.from.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    Each address is checked in the handler (400 "invalid recipient address in to/cc"; the from
+    by whether the session may act as it), with that wording; a format would answer 422
+    instead.
+- operation: updateDraft
+  difference: "request body application/json.properties.from.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    Null leaves the field as it is, as an absent one does.
+- operation: updateDraft
+  difference: "request body application/json.properties.subject.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    Null leaves the field as it is, as an absent one does.
+- operation: updateDraft
+  difference: "request body application/json.properties.body_text.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    Null leaves the field as it is, as an absent one does.
+- operation: updateDraft
+  difference: "request body application/json.properties.body_html.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    Null leaves the field as it is, as an absent one does.
+- operation: updateDraft
+  difference: "request body application/json.properties.in_reply_to: openapi.yaml absent, generated {\"type\":[\"null\",\"string\"]}"
+  reason: >-
+    The mobile app sends a reply's draft whole, with in_reply_to and references; they are
+    accepted and the draft keeps what it was saved with. The oracle omits them.
+- operation: updateDraft
+  difference: "request body application/json.properties.references: openapi.yaml absent, generated {\"type\":[\"null\",\"string\"]}"
+  reason: >-
+    The mobile app sends a reply's draft whole, with in_reply_to and references; they are
+    accepted and the draft keeps what it was saved with. The oracle omits them.
+- operation: listScheduledMessages
+  difference: "security: *"
+  reason: >-
+    The handler checks only that the session is signed in, and acts on its own account: no
+    capability is required today. #743 is to require mail:send (mail:read to list), as the
+    oracle says.
+- operation: cancelScheduledMessage
+  difference: "security: *"
+  reason: >-
+    The handler checks only that the session is signed in, and acts on its own account: no
+    capability is required today. #743 is to require mail:send (mail:read to list), as the
+    oracle says.
+- operation: listScheduledMessages
+  difference: "response 200 application/json.properties.data.items.properties.from.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    The from is stored as the send request gave it, which the send checked; the answer does
+    not promise a format.
+- operation: listScheduledMessages
+  difference: "response 200 application/json.properties.data.items.properties.to.*"
+  reason: >-
+    The recipients are the stored JSON list, written as stored ([] when none is).
+- operation: listScheduledMessages
+  difference: "response 200 application/json.properties.data.items.required: *"
+  reason: >-
+    Every field is always written except sent_message_id and last_error, written once there
+    are any.
+- operation: respondToCalendar
+  difference: "request body application/json.properties.from.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    The from is checked in the handler by whether the session may send as it (403), after the
+    invitation is found.
+- operation: respondToCalendar
+  difference: "request body application/json.properties.response.enum: openapi.yaml [\"ACCEPTED\",\"DECLINED\",\"TENTATIVE\"], generated absent"
+  reason: >-
+    The response is matched in any case (accepted is ACCEPTED) in the handler, which answers
+    400 for any other, as it always has.
+- operation: respondToCalendar
+  difference: "request body application/json.required: openapi.yaml [\"from\",\"response\"], generated absent"
+  reason: >-
+    Both are checked in the handler, after the message and its invitation are found, with
+    their 400 wording.
+- operation: respondToCalendar
+  difference: "response 200 application/json.properties.data.properties.response.enum: openapi.yaml absent, generated [\"ACCEPTED\",\"DECLINED\",\"TENTATIVE\"]"
+  reason: >-
+    The answer names the response sent, upper case.
+- operation: respondToCalendar
+  difference: "response 200 application/json.properties.data.properties.status.enum: openapi.yaml absent, generated [\"sent\"]"
+  reason: >-
+    A reply that is answered 200 was sent.
+- operation: respondToCalendar
+  difference: "response 200 application/json.properties.data.required: openapi.yaml absent, generated [\"response\",\"status\"]"
+  reason: >-
+    Both fields are always written.
 
 # Sign-in and sessions (#632)
 
