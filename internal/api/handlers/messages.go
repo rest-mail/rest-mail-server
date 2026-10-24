@@ -2018,6 +2018,12 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		if pipelineCfg == nil {
 			pipelineCfg = pipeline.DefaultInboundPipeline(mailbox.DomainID)
 		}
+		// The account's own Sieve script runs in the pipeline's sieve step (#787).
+		withScript, err := withAccountSieve(h.db, pipelineCfg, mailbox.ID)
+		if err != nil {
+			return nil, err
+		}
+		pipelineCfg = withScript
 
 		pipelineCtx := pipeline.WithDB(ctx, h.db)
 		pipelineResult, pipeErr := h.engine.Execute(pipelineCtx, pipelineCfg, emailJSON)
@@ -2144,9 +2150,10 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	// The destination folder defaults to INBOX; the IMAP gateway sets params.Folder
 	// on COPY/APPEND so the message is created directly in its destination instead
 	// of being delivered to INBOX and then moved (a non-atomic two-call flow).
+	// Otherwise it is the folder a Sieve fileinto chose, INBOX when none did (#787).
 	folder := params.Folder
 	if folder == "" {
-		folder = "INBOX"
+		folder = sieveFolder(emailJSON, mailbox.Address)
 	}
 	msg := models.Message{
 		MailboxID:    mailbox.ID,
@@ -2174,6 +2181,11 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		ReceivedTLS: params.ReceivedTLS,
 		TLSVersion:  params.TLSVersion,
 	}
+
+	// The flags a Sieve script's imap4flags actions set (RFC 5232, #787); the flags a
+	// gateway carried, below, are the client's own and win.
+	flags := sieveFlagsOf(emailJSON)
+	msg.IsRead, msg.IsFlagged, msg.IsDraft = flags.seen, flags.flagged, flags.draft
 
 	// Apply IMAP flags / INTERNALDATE the gateway carried through: COPY preserves
 	// the source message's flags and internal date (RFC 3501 §6.4.7); APPEND
