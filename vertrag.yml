@@ -49,6 +49,8 @@ auth:
     - '/api/v1/admin/grants/mine > The caller''s own grants > 401 > application/json'
 
 checks:
+  # Validate every declared response header value against its schema (#674).
+  header-schema: true
   # The "no credentials" principal, for every operation: each authenticated
   # request is sent again without its credential, and one that is answered
   # anyway is a failure.
