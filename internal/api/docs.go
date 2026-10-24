@@ -4,15 +4,23 @@ import (
 	"bytes"
 	"fmt"
 	"net/http"
+	"sync"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
 
 	"github.com/restmail/restmail"
 	"github.com/restmail/restmail/internal/api/endpoint"
+	"github.com/restmail/restmail/internal/version"
 )
 
-// registerDocs mounts the API's description and the page that shows it.
+// registerDocs mounts the API's description and the page that shows it: openapi.yaml as
+// written, and the description generated from the registered routes (#670).
 func registerDocs(rs endpoint.Routes) {
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/docs/openapi.json",
+		OperationID: "openapiDocument", Summary: "This API's description, generated from its routes", Tags: []string{"System"},
+		Description: "The OpenAPI 3.1 description go-oapifly generates from the routes this server registers, " +
+			"the description itself among them. It replaces openapi.yaml once the two agree (#670).",
+		Security: oapifly.Public, MediaType: "application/json"}, generatedDescription(rs.Registry))
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/docs",
 		OperationID: "swaggerUI", Summary: "Swagger UI documentation page", Tags: []string{"System"},
 		Security: oapifly.Public, MediaType: "text/html"}, swaggerUI)
@@ -24,6 +32,23 @@ func registerDocs(rs endpoint.Routes) {
 // swaggerUI serves a Swagger UI page that loads the embedded OpenAPI spec.
 func swaggerUI(*http.Request, struct{}) (endpoint.Document, error) {
 	return endpoint.Document{ContentType: "text/html; charset=utf-8", Body: []byte(swaggerHTML)}, nil
+}
+
+// generatedDescription answers the description of the routes registry holds, generated on the
+// first request, when every route is registered, and the same bytes after that. Any origin may
+// read it.
+func generatedDescription(registry *endpoint.Registry) func(*http.Request, struct{}) (endpoint.Document, error) {
+	var once sync.Once
+	var body []byte
+	var err error
+	return func(*http.Request, struct{}) (endpoint.Document, error) {
+		once.Do(func() { body, err = describe(registry, version.Version).JSON() })
+		if err != nil {
+			return endpoint.Document{}, err
+		}
+		return endpoint.Document{ContentType: "application/json",
+			Header: http.Header{"Access-Control-Allow-Origin": {"*"}}, Body: body}, nil
+	}
 }
 
 // openAPISpec serves the root openapi.yaml, embedded by the root package, so there is no

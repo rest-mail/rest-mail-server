@@ -685,7 +685,7 @@ Every route is guarded by capability-based RBAC — each requires the matching c
 ### Documentation
 
 - **Swagger UI**: http://localhost:8080/api/docs
-- **OpenAPI spec**: http://localhost:8080/api/docs/openapi.yaml
+- **OpenAPI spec**: http://localhost:8080/api/docs/openapi.yaml, and the description generated from the registered routes at http://localhost:8080/api/docs/openapi.json
 
 ### Authentication Example
 

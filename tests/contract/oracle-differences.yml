@@ -3463,3 +3463,21 @@
   reason: >-
     The domain is looked up, not checked as a hostname: a trailing dot is taken and removed,
     so a report naming example.com. is stored for example.com rather than refused.
+
+# The generated description, served (#670)
+
+- operation: openapiDocument
+  difference: "response 200 application/json.type: openapi.yaml \"object\", generated \"string\""
+  reason: >-
+    The document is answered as bytes (endpoint.Document), which the generator describes as
+    a string; what the bytes are is an OpenAPI 3.1 document, which openapi.yaml says.
+- operation: openapiDocument
+  difference: "response 200 application/json.required: openapi.yaml [\"info\",\"openapi\",\"paths\"], generated absent"
+  reason: >-
+    The document is answered as bytes (endpoint.Document), which the generator does not
+    describe field by field; OpenAPI 3.1 itself requires openapi, info and paths.
+- operation: openapiDocument
+  difference: "response 200 application/json.properties: openapi.yaml {\"info\":{\"type\":\"object\"},\"openapi\":{\"type\":\"string\"},\"paths\":{\"type\":\"object\"}}, generated absent"
+  reason: >-
+    The document is answered as bytes (endpoint.Document), which the generator does not
+    describe field by field; its fields are OpenAPI 3.1's.

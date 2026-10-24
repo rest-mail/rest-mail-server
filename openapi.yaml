@@ -7648,6 +7648,32 @@ paths:
               schema:
                 type: string
 
+  /api/docs/openapi.json:
+    get:
+      operationId: openapiDocument
+      tags: [System]
+      summary: This API's description, generated from its routes
+      description: >
+        The OpenAPI 3.1 description go-oapifly generates from the routes this
+        server registers, the description itself among them. It replaces
+        openapi.yaml once the two agree (#670).
+      security: []
+      responses:
+        "200":
+          description: The generated OpenAPI 3.1 document
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [openapi, info, paths]
+                properties:
+                  openapi:
+                    type: string
+                  info:
+                    type: object
+                  paths:
+                    type: object
+
   /metrics:
     get:
       operationId: prometheusMetrics

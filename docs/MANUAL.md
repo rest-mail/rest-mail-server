@@ -242,7 +242,7 @@ API at `http://localhost:8080` (or `/api` through the reverse proxy). All endpoi
 - `POST /api/v1/test/reset`, `POST /api/v1/test/seed`, `POST /api/v1/test/snapshot`, `POST /api/v1/test/restore/:snapshot`
 - `GET /metrics` — Prometheus
 
-OpenAPI 3.1 spec: `/api/docs/openapi.yaml`; Swagger UI at `/api/docs`. 146 documented operations.
+OpenAPI 3.1 spec: `/api/docs/openapi.yaml`, and the description generated from the routes the server registers at `/api/docs/openapi.json` (it replaces the YAML once the two agree, #670); Swagger UI at `/api/docs`. 146 documented operations.
 
 ### 4.2 Pipeline engine & filters
 
