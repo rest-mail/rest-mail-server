@@ -20,7 +20,7 @@ func TestSaveDraft_RefusesARecipientThatIsNotAnAddress(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rr := httptest.NewRecorder()
-			h.SaveDraft(rr, authzRequest(http.MethodPost, "/api/v1/messages/draft", 1, nil, tc.body))
+			composeRoutes(h).ServeHTTP(rr, authzRequest(http.MethodPost, "/api/v1/messages/draft", 1, nil, tc.body))
 			if rr.Code != http.StatusBadRequest {
 				t.Fatalf("expected 400, got %d (%s)", rr.Code, rr.Body.String())
 			}

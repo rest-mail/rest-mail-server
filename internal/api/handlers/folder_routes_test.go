@@ -102,3 +102,9 @@ func searchRoutes(h *SearchHandler) http.Handler {
 	h.Register(endpoint.Routes{Router: r, Registry: endpoint.NewRegistry()})
 	return r
 }
+
+func composeRoutes(h *MessageHandler) http.Handler {
+	r := chi.NewRouter()
+	h.RegisterCompose(endpoint.Routes{Router: r, Registry: endpoint.NewRegistry()})
+	return r
+}
