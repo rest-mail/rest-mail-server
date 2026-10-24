@@ -623,15 +623,6 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		attachmentH.Register(mail)
 		messageH.RegisterCompose(mail)
 
-		// Messages
-		r.Post("/api/v1/messages/send", messageH.SendMessage)
-		r.Post("/api/v1/messages/{id}/forward", messageH.ForwardMessage)
-
-		// Drafts
-		r.Post("/api/v1/messages/draft/{id}/send", messageH.SendDraft)
-
-		// Attachments
-
 		// Contacts
 		contactH.RegisterContacts(endpoint.Routes{Router: r, Registry: registry}.
 			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap))

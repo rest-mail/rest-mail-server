@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -42,9 +43,8 @@ func TestScheduleMessage_StoresListsAndCancels(t *testing.T) {
 		fx.mailbox.Address, at.Format(time.RFC3339),
 	)
 	rr := httptest.NewRecorder()
-	h.SendMessage(rr, authzRequest(
-		http.MethodPost, "/api/v1/messages/send", fx.mailbox.ID, nil, body,
-	))
+	composeRoute(h)(rr, sendingAs(httptest.NewRequest(
+		http.MethodPost, "/api/v1/messages/send", strings.NewReader(body)), fx.mailbox.ID))
 	if rr.Code != http.StatusAccepted {
 		t.Fatalf("schedule: expected 202, got %d (%s)", rr.Code, rr.Body.String())
 	}
@@ -122,9 +122,8 @@ func TestScheduleMessage_RefusesAPastTime(t *testing.T) {
 		fx.mailbox.Address, time.Now().Add(-time.Hour).UTC().Format(time.RFC3339),
 	)
 	rr := httptest.NewRecorder()
-	h.SendMessage(rr, authzRequest(
-		http.MethodPost, "/api/v1/messages/send", fx.mailbox.ID, nil, body,
-	))
+	composeRoute(h)(rr, sendingAs(httptest.NewRequest(
+		http.MethodPost, "/api/v1/messages/send", strings.NewReader(body)), fx.mailbox.ID))
 	if rr.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("past scheduled_at: expected 422, got %d (%s)", rr.Code, rr.Body.String())
 	}

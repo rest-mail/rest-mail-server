@@ -6,7 +6,4 @@ package api
 var unregisteredRoutes = []string{
 	"POST /.well-known/smtp-tlsrpt",
 	"GET /api/v1/accounts/{id}/events",
-	"POST /api/v1/messages/draft/{id}/send",
-	"POST /api/v1/messages/send",
-	"POST /api/v1/messages/{id}/forward",
 }

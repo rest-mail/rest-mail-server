@@ -58,6 +58,30 @@ type CalendarEventSummary struct {
 	Versions    int    `json:"versions"`
 }
 
+// SendDiscarded is the answer to a send the outbound pipeline discarded: nothing is sent and
+// nothing kept.
+type SendDiscarded struct {
+	Status string `json:"status" enums:"discarded"`
+}
+
+// sendOutcomes are the answers a send gives, each with its own status: the sent message (201),
+// the message scheduled for later (202), or the pipeline's discard (200).
+var sendOutcomes = []oapifly.EndpointResponse{
+	{Status: http.StatusCreated, Description: "Sent; the copy kept in Sent", Type: oapifly.TypeOf[endpoint.Data[Message]]()},
+	{Status: http.StatusAccepted, Description: "Accepted and scheduled for the time in scheduled_at", Type: oapifly.TypeOf[endpoint.Data[ScheduledMessage]]()},
+	{Status: http.StatusOK, Description: "Discarded by the outbound pipeline", Type: oapifly.TypeOf[endpoint.Data[SendDiscarded]]()},
+}
+
+// sentOrDiscarded are the answers of a send that cannot be scheduled: a draft's, a forward's.
+var sentOrDiscarded = []oapifly.EndpointResponse{sendOutcomes[0], sendOutcomes[2]}
+
+// sendRefusals are what a send refuses with: a field missing or invalid (400), no session
+// (401), an address the session may not send as or the outbound pipeline's reject or
+// quarantine (403), the sender domain's policy or a bad scheduled_at (422), the account's send
+// rate (429, with Retry-After) and a deferral (503).
+var sendRefusals = []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden,
+	http.StatusTooManyRequests, http.StatusServiceUnavailable}
+
 // CalendarReplied is the answer to replying to an invitation.
 type CalendarReplied struct {
 	Response string `json:"response" enums:"ACCEPTED,DECLINED,TENTATIVE"`
@@ -141,6 +165,27 @@ func (h *MessageHandler) RegisterCompose(rs endpoint.Routes) {
 		Description: "The invitation's message is read with mail:read; the reply is sent from an address the session may send as (mail:send).",
 		Errors:      []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusServiceUnavailable},
 		Security:    readAndSend}, h.respondToCalendar)
+	sends := handlerChecked(models.CapMailSend, folderSchemes...)
+	writeAndSend := make([]oapifly.SecurityRequirement, len(folderSchemes))
+	for i, scheme := range folderSchemes {
+		writeAndSend[i] = oapifly.SecurityRequirement{scheme: {models.CapMailWrite, models.CapMailSend}}
+	}
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/send",
+		OperationID: "sendMessage", Summary: "Send a message", Tags: []string{"Messages"},
+		Description: "Sent at once (201), or with scheduled_at stored and sent then (202); the outbound pipeline may " +
+			"discard it (200). The sender is an address the session may send as (mail:send).",
+		Status: http.StatusCreated, SuccessStatuses: []int{http.StatusOK, http.StatusAccepted}, Responses: sendOutcomes,
+		Errors: sendRefusals, Security: sends}, h.sendMessage)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/draft/{id}/send",
+		OperationID: "sendDraft", Summary: "Send a draft", Tags: []string{"Drafts"},
+		Description: "The draft (mail:write) is sent as sendMessage sends, and deleted once it is; a refused send keeps it.",
+		Status:      http.StatusCreated, SuccessStatuses: []int{http.StatusOK}, Responses: sentOrDiscarded,
+		Errors: append([]int{http.StatusNotFound}, sendRefusals...), Security: writeAndSend}, h.sendDraft)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/{id}/forward",
+		OperationID: "forwardMessage", Summary: "Forward a message", Tags: []string{"Messages"},
+		Description: "The message (mail:read) is sent on as sendMessage sends, with Fwd: and its header above the note.",
+		Status:      http.StatusCreated, SuccessStatuses: []int{http.StatusOK}, Responses: sentOrDiscarded,
+		Errors: append([]int{http.StatusNotFound}, sendRefusals...), Security: readAndSend}, h.forwardMessage)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/calendar-events",
 		OperationID: "listCalendarEvents", Summary: "List the calendar invitations an account has received", Tags: []string{"Calendar"},
 		Errors: []int{http.StatusUnauthorized, http.StatusForbidden}, Security: reads}, h.listCalendarEvents)
