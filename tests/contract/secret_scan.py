@@ -9,11 +9,14 @@ a session's tokens). Then every response body is searched for each of them, and
 so is the audit log, read through the API at the end of the run (#673).
 
 A secret may appear in exactly one answer: the one that issued it. Anywhere
-else, in any other answer or in the audit log, it is a finding. vertrag
-replaces its own credentials (the fixture admin's password and the session
-token) with "<redacted>" wherever they appear in a recorded body, so a
-"<redacted>" in any answer but the sign-in and refresh that hand out the token
-means the server echoed one of them.
+else, in any other answer or in the audit log, it is a finding.
+
+vertrag replaces every value of its own login body (the fixture admin's
+address as well as its password) and the session token with "<redacted>"
+wherever they appear in a recorded body, so a "<redacted>" cannot be judged:
+it is the admin's address in every message it sent. The fixture admin's
+password is searched for in the audit log instead, which is read unredacted;
+that it is never answered back is the one thing the recording cannot show.
 
 Usage: secret_scan.py <run.har> [--audit-from vertrag.yml]
 
@@ -38,9 +41,6 @@ SENT_FIELDS = {"password", "new_password", "current_password", "private_key", "k
 ISSUED_FIELDS = {"password", "secret", "recovery_codes", "access_token", "refresh_token", "token"}
 MIN_LENGTH = 8
 REDACTED = "<redacted>"
-
-# The answers that hand vertrag the token it then redacts everywhere.
-TOKEN_PATHS = ("/api/v1/auth/login", "/api/v1/auth/refresh")
 
 
 def body_text(content):
@@ -129,12 +129,14 @@ def path_of(entry):
     return "/" + rest.split("/", 1)[1].split("?", 1)[0] if "/" in rest else "/"
 
 
-def scan(har, audit=()):
-    """Findings for a HAR document and the audit entries read after the run."""
+def scan(har, audit=(), known=()):
+    """Findings for a HAR document and the audit entries read after the run.
+    known are (field, secret, where it was sent) the recording redacts: the
+    fixture admin's password."""
     entries = har.get("log", {}).get("entries", [])
     answers = [body_text(e.get("response", {}).get("content")) for e in entries]
     # secret -> (field, index of the answer that issued it, or None if sent).
-    secrets = {}
+    secrets = {value: (field, None, origin) for field, value, origin in known}
     for i, entry in enumerate(entries):
         post = entry.get("request", {}).get("postData") or {}
         for field, value in json_secrets(body_text(post), SENT_FIELDS):
@@ -154,10 +156,17 @@ def scan(har, audit=()):
                 action = json.loads(record).get("action", "?")
                 findings.append(f"the audit log's {action} entry holds the {field} {how} {origin}, {hint(value)} {where(record, value)}")
                 break
-    for j, answer in enumerate(answers):
-        if REDACTED in answer and path_of(entries[j]) not in TOKEN_PATHS:
-            findings.append(f"{label(entries[j])} answers one of vertrag's own credentials {where(answer, REDACTED)}")
     return findings
+
+
+def login_secrets(config_path):
+    """The secrets of the configuration's auth.login body: its password."""
+    import yaml
+
+    with open(config_path) as stream:
+        body = yaml.safe_load(stream)["auth"]["login"]["body"]
+    return [(field, body[field], "vertrag.yml's auth.login") for field in SENT_FIELDS
+            if isinstance(body.get(field), str) and len(body[field]) >= MIN_LENGTH]
 
 
 def read_audit(config_path):
@@ -195,7 +204,8 @@ def main(argv):
     with open(args.har) as stream:
         har = json.load(stream)
     audit = read_audit(args.audit_from) if args.audit_from else []
-    findings = scan(har, audit)
+    known = login_secrets(args.audit_from) if args.audit_from else []
+    findings = scan(har, audit, known)
     entries = len(har.get("log", {}).get("entries", []))
     for finding in findings:
         print("secret echoed:", finding)

@@ -25,8 +25,9 @@ def configure(config, source_dir, base, narrowed=False, endpoint=""):
     if narrowed:
         config.pop("surface", None)
     base = str(Path(base).resolve())
-    config["reporter"] = ["cli", "junit", "html", "markdown"]
-    config["output"] = ["", base + ".xml", base + ".html", base + ".md"]
+    # The HAR is the run's traffic, which the secret scan reads (#673).
+    config["reporter"] = ["cli", "junit", "html", "markdown", "har"]
+    config["output"] = ["", base + ".xml", base + ".html", base + ".md", base + ".har"]
     return config
 
 
