@@ -155,13 +155,18 @@ and look for `dmarc=pass` in its `Authentication-Results`.
   and applies the `From:` domain's policy: `reject` refuses with `550`,
   `quarantine` holds the message, `none` changes nothing
   ([`internal/pipeline/filters/dmarc_check.go`](../../../internal/pipeline/filters/dmarc_check.go),
-  [`rest-mail/go-dmarc`](https://github.com/rest-mail/go-dmarc)). A failure
-  that a trusted ARC sealer vouches for is let through, and reported as an
-  override; but the list of trusted sealers is empty by default, so today a
-  `p=reject` failure is refused on the policy alone, which RFC 9989 asks
-  receivers not to do.
-- **Reports:** REST Mail sends aggregate reports to the domains that ask for
-  them ([`internal/dmarcreport/`](../../../internal/dmarcreport/)).
+  [`rest-mail/go-dmarc`](https://github.com/rest-mail/go-dmarc)). It follows
+  RFC 9989: the policy and each domain's organisation come from the DNS tree
+  walk, a subdomain that does not exist gets `np`, and a record in test mode
+  (`t=y`) is applied one level lower. A failure that a trusted ARC sealer
+  vouches for is let through, and a `p=reject` failure that came through a
+  mailing list (it carries `List-Id`) is quarantined rather than refused,
+  since a list breaks the authentication RFC 9989 relies on; each such
+  departure from the policy is reported, with its reason. Other `p=reject`
+  failures are still refused.
+- **Reports:** REST Mail sends RFC 9990 aggregate reports to every address a
+  domain asks for, one report per policy domain
+  ([`internal/dmarcreport/`](../../../internal/dmarcreport/)).
 - **Your domain's record:** `chore dns:show` prints a DMARC record with the
   domain's own policy, `dmarc_policy` in the admin API. A new domain starts at
   `p=none`, so its reports come in from the first day and no one's delivery
@@ -170,10 +175,14 @@ and look for `dmarc=pass` in its `Authentication-Results`.
   whose users write to mailing lists below `reject`. REST Mail always signs with
   DKIM, which `p=reject` requires
   ([#729](https://github.com/rest-mail/rest-mail-server/issues/729)).
-- **The standard:** REST Mail implements RFC 7489, finding a domain's
-  organisation with the Public Suffix List and honouring `pct`. Moving to RFC
-  9989 and RFC 9990 (the DNS tree walk, `np`, `psd`, `t`, no rejection on policy
-  alone) is [#730](https://github.com/rest-mail/rest-mail-server/issues/730).
+- **The standard:** REST Mail implements RFC 9989 and RFC 9990: no Public
+  Suffix List, no `pct`. A subdomain gets `np` when DNS answers NXDOMAIN for
+  it ([RFC 8020](https://www.rfc-editor.org/rfc/rfc8020)); Go's resolver
+  reports NXDOMAIN and an empty answer alike, so REST Mail asks the DNS servers
+  itself and reads the response code
+  ([`nxdomain.go`](../../../internal/nxdomain/nxdomain.go)). Receiving aggregate reports for REST Mail's own
+  domains is still to come
+  ([#730](https://github.com/rest-mail/rest-mail-server/issues/730)).
 
 ## Sources
 

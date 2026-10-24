@@ -3,6 +3,7 @@ package dmarcreport
 import (
 	"fmt"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -55,17 +56,20 @@ func TestReporter_ReportDomain(t *testing.T) {
 		sourceIP []string
 		// override and overrideComment are the rows' policy-override reason.
 		override, overrideComment string
-		// wantTo is the rua address a report is queued for, "" for none.
-		wantTo       string
+		// policyDomain is the report's DMARC Policy Domain, from when empty.
+		policyDomain string
+		// wantTo are the rua addresses a report is queued for.
+		wantTo       []string
 		wantInReport []string
 	}{
 		{
-			name:         "mail without a client IP is left out",
-			from:         "local.test",
-			dns:          map[string]string{"_dmarc.local.test": "v=DMARC1; p=reject; rua=mailto:agg@local.test"},
-			sourceIP:     []string{"192.0.2.1", ""},
-			wantTo:       "agg@local.test",
-			wantInReport: []string{"<source_ip>192.0.2.1</source_ip>", "<count>1</count>"},
+			name:     "mail without a client IP is left out",
+			from:     "local.test",
+			dns:      map[string]string{"_dmarc.local.test": "v=DMARC1; p=reject; rua=mailto:agg@local.test"},
+			sourceIP: []string{"192.0.2.1", ""},
+			wantTo:   []string{"agg@local.test"},
+			wantInReport: []string{"<source_ip>192.0.2.1</source_ip>", "<count>1</count>", `<feedback xmlns="urn:ietf:params:xml:ns:dmarc-2.0">`,
+				"<discovery_method>treewalk</discovery_method>", "<generator>REST Mail "},
 		},
 		{
 			name:     "only mail without a client IP",
@@ -87,15 +91,16 @@ func TestReporter_ReportDomain(t *testing.T) {
 				"auth.test._report._dmarc.thirdparty.test": "v=DMARC1",
 			},
 			sourceIP: []string{"192.0.2.3"},
-			wantTo:   "agg@thirdparty.test",
+			wantTo:   []string{"agg@thirdparty.test"},
 		},
 		{
 			name:         "a subdomain without a record reports to its organization's rua=",
 			from:         "mail.org.test",
 			dns:          map[string]string{"_dmarc.org.test": "v=DMARC1; p=reject; sp=quarantine; rua=mailto:agg@org.test"},
 			sourceIP:     []string{"192.0.2.4"},
-			wantTo:       "agg@org.test",
-			wantInReport: []string{"<domain>org.test</domain>", "<sp>quarantine</sp>"},
+			policyDomain: "org.test",
+			wantTo:       []string{"agg@org.test"},
+			wantInReport: []string{"<domain>org.test</domain>", "<sp>quarantine</sp>", "<header_from>user@mail.org.test</header_from>"},
 		},
 		{
 			name:            "a policy override's reason is reported",
@@ -104,8 +109,15 @@ func TestReporter_ReportDomain(t *testing.T) {
 			sourceIP:        []string{"192.0.2.5"},
 			override:        "trusted_forwarder",
 			overrideComment: "arc=pass",
-			wantTo:          "agg@fwd.test",
+			wantTo:          []string{"agg@fwd.test"},
 			wantInReport:    []string{"<type>trusted_forwarder</type>", "<comment>arc=pass</comment>"},
+		},
+		{
+			name:     "every rua= address gets the report",
+			from:     "two.test",
+			dns:      map[string]string{"_dmarc.two.test": "v=DMARC1; p=none; rua=mailto:a@two.test,mailto:b@two.test,https://two.test/r"},
+			sourceIP: []string{"192.0.2.6"},
+			wantTo:   []string{"a@two.test", "b@two.test"},
 		},
 	}
 	for _, tc := range cases {
@@ -118,7 +130,14 @@ func TestReporter_ReportDomain(t *testing.T) {
 			for k, v := range tc.dns {
 				dns[rename(k)] = rename(v)
 			}
-			wantTo := rename(tc.wantTo)
+			var wantTo []string
+			for _, to := range tc.wantTo {
+				wantTo = append(wantTo, rename(to))
+			}
+			policyDomain := from
+			if tc.policyDomain != "" {
+				policyDomain = rename(tc.policyDomain)
+			}
 			t.Cleanup(func() {
 				db.Where("domain = ?", from).Delete(&models.DMARCAggregateRecord{})
 				db.Where("sender = ? AND recipient LIKE ?", "dmarc-reports@reporter.test", "%"+label+"%").Delete(&models.OutboundQueue{})
@@ -141,19 +160,18 @@ func TestReporter_ReportDomain(t *testing.T) {
 				}
 				return nil, nil
 			}
-			if err := r.reportDomain(from, time.Now()); err != nil {
-				t.Fatalf("reportDomain: %v", err)
-			}
+			r.reportDomains([]string{from}, time.Now())
 
 			var queued []models.OutboundQueue
-			db.Where("sender = ? AND raw_message LIKE ?", "dmarc-reports@reporter.test", "%Report Domain: "+from+" %").Find(&queued)
-			switch {
-			case wantTo == "" && len(queued) != 0:
-				t.Errorf("queued a report to %s, want none", queued[0].Recipient)
-			case wantTo != "" && (len(queued) != 1 || queued[0].Recipient != wantTo):
-				t.Errorf("queued %d reports (%+v), want one to %s", len(queued), queued, wantTo)
+			db.Where("sender = ? AND raw_message LIKE ?", "dmarc-reports@reporter.test", "%Report Domain: "+policyDomain+" %").Order("id").Find(&queued)
+			var got []string
+			for _, q := range queued {
+				got = append(got, q.Recipient)
 			}
-			if len(queued) == 1 && len(tc.wantInReport) > 0 {
+			if !reflect.DeepEqual(got, wantTo) {
+				t.Errorf("queued reports to %q, want %q", got, wantTo)
+			}
+			if len(queued) > 0 && len(tc.wantInReport) > 0 {
 				report := reportXML(t, queued[0].RawMessage)
 				for _, want := range tc.wantInReport {
 					if !strings.Contains(report, rename(want)) {
@@ -168,5 +186,49 @@ func TestReporter_ReportDomain(t *testing.T) {
 				t.Errorf("%d rows left unreported", pending)
 			}
 		})
+	}
+}
+
+// The mail of a domain and of its subdomain without a record of its own is
+// one report, for the DMARC Policy Domain both use (RFC 9990 §3.1.2), with a
+// record for each From domain.
+func TestReporter_OneReportPerPolicyDomain(t *testing.T) {
+	db := openReporterDB(t)
+	policy := fmt.Sprintf("one-%d.test", time.Now().UnixNano())
+	sub := "news." + policy
+	t.Cleanup(func() {
+		db.Where("domain IN ?", []string{policy, sub}).Delete(&models.DMARCAggregateRecord{})
+		db.Where("recipient = ?", "agg@"+policy).Delete(&models.OutboundQueue{})
+	})
+	for _, from := range []string{policy, sub} {
+		if err := db.Create(&models.DMARCAggregateRecord{
+			Domain: from, SourceIP: "192.0.2.7", HeaderFrom: from, Disposition: "none", Policy: "none",
+			DKIMDomain: from, DKIMSelector: "s", DKIMResult: "pass", DKIMAligned: true,
+		}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := NewReporter(db, time.Hour, "reporter.test")
+	r.lookupTXT = func(name string) ([]string, error) {
+		if name == "_dmarc."+policy {
+			return []string{"v=DMARC1; p=none; rua=mailto:agg@" + policy}, nil
+		}
+		return nil, nil
+	}
+	r.reportDomains([]string{policy, sub}, time.Now())
+
+	var queued []models.OutboundQueue
+	db.Where("recipient = ?", "agg@"+policy).Find(&queued)
+	if len(queued) != 1 {
+		t.Fatalf("queued %d reports, want one", len(queued))
+	}
+	report := reportXML(t, queued[0].RawMessage)
+	for _, want := range []string{"<header_from>" + policy + "</header_from>", "<header_from>" + sub + "</header_from>", "<selector>s</selector>"} {
+		if !strings.Contains(report, want) {
+			t.Errorf("report lacks %s:\n%s", want, report)
+		}
+	}
+	if strings.Count(report, "<record>") != 2 {
+		t.Errorf("want a record for each From domain:\n%s", report)
 	}
 }

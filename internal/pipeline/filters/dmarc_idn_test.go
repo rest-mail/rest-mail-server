@@ -59,7 +59,7 @@ func TestDMARC_IDNPolicyLookup(t *testing.T) {
 }
 
 func TestDMARC_IDNAlignment(t *testing.T) {
-	stubDMARC(t, func(string) string { return "v=DMARC1; p=reject" })
+	stubDMARC(t, belowTLD("v=DMARC1; p=reject"))
 	for _, tc := range []struct {
 		name, domain string
 		want         bool
@@ -135,7 +135,9 @@ func TestDMARC_IDNOrganizationalPolicy(t *testing.T) {
 		if res.Action != want {
 			t.Errorf("%+v: action = %s, want %s", verdict, res.Action, want)
 		}
-		if !reflect.DeepEqual(queries, []string{"mail.xn--bcher-kva.co.uk", "xn--bcher-kva.co.uk"}) {
+		// Discovery walks from the From domain's parent to the root (RFC 9989
+		// §4.10.1) before alignment walks for the identifier.
+		if len(queries) < 4 || !reflect.DeepEqual(queries[:4], []string{"mail.xn--bcher-kva.co.uk", "xn--bcher-kva.co.uk", "co.uk", "uk"}) {
 			t.Errorf("policy queries = %q", queries)
 		}
 	}

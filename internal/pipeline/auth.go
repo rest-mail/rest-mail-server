@@ -40,6 +40,9 @@ type AuthResult struct {
 	Result   string     `json:"result"`
 	Property string     `json:"property,omitempty"`
 	Domain   string     `json:"domain,omitempty"`
+	// Selector is a DKIM signature's s= tag, which a DMARC aggregate report
+	// names beside its d= (RFC 9990 §3.1.1.12). It stays inside the server.
+	Selector string `json:"-"`
 }
 
 // String renders r as one Authentication-Results resinfo, such as

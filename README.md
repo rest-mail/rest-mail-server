@@ -108,7 +108,7 @@ RESTMAIL follows an adopt-vs-extract rule: adopt mature external libraries where
 | [`rest-mail/go-dkim`](https://github.com/rest-mail/go-dkim) | RFC 6376 DKIM signing + verification, zero external deps |
 | [`rest-mail/go-spf`](https://github.com/rest-mail/go-spf) | RFC 7208 SPF evaluation, zero external deps |
 | [`rest-mail/go-arc`](https://github.com/rest-mail/go-arc) | RFC 8617 ARC chain verification and sealing |
-| [`rest-mail/go-dmarc`](https://github.com/rest-mail/go-dmarc) | RFC 7489 DMARC policy, alignment, and rua report XML |
+| [`rest-mail/go-dmarc`](https://github.com/rest-mail/go-dmarc) | RFC 9989 DMARC policy and alignment (DNS tree walk), and RFC 9990 rua report XML |
 | [`rest-mail/go-mtasts`](https://github.com/rest-mail/go-mtasts) | RFC 8461 MTA-STS policy fetch/parse/enforce |
 | [`rest-mail/go-sieve`](https://github.com/rest-mail/go-sieve) | RFC 5228 Sieve parser/interpreter |
 

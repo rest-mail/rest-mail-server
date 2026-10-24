@@ -5,7 +5,7 @@ import (
 	"compress/gzip"
 	"encoding/base64"
 	"io"
-	"math"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -13,22 +13,23 @@ import (
 	"github.com/rest-mail/go-dmarc"
 )
 
-func TestMailtoRUA(t *testing.T) {
-	uri := func(u string, max uint64) dmarc.ReportURI { return dmarc.ReportURI{URI: u, MaxSize: max} }
+// A report goes to every mailto: rua= address, in order (RFC 9990 §3.5);
+// other schemes are left out (RFC 9989 §4.7).
+func TestMailtoRUAs(t *testing.T) {
 	cases := []struct {
 		name string
-		ruas []dmarc.ReportURI
-		want string
+		ruas []string
+		want []string
 	}{
-		{"first mailto", []dmarc.ReportURI{uri("mailto:agg@example.test", math.MaxUint64), uri("mailto:other@x.test", math.MaxUint64)}, "agg@example.test"},
-		{"scheme in any case", []dmarc.ReportURI{uri("MAILTO:agg@example.test", math.MaxUint64)}, "agg@example.test"},
-		{"non-mailto skipped", []dmarc.ReportURI{uri("https://example.test/report", math.MaxUint64), uri("mailto:agg@example.test", math.MaxUint64)}, "agg@example.test"},
-		{"too small a limit skipped", []dmarc.ReportURI{uri("mailto:small@example.test", 10), uri("mailto:agg@example.test", math.MaxUint64)}, "agg@example.test"},
-		{"none", nil, ""},
+		{"every mailto", []string{"mailto:agg@example.test", "mailto:other@x.test"}, []string{"agg@example.test", "other@x.test"}},
+		{"scheme in any case", []string{"MAILTO:agg@example.test"}, []string{"agg@example.test"}},
+		{"non-mailto skipped", []string{"https://example.test/report", "mailto:agg@example.test"}, []string{"agg@example.test"}},
+		{"headers dropped", []string{"mailto:agg@example.test?subject=dmarc"}, []string{"agg@example.test"}},
+		{"none", nil, nil},
 	}
 	for _, c := range cases {
-		if got := mailtoRUA(c.ruas, 100); got != c.want {
-			t.Errorf("%s: mailtoRUA = %q, want %q", c.name, got, c.want)
+		if got := mailtoRUAs(c.ruas); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%s: mailtoRUAs = %q, want %q", c.name, got, c.want)
 		}
 	}
 }
@@ -41,8 +42,9 @@ func TestBuildReportEmail_AttachmentDecodes(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Unix(1784786400, 0).UTC()
-	raw := buildReportEmail("dmarc@restmail.test", "agg@example.test", "example.test", "restmail.test",
-		"rid-1", 1784700000, 1784786400, now, gz)
+	filename, _ := dmarc.ReportFilename("restmail.test", "example.test", dmarc.DateRange{Begin: 1784700000, End: 1784786400}, "", true)
+	subject, _ := dmarc.ReportSubject("example.test", "restmail.test", "rid-1")
+	raw := buildReportEmail("dmarc@restmail.test", "agg@example.test", subject, filename, "rid-1", "example.test", "restmail.test", now, gz)
 
 	// Basic structure.
 	for _, want := range []string{

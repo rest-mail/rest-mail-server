@@ -14,8 +14,9 @@ import (
 // domain aligns with domain. It reads only the verdicts spf_check and
 // dkim_verify recorded for this run, never Authentication-Results text; with
 // none recorded the sender is unauthenticated. Alignment is relaxed, on
-// Organizational Domains from the Public Suffix List (mail.OrgDomain), as
-// dmarc_check applies it by default.
+// Organizational Domains from the DNS Tree Walk (RFC 9989 §4.10.2), as
+// dmarc_check applies it by default; a DNS failure leaves the sender
+// unauthenticated.
 //
 // This is the gate an allow/blocklist or contact-whitelist match must pass
 // before it may skip spam/greylist scanning. Without it a spoofed sender who
@@ -30,7 +31,10 @@ func senderAuthenticated(ctx context.Context, domain string) bool {
 	auth := pipeline.AuthResultsFromContext(ctx)
 	verdicts := append(auth.Find(pipeline.AuthSPF, pipeline.PropMailFrom), auth.Find(pipeline.AuthDKIM, pipeline.PropHeaderD)...)
 	for _, r := range verdicts {
-		if r.Result == "pass" && dmarcAligned(r.Domain, domain, dmarc.AlignmentRelaxed) {
+		if r.Result != "pass" {
+			continue
+		}
+		if ok, err := dmarcAligned(r.Domain, domain, dmarc.AlignmentRelaxed); ok && err == nil {
 			return true
 		}
 	}

@@ -47,10 +47,16 @@ func TestDMARC_SubdomainUsesOrgDomainPolicy(t *testing.T) {
 	}
 }
 
-// Organizational Domains come from the Public Suffix List: two registrants
-// under co.uk are two organizations, not one.
+// Organizational Domains come from the DNS Tree Walk (RFC 9989 §4.10.2): co.uk
+// says it is a public suffix (psd=y), so two registrants under it are two
+// organizations, not one.
 func TestDMARC_MultiLabelSuffixAlignment(t *testing.T) {
-	stubDMARC(t, func(string) string { return "v=DMARC1; p=reject" })
+	stubDMARC(t, func(domain string) string {
+		if domain == "co.uk" {
+			return "v=DMARC1; p=none; psd=y"
+		}
+		return belowTLD("v=DMARC1; p=reject")(domain)
+	})
 	f := &dmarcCheckFilter{}
 
 	cases := []struct {
@@ -80,7 +86,7 @@ func TestDMARC_MultiLabelSuffixAlignment(t *testing.T) {
 // Strict alignment (adkim=s) is the record's to ask for: a subdomain's
 // signature then does not align.
 func TestDMARC_StrictAlignmentFromRecord(t *testing.T) {
-	stubDMARC(t, func(string) string { return "v=DMARC1; p=reject; adkim=s" })
+	stubDMARC(t, belowTLD("v=DMARC1; p=reject; adkim=s"))
 	f := &dmarcCheckFilter{}
 
 	res, err := f.Execute(authCtx(dkimVerdict("pass", "mail.example.test")), fromExampleTest())
@@ -121,7 +127,7 @@ func openDMARCCaptureDB(t *testing.T) (*gorm.DB, string) {
 // mail from the same domain that has one still is.
 func TestDMARC_CaptureSkipsMailWithoutClientIP(t *testing.T) {
 	db, domain := openDMARCCaptureDB(t)
-	stubDMARC(t, func(string) string { return "v=DMARC1; p=none; rua=mailto:agg@" + domain })
+	stubDMARC(t, belowTLD("v=DMARC1; p=none; rua=mailto:agg@"+domain))
 	f := &dmarcCheckFilter{}
 	for _, ip := range []string{"192.0.2.10", ""} {
 		email := fromAddress("user@" + domain)
@@ -145,7 +151,7 @@ func TestDMARC_CaptureSkipsMailWithoutClientIP(t *testing.T) {
 // reason the disposition differs from the policy, for the aggregate report.
 func TestDMARC_CaptureRecordsTrustedForwarder(t *testing.T) {
 	db, domain := openDMARCCaptureDB(t)
-	stubDMARC(t, func(string) string { return "v=DMARC1; p=reject; rua=mailto:agg@" + domain })
+	stubDMARC(t, belowTLD("v=DMARC1; p=reject; rua=mailto:agg@"+domain))
 	filt, err := NewDMARCCheckWithSealers([]string{"forwarder.example"})(nil)
 	if err != nil {
 		t.Fatal(err)

@@ -137,7 +137,7 @@ func summarizeDKIM(results []dkim.VerifyResult) (overall, detail string, verdict
 	var details []string
 	for _, r := range results {
 		verdicts = append(verdicts, pipeline.AuthResult{
-			Method: pipeline.AuthDKIM, Result: r.Result, Property: pipeline.PropHeaderD, Domain: r.Domain,
+			Method: pipeline.AuthDKIM, Result: r.Result, Property: pipeline.PropHeaderD, Domain: r.Domain, Selector: r.Selector,
 		})
 		details = append(details, fmt.Sprintf("d=%s s=%s %s: %s", r.Domain, r.Selector, r.Result, r.Reason))
 		if rank[r.Result] > rank[overall] {

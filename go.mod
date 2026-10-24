@@ -24,7 +24,7 @@ require (
 	github.com/prometheus/client_model v0.6.2
 	github.com/rest-mail/go-arc v0.3.1
 	github.com/rest-mail/go-dkim v0.4.0
-	github.com/rest-mail/go-dmarc v0.4.1
+	github.com/rest-mail/go-dmarc v0.5.0
 	github.com/rest-mail/go-imap v0.7.0
 	github.com/rest-mail/go-mtasts v0.3.1
 	github.com/rest-mail/go-pop3 v0.3.0

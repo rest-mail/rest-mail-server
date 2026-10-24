@@ -42,6 +42,8 @@ func openAllowlistAuthTestDB(t *testing.T) *gorm.DB {
 // recorded for this run authenticates a sender's domain. A spoofer controls
 // the envelope and the headers but cannot record a verdict.
 func TestSenderAuthenticated(t *testing.T) {
+	// partner.example and attacker.example are Organizational Domains.
+	stubDMARC(t, onlyAt("v=DMARC1; p=none", "partner.example", "attacker.example"))
 	cases := []struct {
 		name     string
 		verdicts []pipeline.AuthResult

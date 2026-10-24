@@ -40,7 +40,7 @@ it. Each row links to the chapter that explains it.
 |---|---|---|
 | [Who may send for a domain](../security/spf.md) | Solved by SPF | Checked on HELO and MAIL FROM; `v=spf1 mx -all` recommended |
 | [Proving a message's origin](../security/dkim.md) | Solved by DKIM | Every message signed; keys not yet rotated automatically ([#728](https://github.com/rest-mail/rest-mail-server/issues/728)) |
-| [Forged From: lines](../security/dmarc.md) | Solved by DMARC, now an IETF standard (RFC 9989) | Applied, to RFC 7489 ([#730](https://github.com/rest-mail/rest-mail-server/issues/730)); recommends `p=reject` too early ([#729](https://github.com/rest-mail/rest-mail-server/issues/729)) |
+| [Forged From: lines](../security/dmarc.md) | Solved by DMARC, now an IETF standard (RFC 9989) | Applied, to RFC 9989; reports sent to RFC 9990, not yet read ([#730](https://github.com/rest-mail/rest-mail-server/issues/730)); a new domain starts at `p=none` |
 | [Forwarding and mailing lists](../security/arc.md) | Being solved: ARC, experimental, used by large providers | Verifies ARC, and seals the mail it forwards ([#731](https://github.com/rest-mail/rest-mail-server/issues/731)) |
 | [Passwords in mail apps](../security/who-may-send.md) | Being solved: app passwords and OAuth | App passwords; no OAuth |
 

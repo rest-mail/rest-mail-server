@@ -108,7 +108,7 @@ func TestDMARC_ForgeriesFail(t *testing.T) {
 // text put on the pipeline message after parsing, as a script or an earlier
 // filter could, is not read as a verdict either.
 func TestDMARC_ScriptWrittenAuthResultsIgnored(t *testing.T) {
-	stubDMARC(t, func(string) string { return "v=DMARC1; p=reject" })
+	stubDMARC(t, belowTLD("v=DMARC1; p=reject"))
 
 	email := fromExampleTest()
 	email.Headers.Raw = map[string][]string{"Authentication-Results": {

@@ -144,8 +144,8 @@ github.com/rest-mail/go-arc v0.3.1 h1:B97iUxeLDBY5IRseGfk20H92mWaiaV4m0TpI+t5qEk
 github.com/rest-mail/go-arc v0.3.1/go.mod h1:y5dcz+cREKeIiHYHbkJjP9uAkm7H42xbCFwDQ3P5eqY=
 github.com/rest-mail/go-dkim v0.4.0 h1:+d1Hp5UOdjs3O0AVWpNFvHQCWA0iDsKkDCe+nd4ZFk8=
 github.com/rest-mail/go-dkim v0.4.0/go.mod h1:OnDDRqOWGdxnMbD8FXxqQqun0fQABeWVmlTBlAL8Kcw=
-github.com/rest-mail/go-dmarc v0.4.1 h1:fmjZrYy9xAWnz97I7mcTnmrtn2vjzvIorAasknuFY7w=
-github.com/rest-mail/go-dmarc v0.4.1/go.mod h1:Q0+iwDfb++dpj3MObRvmKvcRFpykflPbluXJVGENvIo=
+github.com/rest-mail/go-dmarc v0.5.0 h1:KUcd8o+zY9FwXB+uHPZa3hlUt46LV9cFKYvKwiLomKA=
+github.com/rest-mail/go-dmarc v0.5.0/go.mod h1:Q0+iwDfb++dpj3MObRvmKvcRFpykflPbluXJVGENvIo=
 github.com/rest-mail/go-imap v0.7.0 h1:rPoU7pU7UV2kPXO3LXPLMqKCxuDjPtYoH2OuOftgmp0=
 github.com/rest-mail/go-imap v0.7.0/go.mod h1:VJQuITi9O1dEh2ouVcBR/IyMdivs+SKUe5G9XfF4dTI=
 github.com/rest-mail/go-mtasts v0.3.1 h1:kSOSwb658MRjv829Ca9rGqQ1siw8kZXrzNvUjKhDFyk=
