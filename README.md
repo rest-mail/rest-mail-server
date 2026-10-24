@@ -71,7 +71,7 @@ version bump needed by the server or clients.
 **Security and Authentication**
 - TLS with SNI support and DB-backed certificate management
 - DKIM signing, SPF verification, DMARC policy enforcement with rua aggregate reporting
-- ARC chain verification (sealing forwarded mail is planned: #731)
+- ARC chain verification, and an ARC seal on the mail REST Mail forwards
 - MTA-STS and TLS-RPT (RFC 8460/8461), including outbound MTA-STS policy enforcement
 - ACME/Let's Encrypt auto-renewal
 - JWT authentication with bcrypt passwords (Dovecot-compatible `{BLF-CRYPT}` format)

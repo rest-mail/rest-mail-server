@@ -2092,7 +2092,7 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	// but only when a forward was actually enqueued, so a redirect that cannot be
 	// honoured never loses the message.
 	forwarded := 0
-	for _, fwd := range buildRedirectForwards(emailJSON, params.RawMessage, params.Sender, []string{mailbox.Address}) {
+	for _, fwd := range buildRedirectForwards(emailJSON, params.RawMessage, params.Sender, []string{mailbox.Address}, rmail.DomainFromAddress(mailbox.Address), authResults) {
 		row := fwd
 		if err := h.db.Create(&row).Error; err != nil {
 			slog.Error("deliverToLocal: failed to enqueue sieve redirect",
