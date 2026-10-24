@@ -22,7 +22,7 @@ func rotationRequest(method, id, body string) *http.Request {
 }
 
 func TestDKIMRotationSettings_PersistWithoutChangingSigningMaterial(t *testing.T) {
-	db := openAuthzTestDB(t)
+	db := openRotationTestDB(t)
 	tx := db.Begin()
 	t.Cleanup(func() { tx.Rollback() })
 	installed := time.Now().UTC().Add(-48 * time.Hour).Truncate(time.Second)
@@ -41,13 +41,18 @@ func TestDKIMRotationSettings_PersistWithoutChangingSigningMaterial(t *testing.T
 			t.Fatalf("status %d: %s", rr.Code, rr.Body.String())
 		}
 		var response struct {
-			Data map[string]int `json:"data"`
+			Data map[string]any `json:"data"`
 		}
 		if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
 			t.Fatal(err)
 		}
-		if len(response.Data) != 2 || response.Data["domain_id"] != int(domain.ID) || response.Data["rotation_interval_days"] != interval {
+		d := response.Data
+		if len(d) != 5 || d["domain_id"] != float64(domain.ID) || d["rotation_interval_days"] != float64(interval) ||
+			d["state"] != "stable" || d["staged"] != nil || d["previous"] != nil {
 			t.Fatalf("unexpected public settings: %s", rr.Body.String())
+		}
+		if strings.Contains(rr.Body.String(), "private-sentinel") {
+			t.Fatalf("the settings carry the signing key: %s", rr.Body.String())
 		}
 	}
 	rr := httptest.NewRecorder()
@@ -79,7 +84,7 @@ func TestDKIMRotationSettings_PersistWithoutChangingSigningMaterial(t *testing.T
 }
 
 func TestDKIMRotationSettings_InvalidBodyDoesNotChangeInterval(t *testing.T) {
-	db := openAuthzTestDB(t)
+	db := openRotationTestDB(t)
 	tx := db.Begin()
 	t.Cleanup(func() { tx.Rollback() })
 	domain := models.Domain{Name: "invalid-rotation.test", DKIMRotationIntervalDays: 90}
@@ -120,7 +125,7 @@ func TestDKIMRotationSettings_InvalidBodyDoesNotChangeInterval(t *testing.T) {
 }
 
 func TestDKIMRotationSettings_DomainWithoutKeyAndMissingDomain(t *testing.T) {
-	db := openAuthzTestDB(t)
+	db := openRotationTestDB(t)
 	tx := db.Begin()
 	t.Cleanup(func() { tx.Rollback() })
 	domain := models.Domain{Name: "rotation-no-key.test"}
@@ -156,7 +161,7 @@ func TestDKIMRotationSettings_DomainWithoutKeyAndMissingDomain(t *testing.T) {
 }
 
 func TestDKIMRotationSettings_DatabaseRejectsInvalidInterval(t *testing.T) {
-	db := openAuthzTestDB(t)
+	db := openRotationTestDB(t)
 	for _, days := range []int{-1, models.MaxDKIMRotationIntervalDays + 1} {
 		t.Run(fmt.Sprint(days), func(t *testing.T) {
 			tx := db.Begin()

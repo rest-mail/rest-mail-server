@@ -6689,11 +6689,13 @@ paths:
         - CookieAuth: [domains:read]
         - BearerAuth: [domains:read]
         - APIKeyAuth: [domains:read]
-      summary: Read a domain's DKIM rotation interval
+      summary: Read a domain's DKIM rotation interval and state
       description: >
         Available even before a domain has a signing key. The capability must
-        cover this domain. This records policy for the planned rotation worker;
-        scheduled key rotation is not implemented yet.
+        cover this domain. Besides the interval, it reports where the rotation
+        worker has the domain: the staged key's TXT record to publish, when it
+        was seen resolving and when signing moves to it, and the previous key
+        kept until its retirement deadline.
       responses:
         "200":
           description: DKIM rotation settings
@@ -6724,9 +6726,10 @@ paths:
       description: >
         Stores the requested interval without changing signing material or key
         age. Zero disables rotation; 1 through 3650 specifies the key lifetime
-        in days of 24 hours. The capability must cover this domain. This records
-        policy for the planned rotation worker; scheduled key rotation is not
-        implemented yet. Unknown fields and trailing JSON are rejected.
+        in days of 24 hours. The capability must cover this domain. The rotation
+        worker reads the interval on its next tick; the response carries the
+        rotation state as the read does. Unknown fields and trailing JSON are
+        rejected.
       requestBody:
         required: true
         content:
@@ -6772,7 +6775,7 @@ paths:
               examples:
                 configured:
                   value:
-                    data: {domain_id: 1, rotation_interval_days: 90}
+                    data: {domain_id: 1, rotation_interval_days: 90, state: stable, staged: null, previous: null}
         "400":
           description: Malformed JSON or a body that is not a JSON object (bad_request).
           content:
@@ -11423,7 +11426,7 @@ components:
 
     DKIMRotationSettings:
       type: object
-      required: [domain_id, rotation_interval_days]
+      required: [domain_id, rotation_interval_days, state, staged, previous]
       properties:
         domain_id:
           type: integer
@@ -11432,8 +11435,68 @@ components:
           type: integer
           minimum: 0
           maximum: 3650
-          description: Requested key lifetime in 24-hour days; zero disables rotation. Defaults to zero for new and existing domains. The scheduled worker is not implemented yet.
+          description: Requested key lifetime in 24-hour days; zero disables rotation. Defaults to zero for new and existing domains. The rotation worker stages a new key when it is due, waits for its record to resolve, moves signing to it one TTL later, and retires the previous key.
           example: 90
+        state:
+          type: string
+          enum: [awaiting_publication, retiring, stable, waiting_ttl]
+          description: >-
+            stable: no rotation under way. awaiting_publication: a staged key whose
+            record has not resolved yet. waiting_ttl: published, and waiting one TTL
+            before signing moves to it. retiring: signing has moved, and the previous
+            key's record stays until it retires.
+        staged:
+          description: The key signing moves to next; null when there is none.
+          type: ["null", "object"]
+          additionalProperties: false
+          required: [selector, record_name, record_value, published_at]
+          properties:
+            selector:
+              type: string
+            record_name:
+              type: string
+              description: The TXT record's name, `<selector>._domainkey.<domain>` in A-label form.
+            record_value:
+              type: string
+              description: The TXT record's value; empty when the stored key cannot be read.
+            published_at:
+              type: ["null", "string"]
+              format: date-time
+              description: When the record was first seen to resolve; null until then.
+            activates_at:
+              type: ["null", "string"]
+              format: date-time
+              description: For a published staged key, when signing moves to it.
+            retire_after:
+              type: ["null", "string"]
+              format: date-time
+              description: For the previous key, when its record can be removed.
+        previous:
+          description: The key signing moved from; null when there is none.
+          type: ["null", "object"]
+          additionalProperties: false
+          required: [selector, record_name, record_value, published_at]
+          properties:
+            selector:
+              type: string
+            record_name:
+              type: string
+              description: The TXT record's name, `<selector>._domainkey.<domain>` in A-label form.
+            record_value:
+              type: string
+              description: The TXT record's value; empty when the stored key cannot be read.
+            published_at:
+              type: ["null", "string"]
+              format: date-time
+              description: When the record was first seen to resolve; null until then.
+            activates_at:
+              type: ["null", "string"]
+              format: date-time
+              description: For a published staged key, when signing moves to it.
+            retire_after:
+              type: ["null", "string"]
+              format: date-time
+              description: For the previous key, when its record can be removed.
 
     SetDKIMKeyRequest:
       type: object
