@@ -4,8 +4,9 @@ Only what the spec cannot hold: the fixture's passwords, which no spec example
 should carry; the refresh token a sign-in hands out; a fresh key pair; and the
 id of the domain the run created, where a request carries it in its body
 rather than its path (links fill only parameters). Links supply the other
-existing resources; domain and certificate 404s select their documented missing
-IDs because vertrag does not pair named parameter examples.
+existing resources. A 404 named after a path parameter's example (getDomain's,
+getCertificate's, getCustomFilter's and getAlias's `missing`) is sent with that
+example's id, which no link replaces (vertrag 0.30, antimatter-studios/vertrag#85).
 
 The principals are the E2E fixture's (tests/e2e/contract_principals_test.go),
 read from the file it writes.
@@ -224,24 +225,6 @@ def keep_the_created_domain(transaction):
         return
     hooks.stash["domain_id"] = data.get("id")
     hooks.stash["domain"] = data.get("name")
-
-
-@hooks.before("getDomain")
-def get_a_missing_domain(transaction):
-    # Parameter example names are not paired by vertrag 0.29, and the create
-    # link supplies its real ID to both responses. Only the 404 selects the
-    # spec's missing ID; the success and its coverage probes keep their IDs.
-    if " > 404 > " in transaction.get("name", ""):
-        transaction["fullPath"] = "/api/v1/admin/domains/2147483647"
-
-
-@hooks.before("getCertificate")
-def get_a_missing_certificate(transaction):
-    # Parameter example names are not paired by vertrag 0.29, and the create
-    # link supplies its real ID to both responses. Only the 404 selects the
-    # spec's missing ID; the success and its coverage probes keep their IDs.
-    if " > 404 > " in transaction.get("name", ""):
-        transaction["fullPath"] = "/api/v1/admin/certificates/2147483647"
 
 
 @hooks.before("deleteDomain")
@@ -836,15 +819,6 @@ def remove_a_previous_contact_probe(transaction):
         offset += len(contacts)
 
 
-@hooks.before("getCustomFilter")
-def get_a_missing_custom_filter(transaction):
-    # Parameter example names are not paired by vertrag 0.29, and the create
-    # link supplies its real ID to both responses. Only the 404 selects the
-    # spec's missing ID; the success and its coverage probes keep their IDs.
-    if " > 404 > " in transaction.get("name", ""):
-        transaction["fullPath"] = "/api/v1/admin/custom-filters/2147483647"
-
-
 def sender_rules_path(transaction):
     """The list a sender rule probe adds to, and its domain id, or None for a
     malformed id (left to the probe's own 400)."""
@@ -1244,9 +1218,3 @@ def on_the_created_account(transaction):
     transaction["fullPath"] = parent + "/" + str(account["id"]) + ("?" + query if query else "")
 
 
-@hooks.before("getAlias")
-def get_a_missing_alias(transaction):
-    # Vertrag 0.29 does not pair parameter examples. Only the documented
-    # 404 selects the missing ID; successes and probes retain their linked ID.
-    if " > 404 > " in transaction.get("name", ""):
-        transaction["fullPath"] = "/api/v1/admin/aliases/2147483647"
