@@ -527,6 +527,22 @@ a hosted domain and mailbox for each address a test send probe uses, and,
 
 ## Principals
 
+`fixtureplan/defaults.json` is the shared declaration of the existing named
+principals, their account/owner relationships, and the held retry queue entry.
+The E2E principal proof and `fixtures/` command read it through the embedded Go
+`fixtureplan` package; Vertrag hooks read the same JSON file. Live IDs,
+passwords and newly issued app passwords still come from setup and are written
+to `.cache/contract-principals.json`, preserving the existing hook bindings.
+The plan is restricted to the disposable `restmail.test` domain and reserved
+`.invalid` queue destinations. Unknown fields, missing principal references,
+duplicate accounts and immediately claimable queue entries fail validation.
+
+This is the initial consolidation for #662. Other area fixtures, named-value
+placeholders and full resets between phases remain pending. The current test
+snapshot does not contain credentials, grants, contacts and several other
+fixture tables; restoring it between phases would delete required state, so
+this change does not wire that incomplete restore into the runner.
+
 The E2E suite makes one of each kind of caller and checks a small
 authorization matrix with them (`TestContractPrincipals`):
 

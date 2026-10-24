@@ -17,6 +17,7 @@ import (
 	rmdb "github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
+	"github.com/restmail/restmail/tests/contract/fixtureplan"
 	"gorm.io/gorm"
 )
 
@@ -107,6 +108,10 @@ func TestRetryFixtureWaitsForTheActualRetry(t *testing.T) {
 }
 
 func TestRetryFixtureIsFreshOnEveryRun(t *testing.T) {
+	plan, err := fixtureplan.Default()
+	if err != nil {
+		t.Fatal(err)
+	}
 	db := fixtureDB(t)
 	if err := db.Create(&models.Domain{Name: "restmail.test", Active: true}).Error; err != nil {
 		t.Fatal(err)
@@ -123,7 +128,7 @@ func TestRetryFixtureIsFreshOnEveryRun(t *testing.T) {
 		t.Fatal("a repeat reused its consumed fixture:", err)
 	}
 	var newest models.OutboundQueue
-	if err := db.Where("recipient = ?", retryRecipient).Order("created_at DESC").First(&newest).Error; err != nil || newest.ID != second {
+	if err := db.Where("recipient = ?", plan.Queue["retry"].Recipient).Order("created_at DESC").First(&newest).Error; err != nil || newest.ID != second {
 		t.Fatal("listQueue does not reach the new held entry:", err)
 	}
 }

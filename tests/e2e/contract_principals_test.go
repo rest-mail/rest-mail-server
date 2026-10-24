@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/restmail/restmail/tests/contract/fixtureplan"
 )
 
 // The principals of the contract tests (#376): one of each kind of caller the
@@ -20,11 +22,6 @@ import (
 //
 // There is no agent principal: the account model has none yet (#341), so
 // there is nothing to make.
-const (
-	contractOrdinaryAddress = "contract-ordinary@restmail.test"
-	contractOwnedAddress    = "contract-owned@restmail.test"
-)
-
 // contractPrincipalsFile is where the principals are written, under the
 // repository root (mounted at /src by `chore test:e2e`), for
 // tests/contract/hooks.py to read. go test runs in the package's directory,
@@ -48,6 +45,13 @@ type contractPrincipal struct {
 //	owned, no password        cannot sign in
 //	no credentials            401           401           401
 func TestContractPrincipals(t *testing.T) {
+	plan, err := fixtureplan.Default()
+	requireNoError(t, err)
+	ordinaryPlan, ownedPlan := plan.Principals["ordinary"], plan.Principals["owned"]
+	contractOrdinaryAddress, contractOwnedAddress := ordinaryPlan.Address, ownedPlan.Address
+	if plan.Principals["admin"].Address != seedAdminAddress {
+		t.Fatal("contract fixture plan does not name the topology's admin")
+	}
 	waitForAPI(t, 60*time.Second)
 
 	admin := newAPIClient()
@@ -58,11 +62,11 @@ func TestContractPrincipals(t *testing.T) {
 
 	// An ordinary account: a password, no grants. The admin makes it, as
 	// only an account holding mailboxes:write can.
-	ordinary := createMailbox(t, admin, contractOrdinaryAddress, accountPassword, "Contract Ordinary")
+	ordinary := createMailbox(t, admin, contractOrdinaryAddress, accountPassword, ordinaryPlan.DisplayName)
 	// An account with no password, reached only through its owner, the admin.
 	resp, err := admin.post("/api/v1/accounts", map[string]string{
 		"address":      contractOwnedAddress,
-		"display_name": "Contract Owned",
+		"display_name": ownedPlan.DisplayName,
 	})
 	requireNoError(t, err)
 	var owned mailboxInfo
@@ -85,7 +89,7 @@ func TestContractPrincipals(t *testing.T) {
 	user := newAPIClient()
 	requireNoError(t, loginRetrying(user, contractOrdinaryAddress, accountPassword))
 	resp, err = user.post(fmt.Sprintf("/api/v1/accounts/%d/credentials", ordinary.ID),
-		map[string]string{"name": "contract tests", "password": accountPassword})
+		map[string]string{"name": plan.Principals["app_password"].Name, "password": accountPassword})
 	requireNoError(t, err)
 	requireStatus(t, resp, http.StatusCreated)
 	var created struct {
