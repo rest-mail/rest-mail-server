@@ -1,0 +1,124 @@
+name: Email, explained
+
+# Publishes the guide (docs/email-explained) for rest-mail.com whenever main
+# changes it: bundle.mjs builds it into the content bundle the website renders,
+# and it is pushed as ghcr.io/rest-mail/email-explained:<version>. The website
+# checks for a newer version on its own schedule, takes it, tests it and
+# releases itself, so a merged chapter goes live with nobody copying it across
+# (docs/design/email-explained-website.md). CI has already checked the guide
+# before it could merge (ci.yml, "Email, explained").
+#
+# The version is <format>.0.<commits on main>: SemVer, rising with every
+# publish, and its major is the bundle's format, which the website checks.
+#
+# A pull request that touches the same files builds the image without pushing
+# it, so a broken build is found before it merges, not after.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/email-explained/**"
+      - "scripts/email-explained/bundle.mjs"
+      - "scripts/email-explained/Dockerfile"
+      - "scripts/email-explained/package.json"
+      - "scripts/email-explained/package-lock.json"
+      - ".github/workflows/email-explained.yml"
+  pull_request:
+    paths:
+      - "docs/email-explained/**"
+      - "scripts/email-explained/bundle.mjs"
+      - "scripts/email-explained/Dockerfile"
+      - "scripts/email-explained/package.json"
+      - "scripts/email-explained/package-lock.json"
+      - ".github/workflows/email-explained.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+# One publish at a time, the newest last.
+concurrency:
+  group: email-explained-publish
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/rest-mail/email-explained
+
+jobs:
+  publish:
+    name: Publish the guide's bundle
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: scripts/email-explained
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The version counts the commits on main.
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: scripts/email-explained/package.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fetch Archify, at the commit package.json pins
+        run: echo "ARCHIFY=$(node fetch-archify.mjs "$RUNNER_TEMP/archify")" >> "$GITHUB_ENV"
+
+      - name: Work out the version
+        run: |
+          set -euo pipefail
+          format=$(node --input-type=module -e 'import { FORMAT } from "./bundle.mjs"; console.log(FORMAT)')
+          echo "VERSION=$format.0.$(git rev-list --count HEAD)" >> "$GITHUB_ENV"
+
+      - name: Build the bundle
+        run: node bundle.mjs --archify "$ARCHIFY" --out "$RUNNER_TEMP/bundle" --version "$VERSION"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push the bundle
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ runner.temp }}/bundle
+          file: scripts/email-explained/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ env.IMAGE }}:${{ env.VERSION }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ env.VERSION }}
+            org.opencontainers.image.title=Email, explained
+            org.opencontainers.image.description=The content bundle rest-mail.com renders the guide from
+            org.opencontainers.image.licenses=MIT
+          # One plain manifest with one layer, so a reader needs only the
+          # registry's HTTP API: no attestations, no platforms to choose.
+          provenance: false
+          sbom: false
+
+      - name: Check anyone can fetch it
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          token=$(curl -fsS "https://ghcr.io/token?scope=repository:rest-mail/email-explained:pull" | jq -r .token)
+          if ! curl -fsS -o /dev/null -H "Authorization: Bearer $token" \
+            -H "Accept: application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json" \
+            "https://ghcr.io/v2/rest-mail/email-explained/manifests/$VERSION"; then
+            echo "::error::$IMAGE:$VERSION was pushed but cannot be fetched without credentials. Make the email-explained package public (organisation packages, Package settings), as the other rest-mail packages are." >&2
+            exit 1
+          fi
+          echo "$IMAGE:$VERSION is published and public"
