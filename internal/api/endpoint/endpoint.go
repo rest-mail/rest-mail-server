@@ -129,9 +129,25 @@ func Refuse(status int, code, message string) *Error {
 	return &Error{Status: status, Code: code, Message: message}
 }
 
-// Invalid is the 422 validation failure, field by field.
+// The messages of a 422, by the part of the request its fields are in (#786).
+const (
+	pathFailedValidation    = "Path parameters failed validation"
+	queryFailedValidation   = "Query parameters failed validation"
+	headerFailedValidation  = "Request headers failed validation"
+	requestFailedValidation = "Request failed validation"
+)
+
+// Invalid is the 422 validation failure, field by field, for fields of the request body.
 func Invalid(fields map[string]string) *Error {
-	return &Error{Status: http.StatusUnprocessableEntity, Code: "validation_failed", Fields: fields}
+	return &Error{Status: http.StatusUnprocessableEntity, Code: "validation_failed",
+		Message: respond.BodyFailedValidation, Fields: fields}
+}
+
+// InvalidQuery is the 422 validation failure for query parameters a handler refuses itself.
+func InvalidQuery(fields map[string]string) *Error {
+	refusal := Invalid(fields)
+	refusal.Message = queryFailedValidation
+	return refusal
 }
 
 // Data is the {"data": ...} envelope respond.Data writes, as a type the document can name.
@@ -434,7 +450,11 @@ func writeError(w http.ResponseWriter, err error) {
 		return
 	}
 	if refusal.Fields != nil {
-		respond.ValidationError(w, refusal.Fields)
+		message := refusal.Message
+		if message == "" {
+			message = respond.BodyFailedValidation
+		}
+		respond.ValidationFailed(w, message, refusal.Fields)
 		return
 	}
 	respond.Error(w, refusal.Status, refusal.Code, refusal.Message)
@@ -534,7 +554,9 @@ func bindError(dst interface{}, err error) error {
 		return nil
 	case errors.As(err, &violations):
 		missingMessages(reflect.TypeOf(dst).Elem(), "", violations)
-		return Invalid(violations)
+		refusal := Invalid(violations)
+		refusal.Message = refusedIn(reflect.TypeOf(dst).Elem(), violations)
+		return refusal
 	case errors.Is(err, oapifly.ErrMalformedBody):
 		return Refuse(http.StatusBadRequest, "bad_request", "Invalid request body")
 	case errors.Is(err, oapifly.ErrUnsupportedMediaType):
@@ -542,6 +564,56 @@ func bindError(dst interface{}, err error) error {
 			"Unsupported media type: "+strings.TrimPrefix(err.Error(), oapifly.ErrUnsupportedMediaType.Error()+": "))
 	}
 	return err
+}
+
+// refusedIn is the message of a 422 for violations of a request of type t: the part of the
+// request their fields are in, requestFailedValidation when they are in more than one.
+// Bind names a parameter's violation by the parameter's name and a body's by its JSON path
+// (#786).
+func refusedIn(t reflect.Type, violations oapifly.Violations) string {
+	params := paramsIn(t)
+	where := ""
+	for name := range violations {
+		in := params[name]
+		if in == "" {
+			in = "body"
+		}
+		if where != "" && where != in {
+			return requestFailedValidation
+		}
+		where = in
+	}
+	switch where {
+	case "path":
+		return pathFailedValidation
+	case "query":
+		return queryFailedValidation
+	case "header":
+		return headerFailedValidation
+	}
+	return respond.BodyFailedValidation
+}
+
+// paramsIn maps each parameter of t, a request type, to where it is ("path", "query" or
+// "header"), read as Bind reads them: from t's own fields.
+func paramsIn(t reflect.Type) map[string]string {
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	out := map[string]string{}
+	if t.Kind() != reflect.Struct {
+		return out
+	}
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		for _, in := range []string{"path", "query", "header"} {
+			if tag := f.Tag.Get(in); tag != "" {
+				out[strings.Split(tag, ",")[0]] = in
+				break
+			}
+		}
+	}
+	return out
 }
 
 // stringParams names the query parameters of t whose type is a string.

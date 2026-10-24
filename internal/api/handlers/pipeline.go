@@ -185,21 +185,21 @@ func (h *PipelineHandler) listPipelineLogs(r *http.Request, in listPipelineLogsR
 		switch params.Get("direction") {
 		case "inbound", "outbound":
 		default:
-			return zero, endpoint.Invalid(map[string]string{"direction": "must be one of inbound, outbound"})
+			return zero, endpoint.InvalidQuery(map[string]string{"direction": "must be one of inbound, outbound"})
 		}
 	}
 	if params.Has("action") {
 		switch params.Get("action") {
 		case "continue", "reject", "quarantine", "discard", "defer":
 		default:
-			return zero, endpoint.Invalid(map[string]string{"action": "must be one of continue, reject, quarantine, discard, defer"})
+			return zero, endpoint.InvalidQuery(map[string]string{"action": "must be one of continue, reject, quarantine, discard, defer"})
 		}
 	}
 	if params.Has("outcome") {
 		switch params.Get("outcome") {
 		case "delivered", "queued", "rejected", "quarantined", "discarded", "deferred":
 		default:
-			return zero, endpoint.Invalid(map[string]string{"outcome": "must be one of delivered, queued, rejected, quarantined, discarded, deferred"})
+			return zero, endpoint.InvalidQuery(map[string]string{"outcome": "must be one of delivered, queued, rejected, quarantined, discarded, deferred"})
 		}
 	}
 	limit := 50
