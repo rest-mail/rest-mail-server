@@ -1017,6 +1017,50 @@ func withinDSNRateLimit(recentCount, maxPerWindow int) bool {
 // counting inbound rows would let an attacker inflate a target mailbox's counter
 // and suppress its legitimate bounces (the DSN rate-limit-spoof gap). is_dsn is
 // never set from the wire, so it cannot be spoofed.
+// queueRemoteDSN queues the notice of a failed delivery for a sender outside REST Mail. It
+// goes with a null reverse path, as every DSN does (RFC 5321 §6.1), From: mailer-daemon at
+// this host, and is sent as this host. Like a local DSN it is limited per recipient, so mail
+// that forged a sender cannot turn into a stream of notices to them (backscatter).
+func (w *Worker) queueRemoteDSN(item models.OutboundQueue, smtpErr *SMTPError) {
+	recipient := strings.TrimSpace(item.Sender)
+	domain := rmail.DomainFromAddress(recipient)
+	if domain == "" || rmail.ValidateAddress(recipient) != nil {
+		slog.Warn("queue: the sender of a failed message is not an address, no DSN", "id", item.ID)
+		return
+	}
+	now := time.Now()
+	if w.bounceMax > 0 {
+		var recent int64
+		w.db.Model(&models.OutboundQueue{}).
+			Where("is_dsn = ? AND recipient = ? AND created_at > ?", true, recipient, now.Add(-w.bounceWindow)).
+			Count(&recent)
+		if !withinDSNRateLimit(int(recent), w.bounceMax) {
+			slog.Warn("queue: DSN rate limit exceeded for a sender outside, suppressing DSN",
+				"sender", recipient, "recent", recent, "max", w.bounceMax, "window", w.bounceWindow)
+			return
+		}
+	}
+	lastAttempt := now
+	if item.LastAttempt != nil {
+		lastAttempt = *item.LastAttempt
+	}
+	dsn := buildDSNMessage(w.hostname, item, smtpErr, now, lastAttempt)
+	notice := models.OutboundQueue{
+		Sender:        "",
+		SendingDomain: w.hostname,
+		Recipient:     recipient,
+		Domain:        domain,
+		RawMessage:    dsn.raw,
+		Status:        "pending",
+		IsDSN:         true,
+	}
+	if err := w.db.Create(&notice).Error; err != nil {
+		slog.Error("queue: failed to queue a DSN for a sender outside", "sender", recipient, "error", err)
+		return
+	}
+	slog.Info("queue: RFC 3464 DSN queued for a sender outside", "sender", recipient, "failed_recipient", item.Recipient)
+}
+
 func (w *Worker) recentDSNCount(mailboxID uint) int64 {
 	var recent int64
 	w.db.Table("messages").
@@ -1040,7 +1084,10 @@ func (w *Worker) generateBounce(item models.OutboundQueue, smtpErr *SMTPError) {
 	// submission did when it attributed the message.
 	var senderMailbox models.Mailbox
 	if err := repositories.FindActiveMailboxByAddress(w.db, item.Sender, &senderMailbox); err != nil {
-		slog.Debug("queue: bounce sender not local, discarding DSN", "sender", item.Sender)
+		// A sender outside REST Mail, such as the author of mail a Sieve redirect
+		// forwarded: accepting the message took on telling them it failed (RFC 5321
+		// §6.1), so the notice goes by mail (#715).
+		w.queueRemoteDSN(item, smtpErr)
 		return
 	}
 
