@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 )
 
@@ -43,6 +44,13 @@ func TestTheGeneratedDescriptionIsServed(t *testing.T) {
 	}
 	if len(served.Paths) != len(described.Paths) {
 		t.Errorf("served %d paths, Description has %d", len(served.Paths), len(described.Paths))
+	}
+	// CI gives both frontends the actual served bytes from this revision.
+	// No database or independently maintained schema is needed.
+	if path := os.Getenv("RESTMAIL_OPENAPI_OUTPUT"); path != "" {
+		if err := os.WriteFile(path, rr.Body.Bytes(), 0600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if again := get(); again.Body.String() != rr.Body.String() {
 		t.Error("a second request answered other bytes")

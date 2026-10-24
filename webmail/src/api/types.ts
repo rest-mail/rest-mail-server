@@ -4,126 +4,7 @@
  */
 
 export interface paths {
-    "/api/health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Health check */
-        get: operations["getHealth"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/login": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Sign an account in with its address and password
-         * @description Takes the account's address (`email`), a password matching one of its password credentials, and a code from one of its authenticators when it has one (`totp_code`, or a `recovery_code`); without the code the answer is `401 totp_required`. An account with no password (one reached only through its owners) cannot be signed in to, and is answered as a wrong password. There is no other kind of sign-in: no username.
-         *     On success a browser gets three cookies: restmail_access (httpOnly, the session token), restmail_refresh (httpOnly, scoped to /api/v1/auth), and restmail_csrf (readable, for the double-submit CSRF header), and no tokens in the body. A native client sends "client": "native" and gets access_token, refresh_token and refresh_expires_in in the body instead, with no cookies; it sends the access token as Authorization: Bearer.
-         *     The bootstrap account's deploy-time password works for 72 hours, until the account chooses its own. After that, the right password answers 401 bootstrap_expired — only the right one, so a guesser learns nothing — and the cure is to deploy again with a new password. Signing in with it spends nothing: the session is in setup (setup_required) and the password keeps working, so an install can be verified by signing in.
-         */
-        post: operations["login"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/logout": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Log out — revoke the session and clear the auth cookies
-         * @description Revokes the refresh token server-side and expires the restmail_access, restmail_refresh and restmail_csrf cookies. The refresh token is the restmail_refresh cookie, or for a native client the request body. When that ends the session, the phones it registered for push (`/api/v1/devices`) are removed with it.
-         */
-        post: operations["logout"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/refresh": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Refresh the session (cookie, or body token for native clients)
-         * @description Takes the refresh token from the restmail_refresh cookie, or when there is no cookie from the request body. The replacement pair goes back on the same channel: cookies for a cookie request, body fields for a body request. A request carrying the cookie is always answered with cookies, whatever its body says. The new tokens have a new `jti` but stay in the same session: the `sid` claim minted at sign-in. A refresh token without a `sid` is refused with 401, and the client signs in again. So is one from before the account's sessions last ended (its `cep` is older than the account's), even if it was never revoked.
-         */
-        post: operations["refreshToken"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/reset": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Let an account back in with a reset token; also hands a server over
-         * @description Redeems a single-use reset_admin token (`restmail reset-admin`). The account it names gets the password the redeemer chose, loses its authenticator and must enroll a new one, its app passwords are revoked, and every token it was issued is dead at once — refresh tokens are revoked, and access tokens carry a credential epoch the reset bumps. Whoever held the old credentials, a person or an agent that set the server up, is locked out.
-         */
-        post: operations["resetAdmin"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/recover": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Reset a forgotten password with the authenticator and a recovery code
-         * @description Self-service password reset for an account that set up two-factor authentication in advance: a current code from its authenticator and one of its recovery codes, both. The authenticator is checked first, so a wrong code never spends a recovery code. The account gets the new password and keeps its authenticator; its app passwords are revoked and every token it was issued is dead at once, as for a password change. Answers with a fresh session. An account without two-factor authentication has no self-service path: an admin resets it. Every refusal is the same 401, whether the address exists or not. Each address may be refused 5 times, then once per 15 minutes, from any client; past that it is answered 429 without a check.
-         */
-        post: operations["recoverAccount"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/server": {
+    "/.well-known/autoconfig/mail/config-v1.1.xml": {
         parameters: {
             query?: never;
             header?: never;
@@ -131,10 +12,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * What this server is
-         * @description For anyone who can reach the server. A client knows a server only by its address, so the server describes itself; the version is the one deliberate disclosure, so what runs can be confirmed from outside. `restmail status` prints this. Throttled with the owner endpoints, not with sign-in. (Before 0.7 it also said whether the server was claimed, and how to claim it; a server is no longer claimed — its first admin is the bootstrap one.)
+         * Mozilla/Thunderbird autoconfiguration (well-known path)
+         * @description Autoconfig XML document. The incoming and outgoing servers are the mail host (GATEWAY_HOSTNAME), on IMAP 993 and SMTP 465 with implicit TLS.
          */
-        get: operations["describeServer"];
+        get: operations["mozillaAutoconfigWellKnown"];
         put?: never;
         post?: never;
         delete?: never;
@@ -143,147 +24,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/auth/owner/challenge": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * A challenge for an owner key to sign
-         * @description The first half of proving ownership of the server with a public key registered in PostgreSQL (what `restmail reset-admin` does), or of reading its status with a key listed in RESTMAIL_STATUS_KEYS (what `restmail status --key` does). The challenge is stateless, valid two minutes, and answered once. Throttled like login.
-         */
-        post: operations["ownerChallenge"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/owner/token": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Trade a signed challenge for a reset-admin token
-         * @description `signature` is the SSH wire-format signature (base64) by the private half of `public_key` over the bytes `"restmail-owner-v1\n" + purpose + "\n" + address + "\n" + challenge`, so a signature for one request cannot be presented for another. `public_key` must be listed in the PostgreSQL owner-key registry; a status key (RESTMAIL_STATUS_KEYS) is refused. Ed25519, ECDSA, and RSA with rsa-sha2-256/512 are accepted; ssh-rsa (SHA-1) signatures are not. The token is redeemed at `/api/v1/auth/reset`; the app's link is `rest-mail://reset?server=…&token=…`.
-         */
-        post: operations["ownerToken"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/owner/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Trade a signed challenge for what the server runs
-         * @description How a deploy is confirmed from outside (`restmail status --key`). `signature` is the SSH wire-format signature (base64) by the private half of `public_key` over the bytes `"restmail-owner-v1\n" + "status" + "\n" + "" + "\n" + challenge`: the owner scheme with the purpose `status` and no address, so a signature made to reset an admin does not read the status, nor the other way round. `public_key` must be listed in RESTMAIL_STATUS_KEYS or the PostgreSQL owner-key registry. A status key reads this and can do nothing else. The challenge is spent, so an answer works once. Keys and signatures as for `/api/v1/auth/owner/token`. Throttled with the owner endpoints.
-         */
-        post: operations["ownerStatus"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/2fa/confirm": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Switch on a pending authenticator with its first code
-         * @description Completes enrollment (`POST /api/v1/auth/2fa/enroll`) with a current code from the new authenticator, in `totp_code` as sign-in takes it. Until this succeeds, 2FA does not gate sign-in. A wrong code is `403 invalid_totp`, never `401`: the session that sent it is still good, so a client must not renew it or send the code again. Throttled like login.
-         */
-        post: operations["confirmTwoFactor"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/2fa/disable": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Turn two-factor authentication off
-         * @description Takes the second factor the way sign-in does: a current code from the authenticator in `totp_code`, or an unused recovery code in `recovery_code`, which it spends. A wrong one is `403`, never `401` (`invalid_totp`, or `invalid_recovery_code` when only a recovery code was sent): the session that sent it is still good. Turning it off ends every session of the account, this one included; app passwords stay. An account that must have it (the bootstrap admin) cannot (`403 two_factor_required`). Throttled like login.
-         */
-        post: operations["disableTwoFactor"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/password": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Replace your own password
-         * @description The signed-in account sets a new password, proving the current one even from a fresh session so a stolen access token alone cannot take the account. The new password replaces every password credential it had. Clears the "password" setup step, revokes every app password (whoever knew the old password could have made one, each recorded as `credentials.revoke` with reason `password_changed`), and revokes every session of the account, this one included: sign in again with the new password. One of the only calls a session in setup (setup_required non-empty) may make. A wrong current password is `403 invalid_password`, never `401`: the session is still good. Throttled like login.
-         */
-        post: operations["changeOwnPassword"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/protocol-sign-in": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Sign a mail client in (protocol gateways)
-         * @description The one way the IMAP, POP3 and SMTP gateways sign a mail client in, whatever it gave as its password: the request carries the address and that password with HTTP Basic, checked against the account's credentials — an app password, or one of the account's passwords — and the audit log records the sign-in (`auth.protocol_sign_in`) with the credential and the protocol. It answers with the account, so the gateway knows which account the requests it then makes, each with the same Basic credentials, are for. No session is made. A session cannot use it. A refused credential is recorded as `auth.basic`. Throttled like login.
-         */
-        post: operations["protocolSignIn"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/accounts": {
+    "/.well-known/mta-sts.txt": {
         parameters: {
             query?: never;
             header?: never;
@@ -291,866 +32,12 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List the accounts this one reaches
-         * @description The session's own account first (`is_primary`), then every account it holds an active mail grant on at that account's own scope (`mailbox:<address>`): the ones it created or linked, by address. Domain and server-wide admin grants reach mailboxes too, but are administration, and list none. With an app password, only its own.
+         * MTA-STS policy file (RFC 8461)
+         * @description Served to external MTAs from mta-sts.<domain>: the domain is the Host's, without its mta-sts. label. 404 for a domain not hosted here or without an active policy; a sending MTA then keeps the policy it has cached.
          */
-        get: operations["listAccounts"];
-        put?: never;
-        /**
-         * Create an account
-         * @description The same for everyone. Needs `mailboxes:write` held at a scope covering the address's domain. The creator gets the `owner` grant on the new account (mail read, write, send, and `mailbox:manage`). With `password`, the account gets a password credential and can be signed in to; without one it has no credentials, and is reached only through its owners. The account, its credential, the grant and their audit entries (`accounts.create`, `grants.create`) commit together; a refused attempt is recorded too. A "sub account" is only this relationship: an account another holds the owner grant on.
-         */
-        post: operations["createAccount"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/accounts/link": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Link an existing account by proving its password
-         * @description Grants the session's account the `owner` role on an existing account, by proving one of its passwords — and a code from its authenticator, or one of its recovery codes, when it has one — the same proof as signing in to it. A refused proof is `403`, never `401`: the secrets are the other account's, and the session that sent them is still good, so a client must not renew it or send them again. A wrong password, an unknown address and an account with no password are the same `403 invalid_credentials`; an account with two-factor authentication answers `403 totp_required` without a code and `403 invalid_totp` for a wrong one. An account still in setup cannot be linked (`403 setup_required`). `display_name`, when the account has none, becomes its name. Throttled with login (a wrong guess spends the same budget), and audited (`accounts.link`, and the grant's `grants.create`). Unlinking is removing that grant: `DELETE /api/v1/accounts/{id}`.
-         */
-        post: operations["linkAccount"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/accounts/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        /** Get an account this one may read */
-        get: operations["getAccount"];
+        get: operations["mtaStsPolicyFile"];
         put?: never;
         post?: never;
-        /**
-         * Give up access to an account
-         * @description Removes the session's own grants on the account (`grants.delete` for each, in one transaction): giving up access needs nothing more. Its own account cannot be unlinked (`409 own_account`).
-         */
-        delete: operations["unlinkAccount"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/accounts/{id}/credentials": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        /**
-         * List an account's app passwords
-         * @description The app passwords of the account that are not revoked, newest first; expired ones are included. Never a secret or its hash. `{id}` is the session's own account, or one it holds `mailbox:manage` on (an account it owns, such as an automation's with no password of its own); any other is answered 404.
-         */
-        get: operations["listCredentials"];
-        put?: never;
-        /**
-         * Make an app password
-         * @description Makes an app password for a mail client or an automation and answers with it, the only time it is ever shown; the server keeps only a SHA-256 of its secret. Its scope is the account's mailbox, with mail:read, mail:write and mail:send. `{id}` is the session's own account or one it holds `mailbox:manage` on. Needs a session from signing in with a password, and, when the session's account has 2FA, with its code too (`403 two_factor_required` otherwise). It also needs the session's own current password, entered again in `password`, as Gmail and GitHub ask for it: a session from before a change of password works until its access token expires, and must not make an app password that outlives the change. Throttled like login, with the same budget. Recorded in the audit log as `credentials.create`, with the name, id and public id; a refused attempt is recorded as denied, with its error code. The password is never stored, recorded or answered with.
-         */
-        post: operations["createAppPassword"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/accounts/{id}/credentials/{credential_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-                /** @example 1 */
-                credential_id: number;
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Revoke an app password
-         * @description Revokes it: the next request made with it is refused, and an SMTP session signed in with it sends nothing more. It stays in the table, revoked, for the audit trail, and leaves the list. Recorded in the audit log as `credentials.revoke`.
-         */
-        delete: operations["revokeCredential"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/devices": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * The push services the server can use, and this session's devices
-         * @description Answers 404 when the server has no push credentials configured, which a client reads as "no push here". `platforms` lists the services this session can register a device with: empty for an administrator's session, which has no mailbox. A device's token is never returned.
-         */
-        get: operations["listPushDevices"];
-        put?: never;
-        /**
-         * Register this phone with this session
-         * @description The device belongs to the session that registers it and is removed when the session ends: at logout, when it is revoked (a password change, a disabled mailbox), or when its refresh token expires. From then on new mail into the INBOX of any mailbox the session lists in `GET /api/v1/accounts` sends it a background push (APNs `content-available`, priority 5, an hour's expiry, at most one per device and account every 5 seconds) whose whole payload is `{"aps":{"content-available":1},"restmail":{"v":1,"device":"<id>","account":<id in GET /accounts>,"unread":<INBOX unread>}}`: never a sender, a subject, an address, a message id or any text. A device APNs says is gone (410, `BadDeviceToken`, `DeviceTokenNotForTopic`) is removed. Registering a token the session has already registered answers 200 with that device; the key is (session, token). Recorded in the audit log as `devices.register`, without the token. 404 when push is not configured.
-         */
-        post: operations["registerPushDevice"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/devices/{device_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description The device's `id`
-                 * @example 1
-                 */
-                device_id: string;
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Stop pushes to a device this session registered
-         * @description Recorded in the audit log as `devices.remove`. A device the server removes itself (its session ended, or APNs said it is gone) is recorded the same way, by the system, with the reason.
-         */
-        delete: operations["removePushDevice"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/accounts/{id}/folders": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        /** List folders for an account */
-        get: operations["listFolders"];
-        put?: never;
-        /** Create a new folder */
-        post: operations["createFolder"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/accounts/{id}/folders/{folder}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-                /**
-                 * @description Folder name (e.g. INBOX, Sent, Drafts, Trash)
-                 * @example INBOX
-                 */
-                folder: components["parameters"]["FolderName"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Delete a folder */
-        delete: operations["deleteFolder"];
-        options?: never;
-        head?: never;
-        /** Rename a folder */
-        patch: operations["renameFolder"];
-        trace?: never;
-    };
-    "/api/v1/accounts/{id}/folders/{folder}/messages": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-                /**
-                 * @description Folder name (e.g. INBOX, Sent, Drafts, Trash)
-                 * @example INBOX
-                 */
-                folder: components["parameters"]["FolderName"];
-            };
-            cookie?: never;
-        };
-        /** List messages in a folder with cursor pagination */
-        get: operations["listMessages"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/messages/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Message ID
-                 * @example 1
-                 */
-                id: components["parameters"]["MessageId"];
-            };
-            cookie?: never;
-        };
-        /** Get a single message by ID */
-        get: operations["getMessage"];
-        put?: never;
-        post?: never;
-        /** Delete a message */
-        delete: operations["deleteMessage"];
-        options?: never;
-        head?: never;
-        /** Update message flags or move to another folder */
-        patch: operations["updateMessage"];
-        trace?: never;
-    };
-    "/api/v1/messages/send": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Compose and send a new message
-         * @description The sender domain's `sending_policy` decides whether the message carries `list_unsubscribe`: a `bulk` domain's message without it is refused with 422 `list_unsubscribe_required`, and a `transactional` domain's message with it is refused with 422 `list_unsubscribe_not_allowed`. With no policy, either is sent.
-         */
-        post: operations["sendMessage"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/messages/{id}/raw": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Message ID
-                 * @example 1
-                 */
-                id: components["parameters"]["MessageId"];
-            };
-            cookie?: never;
-        };
-        /** Get the raw RFC 2822 message source */
-        get: operations["getRawMessage"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/messages/{id}/forward": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Message ID
-                 * @example 1
-                 */
-                id: components["parameters"]["MessageId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Forward a message */
-        post: operations["forwardMessage"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/messages/draft": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Save a new draft */
-        post: operations["saveDraft"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/messages/draft/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Message ID
-                 * @example 1
-                 */
-                id: components["parameters"]["MessageId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        /** Update an existing draft */
-        put: operations["updateDraft"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/messages/draft/{id}/send": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Message ID
-                 * @example 1
-                 */
-                id: components["parameters"]["MessageId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Send a saved draft */
-        post: operations["sendDraft"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/accounts/{id}/threads/{threadID}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-                /**
-                 * @description Thread identifier
-                 * @example 1
-                 */
-                threadID: string;
-            };
-            cookie?: never;
-        };
-        /** Get all messages in a thread */
-        get: operations["getThread"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/accounts/{id}/quota": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        /** Get mailbox quota usage */
-        get: operations["getQuota"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/accounts/{id}/search": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        /** Search messages with filters */
-        get: operations["searchMessages"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/attachments/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Attachment ID
-                 * @example 1
-                 */
-                id: number;
-            };
-            cookie?: never;
-        };
-        /** Download an attachment */
-        get: operations["getAttachment"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/messages/{id}/attachments": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Message ID
-                 * @example 1
-                 */
-                id: components["parameters"]["MessageId"];
-            };
-            cookie?: never;
-        };
-        /** List attachments for a message */
-        get: operations["listAttachments"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/accounts/{id}/contacts": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        /** List contacts for an account */
-        get: operations["listContacts"];
-        put?: never;
-        /** Create a new contact */
-        post: operations["createContact"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/accounts/{id}/contacts/{cid}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-                /**
-                 * @description Contact ID
-                 * @example 1
-                 */
-                cid: number;
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Delete a contact */
-        delete: operations["deleteContact"];
-        options?: never;
-        head?: never;
-        /** Update a contact */
-        patch: operations["updateContact"];
-        trace?: never;
-    };
-    "/api/v1/accounts/{id}/contacts/block": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Block a sender */
-        post: operations["blockSender"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/accounts/{id}/contacts/import": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Bulk import contacts */
-        post: operations["importContacts"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/accounts/{id}/contacts/suggest": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        /** Autocomplete contacts by query */
-        get: operations["suggestContacts"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/accounts/{id}/vacation": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        /** Get vacation auto-reply settings */
-        get: operations["getVacation"];
-        /** Set vacation auto-reply settings */
-        put: operations["setVacation"];
-        post?: never;
-        /** Disable vacation auto-reply */
-        delete: operations["disableVacation"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/accounts/{id}/sieve": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        /** Get the Sieve filter script */
-        get: operations["getSieveScript"];
-        /** Create or replace the Sieve filter script */
-        put: operations["putSieveScript"];
-        post?: never;
-        /** Delete the Sieve filter script */
-        delete: operations["deleteSieveScript"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/accounts/{id}/sieve/validate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Validate a Sieve script without saving */
-        post: operations["validateSieveScript"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/accounts/{id}/quarantine": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        /** List quarantined messages */
-        get: operations["listQuarantine"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/accounts/{id}/quarantine/{mid}/release": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-                /**
-                 * @description Quarantine entry ID
-                 * @example 1
-                 */
-                mid: number;
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Release a quarantined message to inbox */
-        post: operations["releaseQuarantine"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/accounts/{id}/quarantine/{mid}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-                /**
-                 * @description Quarantine entry ID
-                 * @example 1
-                 */
-                mid: number;
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Permanently delete a quarantined message */
-        delete: operations["deleteQuarantine"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/accounts/{id}/events": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        /**
-         * Server-Sent Events stream for real-time updates
-         * @description Authenticated by the restmail_access cookie, which a native browser EventSource attaches automatically — no token in the URL and none in JavaScript. Programmatic clients may instead send an Authorization: Bearer header. GET, so no CSRF token is required. The session is checked when the stream opens, and again before every event and keepalive: once the account's sessions end, the stream ends without sending anything more, and opening it again with the same token answers 401.
-         */
-        get: operations["accountEvents"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/mailboxes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Check if a mailbox address exists (used by SMTP gateway)
-         * @description Machine-to-machine recipient check. When internal mTLS is enabled this route is served ONLY on the dedicated internal listener (verified gateway client certificate required) and is absent from the public listener; when disabled it is unauthenticated on the public listener. Never accepts a user JWT.
-         */
-        get: operations["checkMailboxAddress"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/messages/deliver": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Deliver a message from the SMTP gateway
-         * @description Machine-to-machine inbound delivery. When internal mTLS is enabled this route is served ONLY on the dedicated internal listener (verified gateway client certificate required) and is absent from the public listener; when disabled it is unauthenticated on the public listener. Never accepts a user JWT.
-         */
-        post: operations["deliverMessage"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1166,17 +53,7 @@ export interface paths {
         };
         /**
          * Discover RESTMAIL delivery for a hosted domain
-         * @description Fetch from the recipient domain's MX host over HTTPS, verifying the
-         *     certificate against that MX host. The response names the HTTPS base URL
-         *     for RESTMAIL; append /messages to deliver. The endpoint uses the configured
-         *     GATEWAY_HOSTNAME, never request Host or forwarding headers. This is a
-         *     per-domain lookup and reveals no mailbox information. Active hosted
-         *     domains are supported regardless of their server_type.
-         *
-         *     The response is a protocol document without a data envelope. Responses
-         *     use Cache-Control: no-store. A verified 404 means the domain is not hosted
-         *     here; configuration or database failures return 503 or 500, never 404.
-         *     Sender discovery and peer memory are implemented separately.
+         * @description Fetched from the recipient domain's MX host over verified HTTPS. The answer is a protocol document without the data envelope, naming the configured GATEWAY_HOSTNAME, never the request's Host. A 404 means the domain is not hosted here; a missing hostname is 503 and a failed lookup 500, never 404. A domain given twice, or not a domain, is 400.
          */
         get: operations["restmailDiscover"];
         put?: never;
@@ -1187,41 +64,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/restmail/capabilities": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get RESTMAIL server capabilities */
-        get: operations["restmailCapabilities"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/restmail/mailboxes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Check if a recipient mailbox exists */
-        get: operations["restmailCheckMailbox"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/restmail/messages": {
+    "/.well-known/smtp-tlsrpt": {
         parameters: {
             query?: never;
             header?: never;
@@ -1231,860 +74,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Deliver a message via RESTMAIL protocol
-         * @description Server-to-server delivery. Unauthenticated at the HTTP layer; the message's authenticity is verified out-of-band from its DKIM signature and the SPF result of the sending host.
+         * TLS-RPT report ingestion (RFC 8460)
+         * @description Receives TLS-RPT reports from external MTAs, as JSON or gzip-compressed. No auth by design. A body sent with Content-Encoding: gzip, or gzip-compressed under a JSON media type, is inflated first.
          */
-        post: operations["restmailDeliver"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/domains": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List all domains */
-        get: operations["listDomains"];
-        put?: never;
-        /**
-         * Create a new domain
-         * @description The domain is created but not live: `active` is false. Mail for a domain is only ever carried over TLS, so it goes live only once it has a certificate of its own, by a separate PATCH setting `active` to true.
-         */
-        post: operations["createDomain"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/domains/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        /** Get a domain by ID */
-        get: operations["getDomain"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete a domain
-         * @description Only a domain with no accounts and no aliases can be deleted: delete those first.
-         */
-        delete: operations["deleteDomain"];
-        options?: never;
-        head?: never;
-        /**
-         * Update a domain
-         * @description Setting `active` to true makes the domain live, and is refused with 409 `certificate_required` unless the domain has a currently valid certificate: mail for it is only ever carried over TLS. Setting `active` to false takes it out of service and is always allowed. Setting `sending_policy` to `""` clears it; any value other than `transactional`, `bulk` or `""` is refused with 422 `validation_failed`.
-         */
-        patch: operations["updateDomain"];
-        trace?: never;
-    };
-    "/api/v1/admin/mailboxes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List mailboxes, optionally filtered by domain */
-        get: operations["listMailboxes"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/mailboxes/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        /** Get an account by ID */
-        get: operations["getMailbox"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete an account
-         * @description Its credentials are revoked (kept, for the audit trail) and its sessions end. Every grant it held is removed under the grants rules (a session with 2FA, holding what it removes; the last superadmin cannot go), and every grant others held on it, so a new account at the same address inherits no owner. Each removal is recorded.
-         */
-        delete: operations["deleteMailbox"];
-        options?: never;
-        head?: never;
-        /**
-         * Update an account
-         * @description A new `password` (12 characters or more) replaces every password the
-         *     account had and ends every session of it. It also revokes all the
-         *     account's app passwords, in the transaction that sets it, recording
-         *     each in the audit log as `credentials.revoke` with `reason`
-         *     `password_changed`. `"active": false` ends every session of it too,
-         *     so enabling it again brings none of them back; its app passwords
-         *     stay, and work again once it is enabled.
-         */
-        patch: operations["updateMailbox"];
-        trace?: never;
-    };
-    "/api/v1/admin/mailboxes/{id}/sessions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Sign an account out everywhere
-         * @description Ends every session of the account: its refresh tokens are revoked and its credential epoch moves on, so every access token it was issued is refused at its next request, on the event stream and at refresh. Its passwords and app passwords stay: a mail client signed in with an app password keeps working, and is revoked on its own (`DELETE /api/v1/accounts/{id}/credentials/{credential_id}`).
-         */
-        delete: operations["endMailboxSessions"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/aliases": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List aliases, optionally filtered by domain */
-        get: operations["listAliases"];
-        put?: never;
-        /** Create a new alias */
-        post: operations["createAlias"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/aliases/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        /** Get an alias by ID */
-        get: operations["getAlias"];
-        put?: never;
-        post?: never;
-        /** Delete an alias */
-        delete: operations["deleteAlias"];
-        options?: never;
-        head?: never;
-        /** Update an alias */
-        patch: operations["updateAlias"];
-        trace?: never;
-    };
-    "/api/v1/admin/pipelines": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List pipelines, optionally filtered by domain */
-        get: operations["listPipelines"];
-        put?: never;
-        /** Create a new pipeline */
-        post: operations["createPipeline"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/pipelines/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Delete a pipeline */
-        delete: operations["deletePipeline"];
-        options?: never;
-        head?: never;
-        /** Update a pipeline */
-        patch: operations["updatePipeline"];
-        trace?: never;
-    };
-    "/api/v1/admin/pipelines/test": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Test a pipeline against a sample email */
-        post: operations["testPipeline"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/pipelines/test-filter": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Test a single filter against a sample email */
-        post: operations["testFilter"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/pipelines/logs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List recent per-message pipeline traces
-         * @description Newest-first list of per-message pipeline traces. Each row is a MessageTrace (outcome, reason_code, transport, envelope, stage timeline, duration). The `action` filter matches the trace's final_action.
-         */
-        get: operations["listPipelineLogs"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/custom-filters": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List custom filters, optionally filtered by domain */
-        get: operations["listCustomFilters"];
-        put?: never;
-        /** Create a custom filter */
-        post: operations["createCustomFilter"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/custom-filters/validate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Syntax-check a JavaScript filter script via the sidecar */
-        post: operations["validateCustomFilter"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/custom-filters/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        /** Get a custom filter by ID */
-        get: operations["getCustomFilter"];
-        put?: never;
-        post?: never;
-        /** Delete a custom filter */
-        delete: operations["deleteCustomFilter"];
-        options?: never;
-        head?: never;
-        /** Update a custom filter */
-        patch: operations["updateCustomFilter"];
-        trace?: never;
-    };
-    "/api/v1/admin/custom-filters/{id}/test": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Run a stored custom filter's script against a sample email via the sidecar */
-        post: operations["testCustomFilter"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/queue": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List outbound queue entries */
-        get: operations["listQueue"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/queue/stats": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get queue status counts */
-        get: operations["getQueueStats"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/queue/bulk-retry": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Retry multiple queue entries */
-        post: operations["bulkRetryQueue"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/queue/bulk-bounce": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Bounce multiple queue entries */
-        post: operations["bulkBounceQueue"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/queue/bulk-delete": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Delete multiple queue entries */
-        delete: operations["bulkDeleteQueue"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/queue/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        /** Get a single queue entry */
-        get: operations["getQueueEntry"];
-        put?: never;
-        post?: never;
-        /** Delete a queue entry */
-        delete: operations["deleteQueueEntry"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/queue/{id}/retry": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Retry a single queue entry */
-        post: operations["retryQueueEntry"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/queue/{id}/bounce": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Bounce a single queue entry */
-        post: operations["bounceQueueEntry"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/domains/{id}/allowlist": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Domain ID
-                 * @example 1
-                 */
-                id: components["parameters"]["DomainId"];
-            };
-            cookie?: never;
-        };
-        /** List allowlist entries for a domain */
-        get: operations["listAllowlist"];
-        put?: never;
-        /** Add an allowlist entry */
-        post: operations["addToAllowlist"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/domains/{id}/allowlist/{eid}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Domain ID
-                 * @example 1
-                 */
-                id: components["parameters"]["DomainId"];
-                /**
-                 * @description Sender rule entry ID
-                 * @example 1
-                 */
-                eid: number;
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Remove an allowlist entry */
-        delete: operations["removeFromAllowlist"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/domains/{id}/blocklist": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Domain ID
-                 * @example 1
-                 */
-                id: components["parameters"]["DomainId"];
-            };
-            cookie?: never;
-        };
-        /** List blocklist entries for a domain */
-        get: operations["listBlocklist"];
-        put?: never;
-        /** Add a blocklist entry */
-        post: operations["addToBlocklist"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/domains/{id}/blocklist/{eid}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Domain ID
-                 * @example 1
-                 */
-                id: components["parameters"]["DomainId"];
-                /**
-                 * @description Sender rule entry ID
-                 * @example 1
-                 */
-                eid: number;
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Remove a blocklist entry */
-        delete: operations["removeFromBlocklist"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/dkim": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List DKIM key entries for all domains */
-        get: operations["listDKIMKeys"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/dkim/{id}/rotation": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        /**
-         * Read a domain's DKIM rotation interval
-         * @description Available even before a domain has a signing key. The capability must cover this domain. This records policy for the planned rotation worker; scheduled key rotation is not implemented yet.
-         */
-        get: operations["getDKIMRotation"];
-        /**
-         * Set a domain's DKIM rotation interval
-         * @description Stores the requested interval without changing signing material or key age. Zero disables rotation; 1 through 3650 specifies the key lifetime in days of 24 hours. The capability must cover this domain. This records policy for the planned rotation worker; scheduled key rotation is not implemented yet. Unknown fields and trailing JSON are rejected.
-         */
-        put: operations["setDKIMRotation"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/dkim/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Set or replace DKIM key for a domain
-         * @description The key and selector are checked before they are stored, so a domain is never left with a key its outbound mail cannot be signed with (signing fails closed and defers the mail). The selector must be a DNS name: up to 63 characters, labels of letters, digits and hyphens joined by dots, none starting or ending with a hyphen. The key must be an RSA key of at least 2048 bits (PKCS#1 or PKCS#8 PEM) or an Ed25519 key (PKCS#8 PEM), and must sign a test message whose signature verifies against the key's own DNS record. Ed25519 is import-only: the server's own key generation makes RSA keys.
-         */
-        put: operations["setDKIMKey"];
-        post?: never;
-        /** Delete DKIM key for a domain */
-        delete: operations["deleteDKIMKey"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/certificates": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List TLS certificates */
-        get: operations["listCertificates"];
-        put?: never;
-        /** Upload a new TLS certificate */
-        post: operations["createCertificate"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/certificates/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        /** Get certificate details (includes cert_pem) */
-        get: operations["getCertificate"];
-        put?: never;
-        post?: never;
-        /** Delete a certificate */
-        delete: operations["deleteCertificate"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/bans": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List IP bans */
-        get: operations["listBans"];
-        put?: never;
-        /** Create an IP ban */
-        post: operations["createBan"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/bans/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Delete a ban by ID */
-        delete: operations["deleteBan"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/bans/ip/{ip}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description IP address to unban
-                 * @example 192.0.2.10
-                 */
-                ip: string;
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Remove all bans for a specific IP */
-        delete: operations["unbanIP"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/logs/delivery": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Query delivery log (outbound queue history) */
-        get: operations["getDeliveryLogs"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/audit": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Read the audit log, newest first
-         * @description Entries newest first. To read the next page, pass the returned `pagination.cursor` as `before_seq`. A filter that does not parse is refused with 422, never ignored. This read is itself recorded (`audit.read`).
-         */
-        get: operations["listAuditEntries"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/audit/verify": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Check the audit log's hash chain
-         * @description Walks the whole log from its lowest seq and checks that every entry follows the one before (seq one higher, `prev_hash` its hash) and hashes to its own `hash`. Stops at the first entry that does not hold. If the log does not start at seq 1, the walk starts from the first entry's own `prev_hash` and says so in `note`. Given an `anchor` (one entry's seq and hash, a copy kept outside the server), the log must also still hold that entry with that hash; a log rewritten and rehashed from some entry on holds as a chain, but not to an anchor taken before the rewrite. This read is itself recorded (`audit.read`).
-         */
-        get: operations["verifyAuditLog"];
-        put?: never;
-        post?: never;
+        post: operations["receiveTlsReport"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2125,6 +118,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/docs/openapi.json": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * This API's description, generated from its routes
+         * @description The OpenAPI 3.1 description go-oapifly generates from the routes this server registers, the description itself among them. It replaces openapi.yaml once the two agree (#670).
+         */
+        get: operations["openapiDocument"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/docs/openapi.yaml": {
         parameters: {
             query?: never;
@@ -2142,15 +155,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/metrics": {
+    "/api/health": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Prometheus metrics exposition */
-        get: operations["prometheusMetrics"];
+        /** Health check */
+        get: operations["getHealth"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2159,15 +172,18 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/mail/config-v1.1.xml": {
+    "/api/mailboxes": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Mozilla/Thunderbird autoconfiguration */
-        get: operations["mozillaAutoconfig"];
+        /**
+         * Check whether an address is a mailbox here (protocol gateways)
+         * @description Machine to machine: no user token. An address that is not a mailbox here is 200 with exists false: the gateway then routes it outbound.
+         */
+        get: operations["checkMailboxAddress"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2176,24 +192,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/.well-known/autoconfig/mail/config-v1.1.xml": {
+    "/api/v1/accounts": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Mozilla/Thunderbird autoconfiguration (well-known path) */
-        get: operations["mozillaAutoconfigWellKnown"];
+        /** List the accounts this one reaches */
+        get: operations["listAccounts"];
         put?: never;
-        post?: never;
+        /** Create an account */
+        post: operations["createAccount"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/autodiscover/autodiscover.xml": {
+    "/api/v1/accounts/link": {
         parameters: {
             query?: never;
             header?: never;
@@ -2202,35 +219,51 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Microsoft Outlook autodiscover */
-        post: operations["microsoftAutodiscover"];
+        /** Link an existing account by proving its password */
+        post: operations["linkAccount"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/.well-known/mta-sts.txt": {
+    "/api/v1/accounts/{id}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /**
-         * MTA-STS policy file (RFC 8461)
-         * @description Served to external MTAs. The domain is resolved from the Host header.
-         */
-        get: operations["mtaStsPolicyFile"];
+        /** Get an account this one may read */
+        get: operations["getAccount"];
         put?: never;
         post?: never;
+        /** Give up access to an account */
+        delete: operations["unlinkAccount"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/api-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List an account's API keys */
+        get: operations["listAPIKeys"];
+        put?: never;
+        /** Make a scoped API key */
+        post: operations["createAPIKey"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/.well-known/smtp-tlsrpt": {
+    "/api/v1/accounts/{id}/api-keys/{credential_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2239,55 +272,9 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * TLS-RPT report ingestion (RFC 8460)
-         * @description Receives JSON TLS-RPT reports from external MTAs. No auth by design.
-         */
-        post: operations["receiveTlsReport"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/.well-known/acme-challenge/{token}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * ACME HTTP-01 challenge response
-         * @description Registered only when ACME is enabled. Served to the ACME CA for domain validation. No auth by design.
-         */
-        get: operations["acmeChallenge"];
-        put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/messages/{id}/calendar-reply": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Message ID
-                 * @example 1
-                 */
-                id: components["parameters"]["MessageId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Send an iMIP reply to a calendar invitation in a message */
-        post: operations["respondToCalendar"];
-        delete?: never;
+        /** Revoke an API key */
+        delete: operations["revokeAPIKey"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2297,16 +284,10 @@ export interface paths {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
+            path?: never;
             cookie?: never;
         };
-        /** List calendar events (grouped by UID, latest version) for the mailbox */
+        /** List the calendar invitations an account has received */
         get: operations["listCalendarEvents"];
         put?: never;
         post?: never;
@@ -2316,7 +297,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/stats": {
+    "/api/v1/accounts/{id}/contacts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List contacts for an account */
+        get: operations["listContacts"];
+        put?: never;
+        /** Create a new contact */
+        post: operations["createContact"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/contacts/block": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Block a sender
+         * @description 201 when the sender was not a contact (a new contact, blocked), 200 when an existing contact was changed to blocked.
+         */
+        post: operations["blockSender"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/contacts/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Bulk import contacts */
+        post: operations["importContacts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/contacts/suggest": {
         parameters: {
             query?: never;
             header?: never;
@@ -2324,12 +360,1233 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Dashboard statistics
-         * @description Visible to every admin role, all of which hold domains:read.
+         * Autocomplete contacts by query
+         * @description At most 10 contacts whose address or name contains q, blocked ones left out; an empty q answers none.
          */
-        get: operations["getDashboardStats"];
+        get: operations["suggestContacts"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/contacts/{cid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a contact */
+        delete: operations["deleteContact"];
+        options?: never;
+        head?: never;
+        /** Update a contact */
+        patch: operations["updateContact"];
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List an account's app passwords */
+        get: operations["listCredentials"];
+        put?: never;
+        /** Make an app password */
+        post: operations["createAppPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/credentials/{credential_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke an app password */
+        delete: operations["revokeCredential"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Server-Sent Events stream for real-time updates
+         * @description A stream of the account's events, new_message, message_updated, message_deleted, message_sent or folder_update, each an id, the event's name and its JSON data. A Last-Event-ID header asks for the events after it that the server still holds. The session is checked when the stream opens, and again before every event and keepalive: once the account's sessions end, the stream ends without sending anything more.
+         */
+        get: operations["accountEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List folders for an account */
+        get: operations["listFolders"];
+        put?: never;
+        /**
+         * Create a new folder
+         * @description The name is valid UTF-8 of at most 255 bytes, neither blank nor beginning or ending with a space, with no control character and no ".."; a "/" is the hierarchy delimiter IMAP clients show. Any other name is 422. A folder that already exists is 409 already_exists, INBOX in any case, Sent, Drafts and Trash among them: they are listed empty or not.
+         */
+        post: operations["createFolder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/folders/{folder}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a folder and its messages
+         * @description A standard folder (INBOX, Sent, Drafts, Trash, Spam, Archive) cannot be deleted: 400 bad_request.
+         */
+        delete: operations["deleteFolder"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename a folder
+         * @description A standard folder (INBOX, Sent, Drafts, Trash, Spam, Archive) is not renamed, and no folder is renamed to one: 400 bad_request. A name another folder has is 409 already_exists: folders are not merged. The name is valid UTF-8 of at most 255 bytes, neither blank nor beginning or ending with a space, with no control character and no ".."; a "/" is the hierarchy delimiter IMAP clients show. Any other name is 422.
+         */
+        patch: operations["renameFolder"];
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/folders/{folder}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List messages in a folder */
+        get: operations["listMessages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/quarantine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List quarantined messages */
+        get: operations["listQuarantine"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/quarantine/{mid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Permanently delete a quarantined message */
+        delete: operations["deleteQuarantine"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/quarantine/{mid}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Release a quarantined message to inbox */
+        post: operations["releaseQuarantine"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/quota": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get quota usage for an account */
+        get: operations["getQuota"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search messages */
+        get: operations["searchMessages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/sieve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the Sieve filter script */
+        get: operations["getSieveScript"];
+        /**
+         * Create or replace the Sieve filter script
+         * @description 201 when it creates the script, 200 when it replaces it. A script that does not parse, or fails its dry run, is 400 invalid_sieve with the parser's message, and is not stored.
+         */
+        put: operations["putSieveScript"];
+        post?: never;
+        /** Delete the Sieve filter script */
+        delete: operations["deleteSieveScript"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/sieve/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Validate a Sieve script without saving */
+        post: operations["validateSieveScript"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/threads/{threadID}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get all messages in a thread */
+        get: operations["getThread"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/vacation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get vacation auto-reply settings */
+        get: operations["getVacation"];
+        /** Set vacation auto-reply settings */
+        put: operations["setVacation"];
+        post?: never;
+        /** Disable vacation auto-reply */
+        delete: operations["disableVacation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/aliases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List aliases, optionally filtered by domain */
+        get: operations["listAliases"];
+        put?: never;
+        /** Create a new alias */
+        post: operations["createAlias"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/aliases/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get an alias by ID */
+        get: operations["getAlias"];
+        put?: never;
+        post?: never;
+        /** Delete an alias */
+        delete: operations["deleteAlias"];
+        options?: never;
+        head?: never;
+        /** Update an alias */
+        patch: operations["updateAlias"];
+        trace?: never;
+    };
+    "/api/v1/admin/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the audit log, newest first */
+        get: operations["listAuditEntries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/audit/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Check the audit log's hash chain */
+        get: operations["verifyAuditLog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/bans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List IP bans */
+        get: operations["listBans"];
+        put?: never;
+        /** Create an IP ban */
+        post: operations["createBan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/bans/ip/{ip}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove all bans for a specific IP */
+        delete: operations["unbanIP"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/bans/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a ban by ID */
+        delete: operations["deleteBan"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List capabilities */
+        get: operations["listCapabilities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/certificates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List TLS certificates */
+        get: operations["listCertificates"];
+        put?: never;
+        /** Upload a new TLS certificate */
+        post: operations["createCertificate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/certificates/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get certificate details (includes cert_pem) */
+        get: operations["getCertificate"];
+        put?: never;
+        post?: never;
+        /** Delete a certificate */
+        delete: operations["deleteCertificate"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/custom-filters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List custom filters */
+        get: operations["listCustomFilters"];
+        put?: never;
+        /** Create custom filter */
+        post: operations["createCustomFilter"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/custom-filters/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Validate custom filter */
+        post: operations["validateCustomFilter"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/custom-filters/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get custom filter */
+        get: operations["getCustomFilter"];
+        put?: never;
+        post?: never;
+        /** Delete custom filter */
+        delete: operations["deleteCustomFilter"];
+        options?: never;
+        head?: never;
+        /** Update custom filter */
+        patch: operations["updateCustomFilter"];
+        trace?: never;
+    };
+    "/api/v1/admin/custom-filters/{id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test custom filter */
+        post: operations["testCustomFilter"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/dkim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List DKIM key entries for all domains */
+        get: operations["listDKIMKeys"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/dkim/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set or replace DKIM key for a domain */
+        put: operations["setDKIMKey"];
+        post?: never;
+        /** Delete DKIM key for a domain */
+        delete: operations["deleteDKIMKey"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/dkim/{id}/rotation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read a domain's DKIM rotation interval */
+        get: operations["getDKIMRotation"];
+        /** Set a domain's DKIM rotation interval */
+        put: operations["setDKIMRotation"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/domains": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all domains */
+        get: operations["listDomains"];
+        put?: never;
+        /** Create a new domain */
+        post: operations["createDomain"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/domains/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a domain by ID */
+        get: operations["getDomain"];
+        put?: never;
+        post?: never;
+        /** Delete a domain */
+        delete: operations["deleteDomain"];
+        options?: never;
+        head?: never;
+        /** Update a domain */
+        patch: operations["updateDomain"];
+        trace?: never;
+    };
+    "/api/v1/admin/domains/{id}/allowlist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List allowlist entries for a domain */
+        get: operations["listAllowlist"];
+        put?: never;
+        /** Add an allowlist entry */
+        post: operations["addToAllowlist"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/domains/{id}/allowlist/{eid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove an allowlist entry */
+        delete: operations["removeFromAllowlist"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/domains/{id}/blocklist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List blocklist entries for a domain */
+        get: operations["listBlocklist"];
+        put?: never;
+        /** Add a blocklist entry */
+        post: operations["addToBlocklist"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/domains/{id}/blocklist/{eid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a blocklist entry */
+        delete: operations["removeFromBlocklist"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/domains/{id}/dns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Live DNS record check (MX, SPF, DMARC, DKIM, MTA-STS) for a domain */
+        get: operations["domainDNSCheck"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/domains/{id}/mta-sts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the MTA-STS policy for a domain */
+        get: operations["getMtaStsPolicy"];
+        /** Create or update the MTA-STS policy for a domain */
+        put: operations["setMtaStsPolicy"];
+        post?: never;
+        /** Delete the MTA-STS policy for a domain */
+        delete: operations["deleteMtaStsPolicy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/domains/{id}/relay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the domain’s outbound transport */
+        get: operations["getDomainRelay"];
+        /** Set the domain’s outbound transport */
+        put: operations["setDomainRelay"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/domains/{id}/suppressions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a domain’s suppressed recipients */
+        get: operations["listSuppressions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/domains/{id}/suppressions/{sid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Clear a suppression */
+        delete: operations["clearSuppression"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List grants, oldest first */
+        get: operations["listGrants"];
+        put?: never;
+        /** Grant a role at a scope */
+        post: operations["createGrant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/grants/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's own grants */
+        get: operations["listMyGrants"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/grants/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a grant */
+        delete: operations["deleteGrant"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/grants/{id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Switch an eligible grant on */
+        post: operations["activateGrant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/grants/{id}/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Switch a grant off */
+        post: operations["deactivateGrant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/grants/{id}/make-eligible": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Make an active grant eligible */
+        post: operations["makeGrantEligible"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/logs/delivery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Query delivery log (outbound queue history) */
+        get: operations["getDeliveryLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/mailboxes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List mailboxes, optionally filtered by domain */
+        get: operations["listMailboxes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/mailboxes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get an account by ID */
+        get: operations["getMailbox"];
+        put?: never;
+        post?: never;
+        /** Delete an account */
+        delete: operations["deleteMailbox"];
+        options?: never;
+        head?: never;
+        /** Update an account */
+        patch: operations["updateMailbox"];
+        trace?: never;
+    };
+    "/api/v1/admin/mailboxes/{id}/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Sign an account out everywhere */
+        delete: operations["endMailboxSessions"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/messages/{id}/trace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get message trace */
+        get: operations["getMessageTrace"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/pipelines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List pipelines */
+        get: operations["listPipelines"];
+        put?: never;
+        /** Create pipeline */
+        post: operations["createPipeline"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/pipelines/analytics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Windowed pipeline analytics */
+        get: operations["getPipelineAnalytics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/pipelines/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List pipeline logs */
+        get: operations["listPipelineLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/pipelines/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test pipeline */
+        post: operations["testPipeline"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/pipelines/test-filter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test filter */
+        post: operations["testFilter"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/pipelines/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete pipeline */
+        delete: operations["deletePipeline"];
+        options?: never;
+        head?: never;
+        /** Update pipeline */
+        patch: operations["updatePipeline"];
+        trace?: never;
+    };
+    "/api/v1/admin/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List outbound queue entries */
+        get: operations["listQueue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/queue/bulk-bounce": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Bounce multiple queue entries */
+        post: operations["bulkBounceQueue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/queue/bulk-delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete multiple queue entries */
+        delete: operations["bulkDeleteQueue"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/queue/bulk-retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry multiple queue entries */
+        post: operations["bulkRetryQueue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/queue/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get queue status counts */
+        get: operations["getQueueStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/queue/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a single queue entry */
+        get: operations["getQueueEntry"];
+        put?: never;
+        post?: never;
+        /** Delete a queue entry */
+        delete: operations["deleteQueueEntry"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/queue/{id}/bounce": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Bounce a single queue entry */
+        post: operations["bounceQueueEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/queue/{id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry a single queue entry */
+        post: operations["retryQueueEntry"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2353,405 +1610,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/capabilities": {
+    "/api/v1/admin/stats": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** List capabilities */
-        get: operations["listCapabilities"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/grants": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List grants, oldest first
-         * @description Every grant, active and eligible, or only one holder's, or only those at one scope (`scope=mailbox:chris@example.com`: who owns chris@). A holder is an account (`holder_kind` `account`, `holder_id` its id).
-         */
-        get: operations["listGrants"];
-        put?: never;
-        /**
-         * Grant a role at a scope
-         * @description Needs a session that signed in with two-factor authentication (`403 two_factor_required` otherwise), and the caller must hold every capability of the role at a scope covering the grant's (`403 grant_exceeds_held` otherwise); superadmin at `*` may grant anything. An eligible grant does nothing until it is switched on. The change and its audit entry (`grants.create`) commit together.
-         */
-        post: operations["createGrant"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/grants/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Remove a grant
-         * @description The same rules as granting: a 2FA session, and the caller must hold everything the grant gives, where it gives it. The last grant of `*` at `*` held by an active admin who can use it (active, or eligible with an authenticator to switch it on) cannot be removed (`409 last_superadmin`). An activation of the grant still running ends with it (`grants.deactivate`). The change and its audit entries (`grants.delete`) commit together.
-         */
-        delete: operations["deleteGrant"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/grants/mine": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * The caller's own grants
-         * @description Every grant the signed-in admin holds, active and eligible, each with any activation running now and its time left: what a client needs to offer an "Escalate" button. Any admin may read its own; no capability is needed. Activations that ran out are recorded as expired (`grants.expire`) when this is read.
-         */
-        get: operations["listMyGrants"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/grants/{id}/activate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Switch one of your eligible grants on for a while
-         * @description Escalation (#346). The grant must be the caller's own (`404` otherwise) and eligible (`409 not_eligible` for an active one). It needs a fresh second factor in the body, a current `totp_code` or an unused `recovery_code`: a session that signed in with 2FA is not enough. No authenticator enrolled is `403 two_factor_required`; no code `403 totp_required`; a wrong one `403 invalid_totp` (403, not 401: the session is still good). While switched on, the grant gives what an active one would, until `expires_at` (never past the grant's own expiry) or until switched off; a grant is switched on at most once at a time (`409 already_active`). The activation and its audit entry (`grants.activate`: who, which grant, the reason, start and end) commit together; a refused activation leaves a recovery code it was given unused. Throttled like sign-in.
-         */
-        post: operations["activateGrant"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/grants/{id}/deactivate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Switch one of your grants off before it runs out
-         * @description Ends the caller's own activation of the grant now (`404` for anyone else's grant, `409 not_active` when it is not switched on). Needs no second factor: it only takes access away. The end and its audit entry (`grants.deactivate`) commit together.
-         */
-        post: operations["deactivateGrant"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/grants/{id}/make-eligible": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Hold one of your active grants only when you switch it on
-         * @description Turns the caller's own active grant eligible: from then on it gives nothing until switched on. This is how the owner of a server set up before escalation, who holds `superadmin` always, chooses to hold it only when needed. Like activating, it needs a fresh `totp_code` or `recovery_code` (the same 403 codes), so nobody makes a grant eligible without being able to switch it on again. There is no way back to active for your own grant: that would be escalating for good. The change and its audit entry (`grants.make_eligible`) commit together. Throttled like sign-in.
-         */
-        post: operations["makeGrantEligible"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/domains/{id}/dns": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        /** Live DNS record check (MX, SPF, DMARC, DKIM, MTA-STS) for a domain */
-        get: operations["domainDNSCheck"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/domains/{id}/suppressions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Domain ID
-                 * @example 1
-                 */
-                id: components["parameters"]["DomainId"];
-            };
-            cookie?: never;
-        };
-        /**
-         * List a domain's suppressed recipients
-         * @description Recipients the domain's mail is no longer sent to, because mail from
-         *     the domain to them bounced as undeliverable: the mailbox, or its
-         *     domain, does not exist. A message to one is bounced at once, with a
-         *     DSN to its sender, until the suppression expires (SUPPRESSION_TTL,
-         *     90 days by default). Expired suppressions are not listed.
-         */
-        get: operations["listSuppressions"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/domains/{id}/suppressions/{sid}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Domain ID
-                 * @example 1
-                 */
-                id: components["parameters"]["DomainId"];
-                /**
-                 * @description Suppression ID
-                 * @example 1
-                 */
-                sid: number;
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Clear a suppression
-         * @description The domain's mail to the address is tried again.
-         */
-        delete: operations["clearSuppression"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/domains/{id}/mta-sts": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        /** Get the MTA-STS policy for a domain */
-        get: operations["getMtaStsPolicy"];
-        /** Create or update the MTA-STS policy for a domain */
-        put: operations["setMtaStsPolicy"];
-        post?: never;
-        /** Delete the MTA-STS policy for a domain */
-        delete: operations["deleteMtaStsPolicy"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/domains/{id}/relay": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        /**
-         * Get the domain's outbound transport
-         * @description How mail sent from this domain leaves the server: `direct` resolves
-         *     each recipient's MX, `relay` hands every message to the configured
-         *     SMTP relay. A domain with nothing configured is `direct`. The relay
-         *     password is never returned, only whether one is set.
-         */
-        get: operations["getDomainRelay"];
-        /**
-         * Set the domain's outbound transport
-         * @description Replaces the domain's outbound transport. Takes `domains:write` held
-         *     at `*`: the relay is dialled from inside the installation, so only the
-         *     operator chooses it. TLS is mandatory (`starttls` or `implicit`), and
-         *     credentials are only ever sent after a verified handshake. Leaving
-         *     `password` out keeps the stored one; an empty string clears it. The
-         *     password is encrypted at rest and refused (409) when the server has no
-         *     MASTER_KEY. `direct` drops any relay settings, credentials included.
-         */
-        put: operations["setDomainRelay"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/tls-reports": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List received TLS-RPT reports */
-        get: operations["listTlsReports"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/pipelines/analytics": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Windowed message-lifecycle funnel from pipeline_rollups */
-        get: operations["getPipelineAnalytics"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/messages/{id}/trace": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Message ID
-                 * @example 1
-                 */
-                id: components["parameters"]["MessageId"];
-            };
-            cookie?: never;
-        };
-        /**
-         * Get the pipeline trace for a delivered message
-         * @description Returns the trace joined on message_id, which is set only on the delivered/queued path. Non-delivered or unknown ids yield 404 (correlate those via rfc_message_id on the pipeline logs endpoint instead).
-         */
-        get: operations["getMessageTrace"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/test/send": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Inject a test email directly into a recipient mailbox */
-        post: operations["sendTestEmail"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/test/verify": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Poll for a delivered message matching the given criteria */
-        get: operations["verifyDelivery"];
+        /** Dashboard statistics */
+        get: operations["getDashboardStats"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2811,6 +1678,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/test/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Inject a test email directly into a recipient mailbox */
+        post: operations["sendTestEmail"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/test/snapshot": {
         parameters: {
             query?: never;
@@ -2845,1387 +1729,3320 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/test/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Poll for a delivered message matching the given criteria */
+        get: operations["verifyDelivery"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/tls-reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List received TLS-RPT reports */
+        get: operations["listTlsReports"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/attachments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download an attachment
+         * @description The attachment's bytes, always as application/octet-stream; the type its sender gave it is listAttachments' content_type. Range and conditional requests are answered (206, 304, 412, 416).
+         */
+        get: operations["getAttachment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/2fa": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read your authenticator status */
+        get: operations["getTwoFactorStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/2fa/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Switch on a pending authenticator with its first code */
+        post: operations["confirmTwoFactor"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/2fa/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Turn two-factor authentication off */
+        post: operations["disableTwoFactor"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/2fa/enroll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start an authenticator enrollment */
+        post: operations["enrollTwoFactor"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sign an account in with its address and password */
+        post: operations["login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Log out — revoke the session and clear the auth cookies */
+        post: operations["logout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/owner/challenge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A challenge for an owner key to sign
+         * @description The first half of proving ownership with a key in the owner registry (restmail reset-admin), or of reading the status with a key in RESTMAIL_STATUS_KEYS (restmail status --key). Stateless, valid two minutes, answered once. 409 no_owner_keys when the server lists neither.
+         */
+        post: operations["ownerChallenge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/owner/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Trade a signed challenge for what the server runs
+         * @description How a deploy is confirmed from outside (restmail status --key): the owner scheme with the purpose status and no address, by a key in RESTMAIL_STATUS_KEYS or the owner registry. The challenge is spent.
+         */
+        post: operations["ownerStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/owner/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Trade a signed challenge for a reset-admin token
+         * @description signature is the SSH wire-format signature (base64), by the private half of public_key, over "restmail-owner-v1\n" + purpose + "\n" + address + "\n" + challenge. The key must be in the owner registry; a status key is refused. The token is redeemed at /api/v1/auth/reset.
+         */
+        post: operations["ownerToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Replace your own password */
+        post: operations["changeOwnPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/protocol-sign-in": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sign a mail client in (protocol gateways) */
+        post: operations["protocolSignIn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/recover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset a forgotten password with the authenticator and a recovery code
+         * @description Each address may be refused 5 times, then once per 15 minutes: 429 rate_limited with Retry-After.
+         */
+        post: operations["recoverAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh the session (cookie, or body token for native clients)
+         * @description The refresh token rotates: the one presented stops working, and a reused one ends the session.
+         */
+        post: operations["refreshToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Let an account back in with a reset token; also hands a server over
+         * @description Redeems a single-use reset_admin token (restmail reset-admin, or an owner key's). The account it names gets the password the redeemer chose, loses its authenticator and must enroll a new one, and its app passwords and every token it was issued are dead at once. A password under 12 bytes is 422 and does not spend the token.
+         */
+        post: operations["resetAdmin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messages/deliver": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deliver a message into a mailbox (protocol gateways)
+         * @description Machine to machine: no user token. The inbound pipeline decides: 201 with the message made, 200 processed when it quarantined or discarded it, 550 rejected, 451 deferred, 422 mailbox_full over quota.
+         */
+        post: operations["deliverMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messages/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Save a new draft */
+        post: operations["saveDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messages/draft/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update an existing draft */
+        put: operations["updateDraft"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messages/draft/{id}/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a draft
+         * @description The draft (mail:write) is sent as sendMessage sends, and deleted once it is; a refused send keeps it.
+         */
+        post: operations["sendDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messages/scheduled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the messages waiting to be sent
+         * @description The account's waiting sends from the addresses the session may send as (mail:send); the others are left out.
+         */
+        get: operations["listScheduledMessages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messages/scheduled/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Cancel a scheduled message
+         * @description A waiting send from an address the session may not send as (mail:send) is not found, as the list leaves it out.
+         */
+        delete: operations["cancelScheduledMessage"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messages/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a message
+         * @description Sent at once (201), or with scheduled_at stored and sent then (202); the outbound pipeline may discard it (200). The sender is an address the session may send as (mail:send).
+         */
+        post: operations["sendMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messages/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a message by ID */
+        get: operations["getMessage"];
+        put?: never;
+        post?: never;
+        /** Delete a message */
+        delete: operations["deleteMessage"];
+        options?: never;
+        head?: never;
+        /** Update message flags or move to a folder */
+        patch: operations["updateMessage"];
+        trace?: never;
+    };
+    "/api/v1/messages/{id}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a message's attachments */
+        get: operations["listAttachments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messages/{id}/calendar-reply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reply to a calendar invitation
+         * @description The invitation's message is read with mail:read; the reply is sent from an address the session may send as (mail:send).
+         */
+        post: operations["respondToCalendar"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messages/{id}/forward": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Forward a message
+         * @description The message (mail:read) is sent on as sendMessage sends, with Fwd: and its header above the note.
+         */
+        post: operations["forwardMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messages/{id}/raw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the raw RFC 2822 message source
+         * @description The message as it arrived, headers and all. 404 not_found when no source was kept.
+         */
+        get: operations["getRawMessage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/server": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What this server is */
+        get: operations["describeServer"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/autodiscover/autodiscover.xml": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Microsoft Outlook autodiscover */
+        post: operations["microsoftAutodiscover"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mail/config-v1.1.xml": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mozilla/Thunderbird autoconfiguration
+         * @description Autoconfig XML document. The incoming and outgoing servers are the mail host (GATEWAY_HOSTNAME), on IMAP 993 and SMTP 465 with implicit TLS.
+         */
+        get: operations["mozillaAutoconfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Prometheus metrics exposition */
+        get: operations["prometheusMetrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/restmail/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get RESTMAIL server capabilities */
+        get: operations["restmailCapabilities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/restmail/mailboxes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Check if a recipient mailbox exists */
+        get: operations["restmailCheckMailbox"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/restmail/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deliver a message via RESTMAIL protocol
+         * @description Server-to-server delivery. Unauthenticated at the HTTP layer: a delivery must come from a trusted peer network or carry a DKIM signature aligned with its From domain, or it is refused 403 unauthorized. The inbound pipeline can refuse it 403 rejected or defer it 503 deferred. When no recipient takes the message the answer is 422 undeliverable.
+         */
+        post: operations["restmailDeliver"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        ErrorResponse: {
-            error: {
-                /** @example not_found */
-                code: string;
-                /** @example Resource not found */
-                message: string;
-                details?: Record<string, never>;
-            };
+        APIRoot: {
+            build_date: string;
+            commit: string;
+            links: components["schemas"]["APIRootLinks"];
+            name: string;
+            version: string;
         };
-        ValidationErrorResponse: {
-            error: {
-                /** @example validation_failed */
-                code: string;
-                /** @example Request body failed validation */
-                message: string;
-                details?: {
-                    fields?: {
-                        [key: string]: string;
-                    };
-                };
-            };
+        APIRootLinks: {
+            docs: string;
+            health: string;
+            login: string;
         };
-        Pagination: {
-            /** @description Opaque cursor for the next page */
-            cursor?: string;
-            has_more?: boolean;
+        Address: {
+            address: string;
+            name?: string;
+        };
+        AddressCheck: {
+            address: string;
+            exists: boolean;
+            mailbox_id?: number;
+        };
+        Alias: {
+            active: boolean;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: email */
+            destination_address: string;
+            domain?: components["schemas"]["Domain"];
+            domain_id: number;
+            id: number;
+            /** Format: email */
+            source_address: string;
+        };
+        AnalyticsWindow: {
+            label?: string;
+            /** Format: date-time */
+            since: string;
+            /** Format: date-time */
+            until: string;
+        };
+        Anchor: {
+            hash: string;
             /** Format: int64 */
-            total?: number;
+            seq: number;
         };
-        HealthStatus: {
-            /** @example healthy */
+        Attachment: {
+            checksum?: string;
+            content?: string;
+            content_id?: string;
+            content_type: string;
+            disposition?: string;
+            filename?: string;
+            ref?: string;
+            /** Format: int64 */
+            size: number;
+            storage?: string;
+        };
+        AuditEntry: {
+            action: string;
+            actor_id: number | null;
+            /** @enum {string} */
+            actor_kind: "account" | "system" | "anonymous";
+            actor_name: string;
+            credential_id: number | null;
+            error_code: string;
+            hash: string;
+            ip: string;
+            method: string;
+            /** Format: date-time */
+            occurred_at: string;
+            /** @enum {string} */
+            outcome: "success" | "denied" | "failed" | "error";
+            prev_hash: string;
+            request_id: string;
+            route: string;
+            /** Format: int64 */
+            seq: number;
+            session_id: string;
+            status: number;
+            target: {
+                [key: string]: string;
+            };
+            user_agent: string;
+        };
+        AuthResult: {
+            domain?: string;
+            method: string;
+            property?: string;
+            result: string;
+        };
+        AuthVerdictCount: {
+            /** Format: double */
+            count: number;
+            mechanism: string;
+            result: string;
+        };
+        Ban: {
+            /** Format: date-time */
+            created_at: string;
+            created_by: string;
+            /** Format: date-time */
+            expires_at?: string | null;
+            id: number;
+            ip: string;
+            /** @enum {string} */
+            protocol: "smtp" | "imap" | "pop3" | "all";
+            reason: string;
+        };
+        Body: {
+            content?: string;
+            content_type: string;
+            parts?: components["schemas"]["Body"][];
+        };
+        BulkQueueResult: {
+            /** Format: int64 */
+            affected: number;
+        };
+        CalendarAddress: {
+            address: string;
+            name?: string;
+            partstat?: string;
+            role?: string;
+            rsvp?: boolean;
+        };
+        CalendarEvent: {
+            all_day: boolean;
+            attendees?: components["schemas"]["CalendarAddress"][];
+            description?: string;
+            /** Format: date-time */
+            dtend: string;
+            /** Format: date-time */
+            dtstamp?: string;
+            /** Format: date-time */
+            dtstart: string;
+            location?: string;
+            method: string;
+            organizer: components["schemas"]["CalendarAddress"];
+            sequence: number;
+            status?: string;
+            summary: string;
+            uid: string;
+        };
+        CalendarEventSummary: {
+            is_cancelled: boolean;
+            message_id?: number | null;
+            method: string;
+            sequence: number;
             status: string;
-            /** @example connected */
-            db: string;
+            summary: string;
+            uid: string;
+            versions: number;
         };
-        LoginRequest: {
-            /**
-             * Format: email
-             * @description The account's address. There is no username.
-             */
+        CalendarReplied: {
+            /** @enum {string} */
+            response: "ACCEPTED" | "DECLINED" | "TENTATIVE";
+            /** @enum {string} */
+            status: "sent";
+        };
+        CertWarning: {
+            cert_id: number;
+            days_until: number;
+            domain: string;
+            issuer: string;
+            /** Format: date-time */
+            not_after: string;
+            /** @enum {string} */
+            status: "expiring_soon" | "expired";
+        };
+        Certificate: {
+            auto_renew: boolean;
+            /** Format: date-time */
+            created_at: string;
+            domain?: components["schemas"]["Domain"];
+            domain_id: number;
+            id: number;
+            issuer: string;
+            /** Format: date-time */
+            not_after: string;
+            /** Format: date-time */
+            not_before: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        CertificateDetails: {
+            auto_renew: boolean;
+            cert_pem: string;
+            /** Format: date-time */
+            created_at: string;
+            domain?: components["schemas"]["Domain"];
+            domain_id: number;
+            id: number;
+            issuer: string;
+            /** Format: date-time */
+            not_after: string;
+            /** Format: date-time */
+            not_before: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        Contact: {
+            /** Format: date-time */
+            created_at: string;
             email: string;
-            /** Format: password */
-            password: string;
-            /** @description A current code from one of the account's authenticators, when it has one. */
-            totp_code?: string;
-            /** @description Instead of totp_code, one of the account's unused recovery codes. */
-            recovery_code?: string;
-            /**
-             * @description "native" for a client that is not a browser: the tokens come back in the body rather than as cookies. Omit for a browser.
-             * @enum {string}
-             */
-            client?: "native";
-        };
-        /** @description Sent by native clients only; browsers send no body. */
-        RefreshRequest: {
-            refresh_token?: string;
-        };
-        /** @description Login/refresh success body. For a browser it carries NO tokens: the access token is delivered only as the httpOnly restmail_access cookie (Set-Cookie), so JavaScript cannot read it, and a readable restmail_csrf cookie is set alongside for the double-submit CSRF defence. The token fields are present only for a native client. */
-        LoginResponse: {
-            /** @description Access-token lifetime in seconds (lets the client schedule a refresh) */
-            expires_in: number;
-            user: {
-                id: number;
-                /** Format: email */
-                email: string;
-                display_name: string;
-            };
-            /** @description The capabilities the account's grants in force (active ones, and eligible ones while switched on) give at `*`, sorted, or `["*"]` alone for a superadmin; for showing what the session can do (absent for an account holding no admin role). They authorise nothing: the API reads the grants on every request, and the token carries none. Capabilities held only on a domain or mailbox are not listed. Empty while setup_required is not. */
-            capabilities?: string[];
-            /** @description Absent once the account is set up. What the account must still do before its sessions reach anything else, which until then answers 403 with code setup_required — and so does every session refreshed from this one. "password": POST /api/v1/auth/password. "two_factor": POST /api/v1/auth/2fa/enroll, then /api/v1/auth/2fa/confirm. A fresh install's bootstrap account, admin@<mail domain>, starts with both. */
-            setup_required?: ("password" | "two_factor")[];
-            /** @description Native clients only. Send as Authorization Bearer. */
-            access_token?: string;
-            /** @description Native clients only. Single use; each refresh returns a new one. */
-            refresh_token?: string;
-            /** @description Native clients only. Refresh-token lifetime in seconds. */
-            refresh_expires_in?: number;
-        };
-        /** @description Same shape and delivery as LoginResponse: cookies for a cookie refresh, body tokens for a native (body-token) refresh. */
-        RefreshResponse: {
-            expires_in: number;
-            user: {
-                id: number;
-                /** Format: email */
-                email: string;
-                display_name: string;
-            };
-            capabilities?: string[];
-            /** @description Native clients only. Send as Authorization Bearer. */
-            access_token?: string;
-            /** @description Native clients only. Single use; each refresh returns a new one. */
-            refresh_token?: string;
-            /** @description Native clients only. Refresh-token lifetime in seconds. */
-            refresh_expires_in?: number;
-        };
-        /** @description An account, which is a mailbox: what GET and POST /api/v1/accounts answer with. `id` is the mailbox's id, the `{id}` of every /api/v1/accounts/{id}/… route. */
-        Account: {
             id: number;
-            /** Format: email */
-            address: string;
-            display_name: string;
-            /** @description The session's own account. */
-            is_primary: boolean;
+            mailbox_id: number;
+            name: string;
+            /** @enum {string} */
+            source: "sent" | "manual" | "import";
+            /** @enum {string} */
+            trust_level: "auto" | "trusted" | "blocked";
+            /** Format: date-time */
+            updated_at: string;
         };
-        CreateAccountRequest: {
-            /**
-             * Format: email
-             * @description On a domain this server hosts.
-             */
-            address: string;
-            display_name?: string;
-            /** @description Optional. With one, the account can be signed in to; without one it has no credentials, and is reached only through its owners. */
-            password?: string;
+        ContactsImported: {
+            imported: number;
         };
-        /** @description An app password, as its owner sees it. Never its secret or hash. */
-        Credential: {
+        CustomFilter: {
+            config: unknown;
+            /** Format: date-time */
+            created_at: string;
+            description: string;
+            /** @enum {string} */
+            direction: "inbound" | "outbound" | "both";
+            domain?: components["schemas"]["PipelineDomain"];
+            domain_id: number;
+            enabled: boolean;
+            /** @enum {string} */
+            filter_type: "action" | "transform";
+            id: number;
+            name: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        DNSRecordCheck: {
+            message?: string;
+            name: string;
+            /** @enum {string} */
+            status: "ok" | "missing" | "error";
+            type: string;
+            value?: string;
+        };
+        DashboardStats: {
+            domainCount: number;
+            inboundTransportSecurity: components["schemas"]["InboundTransportSecurity"];
+            mailboxCount: number;
+            messageVolume: components["schemas"]["MessageVolumeData"][];
+            queueStats: components["schemas"]["QueueStats"];
+            recentActivity: components["schemas"]["RecentActivity"][] | null;
+        };
+        "Data-APIRoot": {
+            data: components["schemas"]["APIRoot"];
+        };
+        "Data-AddressCheck": {
+            data: components["schemas"]["AddressCheck"];
+        };
+        "Data-Alias": {
+            data: components["schemas"]["Alias"];
+        };
+        "Data-Ban": {
+            data: components["schemas"]["Ban"];
+        };
+        "Data-BulkQueueResult": {
+            data: components["schemas"]["BulkQueueResult"];
+        };
+        "Data-CalendarEventSummaryList": {
+            data: components["schemas"]["CalendarEventSummary"][];
+        };
+        "Data-CalendarReplied": {
+            data: components["schemas"]["CalendarReplied"];
+        };
+        "Data-Certificate": {
+            data: components["schemas"]["Certificate"];
+        };
+        "Data-CertificateDetails": {
+            data: components["schemas"]["CertificateDetails"];
+        };
+        "Data-Contact": {
+            data: components["schemas"]["Contact"];
+        };
+        "Data-ContactsImported": {
+            data: components["schemas"]["ContactsImported"];
+        };
+        "Data-CustomFilter": {
+            data: components["schemas"]["CustomFilter"];
+        };
+        "Data-DashboardStats": {
+            data: components["schemas"]["DashboardStats"];
+        };
+        "Data-DeliveryProcessed": {
+            data: components["schemas"]["DeliveryProcessed"];
+        };
+        "Data-Domain": {
+            data: components["schemas"]["Domain"];
+        };
+        "Data-DomainDNSCheck": {
+            data: components["schemas"]["DomainDNSCheck"];
+        };
+        "Data-ExecutionResult": {
+            data: components["schemas"]["ExecutionResult"];
+        };
+        "Data-FilterResult": {
+            data: components["schemas"]["FilterResult"];
+        };
+        "Data-FolderName": {
+            data: components["schemas"]["FolderName"];
+        };
+        "Data-Health": {
+            data: components["schemas"]["Health"];
+        };
+        "Data-MTASTSPolicy": {
+            data: components["schemas"]["MTASTSPolicy"];
+        };
+        "Data-Mailbox": {
+            data: components["schemas"]["Mailbox"];
+        };
+        "Data-Message": {
+            data: components["schemas"]["Message"];
+        };
+        "Data-MessageTrace": {
+            data: components["schemas"]["MessageTrace"];
+        };
+        "Data-OwnerChallenge": {
+            data: components["schemas"]["OwnerChallenge"];
+        };
+        "Data-OwnerToken": {
+            data: components["schemas"]["OwnerToken"];
+        };
+        "Data-Pipeline": {
+            data: components["schemas"]["Pipeline"];
+        };
+        "Data-PipelineAnalyticsResponse": {
+            data: components["schemas"]["PipelineAnalyticsResponse"];
+        };
+        "Data-ProtocolSignedIn": {
+            data: components["schemas"]["ProtocolSignedIn"];
+        };
+        "Data-QuarantineDeleted": {
+            data: components["schemas"]["QuarantineDeleted"];
+        };
+        "Data-QuarantineReleased": {
+            data: components["schemas"]["QuarantineReleased"];
+        };
+        "Data-QueueAction": {
+            data: components["schemas"]["QueueAction"];
+        };
+        "Data-QueueEntry": {
+            data: components["schemas"]["QueueEntry"];
+        };
+        "Data-QueueList": {
+            data: components["schemas"]["QueueList"];
+        };
+        "Data-QueueStatistics": {
+            data: components["schemas"]["QueueStatistics"];
+        };
+        "Data-Quota": {
+            data: components["schemas"]["Quota"];
+        };
+        "Data-RestmailCapabilities": {
+            data: components["schemas"]["RestmailCapabilities"];
+        };
+        "Data-RestmailDelivery": {
+            data: components["schemas"]["RestmailDelivery"];
+        };
+        "Data-RestmailMailboxCheck": {
+            data: components["schemas"]["RestmailMailboxCheck"];
+        };
+        "Data-Result": {
+            data: components["schemas"]["Result"];
+        };
+        "Data-ScheduledMessage": {
+            data: components["schemas"]["ScheduledMessage"];
+        };
+        "Data-ScheduledMessageList": {
+            data: components["schemas"]["ScheduledMessage"][];
+        };
+        "Data-SendDiscarded": {
+            data: components["schemas"]["SendDiscarded"];
+        };
+        "Data-SenderRule": {
+            data: components["schemas"]["SenderRule"];
+        };
+        "Data-ServerStatus": {
+            data: components["schemas"]["ServerStatus"];
+        };
+        "Data-SieveDeleted": {
+            data: components["schemas"]["SieveDeleted"];
+        };
+        "Data-SieveScript": {
+            data: components["schemas"]["SieveScript"];
+        };
+        "Data-SieveValidation": {
+            data: components["schemas"]["SieveValidation"];
+        };
+        "Data-TestDataStatus": {
+            data: components["schemas"]["TestDataStatus"];
+        };
+        "Data-TestDelivery": {
+            data: components["schemas"]["TestDelivery"];
+        };
+        "Data-TestEmailSent": {
+            data: components["schemas"]["TestEmailSent"];
+        };
+        "Data-TestProbeResults": {
+            data: components["schemas"]["TestProbeResults"];
+        };
+        "Data-TestSnapshot": {
+            data: components["schemas"]["TestSnapshot"];
+        };
+        "Data-accountResponse": {
+            data: components["schemas"]["accountResponse"];
+        };
+        "Data-capabilityResponseList": {
+            data: components["schemas"]["capabilityResponse"][];
+        };
+        "Data-createdAPIKey": {
+            data: components["schemas"]["createdAPIKey"];
+        };
+        "Data-createdAppPassword": {
+            data: components["schemas"]["createdAppPassword"];
+        };
+        "Data-deletedStatus": {
+            data: components["schemas"]["deletedStatus"];
+        };
+        "Data-dkimEntry": {
+            data: components["schemas"]["dkimEntry"];
+        };
+        "Data-dkimRotationSettings": {
+            data: components["schemas"]["dkimRotationSettings"];
+        };
+        "Data-enrollResponse": {
+            data: components["schemas"]["enrollResponse"];
+        };
+        "Data-escalationResponse": {
+            data: components["schemas"]["escalationResponse"];
+        };
+        "Data-grantResponse": {
+            data: components["schemas"]["grantResponse"];
+        };
+        "Data-grantResponseList": {
+            data: components["schemas"]["grantResponse"][];
+        };
+        "Data-loginResponse": {
+            data: components["schemas"]["loginResponse"];
+        };
+        "Data-passwordChanged": {
+            data: components["schemas"]["passwordChanged"];
+        };
+        "Data-relayView": {
+            data: components["schemas"]["relayView"];
+        };
+        "Data-roleResponseList": {
+            data: components["schemas"]["roleResponse"][];
+        };
+        "Data-serverDescription": {
+            data: components["schemas"]["serverDescription"];
+        };
+        "Data-tlsReportStored": {
+            data: components["schemas"]["tlsReportStored"];
+        };
+        "Data-twoFactorStatusResponse": {
+            data: components["schemas"]["twoFactorStatusResponse"];
+        };
+        "Data-vacationSetting": {
+            data: components["schemas"]["vacationSetting"];
+        };
+        DeliveryLogEntry: {
+            attempts: number;
+            body_type: string;
+            /** Format: date-time */
+            created_at: string;
+            domain: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** @enum {string} */
+            failure_category: "" | "bad_domain" | "bad_mailbox" | "connection" | "dns" | "greylisted" | "mailbox_full" | "other_permanent" | "other_transient" | "policy" | "rate_limited" | "tls";
+            id: number;
+            /** Format: date-time */
+            last_attempt: string | null;
+            last_error: string;
+            last_error_code: number;
+            max_retries: number;
+            message_id: number | null;
+            /** Format: date-time */
+            next_attempt: string;
+            recipient: string;
+            sender: string;
+            /** @enum {string} */
+            status: "pending" | "delivering" | "deferred" | "delivered" | "bounced" | "expired";
+        };
+        DeliveryProcessed: {
+            /** @enum {string} */
+            status: "processed";
+        };
+        Domain: {
+            active: boolean;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: int64 */
+            default_quota_bytes: number;
+            dkim_selector: string;
+            /** @enum {string} */
+            dmarc_policy: "none" | "quarantine" | "reject";
             id: number;
             name: string;
             /** @enum {string} */
-            kind: "app_password";
-            /**
-             * @description The part of the app password after `rm_` and before the secret
-             * @example 7Kq2xT9bLm4P
-             */
-            public_id: string;
-            /** Format: date-time */
-            created_at: string;
-            /**
-             * Format: date-time
-             * @description When it was last used, to within a minute
-             */
-            last_used_at: string | null;
-            /** Format: date-time */
-            expires_at: string | null;
-        };
-        CreatedAppPassword: components["schemas"]["Credential"] & {
-            /** @description The app password, shown this once. Use it with the mailbox's address as the password of a mail client, or with HTTP Basic. */
-            password: string;
-        };
-        PushDevices: {
-            /** @description The push services this session can register a device with */
-            platforms: "apns"[];
-            devices: components["schemas"]["PushDevice"][];
-        };
-        /** @description A phone registered for push by a session. Never its token. */
-        PushDevice: {
-            /**
-             * @description Opaque; the `device` of the pushes it gets
-             * @example 12
-             */
-            id: string;
+            sending_policy: "" | "transactional" | "bulk";
             /** @enum {string} */
-            platform: "apns";
-            /** @enum {string} */
-            environment: "production" | "sandbox";
+            server_type: "traditional" | "restmail";
             /** Format: date-time */
-            created_at: string;
+            updated_at: string;
         };
-        RegisterPushDeviceRequest: {
-            /** @enum {string} */
-            platform: "apns";
-            /** @description The APNs device token, lowercase hex */
-            token: string;
-            /**
-             * @description production for App Store and TestFlight builds, sandbox for builds run from Xcode: which APNs host the pushes go to.
-             * @default production
-             * @enum {string}
-             */
-            environment: "production" | "sandbox";
-            /**
-             * @description The app's bundle id; must be the server's APNs topic when given
-             * @example com.antimatterstudios.restmail
-             */
-            app_id?: string;
+        DomainDNSCheck: {
+            domain: string;
+            records: components["schemas"]["DNSRecordCheck"][];
+            summary: string;
         };
-        LinkAccountRequest: {
-            /** Format: email */
-            address: string;
-            /** Format: password */
-            password: string;
-            display_name?: string;
-            /** @description A code from the account's authenticator, when it has two-factor authentication */
-            totp_code?: string;
-            /** @description One of the account's recovery codes, instead of totp_code; it is spent */
-            recovery_code?: string;
+        EmailJSON: {
+            attachments?: components["schemas"]["Attachment"][];
+            body: components["schemas"]["Body"];
+            calendar_events?: components["schemas"]["CalendarEvent"][];
+            envelope: components["schemas"]["Envelope"];
+            headers: components["schemas"]["Headers"];
+            inline?: components["schemas"]["Attachment"][];
+            metadata?: {
+                [key: string]: string;
+            };
         };
-        Folder: {
-            name: string;
-            total: number;
-            unread: number;
+        Entry: {
+            capability: string;
+            scope: string;
+        };
+        Envelope: {
+            client_hostname?: string;
+            client_ip?: string;
+            direction: string;
+            helo?: string;
+            mail_from: string;
+            rcpt_to: string[];
+            tls: boolean;
+        };
+        ErrorBody: {
+            code: string;
+            details?: {
+                [key: string]: unknown;
+            };
+            message: string;
+        };
+        ErrorResponse: {
+            error: components["schemas"]["ErrorBody"];
+        };
+        ExecutionResult: {
+            auth_results?: components["schemas"]["AuthResult"][];
+            /** Format: int64 */
+            duration_ms: number;
+            final_action: string;
+            final_email: components["schemas"]["EmailJSON"] | null;
+            reject_message?: string;
+            steps: components["schemas"]["StepResult"][];
+        };
+        FilterLog: {
+            detail?: string;
+            /** Format: int64 */
+            duration_ms?: number;
+            filter: string;
+            result: string;
+        };
+        FilterResult: {
+            action: string;
+            log: components["schemas"]["FilterLog"];
+            message?: components["schemas"]["EmailJSON"] | null;
+            reject_message?: string;
+            skip_filters?: string[];
+            type: string;
         };
         FolderName: {
             name: string;
         };
-        CreateFolderRequest: {
+        FolderSummary: {
             name: string;
+            /** Format: int64 */
+            total: number;
+            /** Format: int64 */
+            unread: number;
         };
-        RenameFolderRequest: {
-            name: string;
-        };
-        Message: {
-            id: number;
-            mailbox_id: number;
-            folder: string;
-            /** @description RFC 2822 Message-ID header */
-            message_id?: string;
-            in_reply_to?: string;
-            references?: string;
-            thread_id?: string;
-            sender: string;
-            sender_name?: string;
-            /** @description The recipients' addresses. */
-            recipients_to?: string[] | null;
-            /** @description The CC recipients' addresses. */
-            recipients_cc?: string[] | null;
-            subject: string;
-            body_text?: string;
-            body_html?: string;
-            /** @description The message's header fields as it arrived, each name with its values; an empty array when none were recorded (mail sent from here, drafts). */
-            headers?: {
-                [key: string]: string[];
-            } | unknown[] | null;
-            size_bytes?: number;
-            /** @description Exact octet count of the stored raw RFC 2822 message (the size a protocol client receives when the raw form is served verbatim, e.g. IMAP RFC822.SIZE / POP3 LIST). 0 when the server holds no stored raw form; consumers should fall back to size_bytes. */
-            raw_size?: number;
-            has_attachments?: boolean;
-            is_read: boolean;
-            is_flagged: boolean;
-            is_starred: boolean;
-            is_draft: boolean;
-            is_deleted: boolean;
-            /** Format: date-time */
-            received_at: string;
-            /** Format: date-time */
-            date_header?: string | null;
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            updated_at: string;
-        };
-        UpdateMessageRequest: {
-            is_read?: boolean;
-            is_flagged?: boolean;
-            is_starred?: boolean;
-            folder?: string;
-        };
-        SendMessageRequest: {
-            /** Format: email */
-            from: string;
-            to: string[];
-            cc?: string[];
-            bcc?: string[];
-            subject?: string;
-            body_text?: string;
-            body_html?: string;
-            in_reply_to?: string;
-            /** @description Where a recipient unsubscribes from this mail (RFC 2369, RFC 8058), published as the message's List-Unsubscribe field. You run the endpoint; the server never fetches or posts to it. With `https`, the message also carries `List-Unsubscribe-Post: List-Unsubscribe=One-Click` and both fields are DKIM signed; a sender domain with no DKIM key is refused with 422 `dkim_required` rather than sent with an unsigned one-click claim. With only `mailto`, there is no one-click field. Omit the object and the message carries neither field. A value with a line break, a space, a comma, an angle bracket or quote, or any other scheme is refused with 400, as is any key other than `mailto` and `https`. */
-            list_unsubscribe?: {
-                /**
-                 * Format: email
-                 * @description A bare ASCII address (no display name, no `mailto:`, no query), published as `<mailto:address>`.
-                 * @example unsubscribe@example.com
-                 */
-                mailto?: string;
-                /**
-                 * Format: uri
-                 * @description One absolute https URL with a host and no credentials, which unsubscribes the recipient when it receives the RFC 8058 one-click POST (body `List-Unsubscribe=One-Click`). It should identify the recipient and the list, as RFC 8058 §3.1 asks.
-                 * @example https://example.com/unsubscribe?t=opaque-token
-                 */
-                https?: string;
+        Headers: {
+            bcc?: components["schemas"]["Address"][];
+            cc?: components["schemas"]["Address"][];
+            date: string;
+            extra?: {
+                [key: string]: string;
             };
-        };
-        ForwardMessageRequest: {
-            /** Format: email */
-            from: string;
-            to: string[];
-            body_text?: string;
-        };
-        DraftRequest: {
-            /** Format: email */
-            from?: string;
-            to?: string[];
-            cc?: string[];
-            subject?: string;
-            body_text?: string;
-            body_html?: string;
-            in_reply_to?: string;
-            references?: string;
-        };
-        UpdateDraftRequest: {
-            /** Format: email */
-            from?: string;
-            to?: string[];
-            cc?: string[];
-            subject?: string;
-            body_text?: string;
-            body_html?: string;
-        };
-        QuotaInfo: {
-            /** Format: int64 */
-            quota_bytes: number;
-            /** Format: int64 */
-            quota_used_bytes: number;
-            message_count: number;
-            /** Format: float */
-            percent_used: number;
-        };
-        Attachment: {
-            id: number;
-            message_id: number;
-            filename: string;
-            content_type: string;
-            /** Format: int64 */
-            size_bytes: number;
-            /** @enum {string} */
-            storage_type: "filesystem" | "s3";
-            storage_ref: string;
-            /** @description SHA-256 hex digest */
-            checksum: string;
-            /** Format: date-time */
-            created_at: string;
-        };
-        Contact: {
-            id: number;
-            mailbox_id: number;
-            /** Format: email */
-            email: string;
-            name: string;
-            /** @enum {string} */
-            trust_level: "auto" | "trusted" | "blocked";
-            /** @enum {string} */
-            source: "sent" | "manual" | "import";
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            updated_at: string;
-        };
-        CreateContactRequest: {
-            /** Format: email */
-            email: string;
-            name?: string;
-            /** @enum {string} */
-            trust_level?: "auto" | "trusted" | "blocked";
-        };
-        UpdateContactRequest: {
-            name?: string;
-            /** @enum {string} */
-            trust_level?: "auto" | "trusted" | "blocked";
-        };
-        ImportContactsRequest: {
-            contacts: {
-                /** Format: email */
-                email: string;
-                name?: string;
-            }[];
-        };
-        VacationConfig: {
-            enabled: boolean;
+            from: components["schemas"]["Address"][];
+            "in-reply-to"?: string;
+            "message-id": string;
+            raw?: {
+                [key: string]: string[];
+            };
+            references?: string[];
             subject: string;
-            body: string;
-            /** Format: date-time */
-            start_date?: string | null;
-            /** Format: date-time */
-            end_date?: string | null;
+            to: components["schemas"]["Address"][];
         };
-        SieveScript: {
-            id: number;
-            mailbox_id: number;
-            script: string;
+        Health: {
+            cert_warnings?: components["schemas"]["CertWarning"][];
+            db: string;
+            status: string;
+        };
+        InboundTransportSecurity: {
+            overTLS: number;
+            plaintext: number;
+            plaintextAuthFail: number;
+            plaintextAuthPass: number;
+            /** Format: double */
+            plaintextPercent: number;
+            /** Format: double */
+            tlsPercent: number;
+            totalInboundMX: number;
+        };
+        "List-Alias": {
+            data: components["schemas"]["Alias"][];
+            pagination?: components["schemas"]["Pagination"] | null;
+        };
+        "List-AuditEntry": {
+            data: components["schemas"]["AuditEntry"][];
+            pagination?: components["schemas"]["Pagination"] | null;
+        };
+        "List-Ban": {
+            data: components["schemas"]["Ban"][];
+            pagination?: components["schemas"]["Pagination"] | null;
+        };
+        "List-Certificate": {
+            data: components["schemas"]["Certificate"][];
+            pagination?: components["schemas"]["Pagination"] | null;
+        };
+        "List-Contact": {
+            data: components["schemas"]["Contact"][];
+            pagination?: components["schemas"]["Pagination"] | null;
+        };
+        "List-CustomFilter": {
+            data: components["schemas"]["CustomFilter"][];
+            pagination?: components["schemas"]["Pagination"] | null;
+        };
+        "List-DeliveryLogEntry": {
+            data: components["schemas"]["DeliveryLogEntry"][];
+            pagination?: components["schemas"]["Pagination"] | null;
+        };
+        "List-Domain": {
+            data: components["schemas"]["Domain"][];
+            pagination?: components["schemas"]["Pagination"] | null;
+        };
+        "List-FolderSummary": {
+            data: components["schemas"]["FolderSummary"][];
+            pagination?: components["schemas"]["Pagination"] | null;
+        };
+        "List-Mailbox": {
+            data: components["schemas"]["Mailbox"][];
+            pagination?: components["schemas"]["Pagination"] | null;
+        };
+        "List-Message": {
+            data: components["schemas"]["Message"][];
+            pagination?: components["schemas"]["Pagination"] | null;
+        };
+        "List-MessageAttachment": {
+            data: components["schemas"]["MessageAttachment"][];
+            pagination?: components["schemas"]["Pagination"] | null;
+        };
+        "List-MessageTrace": {
+            data: components["schemas"]["MessageTrace"][];
+            pagination?: components["schemas"]["Pagination"] | null;
+        };
+        "List-Pipeline": {
+            data: components["schemas"]["Pipeline"][];
+            pagination?: components["schemas"]["Pagination"] | null;
+        };
+        "List-QuarantinedMessage": {
+            data: components["schemas"]["QuarantinedMessage"][];
+            pagination?: components["schemas"]["Pagination"] | null;
+        };
+        "List-SenderRule": {
+            data: components["schemas"]["SenderRule"][];
+            pagination?: components["schemas"]["Pagination"] | null;
+        };
+        "List-Suppression": {
+            data: components["schemas"]["Suppression"][];
+            pagination?: components["schemas"]["Pagination"] | null;
+        };
+        "List-TLSReport": {
+            data: components["schemas"]["TLSReport"][];
+            pagination?: components["schemas"]["Pagination"] | null;
+        };
+        "List-accountResponse": {
+            data: components["schemas"]["accountResponse"][];
+            pagination?: components["schemas"]["Pagination"] | null;
+        };
+        "List-apiKeyResponse": {
+            data: components["schemas"]["apiKeyResponse"][];
+            pagination?: components["schemas"]["Pagination"] | null;
+        };
+        "List-credentialResponse": {
+            data: components["schemas"]["credentialResponse"][];
+            pagination?: components["schemas"]["Pagination"] | null;
+        };
+        "List-dkimEntry": {
+            data: components["schemas"]["dkimEntry"][];
+            pagination?: components["schemas"]["Pagination"] | null;
+        };
+        "List-grantResponse": {
+            data: components["schemas"]["grantResponse"][];
+            pagination?: components["schemas"]["Pagination"] | null;
+        };
+        MTASTSPolicy: {
             active: boolean;
             /** Format: date-time */
             created_at: string;
+            domain?: components["schemas"]["Domain"];
+            domain_id: number;
+            id: number;
+            max_age: number;
+            /** @enum {string} */
+            mode: "none" | "testing" | "enforce";
+            mx_hosts: string;
             /** Format: date-time */
             updated_at: string;
         };
-        PutSieveRequest: {
-            script: string;
-            active?: boolean;
-        };
-        Quarantine: {
+        Mailbox: {
+            active: boolean;
+            /** Format: email */
+            address: string;
+            /** Format: date-time */
+            created_at: string;
+            display_name: string;
+            domain?: components["schemas"]["Domain"];
+            domain_id: number;
             id: number;
+            /** Format: date-time */
+            last_login_at: string | null;
+            /** Format: date-time */
+            last_password_change?: string | null;
+            local_part: string;
+            password_change_required: boolean;
+            /** Format: int64 */
+            quota_bytes: number;
+            quota_usage?: components["schemas"]["QuotaUsage"] | null;
+            /** Format: int64 */
+            quota_used_bytes: number;
+            two_factor_required: boolean;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        Message: {
+            body_html?: string;
+            body_text?: string;
+            calendar_events?: unknown;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            date_header: string | null;
+            folder: string;
+            has_attachments: boolean;
+            headers?: unknown;
+            id: number;
+            in_reply_to: string;
+            is_deleted: boolean;
+            is_draft: boolean;
+            is_dsn: boolean;
+            is_flagged: boolean;
+            is_read: boolean;
+            is_starred: boolean;
+            mailbox?: components["schemas"]["Mailbox"];
             mailbox_id: number;
+            message_id: string;
+            raw_size: number;
+            /** Format: date-time */
+            received_at: string;
+            received_tls?: boolean | null;
+            recipients_cc: unknown;
+            recipients_to: unknown;
+            references: string;
             sender: string;
+            sender_name: string;
+            size_bytes: number;
             subject: string;
-            body_preview: string;
+            thread_id: string;
+            tls_version?: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        MessageAttachment: {
+            checksum: string;
+            content_type: string;
+            /** Format: date-time */
+            created_at: string;
+            filename: string;
+            id: number;
+            message_id: number;
+            /** Format: int64 */
+            size_bytes: number;
+        };
+        MessageTrace: {
+            client_ip: string;
+            /** Format: date-time */
+            created_at: string;
+            /** @enum {string} */
+            direction: "inbound" | "outbound";
+            /** Format: int64 */
+            duration_ms: number;
+            /** Format: date-time */
+            expires_at?: string | null;
+            /** @enum {string} */
+            final_action: "continue" | "defer" | "discard" | "quarantine" | "reject";
+            id: number;
+            mail_from: string;
+            message_id: number | null;
+            /** @enum {string} */
+            outcome: "deferred" | "delivered" | "discarded" | "quarantined" | "queued" | "rejected";
+            pipeline_id: number;
+            rcpt_to: string;
+            reason_code: string;
+            rfc_message_id: string;
+            sampled: boolean;
             /** Format: float */
             spam_score?: number | null;
+            stages: unknown;
+            /** @enum {string} */
+            transport: "" | "plaintext" | "tls";
+        };
+        MessageVolumeData: {
+            count: number;
+            date: string;
+        };
+        OwnerChallenge: {
+            challenge: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        OwnerToken: {
+            /** Format: date-time */
+            expires_at: string;
+            purpose: string;
+            token: string;
+        };
+        Pagination: {
+            cursor?: string;
+            has_more: boolean;
+            /** Format: int64 */
+            total?: number;
+        };
+        Pipeline: {
+            active: boolean;
+            /** Format: date-time */
+            created_at: string;
+            /** @enum {string} */
+            direction: "inbound" | "outbound";
+            domain?: components["schemas"]["PipelineDomain"];
+            domain_id: number;
+            filters: unknown;
+            id: number;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        PipelineAnalyticsResponse: {
+            funnel: components["schemas"]["PipelineFunnel"];
+            live_totals?: components["schemas"]["PipelineFunnel"] | null;
+            window: components["schemas"]["AnalyticsWindow"];
+        };
+        PipelineDomain: {
+            active: boolean;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: int64 */
+            default_quota_bytes: number;
+            dkim_selector: string;
+            /** @enum {string} */
+            dmarc_policy: "" | "none" | "quarantine" | "reject";
+            id: number;
+            name: string;
+            /** @enum {string} */
+            sending_policy: "" | "transactional" | "bulk";
+            /** @enum {string} */
+            server_type: "" | "traditional" | "restmail";
+            /** Format: date-time */
+            updated_at: string;
+        };
+        PipelineFunnel: {
+            auth_verdicts: components["schemas"]["AuthVerdictCount"][];
+            received: components["schemas"]["TransportCount"][];
+            stage_decisions: components["schemas"]["StageDecisionCount"][];
+            terminal_outcomes: components["schemas"]["TerminalCount"][];
+            top_reject_reasons: components["schemas"]["RejectReasonCount"][];
+        };
+        ProtocolSignedIn: {
+            credential_id: number;
+            /** @enum {string} */
+            credential_kind: "password" | "app_password";
+            user: components["schemas"]["userInfo"];
+        };
+        QuarantineDeleted: {
+            /** @enum {string} */
+            status: "deleted";
+        };
+        QuarantineReleased: {
+            message_id: string;
+            /** @enum {string} */
+            status: "released";
+        };
+        QuarantinedMessage: {
+            body_preview: string;
+            /** Format: date-time */
+            expires_at: string;
+            id: number;
+            mailbox_id: number;
             quarantine_reason: string;
             /** Format: date-time */
             received_at: string;
-            /** Format: date-time */
-            expires_at: string;
             released: boolean;
-        };
-        MailboxCheck: {
-            exists: boolean;
-            mailbox_id?: number;
-            /** Format: email */
-            address?: string;
-        };
-        DeliverMessageRequest: {
-            /**
-             * Format: email
-             * @description Recipient address
-             */
-            address: string;
-            /** Format: email */
             sender: string;
-            sender_name?: string;
-            recipients_to?: string[];
-            recipients_cc?: string[];
-            subject?: string;
-            body_text?: string;
-            body_html?: string;
-            message_id?: string;
-            in_reply_to?: string;
-            references?: string;
-            /**
-             * Format: byte
-             * @description Full RFC 2822 raw message, base64-encoded. Encoding it as base64 (rather than a plain JSON string) lets arbitrary non-UTF-8 octets (8bit/binary bodies, undeclared-charset high bytes) round-trip byte-for-byte, preserving DKIM body hashes and BODY[] fidelity.
-             */
-            raw_message?: string;
-            client_ip?: string;
-            helo_name?: string;
+            /** Format: float */
+            spam_score?: number | null;
+            subject: string;
         };
-        RestmailCapabilities: {
-            /** @example RESTMAIL */
-            protocol: string;
-            /** @example 1.0 */
-            version: string;
-            features: string[];
+        QueueAction: {
+            status: string;
         };
-        RestmailMailboxCheck: {
-            exists: boolean;
-            /** Format: email */
-            address?: string;
-        };
-        RestmailDeliverRequest: {
-            /** Format: email */
-            from?: string;
-            to: string[];
-            subject?: string;
-            body_text?: string;
-            body_html?: string;
-            message_id?: string;
-            /** @description The Date header (RFC 5322); the inbound pipeline rejects a message without one */
-            date?: string;
-            in_reply_to?: string;
-            references?: string;
-            /** @description Raw headers as JSON */
-            headers?: Record<string, never>;
-            /** @description Full RFC 2822 raw message */
-            raw_message?: string;
-            /**
-             * Format: email
-             * @description Alias for 'from'
-             */
-            sender?: string;
-            /** @description Alias for 'to' */
-            recipients?: string[];
-        };
-        RestmailDeliverResponse: {
-            delivered: string[];
-            failed: string[];
-        };
-        Domain: {
-            id: number;
-            name: string;
-            /** @enum {string} */
-            server_type: "traditional" | "restmail";
-            active: boolean;
-            /** Format: int64 */
-            default_quota_bytes: number;
-            dkim_selector?: string;
-            sending_policy: components["schemas"]["DomainSendingPolicy"];
+        QueueEntry: {
+            attempts: number;
+            body_type: string;
             /** Format: date-time */
             created_at: string;
+            domain: string;
             /** Format: date-time */
-            updated_at: string;
-        };
-        CreateDomainRequest: {
-            name: string;
+            expires_at: string;
             /** @enum {string} */
-            server_type: "traditional" | "restmail";
-            /** Format: int64 */
-            default_quota_bytes?: number;
-            /**
-             * @description Sending policy for this domain; empty means no rule.
-             * @enum {string}
-             */
-            sending_policy?: "" | "transactional" | "bulk";
-        };
-        UpdateDomainRequest: {
-            active?: boolean;
-            /** Format: int64 */
-            default_quota_bytes?: number;
-            /**
-             * @description The domain's sending policy (DomainSendingPolicy); `""` clears it.
-             * @enum {string}
-             */
-            sending_policy?: "" | "transactional" | "bulk";
-        };
-        /**
-         * @description What the send API expects of the domain's mail (RFC 2369, RFC 8058). `transactional`: mail one person asked for, such as receipts and password resets; it carries no List-Unsubscribe field, so a send with `list_unsubscribe` is refused with 422 `list_unsubscribe_not_allowed`. `bulk`: mail sent to a list, which receivers such as Gmail and Yahoo expect to say how to unsubscribe; a send without `list_unsubscribe` is refused with 422 `list_unsubscribe_required`. Empty: no rule, either is sent. The policy applies to the send API; SMTP submission, draft send and forward are not checked.
-         * @enum {string}
-         */
-        DomainSendingPolicy: "" | "transactional" | "bulk";
-        /** @description An account, as the admin API shows it: a mailbox is the account. Its passwords, authenticators and app passwords are its credentials, never shown here; what it may do is its grants (/api/v1/admin/grants). */
-        Mailbox: {
+            failure_category: "" | "bad_mailbox" | "bad_domain" | "policy" | "other_permanent" | "mailbox_full" | "greylisted" | "rate_limited" | "connection" | "tls" | "dns" | "other_transient";
             id: number;
-            domain_id: number;
-            local_part: string;
-            /** Format: email */
-            address: string;
-            display_name: string;
+            /** Format: date-time */
+            last_attempt: string | null;
+            last_error: string;
+            last_error_code: number;
+            max_retries: number;
+            message_id: number | null;
+            /** Format: date-time */
+            next_attempt: string;
+            recipient: string;
+            sender: string;
+            /** @enum {string} */
+            status: "pending" | "delivering" | "deferred" | "delivered" | "bounced" | "expired";
+        };
+        QueueList: {
+            items: components["schemas"]["QueueEntry"][];
+            limit: number;
+            offset: number;
+            /** Format: int64 */
+            total: number;
+        };
+        QueueStatistics: {
+            /** Format: int64 */
+            bounced: number;
+            /** Format: int64 */
+            deferred: number;
+            /** Format: int64 */
+            delivered: number;
+            /** Format: int64 */
+            delivering?: number;
+            /** Format: int64 */
+            expired?: number;
+            /** Format: int64 */
+            pending: number;
+            /** Format: int64 */
+            total: number;
+        };
+        QueueStats: {
+            failed: number;
+            pending: number;
+            processing: number;
+        };
+        Quota: {
+            /** Format: int64 */
+            message_count: number;
+            /** Format: double */
+            percent_used: number;
             /** Format: int64 */
             quota_bytes: number;
             /** Format: int64 */
             quota_used_bytes: number;
-            active: boolean;
-            /** Format: date-time */
-            last_login_at?: string | null;
-            /** @description In setup until it chooses its own password (the bootstrap account) */
-            password_change_required: boolean;
-            /** @description In setup until it enrolls an authenticator, which it may never disable */
-            two_factor_required: boolean;
-            /** Format: date-time */
-            last_password_change?: string | null;
-            /** Format: date-time */
-            created_at: string;
+        };
+        QuotaUsage: {
+            /** Format: int64 */
+            attachment_bytes: number;
+            /** Format: int64 */
+            body_bytes: number;
+            mailbox?: components["schemas"]["Mailbox"];
+            mailbox_id: number;
+            message_count: number;
+            /** Format: int64 */
+            subject_bytes: number;
             /** Format: date-time */
             updated_at: string;
         };
-        UpdateMailboxRequest: {
-            /** Format: password */
-            password?: string;
-            display_name?: string;
-            /** Format: int64 */
-            quota_bytes?: number;
-            active?: boolean;
-        };
-        Alias: {
-            id: number;
-            domain_id: number;
-            /** Format: email */
-            source_address: string;
-            /** Format: email */
-            destination_address: string;
-            active: boolean;
+        RecentActivity: {
+            description: string;
+            id: string;
             /** Format: date-time */
-            created_at: string;
+            timestamp: string;
+            type: string;
         };
-        CreateAliasRequest: {
-            /** Format: email */
-            source_address: string;
-            /** Format: email */
-            destination_address: string;
+        RejectReasonCount: {
+            /** Format: double */
+            count: number;
+            reason_code: string;
         };
-        UpdateAliasRequest: {
-            /** Format: email */
+        RestmailCapabilities: {
+            features: string[];
+            protocol: string;
+            version: string;
+        };
+        RestmailDelivery: {
+            delivered: string[];
+            failed: string[];
+        };
+        RestmailDiscovery: {
+            /** Format: uri */
+            endpoint: string;
+        };
+        RestmailMailboxCheck: {
+            address?: string;
+            exists: boolean;
+        };
+        RestoreSnapshotAlias: {
+            active?: boolean;
+            /** Format: date-time */
+            created_at?: string;
             destination_address?: string;
-            active?: boolean;
+            domain?: components["schemas"]["RestoreSnapshotDomain"];
+            domain_id?: number;
+            id?: number;
+            source_address?: string;
         };
-        Pipeline: {
-            id: number;
-            domain_id: number;
-            /** @enum {string} */
-            direction: "inbound" | "outbound";
-            /** @description Ordered array of filter configurations */
-            filters: {
-                name?: string;
-                config?: Record<string, never>;
-            }[];
-            active: boolean;
+        RestoreSnapshotBan: {
             /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            updated_at: string;
-        };
-        CreatePipelineRequest: {
-            domain_id: number;
-            /** @enum {string} */
-            direction: "inbound" | "outbound";
-            filters: {
-                name?: string;
-                config?: Record<string, never>;
-            }[];
-            /** @default true */
-            active: boolean;
-        };
-        UpdatePipelineRequest: {
-            filters?: {
-                name?: string;
-                config?: Record<string, never>;
-            }[];
-            active?: boolean;
-        };
-        TestPipelineRequest: {
-            pipeline_id: number;
-            /** @description Sample email JSON for testing */
-            email: Record<string, never>;
-        };
-        TestFilterRequest: {
-            filter_name: string;
-            config: Record<string, never>;
-            /** @description Sample email JSON for testing */
-            email: Record<string, never>;
-        };
-        ExecutionResult: {
-            /** @enum {string} */
-            final_action: "continue" | "reject" | "quarantine" | "discard";
-            steps: Record<string, never>[];
-            /** Format: int64 */
-            duration_ms: number;
-            /** @description The email after all transformations */
-            final_email?: Record<string, never>;
-            /** @description The verdicts the authentication filters (spf_check, dkim_verify, arc_verify, dmarc_check) recorded, in order. A delivered message's Authentication-Results header is written from these. */
-            auth_results?: components["schemas"]["AuthResult"][];
-        };
-        AuthResult: {
-            /** @enum {string} */
-            method: "spf" | "dkim" | "arc" | "dmarc";
-            /** @description The RFC 8601 result, such as pass, fail, softfail, neutral, none, temperror or permerror */
-            result: string;
-            /**
-             * @description The identity checked. Absent for arc.
-             * @enum {string}
-             */
-            property?: "smtp.mailfrom" | "smtp.helo" | "header.d" | "header.from";
-            /** @description The domain checked. For dkim, the signature's d=; for arc, the most recent ARC-Seal's d=. */
-            domain?: string;
-        };
-        FilterResult: {
-            /** @enum {string} */
-            action: "continue" | "reject" | "quarantine" | "discard";
-            /** @description The email after filter transformation */
-            email?: Record<string, never>;
-            metadata?: Record<string, never>;
-        };
-        CustomFilter: {
-            id: number;
-            domain_id: number;
-            name: string;
-            description?: string;
-            /** @enum {string} */
-            filter_type: "action" | "transform";
-            /** @enum {string} */
-            direction: "inbound" | "outbound" | "both";
-            config: Record<string, never>;
-            enabled: boolean;
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            updated_at: string;
-        };
-        CreateCustomFilterRequest: {
-            domain_id: number;
-            name: string;
-            description?: string;
-            /** @enum {string} */
-            filter_type: "action" | "transform";
-            /** @enum {string} */
-            direction: "inbound" | "outbound" | "both";
-            config: Record<string, never>;
-            /** @default true */
-            enabled: boolean;
-        };
-        OutboundQueue: {
-            id: number;
-            message_id?: number | null;
-            sender: string;
-            recipient: string;
-            domain: string;
-            /** @enum {string} */
-            status: "pending" | "delivering" | "deferred" | "delivered" | "bounced" | "expired";
-            attempts: number;
-            /** Format: date-time */
-            last_attempt?: string | null;
-            /** Format: date-time */
-            next_attempt: string;
-            last_error?: string;
-            last_error_code?: number;
-            /**
-             * @description What kind of failure the last attempt was, classified from the remote's reply; empty until an attempt fails. bad_mailbox, bad_domain, policy and other_permanent bounce the message at once. The others are transient: each is retried on a schedule of its own until a maximum age, then the message bounces.
-             * @enum {string}
-             */
-            failure_category?: "" | "bad_mailbox" | "bad_domain" | "policy" | "other_permanent" | "mailbox_full" | "greylisted" | "rate_limited" | "connection" | "tls" | "dns" | "other_transient";
-            max_retries: number;
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            expires_at: string;
-        };
-        QueueStats: {
-            pending: number;
-            deferred: number;
-            delivered: number;
-            bounced: number;
-            total: number;
-        };
-        BulkQueueRequest: {
-            ids?: number[];
-            /** @description Filter criteria to select entries (alternative to ids) */
-            filter?: {
-                status?: string;
-                domain?: string;
-                sender?: string;
-                recipient?: string;
-            };
-        };
-        BulkQueueResponse: {
-            affected: number;
-        };
-        DomainSenderRule: {
-            id: number;
-            domain_id: number;
-            /** @description Email address or @domain pattern */
-            pattern: string;
-            /** @enum {string} */
-            list_type: "allow" | "block";
-            reason?: string;
-            created_by?: number | null;
-            /** Format: date-time */
-            created_at: string;
-        };
-        Suppression: {
-            id: number;
-            /** @description The sending domain */
-            domain_id: number;
-            /** @description The suppressed recipient, lower-cased */
-            address: string;
-            /** @enum {string} */
-            reason: "hard_bounce";
-            /**
-             * @description How the bounce that suppressed the address was classified
-             * @enum {string}
-             */
-            failure_category: "bad_mailbox" | "bad_domain";
-            /** @description The failure that suppressed the address, with the remote's reply */
-            last_error?: string;
-            /** @description The sent message whose bounce suppressed the address */
-            message_id?: number | null;
-            /** Format: date-time */
-            created_at: string;
-            /**
-             * Format: date-time
-             * @description When the address last bounced
-             */
-            updated_at: string;
-            /**
-             * Format: date-time
-             * @description When the address stops being suppressed
-             */
-            expires_at: string;
-        };
-        CreateSenderRuleRequest: {
-            /** @description Email address (spam@evil.com) or domain pattern (@evil.com) */
-            pattern: string;
-            reason?: string;
-        };
-        /**
-         * @description Current configured signing key for a domain, including domains not yet serving mail. No private key material is returned. Algorithm and size are not stored. Legacy key installation times are unknown, not inferred from domain timestamps.
-         * @example {
-         *       "domain_id": 1,
-         *       "domain": "example.com",
-         *       "selector": "mail",
-         *       "has_key": true,
-         *       "created_at": "2026-10-01T12:00:00Z",
-         *       "age_seconds": 86400
-         *     }
-         * @example {
-         *       "domain_id": 2,
-         *       "domain": "legacy.example.com",
-         *       "selector": "old",
-         *       "has_key": true,
-         *       "created_at": null,
-         *       "age_seconds": null
-         *     }
-         */
-        DKIMEntry: {
-            /** @example 1 */
-            domain_id: number;
-            /** @example example.com */
-            domain: string;
-            /** @example mail */
-            selector: string;
-            /** @example true */
-            has_key: boolean;
-            /**
-             * Format: date-time
-             * @description When the current key was installed; null for legacy keys with unknown age. Re-saving the same PEM preserves this value.
-             * @example 2026-10-01T12:00:00Z
-             */
-            created_at: string | null;
-            /**
-             * Format: double
-             * @description Seconds since installation at response time, clamped to zero for future timestamps; null when created_at is unknown.
-             * @example 86400
-             */
-            age_seconds: number | null;
-        };
-        DKIMRotationSettings: {
-            /** @example 1 */
-            domain_id: number;
-            /**
-             * @description Requested key lifetime in 24-hour days; zero disables rotation. Defaults to zero for new and existing domains. The scheduled worker is not implemented yet.
-             * @example 90
-             */
-            rotation_interval_days: number;
-        };
-        SetDKIMKeyRequest: {
-            /** @description A DNS name; the key's record is `<selector>._domainkey.<domain>` */
-            selector: string;
-            /** @description PEM-encoded private key: RSA of at least 2048 bits (PKCS#1 or PKCS#8), or Ed25519 (PKCS#8) */
-            private_key: string;
-        };
-        Certificate: {
-            id: number;
-            domain_id: number;
-            issuer: string;
-            /** Format: date-time */
-            not_before: string;
-            /** Format: date-time */
-            not_after: string;
-            auto_renew: boolean;
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            updated_at: string;
-        };
-        CertificateDetail: components["schemas"]["Certificate"] & {
-            /** @description PEM-encoded certificate */
-            cert_pem: string;
-        };
-        CreateCertificateRequest: {
-            domain_id: number;
-            /** @description PEM-encoded certificate */
-            cert_pem: string;
-            /** @description PEM-encoded private key */
-            key_pem: string;
-            auto_renew?: boolean;
-        };
-        Ban: {
-            id: number;
-            ip: string;
-            reason: string;
-            /** @enum {string} */
-            protocol: "smtp" | "imap" | "pop3" | "all";
-            created_by: string;
+            created_at?: string;
+            created_by?: string;
             /** Format: date-time */
             expires_at?: string | null;
-            /** Format: date-time */
-            created_at: string;
-        };
-        CreateBanRequest: {
-            ip: string;
+            id?: number;
+            ip?: string;
+            protocol?: string;
             reason?: string;
-            /** @enum {string} */
-            protocol: "smtp" | "imap" | "pop3" | "all";
-            /** @description Go duration string (e.g. "24h", "168h"), omit for permanent */
-            duration?: string;
-            created_by: string;
         };
-        /** @description One entry of the audit log. `hash` is hex SHA-256 over the JSON array `["restmail-audit-v1", seq, occurred_at (RFC 3339, nanoseconds, UTC), actor_kind, actor_id, actor_name, credential_id, session_id, action, outcome, error_code, method, route, status, target, ip, user_agent, request_id, prev_hash]`, as Go's encoding/json writes it with HTML escaping off and no trailing newline (target's keys sorted). */
-        AuditEntry: {
-            /**
-             * Format: int64
-             * @description 1, 2, 3, … with no gaps
-             */
-            seq: number;
+        RestoreSnapshotDomain: {
+            active?: boolean;
+            aliases?: components["schemas"]["RestoreSnapshotAlias"][];
             /** Format: date-time */
-            occurred_at: string;
-            /**
-             * @description A sign-in names the account it was for even when it fails; actor_id is set only once the account is proven.
-             * @enum {string}
-             */
-            actor_kind: "account" | "system" | "anonymous";
-            /** @description The account (mailbox) id */
-            actor_id: number | null;
-            /** @description The account's address at the time */
-            actor_name: string;
-            /** @description The credential a request was made with over HTTP Basic (an app password, or the account's password through a gateway), or the one refused when its secret matched; null for a session */
-            credential_id: number | null;
-            /** @description The jti of the token the request carried */
-            session_id: string;
-            /** @example admin.change */
-            action: string;
-            /**
-             * @description 2xx success; 401, 403 and 429 denied; other 4xx failed; 5xx error
-             * @enum {string}
-             */
-            outcome: "success" | "denied" | "failed" | "error";
-            /** @description The error response's `error.code`, if any */
-            error_code: string;
-            method: string;
-            /** @example /api/v1/admin/domains/{id} */
-            route: string;
-            status: number;
-            /** @description The route's URL parameters, and for account linking the address */
-            target: {
-                [key: string]: string;
-            };
-            ip: string;
-            user_agent: string;
-            request_id: string;
-            /** @description The previous entry's hash; 64 zeros for the first */
-            prev_hash: string;
-            hash: string;
+            created_at?: string;
+            /** Format: int64 */
+            default_quota_bytes?: number;
+            dkim_selector?: string;
+            dmarc_policy?: string;
+            id?: number;
+            mailboxes?: components["schemas"]["RestoreSnapshotMailbox"][];
+            name?: string;
+            sending_policy?: string;
+            server_type?: string;
+            /** Format: date-time */
+            updated_at?: string;
         };
-        AuditVerifyResult: {
-            ok: boolean;
-            /**
-             * Format: int64
-             * @description How many entries held
-             */
+        RestoreSnapshotMailbox: {
+            active?: boolean;
+            address?: string;
+            /** Format: date-time */
+            created_at?: string;
+            display_name?: string;
+            domain?: components["schemas"]["RestoreSnapshotDomain"];
+            domain_id?: number;
+            id?: number;
+            /** Format: date-time */
+            last_login_at?: string | null;
+            /** Format: date-time */
+            last_password_change?: string | null;
+            local_part?: string;
+            messages?: components["schemas"]["RestoreSnapshotMessage"][];
+            password_change_required?: boolean;
+            /** Format: int64 */
+            quota_bytes?: number;
+            quota_usage?: components["schemas"]["RestoreSnapshotQuotaUsage"] | null;
+            /** Format: int64 */
+            quota_used_bytes?: number;
+            two_factor_required?: boolean;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        RestoreSnapshotMessage: {
+            body_html?: string;
+            body_text?: string;
+            calendar_events?: unknown;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            date_header?: string | null;
+            folder?: string;
+            has_attachments?: boolean;
+            headers?: unknown;
+            id?: number;
+            in_reply_to?: string;
+            is_deleted?: boolean;
+            is_draft?: boolean;
+            is_dsn?: boolean;
+            is_flagged?: boolean;
+            is_read?: boolean;
+            is_starred?: boolean;
+            mailbox?: components["schemas"]["RestoreSnapshotMailbox"];
+            mailbox_id?: number;
+            message_id?: string;
+            raw_size?: number;
+            /** Format: date-time */
+            received_at?: string;
+            received_tls?: boolean | null;
+            recipients_cc?: unknown;
+            recipients_to?: unknown;
+            references?: string;
+            sender?: string;
+            sender_name?: string;
+            size_bytes?: number;
+            subject?: string;
+            thread_id?: string;
+            tls_version?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        RestoreSnapshotOutboundQueue: {
+            attempts?: number;
+            body_type?: string;
+            /** Format: date-time */
+            created_at?: string;
+            domain?: string;
+            /** Format: date-time */
+            expires_at?: string;
+            failure_category?: string;
+            id?: number;
+            /** Format: date-time */
+            last_attempt?: string | null;
+            last_error?: string;
+            last_error_code?: number;
+            max_retries?: number;
+            message_id?: number | null;
+            /** Format: date-time */
+            next_attempt?: string;
+            recipient?: string;
+            sender?: string;
+            status?: string;
+        };
+        RestoreSnapshotPipeline: {
+            active?: boolean;
+            /** Format: date-time */
+            created_at?: string;
+            direction?: string;
+            domain?: components["schemas"]["RestoreSnapshotDomain"];
+            domain_id?: number;
+            filters?: unknown;
+            id?: number;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        RestoreSnapshotQuotaUsage: {
+            /** Format: int64 */
+            attachment_bytes?: number;
+            /** Format: int64 */
+            body_bytes?: number;
+            mailbox?: components["schemas"]["RestoreSnapshotMailbox"];
+            mailbox_id?: number;
+            message_count?: number;
+            /** Format: int64 */
+            subject_bytes?: number;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        RestoreTestSnapshot: {
+            aliases?: components["schemas"]["RestoreSnapshotAlias"][] | null;
+            bans?: components["schemas"]["RestoreSnapshotBan"][] | null;
+            domains?: components["schemas"]["RestoreSnapshotDomain"][] | null;
+            mailboxes?: components["schemas"]["RestoreSnapshotMailbox"][] | null;
+            messages?: components["schemas"]["RestoreSnapshotMessage"][] | null;
+            pipelines?: components["schemas"]["RestoreSnapshotPipeline"][] | null;
+            queue?: components["schemas"]["RestoreSnapshotOutboundQueue"][] | null;
+            /** Format: date-time */
+            snapshot_at?: string | null;
+        };
+        Result: {
+            anchor?: components["schemas"]["Anchor"] | null;
+            /** Format: int64 */
+            broken_at_seq?: number | null;
+            /** Format: int64 */
             checked: number;
             /** Format: int64 */
             first_seq: number;
-            /**
-             * Format: int64
-             * @description The last entry that held
-             */
-            last_seq: number;
-            /** @description Its hash; 64 zeros when the log is empty */
             last_hash: string;
-            /**
-             * Format: int64
-             * @description The first entry that does not hold
-             */
-            broken_at_seq?: number;
-            /** @description Why it does not hold */
-            reason?: string;
-            /** @description Set when the log does not start at seq 1 */
+            /** Format: int64 */
+            last_seq: number;
             note?: string;
-            /** @description The anchor the log was checked against, when one was given */
-            anchor?: {
-                /** Format: int64 */
-                seq: number;
-                hash: string;
-            };
+            ok: boolean;
+            reason?: string;
         };
-        StatusResponse: {
-            data: {
-                /** @example reset_complete */
-                status: string;
-            };
-        };
-        CalendarEventSummary: {
-            uid: string;
-            /** @description iCalendar METHOD (REQUEST, REPLY, CANCEL, ...) */
-            method: string;
-            status: string;
-            summary: string;
-            sequence: number;
-            is_cancelled: boolean;
-            message_id?: number | null;
-            /** @description Number of stored versions for this UID */
-            versions: number;
-        };
-        DashboardStats: {
-            domainCount: number;
-            mailboxCount: number;
-            queueStats: {
-                pending: number;
-                processing: number;
-                failed: number;
-            };
-            messageVolume: {
-                /** @example Jul 23 */
-                date?: string;
-                count?: number;
-            }[];
-            recentActivity: {
-                id?: string;
-                type?: string;
-                description?: string;
-                /** Format: date-time */
-                timestamp?: string;
-            }[];
-            inboundTransportSecurity: {
-                totalInboundMX?: number;
-                overTLS?: number;
-                plaintext?: number;
-                tlsPercent?: number;
-                plaintextPercent?: number;
-                plaintextAuthPass?: number;
-                plaintextAuthFail?: number;
-            };
-        };
-        Grant: {
-            id: number;
-            holder: {
-                /**
-                 * @description `admin` for now; other kinds of holder come later
-                 * @example admin
-                 */
-                kind: string;
-                id: number;
-            };
-            /** @example admin */
-            role: string;
-            role_id: number;
-            /**
-             * @description `*`, `domain:<name>` or `mailbox:<address>`; covers everything beneath it
-             * @example domain:example.com
-             */
-            scope: string;
-            /** @enum {string} */
-            mode: "active" | "eligible";
-            granted_by: {
-                /**
-                 * @description An account's grant names the account that made it; the bootstrap admin's is the system's.
-                 * @enum {string}
-                 */
-                kind: "account" | "system";
-                id?: number | null;
-            };
+        ScheduledMessage: {
+            account_id: number;
+            attempts: number;
             /** Format: date-time */
-            granted_at: string;
+            created_at: string;
+            from: string;
+            id: number;
+            last_error?: string;
+            /** Format: date-time */
+            scheduled_at: string;
+            sent_message_id?: number | null;
+            /** @enum {string} */
+            status: "pending" | "sending" | "sent" | "failed" | "cancelled";
+            subject: string;
+            to: unknown;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        ScopedPermission: {
+            capability: string;
+            scope: string;
+        };
+        ScriptExecution: {
+            logs: string[];
+            result: unknown;
+        };
+        ScriptFailure: {
+            error: string;
+        };
+        ScriptResult: {
+            error?: string;
+            logs: string[];
+            result?: unknown;
+        };
+        ScriptValidation: {
+            dry_run?: components["schemas"]["ScriptResult"] | null;
+            error?: string;
+            phase?: string;
+            valid?: boolean;
+        };
+        SendDiscarded: {
+            /** @enum {string} */
+            status: "discarded";
+        };
+        SenderRule: {
+            /** Format: date-time */
+            created_at: string;
+            created_by?: number | null;
+            domain_id: number;
+            id: number;
+            /** @enum {string} */
+            list_type: "allow" | "block";
+            pattern: string;
+            reason?: string;
+        };
+        ServerStatus: {
+            built_at: string;
+            commit: string;
+            /** Format: date-time */
+            started_at: string;
+            version: string;
+        };
+        SieveDeleted: {
+            /** @enum {string} */
+            status: "deleted";
+        };
+        SieveScript: {
+            active: boolean;
+            /** Format: date-time */
+            created_at?: string | null;
+            id?: number;
+            mailbox_id: number;
+            script: string;
+            script_hash?: string | null;
+            /** Format: date-time */
+            updated_at?: string | null;
+            /** Format: date-time */
+            validated_at?: string | null;
+        };
+        SieveValidation: {
+            message: string;
+            valid: boolean;
+        };
+        StageDecisionCount: {
+            action: string;
+            /** Format: double */
+            count: number;
+            filter: string;
+        };
+        StepResult: {
+            action: string;
+            /** Format: int64 */
+            duration_ms: number;
+            error?: string;
+            filter_name: string;
+            filter_type: string;
+            log: components["schemas"]["FilterLog"];
+            skip_reason?: string;
+            skipped?: boolean;
+        };
+        Suppression: {
+            address: string;
+            /** Format: date-time */
+            created_at: string;
+            domain_id: number;
+            /** Format: date-time */
+            expires_at: string;
+            /** @enum {string} */
+            failure_category: "bad_mailbox" | "bad_domain";
+            id: number;
+            last_error: string;
+            message_id: number | null;
+            /** @enum {string} */
+            reason: "hard_bounce";
+            /** Format: date-time */
+            updated_at: string;
+        };
+        TLSRPTPolicy: {
+            "failure-details"?: {
+                [key: string]: unknown;
+            }[];
+            policy?: components["schemas"]["TLSRPTPolicyDesc"];
+            summary?: components["schemas"]["TLSRPTSummary"];
+        };
+        TLSRPTPolicyDesc: {
+            "mx-host"?: string[];
+            "policy-domain"?: string;
+            "policy-string"?: string[];
+            "policy-type"?: string;
+        };
+        TLSRPTRange: {
+            /** Format: date-time */
+            "end-datetime": string;
+            /** Format: date-time */
+            "start-datetime": string;
+        };
+        TLSRPTReport: {
+            "contact-info"?: string;
+            "date-range": components["schemas"]["TLSRPTRange"];
+            "organization-name": string;
+            policies: components["schemas"]["TLSRPTPolicy"][];
+            "report-id"?: string;
+        };
+        TLSRPTSummary: {
+            /** Format: int64 */
+            "total-failure-session-count"?: number;
+            /** Format: int64 */
+            "total-successful-session-count"?: number;
+        };
+        TLSReport: {
+            /** Format: date-time */
+            created_at: string;
+            domain?: components["schemas"]["Domain"];
+            domain_id: number;
+            /** Format: date-time */
+            end_date: string;
+            failure_details?: unknown;
+            id: number;
+            policy_domain: string;
+            /** @enum {string} */
+            policy_type: "sts" | "tlsa" | "no-policy";
+            raw_report?: string;
+            /** Format: date-time */
+            received_at: string;
+            reporting_org: string;
+            /** Format: date-time */
+            start_date: string;
+            /** Format: int64 */
+            total_failure: number;
+            /** Format: int64 */
+            total_successful: number;
+        };
+        TerminalCount: {
+            /** Format: double */
+            count: number;
+            direction: string;
+            outcome: string;
+        };
+        TestDataStatus: {
+            status: string;
+        };
+        TestDelivery: {
+            found: boolean;
+            message?: string;
+            message_id?: number | null;
+            msg_id?: string | null;
+            /** Format: date-time */
+            received_at?: string | null;
+            sender?: string | null;
+            subject?: string | null;
+        };
+        TestEmailSent: {
+            from: string;
+            message_id: number;
+            msg_id: string;
+            subject: string;
+            to: string;
+        };
+        TestProbeResult: {
+            address?: string;
+            domain?: string;
+            error?: string;
+            latency?: string;
+            mx_records?: string[] | null;
+            status: string;
+        };
+        TestProbeResults: {
+            db?: components["schemas"]["TestProbeResult"] | null;
+            dns?: components["schemas"]["TestProbeResult"] | null;
+            imap?: components["schemas"]["TestProbeResult"] | null;
+            pop3?: components["schemas"]["TestProbeResult"] | null;
+            smtp?: components["schemas"]["TestProbeResult"] | null;
+            smtp_submission?: components["schemas"]["TestProbeResult"] | null;
+        };
+        TestSnapshot: {
+            aliases: components["schemas"]["TestSnapshotAlias"][] | null;
+            bans: components["schemas"]["TestSnapshotBan"][] | null;
+            domains: components["schemas"]["TestSnapshotDomain"][] | null;
+            mailboxes: components["schemas"]["TestSnapshotMailbox"][] | null;
+            messages: components["schemas"]["TestSnapshotMessage"][] | null;
+            pipelines: components["schemas"]["TestSnapshotPipeline"][] | null;
+            queue: components["schemas"]["TestSnapshotOutboundQueue"][] | null;
+            /** Format: date-time */
+            snapshot_at: string;
+        };
+        TestSnapshotAlias: {
+            active: boolean;
+            /** Format: date-time */
+            created_at: string;
+            destination_address: string;
+            domain?: components["schemas"]["TestSnapshotDomain"];
+            domain_id: number;
+            id: number;
+            source_address: string;
+        };
+        TestSnapshotBan: {
+            /** Format: date-time */
+            created_at: string;
+            created_by: string;
             /** Format: date-time */
             expires_at?: string | null;
-            /** @description The activation running now, of an eligible grant switched on; null otherwise. */
-            activation?: components["schemas"]["GrantActivation"] | null;
-        };
-        GrantActivation: {
             id: number;
+            ip: string;
+            protocol: string;
+            reason: string;
+        };
+        TestSnapshotDomain: {
+            active: boolean;
+            aliases?: components["schemas"]["TestSnapshotAlias"][];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: int64 */
+            default_quota_bytes: number;
+            dkim_selector: string;
+            dmarc_policy: string;
+            id: number;
+            mailboxes?: components["schemas"]["TestSnapshotMailbox"][];
+            name: string;
+            sending_policy: string;
+            server_type: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        TestSnapshotMailbox: {
+            active: boolean;
+            address: string;
+            /** Format: date-time */
+            created_at: string;
+            display_name: string;
+            domain?: components["schemas"]["TestSnapshotDomain"];
+            domain_id: number;
+            id: number;
+            /** Format: date-time */
+            last_login_at: string | null;
+            /** Format: date-time */
+            last_password_change?: string | null;
+            local_part: string;
+            messages?: components["schemas"]["TestSnapshotMessage"][];
+            password_change_required: boolean;
+            /** Format: int64 */
+            quota_bytes: number;
+            quota_usage?: components["schemas"]["TestSnapshotQuotaUsage"] | null;
+            /** Format: int64 */
+            quota_used_bytes: number;
+            two_factor_required: boolean;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        TestSnapshotMessage: {
+            body_html?: string;
+            body_text?: string;
+            calendar_events?: unknown;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            date_header: string | null;
+            folder: string;
+            has_attachments: boolean;
+            headers?: unknown;
+            id: number;
+            in_reply_to: string;
+            is_deleted: boolean;
+            is_draft: boolean;
+            is_dsn: boolean;
+            is_flagged: boolean;
+            is_read: boolean;
+            is_starred: boolean;
+            mailbox?: components["schemas"]["TestSnapshotMailbox"];
+            mailbox_id: number;
+            message_id: string;
+            raw_size: number;
+            /** Format: date-time */
+            received_at: string;
+            received_tls?: boolean | null;
+            recipients_cc: unknown;
+            recipients_to: unknown;
+            references: string;
+            sender: string;
+            sender_name: string;
+            size_bytes: number;
+            subject: string;
+            thread_id: string;
+            tls_version?: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        TestSnapshotOutboundQueue: {
+            attempts: number;
+            body_type: string;
+            /** Format: date-time */
+            created_at: string;
+            domain: string;
+            /** Format: date-time */
+            expires_at: string;
+            failure_category: string;
+            id: number;
+            /** Format: date-time */
+            last_attempt: string | null;
+            last_error: string;
+            last_error_code: number;
+            max_retries: number;
+            message_id: number | null;
+            /** Format: date-time */
+            next_attempt: string;
+            recipient: string;
+            sender: string;
+            status: string;
+        };
+        TestSnapshotPipeline: {
+            active: boolean;
+            /** Format: date-time */
+            created_at: string;
+            direction: string;
+            domain?: components["schemas"]["TestSnapshotDomain"];
+            domain_id: number;
+            filters: unknown;
+            id: number;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        TestSnapshotQuotaUsage: {
+            /** Format: int64 */
+            attachment_bytes: number;
+            /** Format: int64 */
+            body_bytes: number;
+            mailbox?: components["schemas"]["TestSnapshotMailbox"];
+            mailbox_id: number;
+            message_count: number;
+            /** Format: int64 */
+            subject_bytes: number;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        TransportCount: {
+            /** Format: double */
+            count: number;
+            transport: string;
+        };
+        ValidationDetails: {
+            fields: {
+                [key: string]: string;
+            };
+        };
+        ValidationErrorBody: {
+            code: string;
+            details: components["schemas"]["ValidationDetails"];
+            message: string;
+        };
+        ValidationErrorResponse: {
+            error: components["schemas"]["ValidationErrorBody"];
+        };
+        accountResponse: {
+            address: string;
+            display_name: string;
+            id: number;
+            is_primary: boolean;
+        };
+        activateRequest: {
+            minutes?: number | null;
+            reason?: string;
+            recovery_code?: string;
+            totp_code?: string;
+        };
+        activationResponse: {
             /** Format: date-time */
             activated_at: string;
             /** Format: date-time */
             expires_at: string;
+            id: number;
             reason: string;
+            /** Format: int64 */
             seconds_left: number;
         };
-        GrantEscalation: {
-            grant: components["schemas"]["Grant"];
-            /** @description What the caller now holds at `*`, as sign-in lists it. */
-            capabilities: string[];
+        addSenderRuleRequest: {
+            pattern: string;
+            reason?: string;
         };
-        /** @description One of the two, given just now. */
-        FreshSecondFactor: {
-            /**
-             * @description A current code from the caller's authenticator
-             * @example 123456
-             */
-            totp_code?: string;
-            /** @description An unused recovery code, used up if it works */
-            recovery_code?: string;
+        apiKeyPermission: {
+            capability?: string;
+            scope?: string;
         };
-        ActivateGrantRequest: components["schemas"]["FreshSecondFactor"] & {
-            /**
-             * @description Why you are switching it on; recorded in the audit log
-             * @example Add an admin for the new office
-             */
-            reason: string;
-            /** @default 60 */
-            minutes: number;
-        };
-        CreateGrantRequest: {
-            holder: {
-                /** @enum {string} */
-                kind: "account";
-                id: number;
-            };
-            /** @description A role name, e.g. `admin` or `readonly` */
-            role: string;
-            /** @example domain:example.com */
-            scope: string;
-            /**
-             * @default active
-             * @enum {string}
-             */
-            mode: "active" | "eligible";
-            /**
-             * Format: date-time
-             * @description Optional; must be in the future
-             */
-            expires_at?: string | null;
-        };
-        Role: {
-            id: number;
-            /** @description superadmin, admin, readonly, owner, or one made later */
-            name: string;
-            description?: string;
-            system_role?: boolean;
-            capabilities: string[];
-        };
-        Capability: {
-            id: number;
-            /** @example domains:read */
-            name: string;
-            description?: string;
-            /** @example domains */
-            resource?: string;
-            /** @example read */
-            action?: string;
-        };
-        DNSCheckResult: {
-            domain: string;
-            /** @example 4/5 records verified */
-            summary: string;
-            records: {
-                /** @example MX */
-                type: string;
-                name: string;
-                /** @enum {string} */
-                status: "ok" | "missing" | "error";
-                value?: string;
-                message?: string;
-            }[];
-        };
-        DomainRelay: {
-            domain_id: number;
-            /** @enum {string} */
-            transport: "direct" | "relay";
-            /** @description Relay host name or IP address (relay only) */
-            host?: string;
-            port?: number;
-            /** @enum {string} */
-            tls_mode?: "starttls" | "implicit";
-            /** @description SMTP AUTH username; absent when the relay takes no AUTH */
-            username?: string;
-            /** @description Whether a relay password is stored. The password itself is never returned. */
-            password_set: boolean;
-        };
-        SetDomainRelayRequest: {
-            /** @enum {string} */
-            transport: "direct" | "relay";
-            /** @description Bare host name or IP address, no scheme, port or path. Required for relay. */
-            host?: string;
-            /** @description Required for relay. */
-            port?: number;
-            /**
-             * @description Required for relay.
-             * @enum {string}
-             */
-            tls_mode?: "starttls" | "implicit";
-            /** @description Set together with a password, or neither. */
-            username?: string;
-            /** @description Left out keeps the stored password; an empty string clears it. */
-            password?: string;
-        };
-        MTASTSPolicy: {
-            id: number;
-            domain_id: number;
-            /** @enum {string} */
-            mode: "none" | "testing" | "enforce";
-            /** @description Comma-separated MX host patterns */
-            mx_hosts?: string;
-            /** @description Policy lifetime in seconds */
-            max_age: number;
-            active: boolean;
-            /** Format: date-time */
-            created_at?: string;
-            /** Format: date-time */
-            updated_at?: string;
-        };
-        SetMTASTSPolicyRequest: {
-            /** @enum {string} */
-            mode?: "none" | "testing" | "enforce";
-            /** @description Comma-separated MX host patterns */
-            mx_hosts?: string;
-            max_age?: number;
-            active?: boolean;
-        };
-        TLSReport: {
-            id: number;
-            domain_id: number;
-            reporting_org: string;
-            /** Format: date-time */
-            start_date: string;
-            /** Format: date-time */
-            end_date: string;
-            /** @enum {string} */
-            policy_type: "sts" | "tlsa" | "no-policy";
-            policy_domain: string;
-            /** Format: int64 */
-            total_successful?: number;
-            /** Format: int64 */
-            total_failure?: number;
-            /** @description Raw failure-details JSON from the report */
-            failure_details?: Record<string, never> | unknown[] | null;
-            raw_report?: string;
-            /** Format: date-time */
-            received_at: string;
-            /** Format: date-time */
-            created_at?: string;
-        };
-        /** @description Inbound TLS-RPT report (RFC 8460 §4) */
-        TLSRPTReport: {
-            "organization-name": string;
-            "contact-info"?: string;
-            "report-id"?: string;
-            "date-range": {
-                /** Format: date-time */
-                "start-datetime": string;
-                /** Format: date-time */
-                "end-datetime": string;
-            };
-            policies: {
-                policy: {
-                    "policy-type"?: string;
-                    "policy-string"?: string[];
-                    /** Format: hostname */
-                    "policy-domain": string;
-                    "mx-host"?: string[];
-                };
-                summary?: {
-                    /** Format: int64 */
-                    "total-successful-session-count"?: number;
-                    /** Format: int64 */
-                    "total-failure-session-count"?: number;
-                };
-                "failure-details"?: {
-                    [key: string]: unknown;
-                }[];
-            }[];
-        };
-        MessageTrace: {
-            id: number;
-            /** @description Set only on the delivered/queued path; null otherwise */
-            message_id?: number | null;
-            /** @description RFC 5322 Message-ID correlation key */
-            rfc_message_id?: string;
-            /** @enum {string} */
-            direction: "inbound" | "outbound";
-            /**
-             * @description Empty when transport is not applicable
-             * @enum {string}
-             */
-            transport: "" | "tls" | "plaintext";
-            mail_from?: string;
-            /** @description First envelope recipient */
-            rcpt_to?: string;
-            client_ip?: string;
-            pipeline_id: number;
-            /** @enum {string} */
-            final_action: "continue" | "reject" | "quarantine" | "discard" | "defer";
-            /** @enum {string} */
-            outcome: "delivered" | "queued" | "rejected" | "quarantined" | "discarded" | "deferred";
-            /** @description Bounded reason for a non-continue terminal; empty otherwise */
-            reason_code?: string;
-            spam_score?: number | null;
-            /** Format: int64 */
-            duration_ms: number;
-            /** @description Serialized []StepResult timeline */
-            stages?: {
-                [key: string]: unknown;
-            }[] | null;
-            sampled: boolean;
+        apiKeyResponse: {
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
+            expires_at: string | null;
+            id: number;
+            kind: string;
+            /** Format: date-time */
+            last_used_at: string | null;
+            name: string;
+            permissions: components["schemas"]["ScopedPermission"][];
+            public_id: string;
+        };
+        blockSenderBody: {
+            email: string;
+        };
+        bulkQueueRequest: {
+            filter?: {
+                domain?: string;
+                recipient?: string;
+                sender?: string;
+                status?: string;
+            } | null;
+            ids?: number[];
+        };
+        calendarReplyBody: {
+            from?: string;
+            response?: string;
+        };
+        capabilityResponse: {
+            action: string;
+            description: string;
+            id: number;
+            name: string;
+            resource: string;
+        };
+        changePasswordRequest: {
+            current_password: string;
+            new_password: string;
+        };
+        confirmRequest: {
+            totp_code: string;
+        };
+        createAPIKeyBody: {
+            /** Format: date-time */
             expires_at?: string | null;
+            name: string;
+            password?: string;
+            permissions?: components["schemas"]["apiKeyPermission"][];
         };
-        PipelineFunnel: {
-            received?: {
-                transport?: string;
-                count?: number;
-            }[];
-            auth_verdicts?: {
-                mechanism?: string;
-                result?: string;
-                count?: number;
-            }[];
-            stage_decisions?: {
-                filter?: string;
-                action?: string;
-                count?: number;
-            }[];
-            terminal_outcomes?: {
-                direction?: string;
-                outcome?: string;
-                count?: number;
-            }[];
-            top_reject_reasons?: {
-                reason_code?: string;
-                count?: number;
-            }[];
+        createAccountRequest: {
+            address: string;
+            display_name?: string;
+            password?: string;
         };
-        PipelineAnalyticsResponse: {
-            window: {
-                /** Format: date-time */
-                since: string;
-                /** Format: date-time */
-                until: string;
-                /** @description Echoes the ?window value; empty when ?since was used */
-                label?: string;
-            };
-            funnel: components["schemas"]["PipelineFunnel"];
-            /** @description Cumulative-since-process-start snapshot from the in-process registry (NOT windowed); absent if the registry could not be gathered. */
-            live_totals?: components["schemas"]["PipelineFunnel"];
+        createAliasRequest: {
+            destination_address: string;
+            source_address: string;
         };
-        UpdateCustomFilterRequest: {
+        createBanRequest: {
+            created_by: string;
+            duration?: string | null;
+            ip: string;
+            /** @enum {string} */
+            protocol: "smtp" | "imap" | "pop3" | "all";
+            reason?: string;
+        };
+        createCertificateRequest: {
+            auto_renew?: boolean | null;
+            cert_pem: string;
+            domain_id: number;
+            key_pem: string;
+        };
+        createContactBody: {
+            email: string;
             name?: string;
+            trust_level?: string | null;
+        };
+        createCredentialBody: {
+            /** Format: date-time */
+            expires_at?: string | null;
+            name: string;
+            password?: string;
+        };
+        createCustomFilterRequestBody: {
+            config?: unknown;
             description?: string;
             /** @enum {string} */
-            filter_type?: "action" | "transform";
-            /** @enum {string} */
             direction?: "inbound" | "outbound" | "both";
-            /** @description Filter configuration (opaque JSON) */
-            config?: Record<string, never>;
-            enabled?: boolean;
+            domain_id?: number;
+            enabled?: boolean | null;
+            /** @enum {string} */
+            filter_type?: "action" | "transform";
+            name?: string;
+        };
+        createDomainRequest: {
+            /** Format: int64 */
+            default_quota_bytes?: number | null;
+            /** @enum {string|null} */
+            dmarc_policy?: "none" | "quarantine" | "reject" | null;
+            name: string;
+            /** @enum {string} */
+            sending_policy?: "" | "transactional" | "bulk";
+            /** @enum {string|null} */
+            server_type?: "" | "traditional" | "restmail" | null;
+        };
+        createGrantHolder: {
+            id?: number;
+            kind?: string;
+        };
+        createGrantRequest: {
+            /** Format: date-time */
+            expires_at?: string | null;
+            holder?: components["schemas"]["createGrantHolder"] | null;
+            mode?: string;
+            role?: string;
+            scope?: string;
+        };
+        createPipelineRequestBody: {
+            active?: boolean | null;
+            /** @enum {string} */
+            direction?: "inbound" | "outbound";
+            domain_id?: number;
+            filters?: unknown;
+        };
+        createdAPIKey: {
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string | null;
+            id: number;
+            kind: string;
+            /** Format: date-time */
+            last_used_at: string | null;
+            name: string;
+            permissions: components["schemas"]["ScopedPermission"][];
+            public_id: string;
+            token: string;
+        };
+        createdAppPassword: {
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string | null;
+            id: number;
+            kind: string;
+            /** Format: date-time */
+            last_used_at: string | null;
+            name: string;
+            password: string;
+            public_id: string;
+        };
+        credentialResponse: {
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string | null;
+            id: number;
+            kind: string;
+            /** Format: date-time */
+            last_used_at: string | null;
+            name: string;
+            public_id: string;
+        };
+        deletedStatus: {
+            status: string;
+        };
+        deliverMessageBody: {
+            address?: string;
+            body_html?: string;
+            body_text?: string;
+            client_ip?: string;
+            folder?: string;
+            helo_name?: string;
+            in_reply_to?: string;
+            is_draft?: boolean | null;
+            is_flagged?: boolean | null;
+            is_read?: boolean | null;
+            is_starred?: boolean | null;
+            mailbox_id?: number;
+            message_id?: string;
+            /** Format: byte */
+            raw_message?: string;
+            /** Format: date-time */
+            received_at?: string | null;
+            received_tls?: boolean | null;
+            recipients_cc?: unknown;
+            recipients_to?: unknown;
+            references?: string;
+            require_tls?: boolean;
+            sender?: string;
+            sender_name?: string;
+            subject?: string;
+            tls_cipher?: string;
+            tls_version?: string;
+        };
+        disableRequest: {
+            recovery_code?: string;
+            totp_code?: string;
+        };
+        dkimEntry: {
+            /** Format: double */
+            age_seconds: number | null;
+            /** Format: date-time */
+            created_at: string | null;
+            domain: string;
+            domain_id: number;
+            has_key: boolean;
+            selector: string;
+        };
+        dkimRotationKey: {
+            /** Format: date-time */
+            activates_at?: string | null;
+            /** Format: date-time */
+            published_at: string | null;
+            record_name: string;
+            record_value: string;
+            /** Format: date-time */
+            retire_after?: string | null;
+            selector: string;
+        };
+        dkimRotationSettings: {
+            domain_id: number;
+            previous: components["schemas"]["dkimRotationKey"] | null;
+            rotation_interval_days: number;
+            staged: components["schemas"]["dkimRotationKey"] | null;
+            /** @enum {string} */
+            state: "stable" | "awaiting_publication" | "waiting_ttl" | "retiring";
+        };
+        enrollResponse: {
+            /** Format: uri */
+            otpauth_url: string;
+            recovery_codes: string[];
+            secret: string;
+        };
+        escalationResponse: {
+            capabilities: string[];
+            grant: components["schemas"]["grantResponse"];
+            scoped_capabilities: components["schemas"]["Entry"][];
+        };
+        folderNameBody: {
+            name: string;
+        };
+        forwardBody: {
+            body_text?: string;
+            from?: string;
+            to?: string[];
+        };
+        grantActor: {
+            id: number | null;
+            /** @enum {string} */
+            kind: "account" | "system";
+        };
+        grantHolder: {
+            id: number;
+            kind: string;
+        };
+        grantResponse: {
+            activation: components["schemas"]["activationResponse"] | null;
+            /** Format: date-time */
+            expires_at: string | null;
+            /** Format: date-time */
+            granted_at: string;
+            granted_by: components["schemas"]["grantActor"];
+            holder: components["schemas"]["grantHolder"];
+            id: number;
+            /** @enum {string} */
+            mode: "active" | "eligible";
+            role: string;
+            role_id: number;
+            scope: string;
+        };
+        importContactEntry: {
+            email: string;
+            name?: string;
+        };
+        importContactsBody: {
+            contacts: components["schemas"]["importContactEntry"][];
+        };
+        linkAccountRequest: {
+            address: string;
+            display_name?: string;
+            password: string;
+            recovery_code?: string;
+            totp_code?: string;
+        };
+        listUnsubscribe: {
+            https?: string;
+            mailto?: string;
+        };
+        loginRequest: {
+            /** @enum {string} */
+            client?: "native";
+            email: string;
+            password: string;
+            recovery_code?: string;
+            totp_code?: string;
+        };
+        loginResponse: {
+            access_token?: string;
+            capabilities?: string[];
+            expires_in: number;
+            refresh_expires_in?: number;
+            refresh_token?: string;
+            scoped_capabilities?: components["schemas"]["Entry"][];
+            setup_required?: string[];
+            user: components["schemas"]["userInfo"];
+        };
+        ownerStatusRequest: {
+            challenge?: string;
+            public_key?: string;
+            signature?: string;
+        };
+        ownerTokenRequest: {
+            address?: string;
+            challenge?: string;
+            lifetime_seconds?: number;
+            public_key?: string;
+            purpose?: string;
+            signature?: string;
+        };
+        passwordChanged: {
+            message: string;
+        };
+        probeServicesRequest: {
+            host?: string;
+            services?: string[];
+            timeout?: string;
+        };
+        protocolSignInRequest: {
+            protocol?: string;
+        };
+        putSieveBody: {
+            active?: boolean | null;
+            script: string | null;
+        };
+        recoverRequest: {
+            client?: string;
+            email?: string;
+            new_password?: string;
+            recovery_code?: string;
+            totp_code?: string;
+        };
+        refreshRequest: {
+            refresh_token?: string;
+        };
+        relayView: {
+            domain_id: number;
+            host?: string;
+            password_set: boolean;
+            port?: number;
+            /** @enum {string} */
+            tls_mode?: "starttls" | "implicit";
+            /** @enum {string} */
+            transport: "direct" | "relay";
+            username?: string;
+        };
+        resetRequest: {
+            client?: string;
+            password?: string;
+            token?: string;
+        };
+        restmailDeliverBody: {
+            body_html?: string;
+            body_text?: string;
+            date?: string;
+            from?: string;
+            headers?: {
+                [key: string]: unknown;
+            };
+            in_reply_to?: string;
+            message_id?: string;
+            raw_message?: string;
+            recipients?: string[] | null;
+            references?: string;
+            sender?: string;
+            subject?: string;
+            to?: string[] | null;
+        };
+        roleResponse: {
+            capabilities: string[];
+            description: string;
+            id: number;
+            name: string;
+            system_role: boolean;
+        };
+        sampleAddress: {
+            address?: string | null;
+            name?: string | null;
+        };
+        sampleAttachment: {
+            checksum?: string | null;
+            content?: string | null;
+            content_id?: string | null;
+            content_type?: string | null;
+            disposition?: string | null;
+            filename?: string | null;
+            ref?: string | null;
+            /** Format: int64 */
+            size?: number | null;
+            storage?: string | null;
+        };
+        sampleBody: {
+            content?: string | null;
+            content_type?: string | null;
+            parts?: components["schemas"]["sampleBody"][] | null;
+        };
+        sampleCalendarAddress: {
+            address?: string | null;
+            name?: string | null;
+            partstat?: string | null;
+            role?: string | null;
+            rsvp?: boolean | null;
+        };
+        sampleCalendarEvent: {
+            all_day?: boolean | null;
+            attendees?: components["schemas"]["sampleCalendarAddress"][] | null;
+            description?: string | null;
+            /** Format: date-time */
+            dtend?: string | null;
+            /** Format: date-time */
+            dtstamp?: string | null;
+            /** Format: date-time */
+            dtstart?: string | null;
+            location?: string | null;
+            method?: string | null;
+            organizer?: components["schemas"]["sampleCalendarAddress"] | null;
+            sequence?: number | null;
+            status?: string | null;
+            summary?: string | null;
+            uid?: string | null;
+        };
+        sampleEmail: {
+            attachments?: components["schemas"]["sampleAttachment"][] | null;
+            body?: components["schemas"]["sampleBody"] | null;
+            calendar_events?: components["schemas"]["sampleCalendarEvent"][] | null;
+            envelope?: components["schemas"]["sampleEnvelope"] | null;
+            headers?: components["schemas"]["sampleHeaders"] | null;
+            inline?: components["schemas"]["sampleAttachment"][] | null;
+            metadata?: {
+                [key: string]: string;
+            } | null;
+        };
+        sampleEnvelope: {
+            client_hostname?: string | null;
+            client_ip?: string | null;
+            direction?: string | null;
+            helo?: string | null;
+            mail_from?: string | null;
+            rcpt_to?: string[] | null;
+            tls?: boolean | null;
+        };
+        sampleHeaders: {
+            bcc?: components["schemas"]["sampleAddress"][] | null;
+            cc?: components["schemas"]["sampleAddress"][] | null;
+            date?: string | null;
+            extra?: {
+                [key: string]: string;
+            } | null;
+            from?: components["schemas"]["sampleAddress"][] | null;
+            "in-reply-to"?: string | null;
+            "message-id"?: string | null;
+            raw?: {
+                [key: string]: string[];
+            } | null;
+            references?: string[] | null;
+            subject?: string | null;
+            to?: components["schemas"]["sampleAddress"][] | null;
+        };
+        saveDraftBody: {
+            body_html?: string;
+            body_text?: string;
+            cc?: string[];
+            from?: string;
+            in_reply_to?: string;
+            references?: string;
+            subject?: string;
+            to?: string[];
+        };
+        secondFactorRequest: {
+            recovery_code?: string;
+            totp_code?: string;
+        };
+        sendMessageRequest: {
+            bcc?: string[];
+            body_html?: string;
+            body_text?: string;
+            calendar_event?: components["schemas"]["CalendarEvent"] | null;
+            cc?: string[];
+            from?: string;
+            in_reply_to?: string;
+            list_unsubscribe?: components["schemas"]["listUnsubscribe"] | null;
+            require_tls?: boolean;
+            /** Format: date-time */
+            scheduled_at?: string | null;
+            subject?: string;
+            to?: string[];
+        };
+        sendTestEmailRequest: {
+            body?: string;
+            from: string;
+            subject?: string;
+            to: string;
+        };
+        serverDescription: {
+            /** @enum {string} */
+            product: "rest-mail";
+            version: string;
+        };
+        setDKIMKeyBody: {
+            private_key: string;
+            selector: string;
+        };
+        setDKIMRotationBody: {
+            rotation_interval_days: number;
+        };
+        setMTASTSBody: {
+            active?: boolean | null;
+            max_age?: number | null;
+            /** @enum {string} */
+            mode?: "" | "none" | "testing" | "enforce";
+            mx_hosts?: string;
+        };
+        setRelayBody: {
+            host?: string;
+            password?: string | null;
+            port?: number | null;
+            /** @enum {string|null} */
+            tls_mode?: "starttls" | "implicit" | null;
+            /** @enum {string} */
+            transport: "direct" | "relay";
+            username?: string;
+        };
+        setVacationBody: {
+            body?: string;
+            enabled: boolean | null;
+            /** Format: date-time */
+            end_date?: string | null;
+            /** Format: date-time */
+            start_date?: string | null;
+            subject?: string;
+        };
+        testCustomFilterRequestBody: {
+            email?: unknown;
+        };
+        testFilterRequestBody: {
+            config?: unknown;
+            email?: components["schemas"]["sampleEmail"] | null;
+            filter_name?: string;
+        };
+        testPipelineRequestBody: {
+            email: components["schemas"]["sampleEmail"] | null;
+            pipeline_id?: number;
+        };
+        tlsReportStored: {
+            stored: number;
+        };
+        twoFactorStatusResponse: {
+            enabled: boolean;
+            pending: boolean;
+        };
+        updateAliasRequest: {
+            active?: boolean | null;
+            destination_address?: string | null;
+        };
+        updateContactBody: {
+            name?: string | null;
+            /** @enum {string|null} */
+            trust_level?: "auto" | "trusted" | "blocked" | null;
+        };
+        updateCustomFilterRequestBody: {
+            config?: unknown;
+            description?: string | null;
+            /** @enum {string|null} */
+            direction?: "inbound" | "outbound" | "both" | null;
+            domain_id?: number | null;
+            enabled?: boolean | null;
+            /** @enum {string|null} */
+            filter_type?: "action" | "transform" | null;
+            name?: string | null;
+        };
+        updateDomainBody: {
+            active?: boolean | null;
+            /** Format: int64 */
+            default_quota_bytes?: number | null;
+            /** @enum {string|null} */
+            dmarc_policy?: "none" | "quarantine" | "reject" | null;
+            /** @enum {string|null} */
+            sending_policy?: "" | "transactional" | "bulk" | null;
+        };
+        updateDraftBody: {
+            body_html?: string | null;
+            body_text?: string | null;
+            cc?: string[];
+            from?: string | null;
+            in_reply_to?: string | null;
+            references?: string | null;
+            subject?: string | null;
+            to?: string[];
+        };
+        updateMailboxRequest: {
+            active?: boolean | null;
+            display_name?: string | null;
+            /** Format: password */
+            password?: string | null;
+            /** Format: int64 */
+            quota_bytes?: number | null;
+        };
+        updateMessageBody: {
+            folder?: string | null;
+            is_draft?: boolean | null;
+            is_flagged?: boolean | null;
+            is_read?: boolean | null;
+            is_starred?: boolean | null;
+        };
+        updatePipelineRequestBody: {
+            active?: boolean | null;
+            direction?: string | null;
+            domain_id?: number | null;
+            filters?: unknown;
+        };
+        userInfo: {
+            display_name: string;
+            email: string;
+            id: number;
+        };
+        vacationSetting: {
+            body: string;
+            enabled: boolean;
+            /** Format: date-time */
+            end_date?: string | null;
+            /** Format: date-time */
+            start_date?: string | null;
+            subject: string;
+        };
+        validateCustomFilterRequestBody: {
+            email?: unknown;
+            script: string;
+        };
+        validateSieveBody: {
+            script: string | null;
         };
     };
-    responses: {
-        /** @description Authentication required or invalid credentials */
-        Unauthorized: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ErrorResponse"];
-            };
-        };
-        /** @description Resource not found */
-        NotFound: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ErrorResponse"];
-            };
-        };
-        /** @description Resource already exists */
-        Conflict: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ErrorResponse"];
-            };
-        };
-        /** @description Request body failed validation */
-        ValidationError: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ValidationErrorResponse"];
-            };
-        };
-    };
-    parameters: {
-        /** @description Double-submit CSRF token. Required on state-changing requests (POST/PUT/PATCH/DELETE) that authenticate via the restmail_access cookie: echo the value of the readable restmail_csrf cookie (set at login/refresh). Rejected with 403 when missing or mismatched. Not required for Bearer-authenticated (cookie-less) requests. */
-        CSRFToken: string;
-        /**
-         * @description Account ID
-         * @example 1
-         */
-        AccountId: number;
-        /**
-         * @description Message ID
-         * @example 1
-         */
-        MessageId: number;
-        /**
-         * @description Domain ID
-         * @example 1
-         */
-        DomainId: number;
-        /**
-         * @description Resource ID
-         * @example 1
-         */
-        ResourceId: number;
-        /**
-         * @description Folder name (e.g. INBOX, Sent, Drafts, Trash)
-         * @example INBOX
-         */
-        FolderName: string;
-    };
+    responses: never;
+    parameters: never;
     requestBodies: never;
     headers: never;
     pathItems: never;
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    mozillaAutoconfigWellKnown: {
+        parameters: {
+            query?: {
+                /** @description Optional (draft-ietf-mailmaint-autoconfig §4.1). Without it, the email domain is the host the request is made to. */
+                emailaddress?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/xml": string;
+                };
+            };
+            /** @description No email domain in the address or the host name */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Domain not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The mail host (GATEWAY_HOSTNAME) is not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+        };
+    };
+    mtaStsPolicyFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    restmailDiscover: {
+        parameters: {
+            query: {
+                domain: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    /** @description no-store, on every answer */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RestmailDiscovery"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    receiveTlsReport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TLSRPTReport"];
+                "application/tlsrpt+gzip": string;
+                "application/tlsrpt+json": components["schemas"]["TLSRPTReport"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-tlsReportStored"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: too many reports from one address */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    apiRoot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-APIRoot"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    swaggerUI: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    openapiDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string;
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    openapiSpec: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/yaml": string;
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     getHealth: {
         parameters: {
             query?: never;
@@ -4235,444 +5052,57 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Service is healthy */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["HealthStatus"];
-                    };
+                    "application/json": components["schemas"]["Data-Health"];
                 };
             };
-        };
-    };
-    login: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LoginRequest"];
-            };
-        };
-        responses: {
-            /** @description Login successful */
-            200: {
+            /** @description Internal Server Error */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["LoginResponse"];
-                    };
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
-            422: components["responses"]["ValidationError"];
-        };
-    };
-    logout: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["RefreshRequest"];
-            };
-        };
-        responses: {
-            /** @description Logged out */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    refreshToken: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["RefreshRequest"];
-            };
-        };
-        responses: {
-            /** @description Token refreshed */
-            200: {
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["RefreshResponse"];
-                    };
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
-            };
-            401: components["responses"]["Unauthorized"];
-        };
-    };
-    resetAdmin: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    token: string;
-                    password: string;
-                    /** @enum {string} */
-                    client?: "native";
-                };
-            };
-        };
-        responses: {
-            /** @description Reset; the session owes an authenticator */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["LoginResponse"];
-                    };
-                };
-            };
-            /** @description invalid_token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Password under 12 characters (the token is not spent) */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
         };
     };
-    recoverAccount: {
+    checkMailboxAddress: {
         parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    email: string;
-                    totp_code: string;
-                    recovery_code: string;
-                    new_password: string;
-                    /** @enum {string} */
-                    client?: "native";
-                };
+            query: {
+                address: string;
             };
-        };
-        responses: {
-            /** @description Password reset; a new session */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["LoginResponse"];
-                    };
-                };
-            };
-            /** @description recovery_failed */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description A field missing, or a password under 12 characters (no code is spent) */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Too many attempts from this client, or too many refusals for this address */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    describeServer: {
-        parameters: {
-            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description The description */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: {
-                            /** @enum {string} */
-                            product: "rest-mail";
-                            /** @description e.g. 0.7.0; dev for a build with none stamped in */
-                            version: string;
-                        };
-                    };
+                    "application/json": components["schemas"]["Data-AddressCheck"];
                 };
             };
-        };
-    };
-    ownerChallenge: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description A challenge */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: {
-                            challenge: string;
-                            /** Format: date-time */
-                            expires_at: string;
-                        };
-                    };
-                };
-            };
-            /** @description no_owner_keys — the server lists neither owner keys nor status keys */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    ownerToken: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    challenge: string;
-                    /** @description authorized_keys format */
-                    public_key: string;
-                    /** Format: byte */
-                    signature: string;
-                    /**
-                     * @description the only one; part of what is signed
-                     * @enum {string}
-                     */
-                    purpose: "reset-admin";
-                    /**
-                     * Format: email
-                     * @description the account to let back in, as signed
-                     */
-                    address: string;
-                    /** @description 0: 15 minutes */
-                    lifetime_seconds?: number;
-                };
-            };
-        };
-        responses: {
-            /** @description A single-use token */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: {
-                            purpose: string;
-                            token: string;
-                            /** Format: date-time */
-                            expires_at: string;
-                        };
-                    };
-                };
-            };
-            /** @description invalid_challenge — forged, expired, or already answered */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description not_owner — the key is not listed, or the signature does not verify */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description no_such_account */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description no_owner_keys — the server lists none */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Purpose, address, lifetime or signature malformed */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    ownerStatus: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    challenge: string;
-                    /** @description authorized_keys format */
-                    public_key: string;
-                    /** Format: byte */
-                    signature: string;
-                };
-            };
-        };
-        responses: {
-            /** @description What runs, and since when. No secrets, no configuration. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: {
-                            /** @description e.g. 0.8.0; dev for a build with none stamped in */
-                            version: string;
-                            /** @description the commit built; unknown when none was stamped in */
-                            commit: string;
-                            /** @description RFC 3339; unknown when none was stamped in */
-                            built_at: string;
-                            /**
-                             * Format: date-time
-                             * @description when this API process started
-                             */
-                            started_at: string;
-                        };
-                    };
-                };
-            };
-            /** @description invalid_challenge — forged, expired, or already answered */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description not_status_key — the key is on neither list, or the signature does not verify */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description no_status_keys — the server lists neither status keys nor owner keys */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Signature malformed */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    confirmTwoFactor: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    /** @description A current code from the new authenticator */
-                    totp_code: string;
-                };
-            };
-        };
-        responses: {
-            /** @description Two-factor authentication is on */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description No pending enrollment to confirm */
+            /** @description Bad Request */
             400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            401: components["responses"]["Unauthorized"];
-            /** @description The code is wrong (`invalid_totp`), or two-factor authentication is turned off on this server (`forbidden`) */
-            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4680,184 +5110,23 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Two-factor authentication is already on */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description totp_code missing */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
-            };
-        };
-    };
-    disableTwoFactor: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    /** @description A current code from the authenticator */
-                    totp_code?: string;
-                    /** @description One of the account's recovery codes, instead of totp_code; it is spent */
-                    recovery_code?: string;
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-        };
-        responses: {
-            /** @description Two-factor authentication is off; every session of the account is revoked */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Two-factor authentication is not on */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            401: components["responses"]["Unauthorized"];
-            /** @description The code is wrong (`invalid_totp`), the recovery code is wrong or spent (`invalid_recovery_code`), or the account must keep two-factor authentication (`two_factor_required`) */
-            403: {
+            /** @description Internal Server Error */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
-            };
-            /** @description Neither totp_code nor recovery_code sent */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    changeOwnPassword: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    current_password: string;
-                    /** @description Must differ from the current password. */
-                    new_password: string;
-                };
-            };
-        };
-        responses: {
-            /** @description Password changed; every session of the account is revoked */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            401: components["responses"]["Unauthorized"];
-            /** @description The current password is wrong (`invalid_password`) */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description New password missing, shorter than 12 characters, or unchanged */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    protocolSignIn: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    /** @enum {string} */
-                    protocol: "imap" | "pop3" | "smtp";
-                };
-            };
-        };
-        responses: {
-            /** @description Signed in */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: {
-                            user: {
-                                /** @description The account id, as in /api/v1/accounts/{id} */
-                                id: number;
-                                /** Format: email */
-                                email: string;
-                                display_name: string;
-                            };
-                            credential_id: number;
-                            /**
-                             * @description An app password reaches only its own account's mailbox; the account's password reaches what its grants reach (sending as an account it owns, say).
-                             * @enum {string}
-                             */
-                            credential_kind: "password" | "app_password";
-                        };
-                    };
-                };
-            };
-            /** @description Not HTTP Basic (`basic_required`), or an invalid body */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description `unauthorized` for a wrong address or password; `app_password_required` for the right password of an account with two-factor authentication; `setup_required` for one still in setup. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description protocol is not imap, pop3 or smtp */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Too many refused credentials from this client, or too many sign-ins */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
         };
     };
@@ -4870,18 +5139,80 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The accounts */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["Account"][];
-                    };
+                    "application/json": components["schemas"]["List-accountResponse"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     createAccount: {
@@ -4893,7 +5224,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateAccountRequest"];
+                "application/json": components["schemas"]["createAccountRequest"];
             };
         };
         responses: {
@@ -4903,33 +5234,79 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["Account"];
-                    };
+                    "application/json": components["schemas"]["Data-accountResponse"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
-            /** @description No mailboxes:write covering the domain, or a session in setup */
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
-            /** @description An account with this address exists */
+            /** @description Conflict */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
-            /** @description Not an address, a password under 12 characters, or a domain this server does not host */
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -4943,328 +5320,29 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["LinkAccountRequest"];
+                "application/json": components["schemas"]["linkAccountRequest"];
             };
         };
         responses: {
-            /** @description Linked */
+            /** @description Created */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["Account"];
-                    };
+                    "application/json": components["schemas"]["Data-accountResponse"];
                 };
             };
-            /** @description The session itself is missing or has ended; never a refused link */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description The link is refused: a wrong address or password (`invalid_credentials`), its code is needed (`totp_required`), its code is wrong (`invalid_totp`), or the account is still in setup (`setup_required`) */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Already linked, or the session's own account */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            422: components["responses"]["ValidationError"];
-            /** @description Too many attempts from this client */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    getAccount: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Account details */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Account"];
-                    };
-                };
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    unlinkAccount: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Unlinked */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description The session holds no grant on it */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description The session's own account */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    listCredentials: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The app passwords */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Credential"][];
-                    };
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            404: components["responses"]["NotFound"];
-        };
-    };
-    createAppPassword: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    /** @example iPhone Mail */
-                    name: string;
-                    /**
-                     * Format: date-time
-                     * @description When it stops working; in the future. Omit for never.
-                     */
-                    expires_at?: string;
-                    /**
-                     * Format: password
-                     * @description The session's own current password, entered again.
-                     */
-                    password: string;
-                };
-            };
-        };
-        responses: {
-            /** @description Made; `password` is shown this once */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["CreatedAppPassword"];
-                    };
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            /** @description The session's current password was not given (`reauth_required`) or is wrong (`invalid_password`), never a 401: the session is still good; or the account has 2FA and the session's sign-in did not take it (`two_factor_required`) */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: components["responses"]["NotFound"];
-            /** @description name missing or longer than 100 characters, or expires_at not in the future */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Too many attempts from this client; shares login's budget */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    revokeCredential: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-                /** @example 1 */
-                credential_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Revoked */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            401: components["responses"]["Unauthorized"];
-            /** @description No such app password of this account, or already revoked */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    listPushDevices: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The services and the devices */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data?: components["schemas"]["PushDevices"];
-                    };
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            /** @description Push is not configured on this server */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    registerPushDevice: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RegisterPushDeviceRequest"];
-            };
-        };
-        responses: {
-            /** @description The session had already registered this token */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data?: components["schemas"]["PushDevice"];
-                    };
-                };
-            };
-            /** @description Registered */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data?: components["schemas"]["PushDevice"];
-                    };
-                };
-            };
-            /** @description The body is not JSON (`bad_request`) */
+            /** @description Bad Request */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
-            /** @description Not signed in, or the session has ended (its access token outlived it) */
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -5273,14 +5351,34 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Push is not configured on this server */
-            404: {
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
-            /** @description `validation_failed`, with `details.fields.platform` when the platform is not configured here or the session is an administrator's, which has no mailbox, and `fields.token`, `fields.environment` or `fields.app_id` for a bad value. Also `fields.token` when the session already has 10 devices. */
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -5289,1416 +5387,18 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-        };
-    };
-    removePushDevice: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description The device's `id`
-                 * @example 1
-                 */
-                device_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Removed */
-            204: {
+            /** @description rate_limited: too many requests to the shared authentication throttle */
+            429: {
                 headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            401: components["responses"]["Unauthorized"];
-            /** @description Not one of this session's devices, or push is not configured */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    listFolders: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description List of folders */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Folder"][];
-                    };
-                };
-            };
-        };
-    };
-    createFolder: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                /**
-                 * @example {
-                 *       "name": "Receipts"
-                 *     }
-                 */
-                "application/json": components["schemas"]["CreateFolderRequest"];
-            };
-        };
-        responses: {
-            /** @description Folder created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["FolderName"];
-                    };
-                };
-            };
-            422: components["responses"]["ValidationError"];
-        };
-    };
-    deleteFolder: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-                /**
-                 * @description Folder name (e.g. INBOX, Sent, Drafts, Trash)
-                 * @example INBOX
-                 */
-                folder: components["parameters"]["FolderName"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Folder deleted */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    renameFolder: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-                /**
-                 * @description Folder name (e.g. INBOX, Sent, Drafts, Trash)
-                 * @example INBOX
-                 */
-                folder: components["parameters"]["FolderName"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                /**
-                 * @example {
-                 *       "name": "Paid receipts"
-                 *     }
-                 */
-                "application/json": components["schemas"]["RenameFolderRequest"];
-            };
-        };
-        responses: {
-            /** @description Folder renamed */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["FolderName"];
-                    };
-                };
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    listMessages: {
-        parameters: {
-            query?: {
-                limit?: number;
-                cursor?: string;
-            };
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-                /**
-                 * @description Folder name (e.g. INBOX, Sent, Drafts, Trash)
-                 * @example INBOX
-                 */
-                folder: components["parameters"]["FolderName"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Paginated list of messages */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Message"][];
-                        pagination?: components["schemas"]["Pagination"];
-                    };
-                };
-            };
-            422: components["responses"]["ValidationError"];
-        };
-    };
-    getMessage: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Message ID
-                 * @example 1
-                 */
-                id: components["parameters"]["MessageId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Message details */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Message"];
-                    };
-                };
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    deleteMessage: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Message ID
-                 * @example 1
-                 */
-                id: components["parameters"]["MessageId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Message deleted */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    updateMessage: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Message ID
-                 * @example 1
-                 */
-                id: components["parameters"]["MessageId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                /**
-                 * @example {
-                 *       "is_read": true,
-                 *       "is_flagged": true
-                 *     }
-                 */
-                "application/json": components["schemas"]["UpdateMessageRequest"];
-            };
-        };
-        responses: {
-            /** @description Message updated */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Message"];
-                    };
-                };
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    sendMessage: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                /**
-                 * @example {
-                 *       "from": "admin@restmail.test",
-                 *       "to": [
-                 *         "admin@restmail.test",
-                 *         "someone@imap.restmail.test"
-                 *       ],
-                 *       "subject": "Hello",
-                 *       "body_text": "Sent through the REST API."
-                 *     }
-                 */
-                "application/json": components["schemas"]["SendMessageRequest"];
-            };
-        };
-        responses: {
-            /** @description Message sent */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Message"];
-                    };
-                };
-            };
-            /** @description A field is missing or invalid, including an unsafe list_unsubscribe target */
-            400: {
-                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            422: components["responses"]["ValidationError"];
-        };
-    };
-    getRawMessage: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Message ID
-                 * @example 1
-                 */
-                id: components["parameters"]["MessageId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Raw message */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "message/rfc822": string;
-                };
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    forwardMessage: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Message ID
-                 * @example 1
-                 */
-                id: components["parameters"]["MessageId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                /**
-                 * @example {
-                 *       "from": "admin@restmail.test",
-                 *       "to": [
-                 *         "admin@restmail.test"
-                 *       ],
-                 *       "body_text": "See below."
-                 *     }
-                 */
-                "application/json": components["schemas"]["ForwardMessageRequest"];
-            };
-        };
-        responses: {
-            /** @description Message forwarded */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Message"];
-                    };
-                };
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    saveDraft: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                /**
-                 * @example {
-                 *       "from": "admin@restmail.test",
-                 *       "to": [
-                 *         "admin@restmail.test"
-                 *       ],
-                 *       "subject": "Draft",
-                 *       "body_text": "Not sent yet."
-                 *     }
-                 */
-                "application/json": components["schemas"]["DraftRequest"];
-            };
-        };
-        responses: {
-            /** @description Draft saved */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Message"];
-                    };
-                };
-            };
-        };
-    };
-    updateDraft: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Message ID
-                 * @example 1
-                 */
-                id: components["parameters"]["MessageId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                /**
-                 * @example {
-                 *       "from": "admin@restmail.test",
-                 *       "to": [
-                 *         "admin@restmail.test"
-                 *       ],
-                 *       "subject": "Draft, edited",
-                 *       "body_text": "Ready to send."
-                 *     }
-                 */
-                "application/json": components["schemas"]["UpdateDraftRequest"];
-            };
-        };
-        responses: {
-            /** @description Draft updated */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Message"];
-                    };
-                };
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    sendDraft: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Message ID
-                 * @example 1
-                 */
-                id: components["parameters"]["MessageId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Draft sent */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Message"];
-                    };
-                };
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    getThread: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-                /**
-                 * @description Thread identifier
-                 * @example 1
-                 */
-                threadID: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Thread messages */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Message"][];
-                    };
-                };
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    getQuota: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Quota information */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["QuotaInfo"];
-                    };
-                };
-            };
-        };
-    };
-    searchMessages: {
-        parameters: {
-            query?: {
-                /** @description Free text search query */
-                q?: string;
-                /** @description Restrict to a specific folder */
-                folder?: string;
-                /** @description Filter by sender address */
-                from?: string;
-                /** @description Messages after this date */
-                after?: string;
-                /** @description Messages before this date */
-                before?: string;
-                /** @description Only messages with attachments */
-                has_attachment?: boolean;
-                limit?: number;
-                cursor?: string;
-            };
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Search results */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Message"][];
-                        pagination?: components["schemas"]["Pagination"];
-                    };
-                };
-            };
-        };
-    };
-    getAttachment: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Attachment ID
-                 * @example 1
-                 */
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The attachment's bytes, always as application/octet-stream; the type its sender gave it is listAttachments' content_type. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/octet-stream": string;
-                };
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    listAttachments: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Message ID
-                 * @example 1
-                 */
-                id: components["parameters"]["MessageId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Attachment list */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Attachment"][];
-                    };
-                };
-            };
-        };
-    };
-    listContacts: {
-        parameters: {
-            query?: {
-                trust_level?: "auto" | "trusted" | "blocked";
-                search?: string;
-            };
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Contact list */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Contact"][];
-                    };
-                };
-            };
-        };
-    };
-    createContact: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateContactRequest"];
-            };
-        };
-        responses: {
-            /** @description Contact created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Contact"];
-                    };
-                };
-            };
-            422: components["responses"]["ValidationError"];
-        };
-    };
-    deleteContact: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-                /**
-                 * @description Contact ID
-                 * @example 1
-                 */
-                cid: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Contact deleted */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    updateContact: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-                /**
-                 * @description Contact ID
-                 * @example 1
-                 */
-                cid: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateContactRequest"];
-            };
-        };
-        responses: {
-            /** @description Contact updated */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Contact"];
-                    };
-                };
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    blockSender: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                /**
-                 * @example {
-                 *       "email": "spam@example.org"
-                 *     }
-                 */
-                "application/json": {
-                    /** Format: email */
-                    email: string;
-                };
-            };
-        };
-        responses: {
-            /** @description Sender blocked; the contact already existed */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Contact"];
-                    };
-                };
-            };
-            /** @description Sender blocked, as a new contact */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Contact"];
-                    };
-                };
-            };
-        };
-    };
-    importContacts: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                /**
-                 * @example {
-                 *       "contacts": [
-                 *         {
-                 *           "email": "carol@example.org",
-                 *           "name": "Carol"
-                 *         }
-                 *       ]
-                 *     }
-                 */
-                "application/json": components["schemas"]["ImportContactsRequest"];
-            };
-        };
-        responses: {
-            /** @description Import result */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: {
-                            imported: number;
-                        };
-                    };
-                };
-            };
-        };
-    };
-    suggestContacts: {
-        parameters: {
-            query: {
-                /** @example ad */
-                q: string;
-            };
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Contact suggestions */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Contact"][];
-                    };
-                };
-            };
-        };
-    };
-    getVacation: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Vacation config */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["VacationConfig"];
-                    };
-                };
-            };
-        };
-    };
-    setVacation: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["VacationConfig"];
-            };
-        };
-        responses: {
-            /** @description Vacation config updated */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["VacationConfig"];
-                    };
-                };
-            };
-        };
-    };
-    disableVacation: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Vacation disabled */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    getSieveScript: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Sieve script */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["SieveScript"];
-                    };
-                };
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    putSieveScript: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                /**
-                 * @example {
-                 *       "script": "require [\"fileinto\"];\nif header :contains \"subject\" \"invoice\" {\n  fileinto \"Invoices\";\n}\n",
-                 *       "active": true
-                 *     }
-                 */
-                "application/json": components["schemas"]["PutSieveRequest"];
-            };
-        };
-        responses: {
-            /** @description Sieve script replaced */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["SieveScript"];
-                    };
-                };
-            };
-            /** @description Sieve script created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["SieveScript"];
-                    };
-                };
-            };
-        };
-    };
-    deleteSieveScript: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Script deleted */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: {
-                            /** @example deleted */
-                            status: string;
-                        };
-                    };
-                };
-            };
-        };
-    };
-    validateSieveScript: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                /**
-                 * @example {
-                 *       "script": "require [\"fileinto\"];\nif header :contains \"subject\" \"invoice\" {\n  fileinto \"Invoices\";\n}\n"
-                 *     }
-                 */
-                "application/json": {
-                    script: string;
-                };
-            };
-        };
-        responses: {
-            /** @description Validation result */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: {
-                            valid: boolean;
-                            message?: string;
-                        };
-                    };
-                };
-            };
-        };
-    };
-    listQuarantine: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Quarantined messages */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Quarantine"][];
-                    };
-                };
-            };
-        };
-    };
-    releaseQuarantine: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-                /**
-                 * @description Quarantine entry ID
-                 * @example 1
-                 */
-                mid: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Message released */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: {
-                            /** @example released */
-                            status: string;
-                            /**
-                             * @description ID of the newly delivered INBOX message (decimal string)
-                             * @example 4210
-                             */
-                            message_id: string;
-                        };
-                    };
-                };
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    deleteQuarantine: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-                /**
-                 * @description Quarantine entry ID
-                 * @example 1
-                 */
-                mid: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Message deleted */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: {
-                            /** @example deleted */
-                            status: string;
-                        };
-                    };
-                };
-            };
-        };
-    };
-    accountEvents: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description SSE event stream */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "text/event-stream": string;
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-        };
-    };
-    checkMailboxAddress: {
-        parameters: {
-            query: {
-                /** @example admin@restmail.test */
-                address: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Mailbox lookup result */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["MailboxCheck"];
-                    };
-                };
-            };
-        };
-    };
-    deliverMessage: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DeliverMessageRequest"];
-            };
-        };
-        responses: {
-            /** @description Message delivered */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Message"];
-                    };
-                };
-            };
-            422: components["responses"]["ValidationError"];
-        };
-    };
-    restmailDiscover: {
-        parameters: {
-            query: {
-                /**
-                 * @description Exactly one recipient domain; mailbox addresses are invalid. Case and IDNs are normalized as for domain creation.
-                 * @example restmail.test
-                 */
-                domain: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Delivery base URL for this domain */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /**
-                     * @example {
-                     *       "endpoint": "https://restmail.test/restmail"
-                     *     }
-                     */
-                    "application/json": {
-                        /** Format: uri */
-                        endpoint: string;
-                    };
-                };
-            };
-            /** @description Missing, duplicate or invalid domain query parameter */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: components["responses"]["NotFound"];
-            /** @description Domain lookup failed; retry discovery */
+            /** @description Internal Server Error */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -6707,7 +5407,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description GATEWAY_HOSTNAME must be configured as a fully qualified hostname */
+            /** @description unavailable: the session check could not be made */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -6718,78 +5418,63 @@ export interface operations {
             };
         };
     };
-    restmailCapabilities: {
+    getAccount: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: number;
+            };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Server capabilities */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["RestmailCapabilities"];
-                    };
+                    "application/json": components["schemas"]["Data-accountResponse"];
                 };
             };
-        };
-    };
-    restmailCheckMailbox: {
-        parameters: {
-            query: {
-                /** @example admin@restmail.test */
-                address: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Mailbox check result */
-            200: {
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["RestmailMailboxCheck"];
-                    };
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-        };
-    };
-    restmailDeliver: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RestmailDeliverRequest"];
-            };
-        };
-        responses: {
-            /** @description Delivery result */
-            201: {
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["RestmailDeliverResponse"];
-                    };
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Request body failed validation */
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -6798,55 +5483,239 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
-    listDomains: {
+    unlinkAccount: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: number;
+            };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Domain list */
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listAPIKeys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["Domain"][];
-                    };
+                    "application/json": components["schemas"]["List-apiKeyResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    createDomain: {
+    createAPIKey: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: number;
+            };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateDomainRequest"];
+                "application/json": components["schemas"]["createAPIKeyBody"];
             };
         };
         responses: {
-            /** @description Domain created, not yet live */
+            /** @description Created */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["Domain"];
-                    };
+                    "application/json": components["schemas"]["Data-createdAPIKey"];
                 };
             };
-            /** @description The body is not a JSON object of the request's fields (`bad_request`), or the name is not a domain name (`invalid_domain`) */
+            /** @description Bad Request */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -6855,8 +5724,43 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            409: components["responses"]["Conflict"];
-            /** @description Request body failed validation */
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -6865,62 +5769,28 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-        };
-    };
-    getDomain: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
+            /** @description rate_limited: too many requests to the shared authentication throttle */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Domain details */
-            200: {
+            /** @description Internal Server Error */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["Domain"];
-                    };
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    deleteDomain: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Domain deleted */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            404: components["responses"]["NotFound"];
-            /** @description The domain still has accounts or aliases (`domain_not_empty`) */
-            409: {
+            /** @description unavailable: the session check could not be made */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6930,39 +5800,27 @@ export interface operations {
             };
         };
     };
-    updateDomain: {
+    revokeAPIKey: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
+                id: number;
+                credential_id: number;
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateDomainRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
-            /** @description Domain updated */
-            200: {
+            /** @description No Content */
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Domain"];
-                    };
-                };
+                content?: never;
             };
-            404: components["responses"]["NotFound"];
-            /** @description The domain has no currently valid certificate, so it cannot go live */
-            409: {
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6970,171 +5828,2942 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            422: components["responses"]["ValidationError"];
-        };
-    };
-    listMailboxes: {
-        parameters: {
-            query?: {
-                domain_id?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Mailbox list */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Mailbox"][];
-                    };
-                };
-            };
-            422: components["responses"]["ValidationError"];
-        };
-    };
-    getMailbox: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Mailbox details */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Mailbox"];
-                    };
-                };
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    deleteMailbox: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Deleted */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description It holds grants and the session has no 2FA (`two_factor_required`), or holds less than they give (`grant_exceeds_held`) */
+            /** @description Forbidden */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
-            };
-            404: components["responses"]["NotFound"];
-            /** @description It holds the last superadmin (`last_superadmin`) */
-            409: {
-                headers: {
-                    [name: string]: unknown;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
-                content?: never;
             };
-        };
-    };
-    updateMailbox: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                /**
-                 * @example {
-                 *       "display_name": "Contract Test",
-                 *       "quota_bytes": 1073741824,
-                 *       "active": true
-                 *     }
-                 */
-                "application/json": components["schemas"]["UpdateMailboxRequest"];
-            };
-        };
-        responses: {
-            /** @description Mailbox updated */
-            200: {
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["Mailbox"];
-                    };
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            404: components["responses"]["NotFound"];
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
-    endMailboxSessions: {
+    listCalendarEvents: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
+                id: number;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Every session of the account has ended */
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-CalendarEventSummaryList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listContacts: {
+        parameters: {
+            query?: {
+                trust_level?: "auto" | "trusted" | "blocked";
+                search?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-Contact"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createContact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["createContactBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-Contact"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    blockSender: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["blockSenderBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-Contact"];
+                };
+            };
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-Contact"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    importContacts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["importContactsBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-ContactsImported"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    suggestContacts: {
+        parameters: {
+            query?: {
+                q?: string;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-Contact"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteContact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                cid: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
             204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            404: components["responses"]["NotFound"];
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateContact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                cid: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["updateContactBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-Contact"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listCredentials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-credentialResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createAppPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["createCredentialBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-createdAppPassword"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: too many requests to the shared authentication throttle */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    revokeCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                credential_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    accountEvents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listFolders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-FolderSummary"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["folderNameBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-FolderName"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                folder: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    renameFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                folder: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["folderNameBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-FolderName"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listMessages: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path: {
+                id: number;
+                folder: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-Message"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listQuarantine: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-QuarantinedMessage"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteQuarantine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                mid: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-QuarantineDeleted"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    releaseQuarantine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                mid: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-QuarantineReleased"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getQuota: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-Quota"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    searchMessages: {
+        parameters: {
+            query?: {
+                q?: string;
+                folder?: string;
+                from?: string;
+                after?: string;
+                before?: string;
+                has_attachment?: "" | "true" | "false";
+                /** @description 1 to 100; 50 otherwise */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-Message"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getSieveScript: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-SieveScript"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    putSieveScript: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["putSieveBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-SieveScript"];
+                };
+            };
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-SieveScript"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteSieveScript: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-SieveDeleted"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    validateSieveScript: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["validateSieveBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-SieveValidation"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getThread: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                threadID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-Message"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getVacation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-vacationSetting"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setVacation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["setVacationBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-vacationSetting"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    disableVacation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     listAliases: {
         parameters: {
             query?: {
                 domain_id?: number;
+                limit?: number;
+                offset?: number;
             };
             header?: never;
             path?: never;
@@ -7142,18 +8771,69 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Alias list */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["Alias"][];
-                    };
+                    "application/json": components["schemas"]["List-Alias"];
                 };
             };
-            422: components["responses"]["ValidationError"];
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     createAlias: {
@@ -7165,22 +8845,20 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateAliasRequest"];
+                "application/json": components["schemas"]["createAliasRequest"];
             };
         };
         responses: {
-            /** @description Alias created */
+            /** @description Created */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["Alias"];
-                    };
+                    "application/json": components["schemas"]["Data-Alias"];
                 };
             };
-            /** @description The body is not a JSON object of the request's fields (`bad_request`) */
+            /** @description Bad Request */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -7189,13 +8867,76 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Request body failed validation */
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -7205,28 +8946,84 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
+                id: number;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Alias details */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["Alias"];
-                    };
+                    "application/json": components["schemas"]["Data-Alias"];
                 };
             };
-            404: components["responses"]["NotFound"];
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     deleteAlias: {
@@ -7234,24 +9031,82 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
+                id: number;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Alias deleted */
+            /** @description No Content */
             204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            404: components["responses"]["NotFound"];
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     updateAlias: {
@@ -7259,39 +9114,111 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
+                id: number;
             };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["UpdateAliasRequest"];
+                "application/json": components["schemas"]["updateAliasRequest"];
             };
         };
         responses: {
-            /** @description Alias updated */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["Alias"];
-                    };
+                    "application/json": components["schemas"]["Data-Alias"];
                 };
             };
-            404: components["responses"]["NotFound"];
-            422: components["responses"]["ValidationError"];
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
-    listPipelines: {
+    listAuditEntries: {
         parameters: {
             query?: {
-                domain_id?: number;
+                actor_kind?: "" | "account" | "system" | "anonymous";
+                actor_id?: number;
+                actor?: string;
+                action?: string;
+                outcome?: "" | "success" | "denied" | "failed" | "error";
+                since?: string;
+                until?: string;
+                before_seq?: number;
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -7299,21 +9226,228 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Pipeline list */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["Pipeline"][];
-                    };
+                    "application/json": components["schemas"]["List-AuditEntry"];
                 };
             };
-            422: components["responses"]["ValidationError"];
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
-    createPipeline: {
+    verifyAuditLog: {
+        parameters: {
+            query?: {
+                anchor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-Result"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listBans: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                protocol?: "smtp" | "imap" | "pop3" | "all";
+                active?: "true" | "false";
+                ip?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-Ban"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createBan: {
         parameters: {
             query?: never;
             header?: never;
@@ -7322,22 +9456,29 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreatePipelineRequest"];
+                "application/json": components["schemas"]["createBanRequest"];
             };
         };
         responses: {
-            /** @description Pipeline created */
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-Ban"];
+                };
+            };
+            /** @description Created */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["Pipeline"];
-                    };
+                    "application/json": components["schemas"]["Data-Ban"];
                 };
             };
-            /** @description `bad_request` when the body does not decode as the request: not JSON, an array, a string, a number or a boolean rather than an object, or a field of the wrong JSON type. It is refused before any field is validated; a `null` body decodes as an empty one and gets the 422. Filters that pass validation are also refused with a 400: `invalid_sieve` for a Sieve script that does not install, `unsupported_filter` for a filter configured in a way it does not support. */
+            /** @description Bad Request */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -7346,7 +9487,34 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Request body failed validation */
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -7355,99 +9523,46 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
-    deletePipeline: {
+    unbanIP: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
+                ip: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Pipeline deleted */
-            200: {
+            /** @description No Content */
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": {
-                        data: {
-                            /** @example deleted */
-                            status: string;
-                        };
-                    };
-                };
+                content?: never;
             };
-        };
-    };
-    updatePipeline: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdatePipelineRequest"];
-            };
-        };
-        responses: {
-            /** @description Pipeline updated */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Pipeline"];
-                    };
-                };
-            };
-            404: components["responses"]["NotFound"];
-            422: components["responses"]["ValidationError"];
-        };
-    };
-    testPipeline: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TestPipelineRequest"];
-            };
-        };
-        responses: {
-            /** @description Pipeline execution result */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["ExecutionResult"];
-                    };
-                };
-            };
-            /** @description The body is not JSON (`bad_request`) */
-            400: {
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7455,35 +9570,8 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            422: components["responses"]["ValidationError"];
-        };
-    };
-    testFilter: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TestFilterRequest"];
-            };
-        };
-        responses: {
-            /** @description Filter execution result */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["FilterResult"];
-                    };
-                };
-            };
-            /** @description `bad_request` when the body does not decode as the request: empty, not JSON, an array, a string, a number or a boolean rather than an object, or a `filter_name` or `email` of the wrong JSON type. It is refused before the required fields are checked and before any filter is made; `{}` and a `null` body decode as empty ones and get a 422 instead. A body that decodes is also refused with a 400, `filter_error`, when the named filter cannot be made from its config or fails on the email. */
-            400: {
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7491,7 +9579,25 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Request body failed validation */
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -7500,19 +9606,168 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
-    listPipelineLogs: {
+    deleteBan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listCapabilities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-capabilityResponseList"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listCertificates: {
         parameters: {
             query?: {
-                pipeline_id?: number;
-                direction?: "inbound" | "outbound";
-                /** @description Matches MessageTrace.final_action */
-                action?: "continue" | "reject" | "quarantine" | "discard" | "defer";
-                /** @description RFC 5322 Message-ID correlation key */
-                rfc_message_id?: string;
-                outcome?: "delivered" | "queued" | "rejected" | "quarantined" | "discarded" | "deferred";
-                reason_code?: string;
                 limit?: number;
                 offset?: number;
             };
@@ -7522,25 +9777,341 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Pipeline message traces */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["MessageTrace"][];
-                        pagination?: components["schemas"]["Pagination"];
-                    };
+                    "application/json": components["schemas"]["List-Certificate"];
                 };
             };
-            422: components["responses"]["ValidationError"];
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createCertificate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["createCertificateRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-Certificate"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getCertificate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-CertificateDetails"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteCertificate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     listCustomFilters: {
         parameters: {
             query?: {
                 domain_id?: number;
+                limit?: number;
+                offset?: number;
             };
             header?: never;
             path?: never;
@@ -7548,18 +10119,69 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Custom filter list */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["CustomFilter"][];
-                    };
+                    "application/json": components["schemas"]["List-CustomFilter"];
                 };
             };
-            422: components["responses"]["ValidationError"];
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     createCustomFilter: {
@@ -7571,28 +10193,80 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateCustomFilterRequest"];
+                "application/json": components["schemas"]["createCustomFilterRequestBody"];
             };
         };
         responses: {
-            /** @description Custom filter created */
+            /** @description Created */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["CustomFilter"];
-                    };
+                    "application/json": components["schemas"]["Data-CustomFilter"];
                 };
             };
-            /** @description Request body failed validation */
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -7606,27 +10280,20 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    /** @description JavaScript filter source to validate */
-                    script: string;
-                    /** @description Optional sample email passed through to the sidecar */
-                    email?: Record<string, never>;
-                };
+                "application/json": components["schemas"]["validateCustomFilterRequestBody"];
             };
         };
         responses: {
-            /** @description Raw validation result proxied verbatim from the JS filter sidecar (shape determined by the sidecar). */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["ScriptValidation"];
                 };
             };
-            /** @description The body is not a JSON object, or a field has the wrong type (`bad_request`) */
+            /** @description Bad Request */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -7635,7 +10302,34 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Request body failed validation */
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -7644,7 +10338,16 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description JS filter sidecar unavailable, or it refused the API's token (JS_FILTER_TOKEN differs between the API and the sidecar) */
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -7660,28 +10363,84 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
+                id: number;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Custom filter details */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["CustomFilter"];
-                    };
+                    "application/json": components["schemas"]["Data-CustomFilter"];
                 };
             };
-            404: components["responses"]["NotFound"];
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     deleteCustomFilter: {
@@ -7689,28 +10448,82 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
+                id: number;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Custom filter deleted */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: {
-                            /** @example deleted */
-                            status: string;
-                        };
-                    };
+                    "application/json": components["schemas"]["Data-deletedStatus"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -7720,78 +10533,26 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
+                id: number;
             };
             cookie?: never;
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "description": "Tags mail about invoices and receipts",
-                 *       "config": {
-                 *         "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
-                 *       },
-                 *       "enabled": true
-                 *     }
-                 */
-                "application/json": components["schemas"]["UpdateCustomFilterRequest"];
+                "application/json": components["schemas"]["updateCustomFilterRequestBody"];
             };
         };
         responses: {
-            /** @description Custom filter updated */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["CustomFilter"];
-                    };
+                    "application/json": components["schemas"]["Data-CustomFilter"];
                 };
             };
-            404: components["responses"]["NotFound"];
-            422: components["responses"]["ValidationError"];
-        };
-    };
-    testCustomFilter: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": {
-                    /** @description Optional sample email. When omitted a minimal built-in sample is used. */
-                    email?: Record<string, never>;
-                };
-            };
-        };
-        responses: {
-            /** @description Raw execution result proxied verbatim from the JS filter sidecar (status and shape determined by the sidecar). */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Filter config contains no script, or invalid request */
+            /** @description Bad Request */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -7800,8 +10561,4291 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            404: components["responses"]["NotFound"];
-            /** @description JS filter sidecar unavailable, or it refused the API's token (JS_FILTER_TOKEN differs between the API and the sidecar) */
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    testCustomFilter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["testCustomFilterRequestBody"] | null;
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScriptExecution"];
+                };
+            };
+            /** @description API bad_request or the sidecar's bare error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The sidecar's execution timeout */
+            408: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScriptFailure"];
+                };
+            };
+            /** @description API request_too_large or the sidecar's bare error */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: pipeline preview limit exceeded */
+            429: {
+                headers: {
+                    /** @description Seconds until another preview is allowed */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description API internal_error or the sidecar's bare worker failure */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listDKIMKeys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-dkimEntry"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setDKIMKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["setDKIMKeyBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-dkimEntry"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteDKIMKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getDKIMRotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-dkimRotationSettings"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setDKIMRotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["setDKIMRotationBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-dkimRotationSettings"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listDomains: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-Domain"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createDomain: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["createDomainRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-Domain"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getDomain: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-Domain"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteDomain: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateDomain: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["updateDomainBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-Domain"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listAllowlist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-SenderRule"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    addToAllowlist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["addSenderRuleRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-SenderRule"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    removeFromAllowlist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                eid: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listBlocklist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-SenderRule"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    addToBlocklist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["addSenderRuleRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-SenderRule"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    removeFromBlocklist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                eid: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    domainDNSCheck: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-DomainDNSCheck"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getMtaStsPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-MTASTSPolicy"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setMtaStsPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["setMTASTSBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-MTASTSPolicy"];
+                };
+            };
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-MTASTSPolicy"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteMtaStsPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getDomainRelay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-relayView"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setDomainRelay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["setRelayBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-relayView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listSuppressions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-Suppression"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    clearSuppression: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                sid: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listGrants: {
+        parameters: {
+            query?: {
+                holder_kind?: string;
+                holder_id?: number;
+                scope?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-grantResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["createGrantRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-grantResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listMyGrants: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-grantResponseList"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    activateGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["activateRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-escalationResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: login's per-IP limit */
+            429: {
+                headers: {
+                    /** @description Seconds until another try is allowed */
+                    "Retry-After": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deactivateGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-escalationResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    makeGrantEligible: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["secondFactorRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-escalationResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: login's per-IP limit */
+            429: {
+                headers: {
+                    /** @description Seconds until another try is allowed */
+                    "Retry-After": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getDeliveryLogs: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                status?: "pending" | "delivering" | "deferred" | "delivered" | "bounced" | "expired";
+                domain?: string;
+                sender?: string;
+                recipient?: string;
+                since?: string;
+                until?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-DeliveryLogEntry"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listMailboxes: {
+        parameters: {
+            query?: {
+                domain_id?: number;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-Mailbox"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getMailbox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-Mailbox"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteMailbox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateMailbox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["updateMailboxRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-Mailbox"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    endMailboxSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getMessageTrace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-MessageTrace"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listPipelines: {
+        parameters: {
+            query?: {
+                domain_id?: number;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-Pipeline"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createPipeline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["createPipelineRequestBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-Pipeline"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getPipelineAnalytics: {
+        parameters: {
+            query?: {
+                since?: string;
+                window?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-PipelineAnalyticsResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listPipelineLogs: {
+        parameters: {
+            query?: {
+                pipeline_id?: number;
+                limit?: number;
+                offset?: number;
+                direction?: "inbound" | "outbound";
+                action?: "continue" | "reject" | "quarantine" | "discard" | "defer";
+                outcome?: "delivered" | "queued" | "rejected" | "quarantined" | "discarded" | "deferred";
+                reason_code?: string;
+                rfc_message_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-MessageTrace"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    testPipeline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["testPipelineRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-ExecutionResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: pipeline preview limit exceeded */
+            429: {
+                headers: {
+                    /** @description Seconds until another preview is allowed */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    testFilter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["testFilterRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-FilterResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: pipeline preview limit exceeded */
+            429: {
+                headers: {
+                    /** @description Seconds until another preview is allowed */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deletePipeline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-deletedStatus"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updatePipeline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["updatePipelineRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-Pipeline"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -7828,80 +14872,62 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Queue entries */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: {
-                            items: components["schemas"]["OutboundQueue"][];
-                            total: number;
-                            limit: number;
-                            offset: number;
-                        };
-                    };
+                    "application/json": components["schemas"]["Data-QueueList"];
                 };
             };
-            422: components["responses"]["ValidationError"];
-        };
-    };
-    getQueueStats: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Queue statistics */
-            200: {
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["QueueStats"];
-                    };
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-        };
-    };
-    bulkRetryQueue: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                /**
-                 * @example {
-                 *       "ids": [
-                 *         987654
-                 *       ]
-                 *     }
-                 */
-                "application/json": components["schemas"]["BulkQueueRequest"];
-            };
-        };
-        responses: {
-            /** @description Bulk retry result */
-            200: {
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["BulkQueueResponse"];
-                    };
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Invalid JSON or a body that cannot be decoded into the request shape; no IDs and no filter; or more than 1000 IDs. Refused before any queue lookup. An empty filter object is accepted. */
-            400: {
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7920,30 +14946,75 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "ids": [
-                 *         987654
-                 *       ]
-                 *     }
-                 */
-                "application/json": components["schemas"]["BulkQueueRequest"];
+                "application/json": components["schemas"]["bulkQueueRequest"];
             };
         };
         responses: {
-            /** @description Bulk bounce result */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["BulkQueueResponse"];
-                    };
+                    "application/json": components["schemas"]["Data-BulkQueueResult"];
                 };
             };
-            /** @description Invalid JSON or a body that cannot be decoded into the request shape; no IDs and no filter; or more than 1000 IDs. Refused before any queue lookup. An empty filter object is accepted. */
+            /** @description Bad Request */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7962,23 +15033,227 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["BulkQueueRequest"];
+                "application/json": components["schemas"]["bulkQueueRequest"];
             };
         };
         responses: {
-            /** @description Bulk delete result */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["BulkQueueResponse"];
-                    };
+                    "application/json": components["schemas"]["Data-BulkQueueResult"];
                 };
             };
-            /** @description The body selects no entries, by ids or by a filter (`bad_request`) */
+            /** @description Bad Request */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    bulkRetryQueue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["bulkQueueRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-BulkQueueResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getQueueStats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-QueueStatistics"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7993,28 +15268,84 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
+                id: number;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Queue entry details */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["OutboundQueue"];
-                    };
+                    "application/json": components["schemas"]["Data-QueueEntry"];
                 };
             };
-            404: components["responses"]["NotFound"];
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     deleteQueueEntry: {
@@ -8022,56 +15353,82 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
+                id: number;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Queue entry deleted */
+            /** @description No Content */
             204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    retryQueueEntry: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Retry scheduled */
-            200: {
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: {
-                            /** @example retrying */
-                            status: string;
-                        };
-                    };
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            404: components["responses"]["NotFound"];
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     bounceQueueEntry: {
@@ -8079,283 +15436,23 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
+                id: number;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Entry bounced */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: {
-                            /** @example bounced */
-                            status: string;
-                        };
-                    };
+                    "application/json": components["schemas"]["Data-QueueAction"];
                 };
             };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    listAllowlist: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Domain ID
-                 * @example 1
-                 */
-                id: components["parameters"]["DomainId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Allowlist entries */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["DomainSenderRule"][];
-                    };
-                };
-            };
-        };
-    };
-    addToAllowlist: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Domain ID
-                 * @example 1
-                 */
-                id: components["parameters"]["DomainId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateSenderRuleRequest"];
-            };
-        };
-        responses: {
-            /** @description Entry added */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["DomainSenderRule"];
-                    };
-                };
-            };
-            409: components["responses"]["Conflict"];
-            /** @description Request body failed validation */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ValidationErrorResponse"];
-                };
-            };
-        };
-    };
-    removeFromAllowlist: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Domain ID
-                 * @example 1
-                 */
-                id: components["parameters"]["DomainId"];
-                /**
-                 * @description Sender rule entry ID
-                 * @example 1
-                 */
-                eid: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Entry removed */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    listBlocklist: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Domain ID
-                 * @example 1
-                 */
-                id: components["parameters"]["DomainId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Blocklist entries */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["DomainSenderRule"][];
-                    };
-                };
-            };
-        };
-    };
-    addToBlocklist: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Domain ID
-                 * @example 1
-                 */
-                id: components["parameters"]["DomainId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateSenderRuleRequest"];
-            };
-        };
-        responses: {
-            /** @description Entry added */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["DomainSenderRule"];
-                    };
-                };
-            };
-            409: components["responses"]["Conflict"];
-            /** @description Request body failed validation */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ValidationErrorResponse"];
-                };
-            };
-        };
-    };
-    removeFromBlocklist: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Domain ID
-                 * @example 1
-                 */
-                id: components["parameters"]["DomainId"];
-                /**
-                 * @description Sender rule entry ID
-                 * @example 1
-                 */
-                eid: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Entry removed */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    listDKIMKeys: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description DKIM key list */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["DKIMEntry"][];
-                    };
-                };
-            };
-        };
-    };
-    getDKIMRotation: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description DKIM rotation settings */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["DKIMRotationSettings"];
-                    };
-                };
-            };
-            /** @description Invalid domain ID (`bad_request`). */
-            400: {
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8363,435 +15460,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    setDKIMRotation: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    /** @example 90 */
-                    rotation_interval_days: number;
-                };
-            };
-        };
-        responses: {
-            /** @description DKIM rotation settings saved */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["DKIMRotationSettings"];
-                    };
-                };
-            };
-            /** @description Invalid JSON, noninteger interval, unknown field, or multiple JSON values (`bad_request`). */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: components["responses"]["NotFound"];
-            /** @description Missing, null, or out-of-range interval (`validation_failed`); details.fields.rotation_interval_days describes the requirement. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ValidationErrorResponse"];
-                };
-            };
-        };
-    };
-    setDKIMKey: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SetDKIMKeyRequest"];
-            };
-        };
-        responses: {
-            /** @description DKIM key set */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["DKIMEntry"];
-                    };
-                };
-            };
-            /** @description The body is not JSON, or lacks `selector` or `private_key` (`bad_request`) */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            404: components["responses"]["NotFound"];
-            /** @description `validation_failed`: the domain could not sign with this key and selector. `details.fields.selector` when the selector is not a DNS name; `details.fields.private_key` when the key is not a PEM private key, is neither RSA nor Ed25519, is an RSA key under 2048 bits, or does not make a signature that verifies. `message` says which check failed. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ValidationErrorResponse"];
-                };
-            };
-        };
-    };
-    deleteDKIMKey: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description DKIM key deleted */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    listCertificates: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Certificate list */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Certificate"][];
-                    };
-                };
-            };
-        };
-    };
-    createCertificate: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateCertificateRequest"];
-            };
-        };
-        responses: {
-            /** @description Certificate created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Certificate"];
-                    };
-                };
-            };
-            /** @description `bad_request`, before the domain is looked up: "Invalid request body" when the body is not JSON, is not an object (an array, a string, a number or a boolean), or holds a field of the wrong type; "domain_id, cert_pem, and key_pem are required" when the body (or a `null` one) leaves domain_id missing or 0, or cert_pem or key_pem missing or empty. A cert_pem that is not a PEM certificate is refused with `bad_request` too, after the domain is found. */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            422: components["responses"]["ValidationError"];
-        };
-    };
-    getCertificate: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Certificate details with PEM data */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["CertificateDetail"];
-                    };
-                };
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    deleteCertificate: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Certificate deleted */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    listBans: {
-        parameters: {
-            query?: {
-                protocol?: "smtp" | "imap" | "pop3" | "all";
-                ip?: string;
-                active?: boolean;
-                limit?: number;
-                offset?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Ban list */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Ban"][];
-                        pagination?: components["schemas"]["Pagination"];
-                    };
-                };
-            };
-            422: components["responses"]["ValidationError"];
-        };
-    };
-    createBan: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateBanRequest"];
-            };
-        };
-        responses: {
-            /** @description Ban created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Ban"];
-                    };
-                };
-            };
-            /** @description Request body failed validation */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ValidationErrorResponse"];
-                };
-            };
-        };
-    };
-    deleteBan: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Ban deleted */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    unbanIP: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description IP address to unban
-                 * @example 192.0.2.10
-                 */
-                ip: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description IP unbanned */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    getDeliveryLogs: {
-        parameters: {
-            query?: {
-                status?: "pending" | "delivering" | "deferred" | "delivered" | "bounced" | "expired";
-                sender?: string;
-                recipient?: string;
-                domain?: string;
-                since?: string;
-                until?: string;
-                limit?: number;
-                offset?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Delivery log entries */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["OutboundQueue"][];
-                        pagination?: components["schemas"]["Pagination"];
-                    };
-                };
-            };
-        };
-    };
-    listAuditEntries: {
-        parameters: {
-            query?: {
-                actor_kind?: "account" | "system" | "anonymous";
-                /** @description The account (mailbox) id */
-                actor_id?: number;
-                /** @description Actor name (an address) contains this, in any case */
-                actor?: string;
-                /** @description Exact action, e.g. `auth.sign_in` or `admin.change` */
-                action?: string;
-                outcome?: "success" | "denied" | "failed" | "error";
-                /** @description Entries at or after this time (RFC 3339) */
-                since?: string;
-                /** @description Entries at or before this time (RFC 3339) */
-                until?: string;
-                /** @description Entries with a lower seq than this (the previous page's cursor) */
-                before_seq?: number;
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Audit entries */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["AuditEntry"][];
-                        pagination: components["schemas"]["Pagination"];
-                    };
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            /** @description Not an admin, or the session lacks audit:read */
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -8800,34 +15469,92 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            422: components["responses"]["ValidationError"];
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
-    verifyAuditLog: {
+    retryQueueEntry: {
         parameters: {
-            query?: {
-                /** @description The anchored entry as `<seq>:<hash>`, its seq and its hash in 64 hex digits */
-                anchor?: string;
-            };
+            query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: number;
+            };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description What the check found */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["AuditVerifyResult"];
-                    };
+                    "application/json": components["schemas"]["Data-QueueAction"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
-            /** @description Not an admin, or the session lacks audit:read */
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -8836,10 +15563,54 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            422: components["responses"]["ValidationError"];
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
-    apiRoot: {
+    listRoles: {
         parameters: {
             query?: never;
             header?: never;
@@ -8848,29 +15619,63 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description API metadata */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: {
-                            /** @example restmail */
-                            name?: string;
-                            version?: string;
-                            commit?: string;
-                            build_date?: string;
-                            links?: {
-                                [key: string]: string;
-                            };
-                        };
-                    };
+                    "application/json": components["schemas"]["Data-roleResponseList"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    swaggerUI: {
+    getDashboardStats: {
         parameters: {
             query?: never;
             header?: never;
@@ -8879,18 +15684,150 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description HTML Swagger UI page */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/html": string;
+                    "application/json": components["schemas"]["Data-DashboardStats"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    openapiSpec: {
+    probeServices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["probeServicesRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-TestProbeResults"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    resetTestData: {
         parameters: {
             query?: never;
             header?: never;
@@ -8899,18 +15836,63 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The raw OpenAPI YAML document */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/yaml": string;
+                    "application/json": components["schemas"]["Data-TestDataStatus"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    prometheusMetrics: {
+    seedTestData: {
         parameters: {
             query?: never;
             header?: never;
@@ -8919,22 +15901,317 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Metrics in Prometheus text exposition format */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/plain": string;
+                    "application/json": components["schemas"]["Data-TestDataStatus"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    mozillaAutoconfig: {
+    sendTestEmail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["sendTestEmailRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-TestEmailSent"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    snapshotTestData: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-TestSnapshot"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    restoreTestSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestoreTestSnapshot"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-TestDataStatus"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    verifyDelivery: {
         parameters: {
             query: {
-                /** @example admin@restmail.test */
-                emailaddress: string;
+                to: string;
+                subject?: string;
+                message_id?: string;
+                timeout?: string;
             };
             header?: never;
             path?: never;
@@ -8942,55 +16219,681 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Autoconfig XML document */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/xml": string;
+                    "application/json": components["schemas"]["Data-TestDelivery"];
                 };
             };
-            /** @description Domain not found */
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listTlsReports: {
+        parameters: {
+            query?: {
+                domain_id?: number;
+                limit?: number;
+                offset?: number;
+                policy_type?: "sts" | "tlsa" | "no-policy";
+                reporting_org?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-TLSReport"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session or grants check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getAttachment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getTwoFactorStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-twoFactorStatusResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    confirmTwoFactor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["confirmRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: too many requests to the shared authentication throttle */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
-    mozillaAutoconfigWellKnown: {
+    disableTwoFactor: {
         parameters: {
-            query: {
-                /** @example admin@restmail.test */
-                emailaddress: string;
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["disableRequest"];
             };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: too many requests to the shared authentication throttle */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    enrollTwoFactor: {
+        parameters: {
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Autoconfig XML document */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/xml": string;
+                    "application/json": components["schemas"]["Data-enrollResponse"];
                 };
             };
-            /** @description Domain not found */
-            404: {
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description rate_limited: too many requests to the shared authentication throttle */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
         };
     };
-    microsoftAutodiscover: {
+    login: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["loginRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    /** @description For a browser: restmail_access and restmail_refresh (httpOnly) and restmail_csrf, set or, on logout, expired */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-loginResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: too many requests to the shared authentication throttle */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    logout: {
         parameters: {
             query?: never;
             header?: never;
@@ -8999,20 +16902,2233 @@ export interface operations {
         };
         requestBody?: {
             content: {
-                /**
-                 * @example <?xml version="1.0" encoding="utf-8"?>
-                 *     <Autodiscover xmlns="http://schemas.microsoft.com/exchange/autodiscover/outlook/requestschema/2006">
-                 *       <Request>
-                 *         <EMailAddress>eve@restmail.test</EMailAddress>
-                 *         <AcceptableResponseSchema>http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a</AcceptableResponseSchema>
-                 *       </Request>
-                 *     </Autodiscover>
-                 */
+                "application/json": components["schemas"]["refreshRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    /** @description For a browser: restmail_access and restmail_refresh (httpOnly) and restmail_csrf, set or, on logout, expired */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    ownerChallenge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-OwnerChallenge"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description rate_limited: too many requests to the owner endpoints' throttle */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    ownerStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ownerStatusRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-ServerStatus"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: too many requests to the owner endpoints' throttle */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    ownerToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ownerTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-OwnerToken"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: too many requests to the owner endpoints' throttle */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    changeOwnPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["changePasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-passwordChanged"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized: no token, a bad one, or a session that has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: too many requests to the shared authentication throttle */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    protocolSignIn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["protocolSignInRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-ProtocolSignedIn"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    recoverAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["recoverRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    /** @description For a browser: restmail_access and restmail_refresh (httpOnly) and restmail_csrf, set or, on logout, expired */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-loginResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    refreshToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["refreshRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    /** @description For a browser: restmail_access and restmail_refresh (httpOnly) and restmail_csrf, set or, on logout, expired */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-loginResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: too many requests to the shared authentication throttle */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    resetAdmin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["resetRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    /** @description For a browser: restmail_access and restmail_refresh (httpOnly) and restmail_csrf, set or, on logout, expired */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-loginResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: too many requests to the shared authentication throttle */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deliverMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["deliverMessageBody"];
+            };
+        };
+        responses: {
+            /** @description Quarantined or discarded by the inbound pipeline */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-DeliveryProcessed"];
+                };
+            };
+            /** @description Delivered; the message made */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-Message"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Unavailable For Legal Reasons */
+            451: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            550: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    saveDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["saveDraftBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-Message"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["updateDraftBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-Message"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    sendDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Discarded by the outbound pipeline */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-SendDiscarded"];
+                };
+            };
+            /** @description Sent; the copy kept in Sent */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-Message"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listScheduledMessages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-ScheduledMessageList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    cancelScheduledMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    sendMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["sendMessageRequest"];
+            };
+        };
+        responses: {
+            /** @description Discarded by the outbound pipeline */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-SendDiscarded"];
+                };
+            };
+            /** @description Sent; the copy kept in Sent */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-Message"];
+                };
+            };
+            /** @description Accepted and scheduled for the time in scheduled_at */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-ScheduledMessage"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-Message"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteMessage: {
+        parameters: {
+            query?: {
+                /** @description true deletes the message for good; anything else moves it to Trash */
+                permanent?: string;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["updateMessageBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-Message"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listAttachments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List-MessageAttachment"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    respondToCalendar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["calendarReplyBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-CalendarReplied"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    forwardMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["forwardBody"];
+            };
+        };
+        responses: {
+            /** @description Discarded by the outbound pipeline */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-SendDiscarded"];
+                };
+            };
+            /** @description Sent; the copy kept in Sent */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-Message"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getRawMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "message/rfc822": string;
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    describeServer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-serverDescription"];
+                };
+            };
+            /** @description rate_limited: too many requests to the owner endpoints' throttle */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    microsoftAutodiscover: {
+        parameters: {
+            query?: {
+                /** @description The address to look up when the body is not Autodiscover XML. */
+                emailaddress?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
                 "application/xml": string;
             };
         };
         responses: {
-            /** @description Autodiscover XML response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9027,23 +19143,11 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    /** @example invalid request */
-                    "text/plain": "invalid request\n" | "email address required\n" | "invalid email address\n";
+                    "text/plain": string;
                 };
             };
-        };
-    };
-    mtaStsPolicyFile: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description MTA-STS policy in text/plain */
-            200: {
+            /** @description Domain not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9051,44 +19155,8 @@ export interface operations {
                     "text/plain": string;
                 };
             };
-            /** @description Domain unknown or no active policy */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    receiveTlsReport: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TLSRPTReport"];
-            };
-        };
-        responses: {
-            /** @description Report stored */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: {
-                            /** @description Number of policy entries persisted */
-                            stored?: number;
-                        };
-                    };
-                };
-            };
-            /** @description Malformed report */
-            400: {
+            /** @description Request Entity Too Large */
+            413: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9096,7 +19164,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Request body failed validation */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -9105,22 +19173,17 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-        };
-    };
-    acmeChallenge: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @example token */
-                token: string;
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Key authorization for the challenge token */
-            200: {
+            /** @description The mail host (GATEWAY_HOSTNAME) is not configured */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9128,927 +19191,48 @@ export interface operations {
                     "text/plain": string;
                 };
             };
-            /** @description Unknown challenge token */
+        };
+    };
+    mozillaAutoconfig: {
+        parameters: {
+            query?: {
+                /** @description Optional (draft-ietf-mailmaint-autoconfig §4.1). Without it, the email domain is the host the request is made to. */
+                emailaddress?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/xml": string;
+                };
+            };
+            /** @description No email domain in the address or the host name */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Domain not found */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
-            };
-        };
-    };
-    respondToCalendar: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Message ID
-                 * @example 1
-                 */
-                id: components["parameters"]["MessageId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    /** @enum {string} */
-                    response: "ACCEPTED" | "DECLINED" | "TENTATIVE";
-                    /**
-                     * Format: email
-                     * @description Sender address for the reply; must belong to the caller
-                     */
-                    from: string;
-                };
-            };
-        };
-        responses: {
-            /** @description Reply sent */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
                 content: {
-                    "application/json": {
-                        data: {
-                            /** @example sent */
-                            status?: string;
-                            /** @example ACCEPTED */
-                            response?: string;
-                        };
-                    };
+                    "text/plain": string;
                 };
             };
-            /** @description Message has no calendar event, or invalid response value */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Caller does not own the message or the from address */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    listCalendarEvents: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Account ID
-                 * @example 1
-                 */
-                id: components["parameters"]["AccountId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Calendar event summaries */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["CalendarEventSummary"][];
-                    };
-                };
-            };
-        };
-    };
-    getDashboardStats: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Dashboard statistics */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["DashboardStats"];
-                    };
-                };
-            };
-        };
-    };
-    listRoles: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Roles */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Role"][];
-                    };
-                };
-            };
-        };
-    };
-    listCapabilities: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Capabilities */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Capability"][];
-                    };
-                };
-            };
-        };
-    };
-    listGrants: {
-        parameters: {
-            query?: {
-                holder_kind?: string;
-                holder_id?: number;
-                /** @description Only the grants at this scope, e.g. `mailbox:chris@example.com` */
-                scope?: string;
-                limit?: number;
-                offset?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Grants */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Grant"][];
-                        pagination: components["schemas"]["Pagination"];
-                    };
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            422: components["responses"]["ValidationError"];
-        };
-    };
-    createGrant: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateGrantRequest"];
-            };
-        };
-        responses: {
-            /** @description Granted */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Grant"];
-                    };
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            /** @description Not an admin holding users:write at `*`; a session without 2FA (two_factor_required); or a role beyond what the caller holds (grant_exceeds_held) */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            409: components["responses"]["Conflict"];
-            422: components["responses"]["ValidationError"];
-        };
-    };
-    deleteGrant: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Removed */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            401: components["responses"]["Unauthorized"];
-            /** @description Not allowed (see createGrant) */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: components["responses"]["NotFound"];
-            /** @description The last superadmin grant (last_superadmin) */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    listMyGrants: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The caller's grants, oldest first */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Grant"][];
-                    };
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            /** @description Not an admin, or an account still in setup */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    activateGrant: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ActivateGrantRequest"];
-            };
-        };
-        responses: {
-            /** @description Switched on */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["GrantEscalation"];
-                    };
-                };
-            };
-            /** @description Not a grant id (invalid_id), or a body that is not JSON */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            /** @description Not an admin; no authenticator (two_factor_required); no code (totp_required); or a wrong one (invalid_totp) */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: components["responses"]["NotFound"];
-            /** @description Active, not eligible (not_eligible); already switched on (already_active); or the grant itself expired (grant_expired) */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            422: components["responses"]["ValidationError"];
-            /** @description Too many tries from this address; the same limit as sign-in */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    deactivateGrant: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Switched off */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["GrantEscalation"];
-                    };
-                };
-            };
-            /** @description Not a grant id (invalid_id), or a body that is not JSON */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            /** @description Not an admin, or an account still in setup */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: components["responses"]["NotFound"];
-            /** @description Not switched on (not_active) */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    makeGrantEligible: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["FreshSecondFactor"];
-            };
-        };
-        responses: {
-            /** @description Now eligible */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["GrantEscalation"];
-                    };
-                };
-            };
-            /** @description Not a grant id (invalid_id), or a body that is not JSON */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            /** @description Not an admin, or the second factor is missing or wrong (see activateGrant) */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: components["responses"]["NotFound"];
-            /** @description Eligible already (already_eligible) */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Too many tries from this address; the same limit as sign-in */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    domainDNSCheck: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description DNS check result */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["DNSCheckResult"];
-                    };
-                };
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    listSuppressions: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Domain ID
-                 * @example 1
-                 */
-                id: components["parameters"]["DomainId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Suppressions, most recently updated first */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Suppression"][];
-                    };
-                };
-            };
-        };
-    };
-    clearSuppression: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Domain ID
-                 * @example 1
-                 */
-                id: components["parameters"]["DomainId"];
-                /**
-                 * @description Suppression ID
-                 * @example 1
-                 */
-                sid: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Suppression cleared */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    getMtaStsPolicy: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description MTA-STS policy */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["MTASTSPolicy"];
-                    };
-                };
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    setMtaStsPolicy: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                /**
-                 * @example {
-                 *       "mode": "testing",
-                 *       "mx_hosts": "mail.example.org",
-                 *       "max_age": 86400,
-                 *       "active": true
-                 *     }
-                 */
-                "application/json": components["schemas"]["SetMTASTSPolicyRequest"];
-            };
-        };
-        responses: {
-            /** @description Policy updated */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["MTASTSPolicy"];
-                    };
-                };
-            };
-            /** @description Policy created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["MTASTSPolicy"];
-                    };
-                };
-            };
-            404: components["responses"]["NotFound"];
-            422: components["responses"]["ValidationError"];
-        };
-    };
-    deleteMtaStsPolicy: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Policy deleted */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    getDomainRelay: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Outbound transport */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /**
-                     * @example {
-                     *       "data": {
-                     *         "domain_id": 1,
-                     *         "transport": "relay",
-                     *         "host": "smtp.example.net",
-                     *         "port": 587,
-                     *         "tls_mode": "starttls",
-                     *         "username": "apikey",
-                     *         "password_set": true
-                     *       }
-                     *     }
-                     */
-                    "application/json": {
-                        data: components["schemas"]["DomainRelay"];
-                    };
-                };
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    setDomainRelay: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Resource ID
-                 * @example 1
-                 */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SetDomainRelayRequest"];
-            };
-        };
-        responses: {
-            /** @description Outbound transport saved */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["DomainRelay"];
-                    };
-                };
-            };
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-            422: components["responses"]["ValidationError"];
-        };
-    };
-    listTlsReports: {
-        parameters: {
-            query?: {
-                domain_id?: number;
-                policy_type?: "sts" | "tlsa" | "no-policy";
-                reporting_org?: string;
-                limit?: number;
-                offset?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description TLS-RPT reports */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["TLSReport"][];
-                        pagination?: components["schemas"]["Pagination"];
-                    };
-                };
-            };
-            /** @description Invalid domain_id */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            422: components["responses"]["ValidationError"];
-        };
-    };
-    getPipelineAnalytics: {
-        parameters: {
-            query?: {
-                /** @description Look-back as a Go duration (e.g. 24h). Ignored when `since` is given. */
-                window?: string;
-                /** @description RFC3339 lower bound; takes precedence over `window`. */
-                since?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Pipeline analytics funnel */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["PipelineAnalyticsResponse"];
-                    };
-                };
-            };
-        };
-    };
-    getMessageTrace: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description Message ID
-                 * @example 1
-                 */
-                id: components["parameters"]["MessageId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Message trace */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["MessageTrace"];
-                    };
-                };
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    sendTestEmail: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    /** Format: email */
-                    from: string;
-                    /** Format: email */
-                    to: string;
-                    subject?: string;
-                    body?: string;
-                };
-            };
-        };
-        responses: {
-            /** @description Test message created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: {
-                            message_id?: number;
-                            msg_id?: string;
-                            from?: string;
-                            to?: string;
-                            subject?: string;
-                        };
-                    };
-                };
-            };
-            /** @description Disabled in production */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            404: components["responses"]["NotFound"];
-            /** @description Request body failed validation */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -10057,17 +19241,88 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The mail host (GATEWAY_HOSTNAME) is not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
         };
     };
-    verifyDelivery: {
+    prometheusMetrics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    restmailCapabilities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-RestmailCapabilities"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    restmailCheckMailbox: {
         parameters: {
             query: {
-                /** @example admin@restmail.test */
-                to: string;
-                subject?: string;
-                message_id?: string;
-                /** @description Go duration, capped at 30s */
-                timeout?: string;
+                address: string;
             };
             header?: never;
             path?: never;
@@ -10075,159 +19330,36 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Verification result (found true/false) */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: {
-                            found?: boolean;
-                        } & {
-                            [key: string]: unknown;
-                        };
-                    };
+                    "application/json": components["schemas"]["Data-RestmailMailboxCheck"];
                 };
             };
-            /** @description Disabled in production */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            404: components["responses"]["NotFound"];
-            422: components["responses"]["ValidationError"];
-        };
-    };
-    probeServices: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": {
-                    services?: ("smtp" | "smtp_submission" | "imap" | "pop3" | "dns" | "db")[];
-                    host?: string;
-                    timeout?: string;
-                };
-            };
-        };
-        responses: {
-            /** @description Per-service probe results */
-            200: {
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: {
-                            [key: string]: {
-                                [key: string]: unknown;
-                            };
-                        };
-                    };
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
-            /** @description Disabled in production */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    resetTestData: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Reset complete */
-            200: {
+            /** @description Internal Server Error */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["StatusResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
-            };
-            /** @description Disabled in production */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
         };
     };
-    seedTestData: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Seed complete */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StatusResponse"];
-                };
-            };
-            /** @description Disabled in production */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    snapshotTestData: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Snapshot payload (restore via /snapshot/restore) */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: {
-                            [key: string]: unknown;
-                        };
-                    };
-                };
-            };
-            /** @description Disabled in production */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    restoreTestSnapshot: {
+    restmailDeliver: {
         parameters: {
             query?: never;
             header?: never;
@@ -10236,22 +19368,20 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    [key: string]: unknown;
-                };
+                "application/json": components["schemas"]["restmailDeliverBody"];
             };
         };
         responses: {
-            /** @description Restore complete */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["StatusResponse"];
+                    "application/json": components["schemas"]["Data-RestmailDelivery"];
                 };
             };
-            /** @description Malformed snapshot data */
+            /** @description Bad Request */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -10260,12 +19390,50 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Disabled in production */
+            /** @description Forbidden */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
         };
     };

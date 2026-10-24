@@ -219,7 +219,7 @@ export async function disableTwoFactor(proof: SecondFactor): Promise<void> {
   });
 }
 
-// TwoFactorBody is an endpoint's request body as openapi.yaml documents it, so
+// TwoFactorBody is an endpoint's request body as the served openapi.json documents it, so
 // the build fails if these fields and the API's drift apart again (#392).
 type TwoFactorBody<P extends '/api/v1/auth/2fa/confirm' | '/api/v1/auth/2fa/disable'> =
   NonNullable<paths[P]['post']['requestBody']>['content']['application/json'];

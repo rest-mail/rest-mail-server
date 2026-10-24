@@ -6,27 +6,12 @@
  */
 import { apiV1 } from './api'
 
-export interface TwoFactorStatus {
-  /** True once a confirmed enrollment gates login. */
-  enabled: boolean
-  /** True when an enrollment exists but has not been confirmed yet. */
-  pending: boolean
-}
+import type { paths } from './api-types'
 
-export interface TwoFactorEnrollment {
-  /** base32 TOTP secret, for manual entry into an authenticator app. */
-  secret: string
-  /** otpauth:// provisioning URI (the QR-code payload). */
-  otpauth_url: string
-  /** One-time recovery codes, returned ONCE at enrollment. */
-  recovery_codes: string[]
-}
-
-/** A TOTP code or a one-time recovery code. */
-export interface SecondFactor {
-  totp_code?: string
-  recovery_code?: string
-}
+export type TwoFactorStatus = paths['/api/v1/auth/2fa']['get']['responses'][200]['content']['application/json']['data']
+export type TwoFactorEnrollment = paths['/api/v1/auth/2fa/enroll']['post']['responses'][200]['content']['application/json']['data']
+export type SecondFactor = NonNullable<paths['/api/v1/auth/2fa/disable']['post']['requestBody']>['content']['application/json']
+type ConfirmBody = NonNullable<paths['/api/v1/auth/2fa/confirm']['post']['requestBody']>['content']['application/json']
 
 export async function getTwoFactorStatus(): Promise<TwoFactorStatus> {
   return unwrap(await apiV1.request('/auth/2fa'), 'load 2FA status')
@@ -43,7 +28,8 @@ export async function enrollTwoFactor(): Promise<TwoFactorEnrollment> {
 
 /** Confirm enrollment by verifying a first code; flips 2FA active. */
 export async function confirmTwoFactor(code: string): Promise<void> {
-  await expectNoContent(await post('/auth/2fa/confirm', { totp_code: code }), 'confirm 2FA')
+  const body: ConfirmBody = { totp_code: code }
+  await expectNoContent(await post('/auth/2fa/confirm', body), 'confirm 2FA')
 }
 
 /** Disable 2FA; requires a current TOTP code or an unused recovery code. */
