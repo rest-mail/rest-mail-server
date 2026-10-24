@@ -33,10 +33,31 @@ func TestRecordsForDomain_IDNUsesALabels(t *testing.T) {
 			if got := names["MX xn--bcher-kva.example"]; got != "mail.xn--bcher-kva.example" {
 				t.Errorf("MX = %q, records %v", got, names)
 			}
-			if got := names["TXT _dmarc.xn--bcher-kva.example"]; got != "v=DMARC1; p=reject; rua=mailto:postmaster@xn--bcher-kva.example" {
+			if got := names["TXT _dmarc.xn--bcher-kva.example"]; got != "v=DMARC1; p=none; rua=mailto:postmaster@xn--bcher-kva.example" {
 				t.Errorf("DMARC = %q, records %v", got, names)
 			}
 		})
+	}
+}
+
+// The DMARC record asks for the domain's own policy, so dns:check reports a published record
+// whose policy differs (#729).
+func TestRecordsForDomain_DMARCPolicy(t *testing.T) {
+	for policy, want := range map[string]string{
+		models.DMARCPolicyNone:       "v=DMARC1; p=none; rua=mailto:postmaster@example.org",
+		models.DMARCPolicyQuarantine: "v=DMARC1; p=quarantine; rua=mailto:postmaster@example.org",
+		models.DMARCPolicyReject:     "v=DMARC1; p=reject; rua=mailto:postmaster@example.org",
+	} {
+		entry := recordsForDomain(models.Domain{Name: "example.org", DMARCPolicy: policy}, "mail.example.org", "", "", dns.ClientPorts{})
+		var got string
+		for _, r := range entry.Records {
+			if r.Type == "TXT" && r.Name == "_dmarc.example.org" {
+				got = r.Value
+			}
+		}
+		if got != want {
+			t.Errorf("policy %s: DMARC = %q, want %q", policy, got, want)
+		}
 	}
 }
 

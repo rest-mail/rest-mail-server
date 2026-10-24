@@ -15,6 +15,7 @@ type TestSnapshotDomain struct {
 	DefaultQuotaBytes int64                 `json:"default_quota_bytes"`
 	DKIMSelector      string                `json:"dkim_selector"`
 	SendingPolicy     string                `json:"sending_policy"`
+	DMARCPolicy       string                `json:"dmarc_policy"`
 	CreatedAt         time.Time             `json:"created_at"`
 	UpdatedAt         time.Time             `json:"updated_at"`
 	Mailboxes         []TestSnapshotMailbox `json:"mailboxes,omitempty"`
@@ -144,6 +145,7 @@ type RestoreSnapshotDomain struct {
 	DefaultQuotaBytes int64                    `json:"default_quota_bytes,omitempty"`
 	DKIMSelector      string                   `json:"dkim_selector,omitempty"`
 	SendingPolicy     string                   `json:"sending_policy,omitempty"`
+	DMARCPolicy       string                   `json:"dmarc_policy,omitempty"`
 	CreatedAt         time.Time                `json:"created_at,omitempty"`
 	UpdatedAt         time.Time                `json:"updated_at,omitempty"`
 	Mailboxes         []RestoreSnapshotMailbox `json:"mailboxes,omitempty"`

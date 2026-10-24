@@ -1,12 +1,14 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/xml"
-	"fmt"
 	"net"
 	"net/http"
 	"strings"
 
+	oapifly "github.com/antimatter-studios/go-oapifly"
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
 )
@@ -69,9 +71,6 @@ func (h *AutoconfigHandler) hostedDomain(name string) bool {
 	return h.db.Where("name = ? AND active = ?", name, true).First(&domain).Error == nil
 }
 
-// MozillaAutoconfig serves Mozilla Thunderbird autoconfig XML.
-// GET /mail/config-v1.1.xml[?emailaddress=user@domain] on autoconfig.<domain>,
-// and GET /.well-known/autoconfig/mail/config-v1.1.xml on <domain>.
 // The ports rest-mail advertises to mail clients. Client access is implicit TLS only —
 // there is no listener on 587, 143 or 110 — and autoconfig is where that has to be
 // stated, because whatever a client reads here is what it saves and keeps using.
@@ -150,33 +149,6 @@ func mozillaClientConfig(domainName, mailHost string) acClientConfig {
 	}
 }
 
-func (h *AutoconfigHandler) MozillaAutoconfig(w http.ResponseWriter, r *http.Request) {
-	domainName, ok := requestDomain(r, r.URL.Query().Get("emailaddress"))
-	if !ok {
-		http.Error(w, "no email domain in the address or the host name", http.StatusBadRequest)
-		return
-	}
-	if h.mailHost == "" {
-		http.Error(w, "mail host not configured", http.StatusServiceUnavailable)
-		return
-	}
-	if !h.hostedDomain(domainName) {
-		http.Error(w, "domain not found", http.StatusNotFound)
-		return
-	}
-
-	config := mozillaClientConfig(domainName, h.mailHost)
-
-	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprint(w, xml.Header)
-	enc := xml.NewEncoder(w)
-	enc.Indent("", "  ")
-	_ = enc.Encode(config)
-}
-
-// MicrosoftAutodiscover serves Microsoft Outlook Autodiscover XML.
-// POST /autodiscover/autodiscover.xml
 type adProtocol struct {
 	Type       string `xml:"Type"`
 	Server     string `xml:"Server"`
@@ -227,56 +199,131 @@ func autodiscoverResponse(mailHost, email string) adRoot {
 	}
 }
 
-func (h *AutoconfigHandler) MicrosoftAutodiscover(w http.ResponseWriter, r *http.Request) {
-	// Parse the request to get the email address
-	type AutodiscoverRequest struct {
+// AutodiscoverMaxBody caps an Autodiscover request, a few hundred bytes of XML, so the public
+// route cannot be made to read an unbounded body.
+const AutodiscoverMaxBody = 64 << 10
+
+// AutoconfigRouteChecks are what the discovery routes are registered behind: the body cap of
+// the Autodiscover POST.
+type AutoconfigRouteChecks struct {
+	AutodiscoverBody endpoint.Middleware
+}
+
+// Register mounts the documents a mail client fetches to find the server (#631): Mozilla's
+// autoconfig at autoconfig.<domain> and at the domain's .well-known address, and Outlook's
+// Autodiscover. None needs a credential. Their refusals are plain text, as they always were.
+func (h *AutoconfigHandler) Register(rs endpoint.Routes, checks AutoconfigRouteChecks) {
+	tags := []string{"System"}
+	text := func(status int, description string) oapifly.EndpointResponse {
+		return oapifly.EndpointResponse{Status: status, Description: description, Type: oapifly.TypeOf[string](), MediaType: "text/plain"}
+	}
+	unconfigured := text(http.StatusServiceUnavailable, "The mail host (GATEWAY_HOSTNAME) is not configured")
+	autoconfig := []oapifly.EndpointResponse{
+		text(http.StatusBadRequest, "No email domain in the address or the host name"),
+		text(http.StatusNotFound, "Domain not found"),
+		unconfigured,
+	}
+	const document = "Autoconfig XML document. The incoming and outgoing servers are the mail host " +
+		"(GATEWAY_HOSTNAME), on IMAP 993 and SMTP 465 with implicit TLS."
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/mail/config-v1.1.xml",
+		OperationID: "mozillaAutoconfig", Summary: "Mozilla/Thunderbird autoconfiguration", Tags: tags,
+		Description: document, MediaType: "application/xml", Security: oapifly.Public, Responses: autoconfig}, h.mozillaAutoconfig)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/.well-known/autoconfig/mail/config-v1.1.xml",
+		OperationID: "mozillaAutoconfigWellKnown", Summary: "Mozilla/Thunderbird autoconfiguration (well-known path)", Tags: tags,
+		Description: document, MediaType: "application/xml", Security: oapifly.Public, Responses: autoconfig}, h.mozillaAutoconfig)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/autodiscover/autodiscover.xml",
+		OperationID: "microsoftAutodiscover", Summary: "Microsoft Outlook autodiscover", Tags: tags,
+		MediaType: "application/xml", Security: oapifly.Public,
+		Responses: []oapifly.EndpointResponse{
+			text(http.StatusBadRequest, "No usable email address, refused before any domain is looked up. A body that is "+
+				"not Autodiscover XML falls back to the emailaddress query parameter: with neither, \"invalid request\". "+
+				"An Autodiscover request without an EMailAddress gets \"email address required\", and an address "+
+				"without an @ gets \"invalid email address\". Plain text, ending in a newline."),
+			text(http.StatusNotFound, "Domain not found"),
+			unconfigured,
+		},
+		Middleware: []endpoint.Middleware{checks.AutodiscoverBody}}, h.microsoftAutodiscover)
+}
+
+// autoconfigRequest is a Mozilla autoconfig lookup. emailaddress is optional
+// (draft-ietf-mailmaint-autoconfig §4.1): without it, the email domain is the host the
+// request was made to.
+type autoconfigRequest struct {
+	EmailAddress string `query:"emailaddress" description:"Optional (draft-ietf-mailmaint-autoconfig §4.1). Without it, the email domain is the host the request is made to."`
+}
+
+// mozillaAutoconfig answers Thunderbird's autoconfig document for a hosted domain, at
+// /mail/config-v1.1.xml on autoconfig.<domain> and at /.well-known/autoconfig/mail/config-v1.1.xml
+// on the domain itself.
+func (h *AutoconfigHandler) mozillaAutoconfig(r *http.Request, in autoconfigRequest) (endpoint.Document, error) {
+	domainName, ok := requestDomain(r, in.EmailAddress)
+	if !ok {
+		return endpoint.Document{}, endpoint.RefuseText(http.StatusBadRequest, "no email domain in the address or the host name")
+	}
+	if h.mailHost == "" {
+		return endpoint.Document{}, endpoint.RefuseText(http.StatusServiceUnavailable, "mail host not configured")
+	}
+	if !h.hostedDomain(domainName) {
+		return endpoint.Document{}, endpoint.RefuseText(http.StatusNotFound, "domain not found")
+	}
+	return xmlDocument(mozillaClientConfig(domainName, h.mailHost)), nil
+}
+
+// autodiscoverRequest is an Outlook Autodiscover request: its XML names the address, and with
+// no body, or one that is not Autodiscover XML, the emailaddress query parameter does.
+type autodiscoverRequest struct {
+	EmailAddress string  `query:"emailaddress" description:"The address to look up when the body is not Autodiscover XML."`
+	Body         *string `body:"application/xml"`
+}
+
+// microsoftAutodiscover answers Outlook's Autodiscover document for an address at a hosted
+// domain.
+func (h *AutoconfigHandler) microsoftAutodiscover(r *http.Request, in autodiscoverRequest) (endpoint.Document, error) {
+	var adReq struct {
 		XMLName xml.Name `xml:"Autodiscover"`
 		Request struct {
 			EMailAddress string `xml:"EMailAddress"`
 		} `xml:"Request"`
 	}
-
-	var adReq AutodiscoverRequest
-	if err := xml.NewDecoder(r.Body).Decode(&adReq); err != nil {
-		// Also accept query param fallback
-		email := r.URL.Query().Get("emailaddress")
-		if email == "" {
-			http.Error(w, "invalid request", http.StatusBadRequest)
-			return
+	var body []byte
+	if in.Body != nil {
+		body = []byte(*in.Body)
+	}
+	if err := xml.Unmarshal(body, &adReq); err != nil {
+		if in.EmailAddress == "" {
+			return endpoint.Document{}, endpoint.RefuseText(http.StatusBadRequest, "invalid request")
 		}
-		adReq.Request.EMailAddress = email
+		adReq.Request.EMailAddress = in.EmailAddress
 	}
 
 	email := adReq.Request.EMailAddress
 	if email == "" {
-		http.Error(w, "email address required", http.StatusBadRequest)
-		return
+		return endpoint.Document{}, endpoint.RefuseText(http.StatusBadRequest, "email address required")
 	}
 	domainName, ok := requestDomain(r, email)
 	if !ok {
-		http.Error(w, "invalid email address", http.StatusBadRequest)
-		return
+		return endpoint.Document{}, endpoint.RefuseText(http.StatusBadRequest, "invalid email address")
 	}
 	if h.mailHost == "" {
-		http.Error(w, "mail host not configured", http.StatusServiceUnavailable)
-		return
+		return endpoint.Document{}, endpoint.RefuseText(http.StatusServiceUnavailable, "mail host not configured")
 	}
 	if !h.hostedDomain(domainName) {
-		http.Error(w, "domain not found", http.StatusNotFound)
-		return
+		return endpoint.Document{}, endpoint.RefuseText(http.StatusNotFound, "domain not found")
 	}
 
-	// Build the Autodiscover response through encoding/xml so the
-	// caller-controlled email/local-part is XML-escaped rather than reflected into
-	// the response as markup (element injection). The namespaces are carried as
-	// explicit xmlns attributes to reproduce the exact two-namespace document
-	// shape Outlook expects. Mirrors the safe Mozilla path above.
-	resp := autodiscoverResponse(h.mailHost, email)
+	// Built through encoding/xml so the caller-controlled address is XML-escaped rather
+	// than reflected into the response as markup (element injection). The namespaces are
+	// carried as explicit xmlns attributes to reproduce the exact two-namespace document
+	// shape Outlook expects.
+	return xmlDocument(autodiscoverResponse(h.mailHost, email)), nil
+}
 
-	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprint(w, xml.Header)
-	enc := xml.NewEncoder(w)
+// xmlDocument is v written as an indented XML document, with its declaration.
+func xmlDocument(v any) endpoint.Document {
+	var body bytes.Buffer
+	body.WriteString(xml.Header)
+	enc := xml.NewEncoder(&body)
 	enc.Indent("", "  ")
-	_ = enc.Encode(resp)
+	_ = enc.Encode(v)
+	return endpoint.Document{ContentType: "application/xml; charset=utf-8", Body: body.Bytes()}
 }

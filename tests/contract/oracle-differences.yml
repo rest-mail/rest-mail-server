@@ -49,7 +49,7 @@
 # Domains (#645)
 
 - operation: "*"
-  difference: "response 2* application/json.properties.data*required: openapi.yaml [\"active\",\"created_at\",\"default_quota_bytes\",\"id\",\"name\",\"sending_policy\",\"server_type\",\"updated_at\"], generated [\"active\",\"created_at\",\"default_quota_bytes\",\"dkim_selector\",\"id\",\"name\",\"sending_policy\",\"server_type\",\"updated_at\"]"
+  difference: "response 2* application/json.properties.data*required: openapi.yaml [\"active\",\"created_at\",\"default_quota_bytes\",\"dmarc_policy\",\"id\",\"name\",\"sending_policy\",\"server_type\",\"updated_at\"], generated [\"active\",\"created_at\",\"default_quota_bytes\",\"dkim_selector\",\"dmarc_policy\",\"id\",\"name\",\"sending_policy\",\"server_type\",\"updated_at\"]"
   reason: >-
     A domain always carries dkim_selector, empty while it has no key, so it is required.
     openapi.yaml marks it optional.
@@ -74,6 +74,11 @@
   reason: >-
     go-oapifly does not describe defaults yet. The handler's default for a server_type left
     out, empty or null is traditional.
+- operation: createDomain
+  difference: "request body application/json.properties.dmarc_policy.default: openapi.yaml \"none\", generated absent"
+  reason: >-
+    go-oapifly does not describe defaults yet. The handler's default for a dmarc_policy left
+    out or null is none (#729).
 - operation: updateDomain
   difference: "request body application/json.properties.*.type: openapi.yaml *, generated [*\"null\"*]"
   reason: Null leaves the field unchanged, as the handler always did.
@@ -1279,7 +1284,7 @@
   difference: "request body application/json.properties.key_pem.minLength: openapi.yaml absent, generated 1"
   reason: Binding enforces the existing required positive domain ID and nonempty PEM fields; broken field rules now answer 422 before lookup.
 - operation: createCertificate
-  difference: "response 201 application/json.properties.data.properties.domain: openapi.yaml absent, generated {\"additionalProperties\":false,\"properties\":{\"active\":{\"type\":\"boolean\"},\"created_at\":{\"format\":\"date-time\",\"type\":\"string\"},\"default_quota_bytes\":{\"format\":\"int64\",\"type\":\"integer\"},\"dkim_selector\":{\"type\":\"string\"},\"id\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"sending_policy\":{\"enum\":[\"\",\"bulk\",\"transactional\"],\"type\":\"string\"},\"server_type\":{\"enum\":[\"restmail\",\"traditional\"],\"type\":\"string\"},\"updated_at\":{\"format\":\"date-time\",\"type\":\"string\"}},\"required\":[\"active\",\"created_at\",\"default_quota_bytes\",\"dkim_selector\",\"id\",\"name\",\"sending_policy\",\"server_type\",\"updated_at\"],\"type\":\"object\"}"
+  difference: "response 201 application/json.properties.data.properties.domain: openapi.yaml absent, generated {\"additionalProperties\":false,\"properties\":{\"active\":{\"type\":\"boolean\"},\"created_at\":{\"format\":\"date-time\",\"type\":\"string\"},\"default_quota_bytes\":{\"format\":\"int64\",\"type\":\"integer\"},\"dkim_selector\":{\"type\":\"string\"},\"dmarc_policy\":{\"enum\":[\"none\",\"quarantine\",\"reject\"],\"type\":\"string\"},\"id\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"sending_policy\":{\"enum\":[\"\",\"bulk\",\"transactional\"],\"type\":\"string\"},\"server_type\":{\"enum\":[\"restmail\",\"traditional\"],\"type\":\"string\"},\"updated_at\":{\"format\":\"date-time\",\"type\":\"string\"}},\"required\":[\"active\",\"created_at\",\"default_quota_bytes\",\"dkim_selector\",\"dmarc_policy\",\"id\",\"name\",\"sending_policy\",\"server_type\",\"updated_at\"],\"type\":\"object\"}"
   reason: Certificate list and upload already return their preloaded public domain association. The API now owns this type, with no certificate or domain private keys; the oracle omits the association.
 - operation: createCertificate
   difference: "response 404: generated only"
@@ -1288,7 +1293,7 @@
   difference: "response 200 application/json.properties.data.allOf: openapi.yaml [{\"properties\":{\"auto_renew\":{\"type\":\"boolean\"},\"created_at\":{\"format\":\"date-time\",\"type\":\"string\"},\"domain_id\":{\"type\":\"integer\"},\"id\":{\"type\":\"integer\"},\"issuer\":{\"type\":\"string\"},\"not_after\":{\"format\":\"date-time\",\"type\":\"string\"},\"not_before\":{\"format\":\"date-time\",\"type\":\"string\"},\"updated_at\":{\"format\":\"date-time\",\"type\":\"string\"}},\"required\":[\"auto_renew\",\"created_at\",\"domain_id\",\"id\",\"issuer\",\"not_after\",\"not_before\",\"updated_at\"],\"type\":\"object\"},{\"properties\":{\"cert_pem\":{\"type\":\"string\"}},\"required\":[\"cert_pem\"],\"type\":\"object\"}], generated absent"
   reason: The API details type describes the existing flat certificate response, including its public PEM and preloaded public domain association. The oracle uses allOf and omits the domain; timestamps retain their existing RFC3339 second precision.
 - operation: getCertificate
-  difference: "response 200 application/json.properties.data.properties: openapi.yaml absent, generated {\"auto_renew\":{\"type\":\"boolean\"},\"cert_pem\":{\"type\":\"string\"},\"created_at\":{\"format\":\"date-time\",\"type\":\"string\"},\"domain\":{\"additionalProperties\":false,\"properties\":{\"active\":{\"type\":\"boolean\"},\"created_at\":{\"format\":\"date-time\",\"type\":\"string\"},\"default_quota_bytes\":{\"format\":\"int64\",\"type\":\"integer\"},\"dkim_selector\":{\"type\":\"string\"},\"id\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"sending_policy\":{\"enum\":[\"\",\"bulk\",\"transactional\"],\"type\":\"string\"},\"server_type\":{\"enum\":[\"restmail\",\"traditional\"],\"type\":\"string\"},\"updated_at\":{\"format\":\"date-time\",\"type\":\"string\"}},\"required\":[\"active\",\"created_at\",\"default_quota_bytes\",\"dkim_selector\",\"id\",\"name\",\"sending_policy\",\"server_type\",\"updated_at\"],\"type\":\"object\"},\"domain_id\":{\"type\":\"integer\"},\"id\":{\"type\":\"integer\"},\"issuer\":{\"type\":\"string\"},\"not_after\":{\"format\":\"date-time\",\"type\":\"string\"},\"not_before\":{\"format\":\"date-time\",\"type\":\"string\"},\"updated_at\":{\"format\":\"date-time\",\"type\":\"string\"}}"
+  difference: "response 200 application/json.properties.data.properties: openapi.yaml absent, generated {\"auto_renew\":{\"type\":\"boolean\"},\"cert_pem\":{\"type\":\"string\"},\"created_at\":{\"format\":\"date-time\",\"type\":\"string\"},\"domain\":{\"additionalProperties\":false,\"properties\":{\"active\":{\"type\":\"boolean\"},\"created_at\":{\"format\":\"date-time\",\"type\":\"string\"},\"default_quota_bytes\":{\"format\":\"int64\",\"type\":\"integer\"},\"dkim_selector\":{\"type\":\"string\"},\"dmarc_policy\":{\"enum\":[\"none\",\"quarantine\",\"reject\"],\"type\":\"string\"},\"id\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"sending_policy\":{\"enum\":[\"\",\"bulk\",\"transactional\"],\"type\":\"string\"},\"server_type\":{\"enum\":[\"restmail\",\"traditional\"],\"type\":\"string\"},\"updated_at\":{\"format\":\"date-time\",\"type\":\"string\"}},\"required\":[\"active\",\"created_at\",\"default_quota_bytes\",\"dkim_selector\",\"dmarc_policy\",\"id\",\"name\",\"sending_policy\",\"server_type\",\"updated_at\"],\"type\":\"object\"},\"domain_id\":{\"type\":\"integer\"},\"id\":{\"type\":\"integer\"},\"issuer\":{\"type\":\"string\"},\"not_after\":{\"format\":\"date-time\",\"type\":\"string\"},\"not_before\":{\"format\":\"date-time\",\"type\":\"string\"},\"updated_at\":{\"format\":\"date-time\",\"type\":\"string\"}}"
   reason: The API details type describes the existing flat certificate response, including its public PEM and preloaded public domain association. The oracle uses allOf and omits the domain; timestamps retain their existing RFC3339 second precision.
 - operation: getCertificate
   difference: "response 200 application/json.properties.data.required: openapi.yaml absent, generated [\"auto_renew\",\"cert_pem\",\"created_at\",\"domain_id\",\"id\",\"issuer\",\"not_after\",\"not_before\",\"updated_at\"]"
@@ -1306,7 +1311,7 @@
   difference: "parameter query offset: generated only"
   reason: The existing certificate list reads limit and offset, with the standard defaults and cap; the oracle omits these parameters.
 - operation: listCertificates
-  difference: "response 200 application/json.properties.data.items.properties.domain: openapi.yaml absent, generated {\"additionalProperties\":false,\"properties\":{\"active\":{\"type\":\"boolean\"},\"created_at\":{\"format\":\"date-time\",\"type\":\"string\"},\"default_quota_bytes\":{\"format\":\"int64\",\"type\":\"integer\"},\"dkim_selector\":{\"type\":\"string\"},\"id\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"sending_policy\":{\"enum\":[\"\",\"bulk\",\"transactional\"],\"type\":\"string\"},\"server_type\":{\"enum\":[\"restmail\",\"traditional\"],\"type\":\"string\"},\"updated_at\":{\"format\":\"date-time\",\"type\":\"string\"}},\"required\":[\"active\",\"created_at\",\"default_quota_bytes\",\"dkim_selector\",\"id\",\"name\",\"sending_policy\",\"server_type\",\"updated_at\"],\"type\":\"object\"}"
+  difference: "response 200 application/json.properties.data.items.properties.domain: openapi.yaml absent, generated {\"additionalProperties\":false,\"properties\":{\"active\":{\"type\":\"boolean\"},\"created_at\":{\"format\":\"date-time\",\"type\":\"string\"},\"default_quota_bytes\":{\"format\":\"int64\",\"type\":\"integer\"},\"dkim_selector\":{\"type\":\"string\"},\"dmarc_policy\":{\"enum\":[\"none\",\"quarantine\",\"reject\"],\"type\":\"string\"},\"id\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"sending_policy\":{\"enum\":[\"\",\"bulk\",\"transactional\"],\"type\":\"string\"},\"server_type\":{\"enum\":[\"restmail\",\"traditional\"],\"type\":\"string\"},\"updated_at\":{\"format\":\"date-time\",\"type\":\"string\"}},\"required\":[\"active\",\"created_at\",\"default_quota_bytes\",\"dkim_selector\",\"dmarc_policy\",\"id\",\"name\",\"sending_policy\",\"server_type\",\"updated_at\"],\"type\":\"object\"}"
   reason: Certificate list and upload already return their preloaded public domain association. The API now owns this type, with no certificate or domain private keys; the oracle omits the association.
 - operation: listCertificates
   difference: "response 200 application/json.properties.pagination: openapi.yaml absent, generated {\"additionalProperties\":false,\"properties\":{\"cursor\":{\"type\":\"string\"},\"has_more\":{\"type\":\"boolean\"},\"total\":{\"format\":\"int64\",\"type\":\"integer\"}},\"required\":[\"has_more\"],\"type\":[\"null\",\"object\"]}"
@@ -3114,3 +3119,23 @@
   reason: >-
     A browser's session is set, rotated and ended with cookies: restmail_access and
     restmail_refresh (httpOnly) and restmail_csrf. The oracle describes them in prose only.
+
+# Mail-client discovery: autoconfig and Autodiscover (#631)
+
+- operation: microsoftAutodiscover
+  difference: "response 400 text/plain.enum: openapi.yaml [\"email address required\\n\",\"invalid email address\\n\",\"invalid request\\n\"], generated absent"
+  reason: >-
+    The three refusals are plain text, as http.Error writes them; go-oapifly cannot give a
+    plain-text answer's schema an enum. The handler writes exactly those three.
+- operation: mozillaAutoconfig
+  difference: "parameter query emailaddress schema.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    The handler reads the domain after the last @ and checks that, not the address as an email
+    address, so an internationalised address (EAI) is looked up too; one with no @ is the
+    400 "no email domain in the address or the host name".
+- operation: mozillaAutoconfigWellKnown
+  difference: "parameter query emailaddress schema.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    The handler reads the domain after the last @ and checks that, not the address as an email
+    address, so an internationalised address (EAI) is looked up too; one with no @ is the
+    400 "no email domain in the address or the host name".
