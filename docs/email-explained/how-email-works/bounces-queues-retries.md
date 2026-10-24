@@ -17,7 +17,7 @@ That patience is one of email's great strengths. It also needs rules, because a
 server that gives up too soon loses mail, one that never gives up fills its
 disk, and one that sends bounces carelessly floods innocent people with them.
 
-![What happens to a queued message](../diagrams/queue.png)
+![What happens to a queued message](../diagrams/queue.svg)
 
 *The diagram's source is [`queue.lifecycle.json`](../diagrams/queue.lifecycle.json).*
 

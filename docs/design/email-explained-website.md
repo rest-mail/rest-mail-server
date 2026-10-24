@@ -46,8 +46,13 @@ one set of files becomes both, without the two ever drifting apart.
   checked daily (`scheduled.yml`); a broken one opens an issue that closes
   itself once it is fixed. Archify is fetched at the commit
   `scripts/email-explained/package.json` pins, the version the diagrams were
-  made with. Still to come: that each committed static image matches what its
-  source renders.
+  made with. Each static image records the hash of the source it was exported
+  from, and CI fails when they differ.
+- **The static image is an SVG** (2026-10-24, owner). Archify's own export:
+  sharp at any size, the typeface inside it (only the subsets its text uses),
+  the reader's light or dark theme, cropped to the drawing.
+  `scripts/email-explained/svg.mjs` makes them all in one headless Chrome. The
+  26 come to 3.3 MB, against 3.5 MB as PNGs.
 - **The website publishes the API reference too** (2026-10-23, owner). Once
   the server serves its generated `openapi.json` (#623), the same pipeline
   turns it into reference pages on rest-mail.com, so the reference is as
@@ -87,7 +92,7 @@ Markdown, and the build recognises a few conventions:
 - **Front matter** becomes the page's title, description, part and order.
 - **`##` headings** become `<Section>`s, so each design draws a chapter in its
   own style. Their anchors are the section ids other pages can refer to.
-- **A diagram image** that points at `diagrams/<name>.png`, next to its
+- **A diagram image** that points at `diagrams/<name>.svg`, next to its
   `<name>.<type>.json` source, becomes the interactive diagram on the website.
   On GitHub it stays the static image.
 - **Links between chapters** become site routes. **Links to code**
@@ -112,7 +117,7 @@ can never quote a paragraph that has gone.
 
    | `?embed=` | Result | Why |
    |---|---|---|
-   | `image` | Works, static | The PNG GitHub shows. Nothing to explore. |
+   | `image` | Works, static | The static image GitHub shows (a PNG then, an SVG since). Nothing to explore. |
    | `iframe` | Blocked, then works | The site sends `frame-ancestors 'none'` on every response, and refuses Archify's `data:` typefaces. Served with a policy of their own (`frame-ancestors 'self'`, `font-src data:`), diagrams load, and the page sizes the frame to fit because it is the same origin. |
    | `iframe-embed` | Works | The same, in Archify's `?embed=1` mode: only the diagram, without the title, toolbar, cards and node index that repeat the chapter. |
    | `srcdoc` | Works, with a fixed height | Archify's own advice. An opaque sandboxed frame cannot be measured, so it scrolls inside a fixed box. |
@@ -144,16 +149,12 @@ can never quote a paragraph that has gone.
    editorial and others). Does a diagram follow the visitor's chosen design,
    or keep one look everywhere? To be decided by seeing it, in the same
    prototype (owner, 2026-10-23).
-3. **The static fallback for GitHub.** Today a PNG, cropped from a screenshot.
-   Archify can export SVG that follows the reader's light or dark mode, which
-   is sharper and smaller. That export needs automating (a headless browser
-   driving the export, or a renderer option).
-4. **Where the bundle is published:** a GitHub release asset, an OCI artifact
+3. **Where the bundle is published:** a GitHub release asset, an OCI artifact
    next to the images, or a branch the website reads.
-5. **What the website adds of its own:** navigation between chapters, a
+4. **What the website adds of its own:** navigation between chapters, a
    contents page, search, "last updated from commit …" on every page. These
    live in the website repository and are not part of the bundle.
-6. **Other repositories' documentation.** The guide may later split, with
+5. **Other repositories' documentation.** The guide may later split, with
    protocol chapters moving to their libraries' repositories. The bundle format
    should not assume one repository, so the website can merge several bundles
    later.

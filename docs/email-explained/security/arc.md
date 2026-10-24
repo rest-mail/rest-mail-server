@@ -19,7 +19,7 @@ it a way to write that down, sign it, and pass it on
 ([RFC 8617](https://www.rfc-editor.org/rfc/rfc8617), 2019, published as
 Experimental).
 
-![A mailing list seals what it saw; the receiver decides whether to believe it](../diagrams/arc.png)
+![A mailing list seals what it saw; the receiver decides whether to believe it](../diagrams/arc.svg)
 
 *The diagram's source is [`arc.sequence.json`](../diagrams/arc.sequence.json).*
 

@@ -13,7 +13,7 @@ much of what people call spam is mail they once agreed to and can no longer
 stop. In 2024 the largest mailbox providers turned years of advice into rules,
 and began enforcing them.
 
-![One-click unsubscribe, step by step](../diagrams/unsubscribe.png)
+![One-click unsubscribe, step by step](../diagrams/unsubscribe.svg)
 
 *The diagram's source is [`unsubscribe.sequence.json`](../diagrams/unsubscribe.sequence.json).*
 

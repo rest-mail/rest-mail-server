@@ -16,7 +16,7 @@ checks the connecting address against it
 ([RFC 7208](https://www.rfc-editor.org/rfc/rfc7208), 2014, after the
 experimental [RFC 4408](https://www.rfc-editor.org/rfc/rfc4408) of 2006).
 
-![How a receiver evaluates SPF](../diagrams/spf.png)
+![How a receiver evaluates SPF](../diagrams/spf.svg)
 
 *The diagram's source is [`spf.workflow.json`](../diagrams/spf.workflow.json).*
 

@@ -18,7 +18,7 @@ That is good news for anyone running a mail server. Every log line, every
 bounce and every error message is a piece of this conversation. Once you can
 read it, you can tell where a message stopped, and why.
 
-![The SMTP conversation between two servers](../diagrams/smtp.png)
+![The SMTP conversation between two servers](../diagrams/smtp.svg)
 
 *The diagram's source is [`smtp.sequence.json`](../diagrams/smtp.sequence.json).*
 

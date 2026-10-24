@@ -23,7 +23,7 @@ Two standards give it that knowledge, in different ways:
 A third, **TLS-RPT**, sends the domain a daily report of what went wrong, so it
 finds out before its mail does.
 
-![How a sending server applies DANE and MTA-STS](../diagrams/mta-sts.png)
+![How a sending server applies DANE and MTA-STS](../diagrams/mta-sts.svg)
 
 *The diagram's source is [`mta-sts.workflow.json`](../diagrams/mta-sts.workflow.json).*
 

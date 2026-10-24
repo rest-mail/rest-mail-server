@@ -16,7 +16,7 @@ says any of that.
 There is no single standard for it. Mail apps try several methods in turn, and
 use the first good answer. Each method is a small protocol of its own.
 
-![How a mail app finds its servers](../diagrams/discovery.png)
+![How a mail app finds its servers](../diagrams/discovery.svg)
 
 *The diagram's source is [`discovery.workflow.json`](../diagrams/discovery.workflow.json).*
 

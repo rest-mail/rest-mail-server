@@ -18,7 +18,7 @@ This chapter describes each in its own terms. Every one of them has served
 people well, and many of the fixes this guide explains were first written in
 them.
 
-![A mail server's jobs, and the programs that do them](../diagrams/servers.png)
+![A mail server's jobs, and the programs that do them](../diagrams/servers.svg)
 
 *The diagram's source is [`servers.tree.json`](../diagrams/servers.tree.json).*
 
