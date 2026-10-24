@@ -12,3 +12,10 @@ import "embed"
 //
 //go:embed openapi.yaml
 var OpenAPI embed.FS
+
+// Examples holds openapi-example.json, the example pairs of the description the API
+// generates from its registrations, beside the document as go-oapifly's convention puts
+// them (#625, antimatter-studios/go-oapifly#20).
+//
+//go:embed openapi-example.json
+var Examples embed.FS

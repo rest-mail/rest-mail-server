@@ -5,6 +5,7 @@ import (
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
 
+	"github.com/restmail/restmail"
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
@@ -134,16 +135,42 @@ func describedCapability(check func(capability string) func(http.Handler) http.H
 	}
 }
 
-// Description is the API description generated from the registered routes.
+// Description is the API description generated from the registered routes, with the
+// example pairs merged in, and the warnings about the routes.
 func (rt *Routers) Description(version string) (map[string]interface{}, []string) {
+	g := rt.generator(version)
+	doc := g.Generate()
+	var warnings []string
+	for _, w := range g.Report() {
+		if !exampleKinds[w.Kind] {
+			warnings = append(warnings, w.Message)
+		}
+	}
+	return doc, warnings
+}
+
+// exampleKinds are the warnings about openapi-example.json, which its own test holds to
+// the description (examples_test.go), rather than the description's.
+var exampleKinds = map[oapifly.WarningKind]bool{
+	oapifly.WarnExamplesUnreadable: true,
+	oapifly.WarnExampleOrphaned:    true,
+	oapifly.WarnExampleMissing:     true,
+	oapifly.WarnExampleInvalid:     true,
+}
+
+// generator is the generator of the API description: the registered routes, and the
+// example pairs in openapi-example.json (#625).
+func (rt *Routers) generator(version string) *oapifly.Generator {
 	g := oapifly.New(oapifly.Config{
 		Title:           "REST Mail API",
 		Version:         version,
 		SecuritySchemes: securitySchemes,
 		Security:        defaultSecurity,
+		Examples:        restmail.Examples,
+		ExamplesFile:    "openapi-example.json",
 	})
 	g.Register(rt.Registry.Endpoints()...)
-	return g.Generate(), g.Warnings
+	return g
 }
 
 // The preview limit applies per IP before binding or running the engine.

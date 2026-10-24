@@ -1,0 +1,4286 @@
+{
+  "addToAllowlist": {
+    "created": {
+      "request": {
+        "body": {
+          "pattern": "@partner.example.com",
+          "reason": "A trusted partner"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "pattern": "@partner.example.com",
+            "list_type": "allow",
+            "reason": "A trusted partner",
+            "created_at": "2026-01-01T00:00:00Z"
+          }
+        }
+      }
+    },
+    "pattern_missing": {
+      "request": {
+        "body": {
+          "reason": "A trusted partner"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "pattern": "required"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "addToBlocklist": {
+    "created": {
+      "request": {
+        "body": {
+          "pattern": "spam@spammer.example.com",
+          "reason": "Sends spam"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "pattern": "spam@spammer.example.com",
+            "list_type": "block",
+            "reason": "Sends spam",
+            "created_at": "2026-01-01T00:00:00Z"
+          }
+        }
+      }
+    },
+    "pattern_missing": {
+      "request": {
+        "body": {
+          "reason": "Sends spam"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "pattern": "required"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "blockSender": {
+    "example": {
+      "summary": "The operation's example",
+      "request": {
+        "body": {
+          "email": "spam@example.org"
+        }
+      },
+      "response": {
+        "status": 200
+      }
+    }
+  },
+  "bulkBounceQueue": {
+    "by_ids": {
+      "request": {
+        "body": {
+          "ids": [
+            987654
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "affected": 1
+          }
+        }
+      }
+    },
+    "invalid_body": {
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "invalid_ids": {
+      "request": {
+        "body": {
+          "ids": "1"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "ids": "must be an array"
+              }
+            }
+          }
+        }
+      }
+    },
+    "selection_missing": {
+      "request": {
+        "body": {},
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "ids or filter required"
+          }
+        }
+      }
+    }
+  },
+  "bulkDeleteQueue": {
+    "by_ids": {
+      "request": {
+        "body": {
+          "ids": [
+            987654
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "affected": 1
+          }
+        }
+      }
+    },
+    "invalid_ids": {
+      "request": {
+        "body": {
+          "ids": "1"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "ids": "must be an array"
+              }
+            }
+          }
+        }
+      }
+    },
+    "selection_missing": {
+      "request": {
+        "body": {},
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "ids or filter required"
+          }
+        }
+      }
+    }
+  },
+  "bulkRetryQueue": {
+    "by_ids": {
+      "request": {
+        "body": {
+          "ids": [
+            987654
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "affected": 1
+          }
+        }
+      }
+    },
+    "invalid_body": {
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "invalid_ids": {
+      "request": {
+        "body": {
+          "ids": "1"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "ids": "must be an array"
+              }
+            }
+          }
+        }
+      }
+    },
+    "selection_missing": {
+      "request": {
+        "body": {},
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "ids or filter required"
+          }
+        }
+      }
+    }
+  },
+  "createAPIKey": {
+    "created": {
+      "request": {
+        "body": {
+          "name": "Invoice robot",
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 2,
+            "name": "Invoice robot",
+            "kind": "api_key",
+            "public_id": "9Hm3yU1cNp5Q",
+            "created_at": "2026-01-01T00:00:00Z",
+            "last_used_at": null,
+            "expires_at": "2026-04-01T00:00:00Z",
+            "permissions": [
+              {
+                "capability": "mail:read",
+                "scope": "mailbox:robot@example.com"
+              }
+            ],
+            "token": "rmk_9Hm3yU1cNp5Q_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+          }
+        }
+      }
+    },
+    "name_missing": {
+      "request": {
+        "body": {
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            }
+          ]
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "name": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "permissions_missing": {
+      "request": {
+        "body": {
+          "name": "Invoice robot",
+          "password": "current-password"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "permissions": "must contain between 1 and 64 scoped permissions"
+              }
+            }
+          }
+        }
+      }
+    },
+    "wildcard_capability": {
+      "request": {
+        "body": {
+          "name": "Invoice robot",
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "*",
+              "scope": "*"
+            }
+          ]
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "permissions": "each permission needs a named capability and a valid scope"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "createAccount": {
+    "address_missing": {
+      "request": {
+        "body": {
+          "display_name": "New Account",
+          "password": "correct-horse-battery"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "address": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "created": {
+      "request": {
+        "body": {
+          "address": "new-account@restmail.test",
+          "display_name": "New Account",
+          "password": "correct-horse-battery"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 2,
+            "address": "new-account@restmail.test",
+            "display_name": "New Account",
+            "is_primary": false
+          }
+        }
+      }
+    }
+  },
+  "createAlias": {
+    "body_array": {
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "created": {
+      "request": {
+        "body": {
+          "source_address": "sales@restmail.test",
+          "destination_address": "admin@restmail.test"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "source_address": "sales@restmail.test",
+            "destination_address": "admin@restmail.test",
+            "active": true,
+            "created_at": "2026-01-01T00:00:00Z"
+          }
+        }
+      }
+    },
+    "source_invalid": {
+      "request": {
+        "body": {
+          "source_address": "not-an-email",
+          "destination_address": "admin@restmail.test"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "source_address": "must be a valid email address"
+              }
+            }
+          }
+        }
+      }
+    },
+    "source_missing": {
+      "request": {
+        "body": {
+          "destination_address": "admin@restmail.test"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "source_address": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "source_wrong_type": {
+      "request": {
+        "body": {
+          "source_address": 5,
+          "destination_address": "admin@restmail.test"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "source_address": "must be a string"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "createAppPassword": {
+    "created": {
+      "request": {
+        "body": {
+          "name": "iPhone Mail"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "name": "iPhone Mail",
+            "kind": "app_password",
+            "public_id": "7Kq2xT9bLm4P",
+            "created_at": "2026-01-01T00:00:00Z",
+            "last_used_at": null,
+            "expires_at": null,
+            "password": "rm_7Kq2xT9bLm4P_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+          }
+        }
+      }
+    },
+    "name_control": {
+      "request": {
+        "body": {
+          "name": "Mail\nClient"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "name": "must not contain control characters"
+              }
+            }
+          }
+        }
+      }
+    },
+    "name_empty": {
+      "request": {
+        "body": {
+          "name": ""
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "name": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "name_missing": {
+      "request": {
+        "body": {},
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "name": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "name_too_long": {
+      "request": {
+        "body": {
+          "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "name": "must be at most 100 characters"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "createBan": {
+    "created": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "1h",
+          "created_by": "admin@restmail.test"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "ip": "192.0.2.10",
+            "reason": "Repeated failed sign-ins",
+            "protocol": "all",
+            "created_by": "admin@restmail.test",
+            "expires_at": "2026-01-01T01:00:00Z",
+            "created_at": "2026-01-01T00:00:00Z"
+          }
+        }
+      }
+    },
+    "duration_invalid": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "not-a-duration",
+          "created_by": "admin@restmail.test"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "duration": "invalid duration format (e.g. 24h, 168h)"
+              }
+            }
+          }
+        }
+      }
+    },
+    "ip_missing": {
+      "request": {
+        "body": {
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "1h",
+          "created_by": "admin@restmail.test"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "ip": "IP address is required"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "createCertificate": {
+    "fields_missing": {
+      "summary": "Required certificate fields are missing",
+      "request": {
+        "body": {},
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "domain_id": "required",
+                "cert_pem": "required",
+                "key_pem": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "invalid_body": {
+      "summary": "An array cannot decode as a certificate request",
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "valid": {
+      "summary": "The hook supplies a fresh certificate and the created domain",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": false
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "issuer": "CN=contract.example.org",
+            "not_before": "2026-01-01T00:00:00Z",
+            "not_after": "2026-01-31T00:00:00Z",
+            "auto_renew": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        }
+      }
+    }
+  },
+  "createContact": {
+    "created": {
+      "request": {
+        "body": {
+          "email": "someone@example.com",
+          "name": "Someone",
+          "trust_level": "trusted"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 1,
+            "email": "someone@example.com",
+            "name": "Someone",
+            "trust_level": "trusted",
+            "source": "manual",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        }
+      }
+    },
+    "email_invalid": {
+      "request": {
+        "body": {
+          "email": "Refused \u003crefused@example.com\u003e",
+          "name": "Someone",
+          "trust_level": "trusted"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "email": "must be an email address"
+              }
+            }
+          }
+        }
+      }
+    },
+    "email_missing": {
+      "request": {
+        "body": {
+          "name": "Someone",
+          "trust_level": "trusted"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "email": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "trust_level_invalid": {
+      "request": {
+        "body": {
+          "email": "refused@example.com",
+          "name": "Someone",
+          "trust_level": "friend"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "trust_level": "must be auto, trusted, or blocked"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "createCustomFilter": {
+    "created": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "enabled": false
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "name": "tag-invoices",
+            "description": "Tags mail about invoices",
+            "filter_type": "action",
+            "direction": "inbound",
+            "config": {
+              "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+            },
+            "enabled": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        }
+      }
+    },
+    "enabled_wrong_type": {
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "name": "test",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {},
+          "enabled": "false"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "enabled": "must be a boolean"
+              }
+            }
+          }
+        }
+      }
+    },
+    "filter_type_invalid": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "invalid",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "enabled": false
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "filter_type": "must be action or transform"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "createDomain": {
+    "body_array": {
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "created": {
+      "request": {
+        "body": {
+          "name": "example.org",
+          "server_type": "restmail"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "name": "example.org",
+            "server_type": "restmail",
+            "active": false,
+            "default_quota_bytes": 0,
+            "sending_policy": "",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        }
+      }
+    },
+    "name_missing": {
+      "request": {
+        "body": {},
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "name": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "sending_policy_invalid": {
+      "request": {
+        "body": {
+          "name": "example.org",
+          "server_type": "restmail",
+          "sending_policy": "newsletter"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "sending_policy": "must be 'transactional', 'bulk' or empty"
+              }
+            }
+          }
+        }
+      }
+    },
+    "server_type_invalid": {
+      "request": {
+        "body": {
+          "name": "example.org",
+          "server_type": "external"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "server_type": "must be 'traditional' or 'restmail'"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "createFolder": {
+    "created": {
+      "request": {
+        "body": {
+          "name": "Receipts"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "name": "Receipts"
+          }
+        }
+      }
+    },
+    "name_empty": {
+      "request": {
+        "body": {
+          "name": ""
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "name": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "name_missing": {
+      "request": {
+        "body": {},
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "name": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "name_wrong_type": {
+      "request": {
+        "body": {
+          "name": 12
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "name": "must be a string"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "createPipeline": {
+    "active_wrong_type": {
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "direction": "inbound",
+          "filters": [],
+          "active": "yes"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "active": "must be a boolean"
+              }
+            }
+          }
+        }
+      }
+    },
+    "body_array": {
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "created": {
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "direction": "inbound",
+          "filters": [
+            {
+              "name": "header_validate",
+              "config": {}
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "direction": "inbound",
+            "filters": [
+              {
+                "name": "header_validate",
+                "config": {}
+              }
+            ],
+            "active": true,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        }
+      }
+    },
+    "direction_missing": {
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "filters": [
+            {
+              "name": "header_validate",
+              "config": {}
+            }
+          ]
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "direction": "must be 'inbound' or 'outbound'"
+              }
+            }
+          }
+        }
+      }
+    },
+    "filters_missing": {
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "direction": "inbound"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "filters": "must be an array of filter objects"
+              }
+            }
+          }
+        }
+      }
+    },
+    "null_body": {
+      "request": {
+        "body": null,
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    }
+  },
+  "enrollTwoFactor": {
+    "example": {
+      "summary": "The operation's example",
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "secret": "JBSWY3DPEHPK3PXP",
+            "otpauth_url": "otpauth://totp/REST%20Mail:user%40restmail.test?secret=JBSWY3DPEHPK3PXP\u0026issuer=REST%20Mail",
+            "recovery_codes": [
+              "0123456789abcdef"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "forwardMessage": {
+    "example": {
+      "summary": "The operation's example",
+      "request": {
+        "body": {
+          "from": "admin@restmail.test",
+          "to": [
+            "admin@restmail.test"
+          ],
+          "body_text": "See below."
+        }
+      },
+      "response": {
+        "status": 201
+      }
+    }
+  },
+  "getAlias": {
+    "found": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Alias not found"
+          }
+        }
+      }
+    }
+  },
+  "getCertificate": {
+    "found": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Certificate not found"
+          }
+        }
+      }
+    }
+  },
+  "getCustomFilter": {
+    "found": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Custom filter not found"
+          }
+        }
+      }
+    }
+  },
+  "getDomain": {
+    "found": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "domain_not_found",
+            "message": "Domain not found"
+          }
+        }
+      }
+    }
+  },
+  "getDomainRelay": {
+    "example": {
+      "summary": "The operation's example",
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 1,
+            "transport": "relay",
+            "host": "smtp.example.net",
+            "port": 587,
+            "tls_mode": "starttls",
+            "username": "apikey",
+            "password_set": true
+          }
+        }
+      }
+    }
+  },
+  "getTwoFactorStatus": {
+    "example": {
+      "summary": "The operation's example",
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "enabled": false,
+            "pending": false
+          }
+        }
+      }
+    }
+  },
+  "importContacts": {
+    "body_array": {
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "contacts_empty": {
+      "request": {
+        "body": {
+          "contacts": []
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "contacts": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "contacts_missing": {
+      "request": {
+        "body": {},
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "contacts": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "email_invalid": {
+      "request": {
+        "body": {
+          "contacts": [
+            {
+              "email": "not-an-email"
+            }
+          ]
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "contacts[0].email": "must be an email address"
+              }
+            }
+          }
+        }
+      }
+    },
+    "email_missing": {
+      "request": {
+        "body": {
+          "contacts": [
+            {}
+          ]
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "contacts[0].email": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "imported": {
+      "request": {
+        "body": {
+          "contacts": [
+            {
+              "email": "carol@example.org",
+              "name": "Carol"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "imported": 1
+          }
+        }
+      }
+    },
+    "mixed_batch": {
+      "request": {
+        "body": {
+          "contacts": [
+            {
+              "email": "valid-import@example.org",
+              "name": "Must not be imported"
+            },
+            {
+              "email": "not-an-email"
+            }
+          ]
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "contacts[1].email": "must be an email address"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "linkAccount": {
+    "address_blank": {
+      "request": {
+        "body": {
+          "address": "   ",
+          "password": "supplied-by-contract-hook"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "address": "required",
+                "password": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "address_missing": {
+      "request": {
+        "body": {
+          "password": "supplied-by-contract-hook"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "address": "required",
+                "password": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "linked": {
+      "request": {
+        "body": {
+          "address": "eve@restmail.test",
+          "password": "supplied-by-contract-hook"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 2,
+            "address": "eve@restmail.test",
+            "display_name": "Eve",
+            "is_primary": false
+          }
+        }
+      }
+    },
+    "password_empty": {
+      "request": {
+        "body": {
+          "address": "eve@restmail.test",
+          "password": ""
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "address": "required",
+                "password": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "password_missing": {
+      "request": {
+        "body": {
+          "address": "eve@restmail.test"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "address": "required",
+                "password": "required"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "login": {
+    "client_invalid": {
+      "request": {
+        "body": {
+          "email": "admin@restmail.test",
+          "password": "fixture-password",
+          "client": "desktop"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "client": "must be \"native\" or omitted"
+              }
+            }
+          }
+        }
+      }
+    },
+    "email_missing": {
+      "request": {
+        "body": {
+          "password": "fixture-password",
+          "client": "native"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "email": "required: the account's address"
+              }
+            }
+          }
+        }
+      }
+    },
+    "password_missing": {
+      "request": {
+        "body": {
+          "email": "admin@restmail.test",
+          "client": "native"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "password": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "signed_in": {
+      "request": {
+        "body": {
+          "email": "admin@restmail.test",
+          "password": "fixture-password",
+          "client": "native"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "expires_in": 900,
+            "user": {
+              "id": 1,
+              "email": "admin@restmail.test",
+              "display_name": "Admin"
+            },
+            "access_token": "example-access-token",
+            "refresh_token": "example-refresh-token",
+            "refresh_expires_in": 604800
+          }
+        }
+      }
+    },
+    "wrong_password": {
+      "request": {
+        "body": {
+          "email": "admin@restmail.test",
+          "password": "contract-wrong-password",
+          "client": "native"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Invalid email or password"
+          }
+        }
+      }
+    }
+  },
+  "microsoftAutodiscover": {
+    "malformed": {
+      "request": {
+        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": "invalid request\n"
+      }
+    },
+    "valid": {
+      "summary": "XML settings for the requested mailbox",
+      "request": {
+        "body": "\u003c?xml version=\"1.0\" encoding=\"utf-8\"?\u003e\n\u003cAutodiscover xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/outlook/requestschema/2006\"\u003e\n  \u003cRequest\u003e\n    \u003cEMailAddress\u003eeve@restmail.test\u003c/EMailAddress\u003e\n    \u003cAcceptableResponseSchema\u003ehttp://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a\u003c/AcceptableResponseSchema\u003e\n  \u003c/Request\u003e\n\u003c/Autodiscover\u003e\n"
+      },
+      "response": {
+        "status": 200
+      }
+    }
+  },
+  "probeServices": {
+    "probed": {
+      "request": {
+        "body": {
+          "services": [
+            "db"
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "db": {
+              "status": "ok",
+              "latency": "1.2ms"
+            }
+          }
+        }
+      }
+    },
+    "service_unknown": {
+      "request": {
+        "body": {
+          "services": [
+            "ftp"
+          ]
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "services": "unknown service \"ftp\": want smtp, smtp_submission, imap, pop3, dns or db"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "protocolSignIn": {
+    "invalid_body": {
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "protocol_missing": {
+      "request": {
+        "body": {},
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "protocol": "must be \"imap\", \"pop3\" or \"smtp\""
+              }
+            }
+          }
+        }
+      }
+    },
+    "signed_in": {
+      "request": {
+        "body": {
+          "protocol": "imap"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "user": {
+              "id": 1,
+              "email": "contract-ordinary@restmail.test",
+              "display_name": "Contract Ordinary"
+            },
+            "credential_id": 1,
+            "credential_kind": "app_password"
+          }
+        }
+      }
+    }
+  },
+  "putSieveScript": {
+    "script_missing": {
+      "request": {
+        "body": {
+          "active": true
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "script": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "script_null": {
+      "request": {
+        "body": {
+          "script": null,
+          "active": true
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "script": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "valid": {
+      "request": {
+        "body": {
+          "script": "require [\"fileinto\"];\nif header :contains \"subject\" \"invoice\" {\n  fileinto \"Invoices\";\n}\n",
+          "active": true
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {}
+      }
+    }
+  },
+  "receiveTlsReport": {
+    "body_array": {
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid TLS-RPT JSON"
+          }
+        }
+      }
+    },
+    "organization_missing": {
+      "request": {
+        "body": {
+          "contact-info": "tlsrpt@reporter.example.com",
+          "report-id": "2026-10-17T00:00:00Z_restmail.test",
+          "date-range": {
+            "start-datetime": "2026-10-16T00:00:00Z",
+            "end-datetime": "2026-10-16T23:59:59Z"
+          },
+          "policies": [
+            {
+              "policy": {
+                "policy-type": "sts",
+                "policy-string": [
+                  "version: STSv1",
+                  "mode: testing",
+                  "mx: mail.restmail.test",
+                  "max_age: 86400"
+                ],
+                "policy-domain": "restmail.test",
+                "mx-host": [
+                  "mail.restmail.test"
+                ]
+              },
+              "summary": {
+                "total-successful-session-count": 12,
+                "total-failure-session-count": 1
+              },
+              "failure-details": [
+                {
+                  "result-type": "certificate-expired",
+                  "sending-mta-ip": "192.0.2.1",
+                  "receiving-mx-hostname": "mail.restmail.test",
+                  "failed-session-count": 1
+                }
+              ]
+            }
+          ]
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "organization-name": "Required field"
+              }
+            }
+          }
+        }
+      }
+    },
+    "stored": {
+      "request": {
+        "body": {
+          "organization-name": "Example Reporter",
+          "contact-info": "tlsrpt@reporter.example.com",
+          "report-id": "2026-10-17T00:00:00Z_restmail.test",
+          "date-range": {
+            "start-datetime": "2026-10-16T00:00:00Z",
+            "end-datetime": "2026-10-16T23:59:59Z"
+          },
+          "policies": [
+            {
+              "policy": {
+                "policy-type": "sts",
+                "policy-string": [
+                  "version: STSv1",
+                  "mode: testing",
+                  "mx: mail.restmail.test",
+                  "max_age: 86400"
+                ],
+                "policy-domain": "restmail.test",
+                "mx-host": [
+                  "mail.restmail.test"
+                ]
+              },
+              "summary": {
+                "total-successful-session-count": 12,
+                "total-failure-session-count": 1
+              },
+              "failure-details": [
+                {
+                  "result-type": "certificate-expired",
+                  "sending-mta-ip": "192.0.2.1",
+                  "receiving-mx-hostname": "mail.restmail.test",
+                  "failed-session-count": 1
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "stored": 1
+          }
+        }
+      }
+    }
+  },
+  "refreshToken": {
+    "invalid_token": {
+      "request": {
+        "body": {
+          "refresh_token": "contract-invalid-token"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Invalid or expired refresh token"
+          }
+        }
+      }
+    },
+    "refreshed": {
+      "request": {
+        "body": {
+          "refresh_token": "fixture-refresh-token"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "expires_in": 900,
+            "user": {
+              "id": 1,
+              "email": "admin@restmail.test",
+              "display_name": "Admin"
+            },
+            "access_token": "example-access-token",
+            "refresh_token": "example-refresh-token",
+            "refresh_expires_in": 604800
+          }
+        }
+      }
+    },
+    "token_missing": {
+      "request": {
+        "body": {}
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "No refresh token"
+          }
+        }
+      }
+    }
+  },
+  "registerPushDevice": {
+    "already_registered": {
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": "12",
+            "platform": "apns",
+            "environment": "production",
+            "created_at": "2026-01-01T00:00:00Z"
+          }
+        }
+      }
+    },
+    "app_id_mismatch": {
+      "request": {
+        "body": {
+          "platform": "apns",
+          "token": "5c1d7e0f3a9b2c4d6e8f0a1b3c5d7e9f1a2b4c6d8e0f2a3b5c7d9e1f3a4b6c8d",
+          "environment": "production",
+          "app_id": "com.example.other"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "app_id": "this server pushes to com.antimatterstudios.restmail only"
+              }
+            }
+          }
+        }
+      }
+    },
+    "environment_invalid": {
+      "request": {
+        "body": {
+          "platform": "apns",
+          "token": "5c1d7e0f3a9b2c4d6e8f0a1b3c5d7e9f1a2b4c6d8e0f2a3b5c7d9e1f3a4b6c8d",
+          "environment": "staging",
+          "app_id": "com.antimatterstudios.restmail"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "environment": "must be \"production\" or \"sandbox\""
+              }
+            }
+          }
+        }
+      }
+    },
+    "platform_unsupported": {
+      "request": {
+        "body": {
+          "platform": "fcm",
+          "token": "5c1d7e0f3a9b2c4d6e8f0a1b3c5d7e9f1a2b4c6d8e0f2a3b5c7d9e1f3a4b6c8d",
+          "environment": "production",
+          "app_id": "com.antimatterstudios.restmail"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "platform": "not configured on this server"
+              }
+            }
+          }
+        }
+      }
+    },
+    "registered": {
+      "request": {
+        "body": {
+          "platform": "apns",
+          "token": "5c1d7e0f3a9b2c4d6e8f0a1b3c5d7e9f1a2b4c6d8e0f2a3b5c7d9e1f3a4b6c8d",
+          "environment": "production",
+          "app_id": "com.antimatterstudios.restmail"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": "12",
+            "platform": "apns",
+            "environment": "production",
+            "created_at": "2026-01-01T00:00:00Z"
+          }
+        }
+      }
+    },
+    "token_invalid": {
+      "request": {
+        "body": {
+          "platform": "apns",
+          "token": "not-an-apns-token",
+          "environment": "production",
+          "app_id": "com.antimatterstudios.restmail"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "token": "not an APNs device token: 64 or more lowercase hex digits"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "renameFolder": {
+    "example": {
+      "summary": "The operation's example",
+      "request": {
+        "body": {
+          "name": "Paid receipts"
+        }
+      },
+      "response": {
+        "status": 200
+      }
+    }
+  },
+  "restmailDeliver": {
+    "delivered": {
+      "request": {
+        "body": {
+          "from": "someone@ext-contract.test",
+          "to": [
+            "eve@restmail.test"
+          ],
+          "subject": "Delivered over RESTMAIL",
+          "body_text": "Hello, Eve.",
+          "message_id": "\u003crestmail-delivery@ext-contract.test\u003e",
+          "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "delivered": [
+              "eve@restmail.test"
+            ],
+            "failed": []
+          }
+        }
+      }
+    },
+    "recipients_missing": {
+      "request": {
+        "body": {
+          "from": "someone@ext-contract.test",
+          "subject": "Delivered over RESTMAIL",
+          "body_text": "Hello, Eve.",
+          "message_id": "\u003crestmail-delivery@ext-contract.test\u003e",
+          "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "to": "at least one recipient required"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "restmailDiscover": {
+    "example": {
+      "summary": "The operation's example",
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "endpoint": "https://restmail.test/restmail"
+        }
+      }
+    }
+  },
+  "saveDraft": {
+    "empty": {
+      "summary": "Start an empty draft in the signed-in account",
+      "request": {
+        "body": {}
+      },
+      "response": {
+        "status": 201
+      }
+    },
+    "with_sender": {
+      "request": {
+        "body": {
+          "from": "admin@restmail.test",
+          "to": [
+            "admin@restmail.test"
+          ],
+          "subject": "Draft",
+          "body_text": "Not sent yet."
+        }
+      },
+      "response": {
+        "status": 201
+      }
+    }
+  },
+  "sendMessage": {
+    "from_missing": {
+      "request": {
+        "body": {
+          "to": [
+            "admin@restmail.test",
+            "someone@imap.restmail.test"
+          ],
+          "subject": "Hello",
+          "body_text": "Sent through the REST API."
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "from is required"
+          }
+        }
+      }
+    },
+    "unsubscribe_not_allowed": {
+      "request": {
+        "body": {
+          "from": "admin@restmail.test",
+          "to": [
+            "admin@restmail.test",
+            "someone@imap.restmail.test"
+          ],
+          "subject": "Hello",
+          "body_text": "Sent through the REST API.",
+          "list_unsubscribe": {
+            "mailto": "unsubscribe@restmail.test"
+          }
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "list_unsubscribe_not_allowed",
+            "message": "The sender domain sends transactional mail, which carries no List-Unsubscribe field: omit list_unsubscribe"
+          }
+        }
+      }
+    },
+    "valid": {
+      "request": {
+        "body": {
+          "from": "admin@restmail.test",
+          "to": [
+            "admin@restmail.test",
+            "someone@imap.restmail.test"
+          ],
+          "subject": "Hello",
+          "body_text": "Sent through the REST API."
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 1,
+            "folder": "Sent",
+            "sender": "admin@restmail.test",
+            "subject": "Hello",
+            "body_text": "Sent through the REST API.",
+            "is_read": true,
+            "is_flagged": false,
+            "is_starred": false,
+            "is_draft": false,
+            "is_deleted": false,
+            "received_at": "2026-10-21T12:00:00Z",
+            "created_at": "2026-10-21T12:00:00Z",
+            "updated_at": "2026-10-21T12:00:00Z"
+          }
+        }
+      }
+    }
+  },
+  "sendTestEmail": {
+    "created": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "message_id": 1,
+            "msg_id": "\u003c0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d@restmail.test\u003e",
+            "from": "postmaster@restmail.test",
+            "to": "admin@restmail.test",
+            "subject": "Test"
+          }
+        }
+      }
+    },
+    "from_missing": {
+      "request": {
+        "body": {
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "from": "required"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "setDKIMKey": {
+    "body_array": {
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "installed": {
+      "request": {
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 1,
+            "domain": "example.com",
+            "selector": "contract",
+            "has_key": true,
+            "created_at": "2026-10-01T12:00:00Z",
+            "age_seconds": 0
+          }
+        }
+      }
+    },
+    "private_key_empty": {
+      "request": {
+        "body": {
+          "selector": "contract",
+          "private_key": ""
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "private_key": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "private_key_invalid": {
+      "request": {
+        "body": {
+          "selector": "contract",
+          "private_key": "not a key"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "private_key": "is not a PEM-encoded private key"
+              }
+            }
+          }
+        }
+      }
+    },
+    "private_key_missing": {
+      "request": {
+        "body": {
+          "selector": "contract"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "private_key": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "private_key_wrong_type": {
+      "request": {
+        "body": {
+          "selector": "contract",
+          "private_key": 42
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "private_key": "must be a string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "selector_empty": {
+      "request": {
+        "body": {
+          "selector": "",
+          "private_key": "fixture-signing-key"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "selector": "Must be a DNS label (letters, digits, hyphens), at most 63 characters"
+              }
+            }
+          }
+        }
+      }
+    },
+    "selector_invalid": {
+      "request": {
+        "body": {
+          "selector": "invalid_selector",
+          "private_key": "fixture-signing-key"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "selector": "Must be a DNS label (letters, digits, hyphens), at most 63 characters"
+              }
+            }
+          }
+        }
+      }
+    },
+    "selector_missing": {
+      "request": {
+        "body": {
+          "private_key": "fixture-signing-key"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "selector": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "selector_wrong_type": {
+      "request": {
+        "body": {
+          "selector": 42,
+          "private_key": "fixture-signing-key"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "selector": "must be a string"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "setDKIMRotation": {
+    "body_array": {
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "configured": {
+      "request": {
+        "body": {
+          "rotation_interval_days": 90
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 1,
+            "rotation_interval_days": 90
+          }
+        }
+      }
+    },
+    "field_unknown": {
+      "request": {
+        "body": {
+          "rotation_interval_days": 90,
+          "private_key": "injected"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "private_key": "not allowed"
+              }
+            }
+          }
+        }
+      }
+    },
+    "interval_missing": {
+      "request": {
+        "body": {},
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "rotation_interval_days": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "interval_negative": {
+      "request": {
+        "body": {
+          "rotation_interval_days": -1
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "rotation_interval_days": "Must be an integer between 0 and 3650 days; 0 disables rotation"
+              }
+            }
+          }
+        }
+      }
+    },
+    "interval_null": {
+      "request": {
+        "body": {
+          "rotation_interval_days": null
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "rotation_interval_days": "must not be null"
+              }
+            }
+          }
+        }
+      }
+    },
+    "interval_too_large": {
+      "request": {
+        "body": {
+          "rotation_interval_days": 3651
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "rotation_interval_days": "Must be an integer between 0 and 3650 days; 0 disables rotation"
+              }
+            }
+          }
+        }
+      }
+    },
+    "interval_wrong_type": {
+      "request": {
+        "body": {
+          "rotation_interval_days": "90"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "rotation_interval_days": "must be an integer"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "setDomainRelay": {
+    "body_array": {
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "credentials_mismatch": {
+      "request": {
+        "body": {
+          "transport": "relay",
+          "host": "smtp.example.net",
+          "port": 587,
+          "tls_mode": "starttls",
+          "username": "apikey",
+          "password": ""
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "password": "A username and a password are set together, or neither"
+              }
+            }
+          }
+        }
+      }
+    },
+    "direct": {
+      "summary": "Deliver straight to each recipient's MX",
+      "request": {
+        "body": {
+          "transport": "direct"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 1,
+            "transport": "direct",
+            "password_set": false
+          }
+        }
+      }
+    },
+    "host_invalid": {
+      "request": {
+        "body": {
+          "transport": "relay",
+          "host": "smtp://smtp.example.net",
+          "port": 587,
+          "tls_mode": "starttls",
+          "username": "apikey",
+          "password": "relay-password"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "host": "Must be a bare host name or IP address, with no scheme, port or path"
+              }
+            }
+          }
+        }
+      }
+    },
+    "port_invalid": {
+      "request": {
+        "body": {
+          "transport": "relay",
+          "host": "smtp.example.net",
+          "port": 65536,
+          "tls_mode": "starttls",
+          "username": "apikey",
+          "password": "relay-password"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "port": "Must be between 1 and 65535"
+              }
+            }
+          }
+        }
+      }
+    },
+    "port_wrong_type": {
+      "request": {
+        "body": {
+          "transport": "relay",
+          "host": "smtp.example.net",
+          "port": "587",
+          "tls_mode": "starttls",
+          "username": "apikey",
+          "password": "relay-password"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "port": "must be an integer"
+              }
+            }
+          }
+        }
+      }
+    },
+    "relay": {
+      "summary": "Send through an authenticated relay",
+      "request": {
+        "body": {
+          "transport": "relay",
+          "host": "smtp.example.net",
+          "port": 587,
+          "tls_mode": "starttls",
+          "username": "apikey",
+          "password": "relay-password"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 1,
+            "transport": "relay",
+            "host": "smtp.example.net",
+            "port": 587,
+            "tls_mode": "starttls",
+            "username": "apikey",
+            "password_set": true
+          }
+        }
+      }
+    },
+    "tls_mode_invalid": {
+      "request": {
+        "body": {
+          "transport": "relay",
+          "host": "smtp.example.net",
+          "port": 587,
+          "tls_mode": "none",
+          "username": "apikey",
+          "password": "relay-password"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "tls_mode": "Must be one of: starttls, implicit"
+              }
+            }
+          }
+        }
+      }
+    },
+    "transport_invalid": {
+      "request": {
+        "body": {
+          "transport": "smtp"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "transport": "Must be one of: direct, relay"
+              }
+            }
+          }
+        }
+      }
+    },
+    "transport_missing": {
+      "request": {
+        "body": {},
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "transport": "Must be one of: direct, relay"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "setMtaStsPolicy": {
+    "max_age_negative": {
+      "request": {
+        "body": {
+          "mode": "testing",
+          "mx_hosts": "mail.example.org",
+          "max_age": -1,
+          "active": true
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "max_age": "Must be a non-negative integer (seconds)"
+              }
+            }
+          }
+        }
+      }
+    },
+    "mode_invalid": {
+      "request": {
+        "body": {
+          "mode": "strict",
+          "mx_hosts": "mail.example.org",
+          "max_age": 86400,
+          "active": true
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "mode": "Must be one of: none, testing, enforce"
+              }
+            }
+          }
+        }
+      }
+    },
+    "policy": {
+      "request": {
+        "body": {
+          "mode": "testing",
+          "mx_hosts": "mail.example.org",
+          "max_age": 86400,
+          "active": true
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "mode": "testing",
+            "mx_hosts": "mail.example.org",
+            "max_age": 86400,
+            "active": true,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        }
+      }
+    }
+  },
+  "setVacation": {
+    "body_array": {
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "body_missing": {
+      "request": {
+        "body": {
+          "enabled": true,
+          "subject": "Out of office"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "required when enabled"
+              }
+            }
+          }
+        }
+      }
+    },
+    "configured": {
+      "request": {
+        "body": {
+          "enabled": true,
+          "subject": "Out of office",
+          "body": "I will reply when I return."
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "enabled": true,
+            "subject": "Out of office",
+            "body": "I will reply when I return."
+          }
+        }
+      }
+    },
+    "dates_reversed": {
+      "request": {
+        "body": {
+          "enabled": true,
+          "subject": "Out of office",
+          "body": "I will reply when I return.",
+          "start_date": "2030-01-02T00:00:00Z",
+          "end_date": "2030-01-01T00:00:00Z"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "end_date": "must be after start_date"
+              }
+            }
+          }
+        }
+      }
+    },
+    "enabled_missing": {
+      "request": {
+        "body": {
+          "subject": "Out of office",
+          "body": "I will reply when I return."
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "enabled": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "reply_missing": {
+      "request": {
+        "body": {
+          "enabled": true
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "subject": "required when enabled",
+                "body": "required when enabled"
+              }
+            }
+          }
+        }
+      }
+    },
+    "subject_missing": {
+      "request": {
+        "body": {
+          "enabled": true,
+          "body": "I will reply when I return."
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "subject": "required when enabled"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "testCustomFilter": {
+    "invalid_body": {
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "valid": {
+      "request": {
+        "body": {}
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "result": {
+            "action": "continue"
+          },
+          "logs": []
+        }
+      }
+    }
+  },
+  "testFilter": {
+    "filter_name_missing": {
+      "request": {
+        "body": {
+          "config": {},
+          "email": {
+            "envelope": {
+              "mail_from": "someone@example.com",
+              "rcpt_to": [
+                "eve@restmail.test"
+              ]
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Someone",
+                  "address": "someone@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "eve@restmail.test"
+                }
+              ],
+              "subject": "A filter test",
+              "message-id": "\u003cfilter-test@example.com\u003e",
+              "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "Hello."
+            }
+          }
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "filter_name": "required",
+                "email": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "filter_name_wrong_type": {
+      "request": {
+        "body": {
+          "filter_name": 1,
+          "config": {},
+          "email": {}
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "filter_name": "must be a string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "invalid_body": {
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "valid": {
+      "request": {
+        "body": {
+          "filter_name": "header_validate",
+          "config": {},
+          "email": {
+            "envelope": {
+              "mail_from": "someone@example.com",
+              "rcpt_to": [
+                "eve@restmail.test"
+              ]
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Someone",
+                  "address": "someone@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "eve@restmail.test"
+                }
+              ],
+              "subject": "A filter test",
+              "message-id": "\u003cfilter-test@example.com\u003e",
+              "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "Hello."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "type": "action",
+            "action": "continue",
+            "log": {
+              "filter": "header_validate",
+              "result": "pass",
+              "detail": "all headers valid"
+            }
+          }
+        }
+      }
+    }
+  },
+  "testPipeline": {
+    "email_missing": {
+      "request": {
+        "body": {
+          "pipeline_id": 1
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "email": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "invalid_body": {
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "pipeline_id_wrong_type": {
+      "request": {
+        "body": {
+          "pipeline_id": "1",
+          "email": {}
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "pipeline_id": "must be a non-negative integer"
+              }
+            }
+          }
+        }
+      }
+    },
+    "valid": {
+      "request": {
+        "body": {
+          "pipeline_id": 1,
+          "email": {}
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "final_action": "reject",
+            "reject_message": "550 Invalid headers: missing From header, missing Date header",
+            "steps": [
+              {
+                "filter_name": "header_validate",
+                "filter_type": "action",
+                "action": "reject",
+                "log": {
+                  "filter": "header_validate",
+                  "result": "reject",
+                  "detail": "missing From header; missing Date header"
+                },
+                "duration_ms": 0
+              }
+            ],
+            "duration_ms": 0
+          }
+        }
+      }
+    }
+  },
+  "updateAlias": {
+    "destination_invalid": {
+      "request": {
+        "body": {
+          "destination_address": "not-an-email"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "destination_address": "must be a valid email address"
+              }
+            }
+          }
+        }
+      }
+    },
+    "updated": {
+      "request": {
+        "body": {
+          "destination_address": "admin@restmail.test"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "source_address": "sales@restmail.test",
+            "destination_address": "admin@restmail.test",
+            "active": true,
+            "created_at": "2026-01-01T00:00:00Z"
+          }
+        }
+      }
+    }
+  },
+  "updateCustomFilter": {
+    "config_array": {
+      "request": {
+        "body": {
+          "config": [],
+          "enabled": true
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "config": "must be an object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "config_null": {
+      "request": {
+        "body": {
+          "config": null,
+          "enabled": true
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "config": "must be an object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "direction_invalid": {
+      "request": {
+        "body": {
+          "direction": "sideways",
+          "enabled": true
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "direction": "must be inbound, outbound or both"
+              }
+            }
+          }
+        }
+      }
+    },
+    "filter_type_invalid": {
+      "request": {
+        "body": {
+          "filter_type": "invalid",
+          "enabled": true
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "filter_type": "must be action or transform"
+              }
+            }
+          }
+        }
+      }
+    },
+    "name_empty": {
+      "request": {
+        "body": {
+          "name": "",
+          "enabled": true
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "name": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "updated": {
+      "request": {
+        "body": {
+          "description": "Tags mail about invoices and receipts",
+          "config": {
+            "script": "function filter(email) { return { action: \"continue\" }; }"
+          },
+          "enabled": true
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "name": "tag-invoices",
+            "description": "Tags mail about invoices and receipts",
+            "filter_type": "action",
+            "direction": "inbound",
+            "config": {
+              "script": "function filter(email) { return { action: \"continue\" }; }"
+            },
+            "enabled": true,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        }
+      }
+    }
+  },
+  "updateDomain": {
+    "sending_policy_invalid": {
+      "request": {
+        "body": {
+          "sending_policy": "newsletter"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "sending_policy": "must be 'transactional', 'bulk' or empty"
+              }
+            }
+          }
+        }
+      }
+    },
+    "updated": {
+      "request": {
+        "body": {
+          "sending_policy": "transactional"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "name": "example.org",
+            "server_type": "restmail",
+            "active": false,
+            "default_quota_bytes": 0,
+            "sending_policy": "transactional",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        }
+      }
+    }
+  },
+  "updateDraft": {
+    "example": {
+      "summary": "The operation's example",
+      "request": {
+        "body": {
+          "from": "admin@restmail.test",
+          "to": [
+            "admin@restmail.test"
+          ],
+          "subject": "Draft, edited",
+          "body_text": "Ready to send."
+        }
+      },
+      "response": {
+        "status": 200
+      }
+    }
+  },
+  "updateMailbox": {
+    "password_short": {
+      "request": {
+        "body": {
+          "display_name": "Contract Test",
+          "password": "short"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "password": "must be at least 12 characters"
+              }
+            }
+          }
+        }
+      }
+    },
+    "updated": {
+      "request": {
+        "body": {
+          "display_name": "Contract Test",
+          "quota_bytes": 1073741824,
+          "active": true
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 2,
+            "domain_id": 1,
+            "local_part": "new-account",
+            "address": "new-account@restmail.test",
+            "display_name": "Contract Test",
+            "quota_bytes": 1073741824,
+            "quota_used_bytes": 0,
+            "active": true,
+            "last_login_at": null,
+            "password_change_required": false,
+            "two_factor_required": false,
+            "last_password_change": null,
+            "created_at": "2026-10-21T12:00:00Z",
+            "updated_at": "2026-10-21T12:00:00Z"
+          }
+        }
+      }
+    }
+  },
+  "updateMessage": {
+    "example": {
+      "summary": "The operation's example",
+      "request": {
+        "body": {
+          "is_read": true,
+          "is_flagged": true
+        }
+      },
+      "response": {
+        "status": 200
+      }
+    }
+  },
+  "updatePipeline": {
+    "filters_null": {
+      "request": {
+        "body": {
+          "filters": null,
+          "active": false
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "filters": "must be an array of filter objects"
+              }
+            }
+          }
+        }
+      }
+    },
+    "filters_object": {
+      "request": {
+        "body": {
+          "filters": {
+            "name": "spf_check",
+            "config": {}
+          },
+          "active": false
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "filters": "must be an array of filter objects"
+              }
+            }
+          }
+        }
+      }
+    },
+    "updated": {
+      "request": {
+        "body": {
+          "filters": [
+            {
+              "name": "spf_check",
+              "config": {}
+            }
+          ],
+          "active": false
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "direction": "inbound",
+            "filters": [
+              {
+                "name": "spf_check",
+                "config": {}
+              }
+            ],
+            "active": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        }
+      }
+    }
+  },
+  "validateCustomFilter": {
+    "body_array": {
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "script_missing": {
+      "request": {
+        "body": {},
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "script": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "valid": {
+      "request": {
+        "body": {
+          "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "valid": true
+        }
+      }
+    }
+  },
+  "validateSieveScript": {
+    "script_missing": {
+      "request": {
+        "body": {},
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "script": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "script_null": {
+      "request": {
+        "body": {
+          "script": null
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "script": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "valid": {
+      "request": {
+        "body": {
+          "script": "require [\"fileinto\"];\nif header :contains \"subject\" \"invoice\" {\n  fileinto \"Invoices\";\n}\n"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "valid": true,
+            "message": "Script is valid"
+          }
+        }
+      }
+    }
+  }
+}
