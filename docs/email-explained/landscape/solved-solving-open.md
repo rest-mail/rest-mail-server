@@ -2,6 +2,7 @@
 title: Solved, solving, still open
 part: The landscape, and where REST Mail fits
 summary: Every problem in this guide in one table, how far email as a whole has got with it, and where REST Mail stands, with the issue for each gap.
+sources: linked
 ---
 
 # Solved, solving, still open
