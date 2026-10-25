@@ -87,14 +87,23 @@ func (h *AttachmentHandler) getAttachment(r *http.Request, in attachmentPath) (e
 	notFound := endpoint.Refuse(http.StatusNotFound, "not_found", "Attachment not found")
 	var att models.Attachment
 	var mailboxIDs []uint
-	if err := h.db.First(&att, in.ID).Error; err == nil {
-		h.db.Model(&models.Message{}).Where("id = ?", att.MessageID).Pluck("mailbox_id", &mailboxIDs)
+	if err := h.db.First(&att, in.ID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return endpoint.Served{}, notFound
+		}
+		return endpoint.Served{}, fmt.Errorf("load attachment: %w", err)
+	}
+	if err := h.db.Model(&models.Message{}).Where("id = ?", att.MessageID).Pluck("mailbox_id", &mailboxIDs).Error; err != nil {
+		return endpoint.Served{}, fmt.Errorf("load attachment mailbox: %w", err)
 	}
 	if len(mailboxIDs) != 1 {
 		return endpoint.Served{}, notFound
 	}
 	if _, err := mayReach(h.db, claims, mailboxIDs[0], models.CapMailRead); err != nil {
-		return endpoint.Served{}, notFound
+		if errors.Is(err, errNoAccess) {
+			return endpoint.Served{}, notFound
+		}
+		return endpoint.Served{}, fmt.Errorf("authorize attachment download: %w", err)
 	}
 
 	// Always bytes to save, never the type the sender claimed: an HTML or SVG
