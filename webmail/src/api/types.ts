@@ -4338,6 +4338,15 @@ export interface components {
             setup_required?: string[];
             user: components["schemas"]["userInfo"];
         };
+        openAPIDescription: {
+            info: {
+                [key: string]: unknown;
+            };
+            openapi: string;
+            paths: {
+                [key: string]: unknown;
+            };
+        };
         ownerTokenRequest: {
             address?: string;
             challenge?: string;
@@ -5002,7 +5011,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": string;
+                    "application/json": components["schemas"]["openAPIDescription"];
                 };
             };
             /** @description Internal Server Error */

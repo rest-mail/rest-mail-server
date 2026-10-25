@@ -20,13 +20,25 @@ func registerDocs(rs endpoint.Routes) {
 		OperationID: "openapiDocument", Summary: "This API's description, generated from its routes", Tags: []string{"System"},
 		Description: "The OpenAPI 3.1 description go-oapifly generates from the routes this server registers, " +
 			"the description itself among them. It replaces openapi.yaml once the two agree (#670).",
-		Security: oapifly.Public, MediaType: "application/json"}, generatedDescription(rs.Registry))
+		Security: oapifly.Public, MediaType: "application/json",
+		Responses: []oapifly.EndpointResponse{{Status: http.StatusOK, Type: oapifly.TypeOf[openAPIDescription]()}}}, generatedDescription(rs.Registry))
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/docs",
 		OperationID: "swaggerUI", Summary: "Swagger UI documentation page", Tags: []string{"System"},
 		Security: oapifly.Public, MediaType: "text/html"}, swaggerUI)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/docs/openapi.yaml",
 		OperationID: "openapiSpec", Summary: "This OpenAPI specification document", Tags: []string{"System"},
 		Security: oapifly.Public, MediaType: "application/yaml"}, openAPISpec)
+}
+
+// openAPIDescription states OpenAPI 3.1's required document fields. Its other
+// fields and the contents of Info and Paths belong to the OpenAPI vocabulary,
+// including extensions, rather than REST Mail's closed resource DTOs. The
+// handler still serves the generator's bytes without an envelope or conversion.
+type openAPIDescription struct {
+	_       struct{}       `oapi:"open"`
+	OpenAPI string         `json:"openapi"`
+	Info    map[string]any `json:"info"`
+	Paths   map[string]any `json:"paths"`
 }
 
 // swaggerUI serves a Swagger UI page that loads the embedded OpenAPI spec.
