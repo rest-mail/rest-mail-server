@@ -21,7 +21,6 @@ example-invalid importContacts/email_invalid
 example-invalid importContacts/mixed_batch
 example-invalid probeServices/service_unknown
 example-invalid protocolSignIn/protocol_missing
-example-invalid putSieveScript/script_null
 example-invalid restmailDeliver/recipients_missing
 example-invalid sendMessage/from_missing
 example-invalid sendMessage/unsubscribe_not_allowed
