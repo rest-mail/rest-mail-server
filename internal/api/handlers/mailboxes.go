@@ -10,6 +10,7 @@ import (
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
+	apitypes "github.com/restmail/restmail/internal/api/types"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
@@ -70,13 +71,7 @@ func (h *MailboxHandler) get(r *http.Request, in adminAddressPath) (Mailbox, err
 	return mailboxOf(mailbox), nil
 }
 
-type updateMailboxRequest struct {
-	// Keep the byte-count rule in the handler; minLength would count code points.
-	Password    *string `json:"password,omitempty" format:"password" description:"At least 12 bytes when supplied; null leaves the password unchanged"`
-	DisplayName *string `json:"display_name,omitempty"`
-	QuotaBytes  *int64  `json:"quota_bytes,omitempty"`
-	Active      *bool   `json:"active,omitempty"`
-}
+type updateMailboxRequest = apitypes.UpdateMailboxRequest
 
 // mailboxUpdatableColumns is the exhaustive allowlist of DB columns the mailbox
 // update handler may write. The write is bound to this set (via Select), so a
@@ -247,11 +242,7 @@ func (h *MailboxHandler) endSessions(r *http.Request, in adminAddressPath) (endp
 
 // AddressCheck is whether an address is a mailbox here, and which. Its fields are in the order
 // the map it replaced was written in, so the bytes are unchanged.
-type AddressCheck struct {
-	Address   string `json:"address"`
-	Exists    bool   `json:"exists"`
-	MailboxID uint   `json:"mailbox_id,omitempty"`
-}
+type AddressCheck = apitypes.AddressCheck
 
 // addressCheckQuery names the recipient to check. A blank one is the handler's 400.
 type addressCheckQuery struct {

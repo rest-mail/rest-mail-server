@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	apitypes "github.com/restmail/restmail/internal/api/types"
 	"io"
 	"net/http"
 	"net/url"
@@ -73,9 +74,7 @@ func (w *Worker) discoverRESTMAILEndpoint(discoveryURL string) (string, error) {
 	if len(body) > maxRESTMAILDiscoveryBody {
 		return "", fmt.Errorf("RESTMAIL discovery %s: response exceeds %d bytes", discoveryURL, maxRESTMAILDiscoveryBody)
 	}
-	var doc struct {
-		Endpoint string `json:"endpoint"`
-	}
+	var doc apitypes.RestmailDiscovery
 	if err := json.Unmarshal(body, &doc); err != nil {
 		return "", fmt.Errorf("RESTMAIL discovery %s: decode: %w", discoveryURL, err)
 	}

@@ -110,7 +110,7 @@ func (m InboxModel) Update(msg tea.Msg) (InboxModel, tea.Cmd) {
 			m.folders = msg.folders
 			m.folderNames = make([]string, len(msg.folders))
 			for i, f := range msg.folders {
-				m.folderNames[i] = f.Name
+				m.folderNames[i] = f.Folder
 			}
 			for i, name := range m.folderNames {
 				if name == "INBOX" {
@@ -409,9 +409,8 @@ func (m InboxModel) toggleRead(msgID uint, currentlyRead bool) tea.Cmd {
 		if token == "" {
 			return inboxActionMsg{err: fmt.Errorf("no admin token available")}
 		}
-		err := m.api.UpdateMessage(token, msgID, map[string]any{
-			"is_read": !currentlyRead,
-		})
+		value := !currentlyRead
+		err := m.api.UpdateMessage(token, msgID, apiclient.MessageUpdate{IsRead: &value})
 		return inboxActionMsg{err: err}
 	}
 }
@@ -422,9 +421,8 @@ func (m InboxModel) toggleStar(msgID uint, currentlyStarred bool) tea.Cmd {
 		if token == "" {
 			return inboxActionMsg{err: fmt.Errorf("no admin token available")}
 		}
-		err := m.api.UpdateMessage(token, msgID, map[string]any{
-			"is_starred": !currentlyStarred,
-		})
+		value := !currentlyStarred
+		err := m.api.UpdateMessage(token, msgID, apiclient.MessageUpdate{IsStarred: &value})
 		return inboxActionMsg{err: err}
 	}
 }
@@ -519,9 +517,9 @@ func (m InboxModel) View(width, height int) string {
 			var tabs strings.Builder
 			tabs.WriteString("  ")
 			for i, f := range m.folders {
-				label := f.Name
+				label := f.Folder
 				if f.Unread > 0 {
-					label = fmt.Sprintf("%s(%d)", f.Name, f.Unread)
+					label = fmt.Sprintf("%s(%d)", f.Folder, f.Unread)
 				}
 				if i == m.selectedFolder {
 					tabs.WriteString(lipgloss.NewStyle().Bold(true).Foreground(highlightColor).

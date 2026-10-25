@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/restmail/restmail/internal/api/endpoint"
+	apitypes "github.com/restmail/restmail/internal/api/types"
 	"github.com/restmail/restmail/internal/auth"
 	rmail "github.com/restmail/restmail/internal/mail"
 )
@@ -94,7 +96,7 @@ func runImportAccount(ctx context.Context, args []string, stdin io.Reader, token
 // new account's ID (0 unless the server answered 201) and the HTTP status. The
 // error is only for a request that could not be made or answered.
 func postImportedAccount(ctx context.Context, client *http.Client, base *url.URL, token, address, displayName, hash string) (uint, int, error) {
-	body, err := json.Marshal(map[string]string{"address": address, "display_name": displayName, "password_hash": hash})
+	body, err := json.Marshal(apitypes.CreateAccountRequest{Address: address, DisplayName: displayName, PasswordHash: hash})
 	if err != nil {
 		return 0, 0, fmt.Errorf("could not encode the import")
 	}
@@ -115,11 +117,7 @@ func postImportedAccount(ctx context.Context, client *http.Client, base *url.URL
 	if resp.StatusCode != http.StatusCreated {
 		return 0, resp.StatusCode, nil
 	}
-	var result struct {
-		Data struct {
-			ID uint `json:"id"`
-		} `json:"data"`
-	}
+	var result endpoint.Data[apitypes.AccountResponse]
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&result); err != nil {
 		return 0, resp.StatusCode, nil
 	}

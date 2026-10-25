@@ -10,7 +10,7 @@ import "github.com/restmail/restmail/internal/gateway/apiclient"
 type Backend interface {
 	// SignIn authenticates an account (submission AUTH), with one of its
 	// passwords or an app password (apiclient.Client.SignIn).
-	SignIn(email, password, protocol string) (*apiclient.LoginResponse, error)
+	SignIn(email, password, protocol string) (*apiclient.SignInResponse, error)
 	// CheckMailbox verifies a recipient address exists locally.
 	CheckMailbox(address string) (*apiclient.MailboxCheckResponse, error)
 	// DeliverMessage delivers a message to a local mailbox.

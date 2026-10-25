@@ -102,10 +102,10 @@ func TestListUnsubscribe_Headers(t *testing.T) {
 			"<mailto:unsub@example.com>, <https://example.com/u>", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if err := tc.in.validate(); err != nil {
+			if err := validateListUnsubscribe(&tc.in); err != nil {
 				t.Fatalf("validate: %v", err)
 			}
-			got := tc.in.headers()
+			got := listUnsubscribeHeaders(&tc.in)
 			if got[headerListUnsubscribe] != tc.list {
 				t.Errorf("List-Unsubscribe = %q, want %q", got[headerListUnsubscribe], tc.list)
 			}

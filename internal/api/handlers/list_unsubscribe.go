@@ -5,6 +5,8 @@ import (
 	"net/mail"
 	"net/url"
 	"strings"
+
+	apitypes "github.com/restmail/restmail/internal/api/types"
 )
 
 // The header fields an unsubscribe target is published in (RFC 2369 §3.2,
@@ -27,19 +29,12 @@ const maxUnsubscribeURLLen = 2048
 // It is two named fields rather than a free-form header so a caller cannot
 // write the header itself: at most one address and one HTTPS URL, each checked
 // before it reaches the message.
-type listUnsubscribe struct {
-	// Mailto is a bare address (no display name, no mailto: prefix) that
-	// unsubscribes the recipient when it receives mail.
-	Mailto string `json:"mailto,omitempty"`
-	// HTTPS is an https URL that unsubscribes the recipient when it receives
-	// the RFC 8058 one-click POST.
-	HTTPS string `json:"https,omitempty"`
-}
+type listUnsubscribe = apitypes.ListUnsubscribe
 
 // validate checks each target. It is the only gate between the request and
 // the header, so it refuses anything that could end the header line or add a
 // target the field names do not say.
-func (l *listUnsubscribe) validate() error {
+func validateListUnsubscribe(l *listUnsubscribe) error {
 	if l.Mailto == "" && l.HTTPS == "" {
 		return errors.New("list_unsubscribe needs a mailto address, an https URL or both")
 	}
@@ -143,7 +138,7 @@ func headerSafeASCII(s string) bool {
 //
 // The caller must DKIM-sign the message when this claims one-click: RFC 8058
 // §4 requires a valid signature covering both fields.
-func (l *listUnsubscribe) headers() map[string]string {
+func listUnsubscribeHeaders(l *listUnsubscribe) map[string]string {
 	var targets []string
 	if l.Mailto != "" {
 		targets = append(targets, "<mailto:"+l.Mailto+">")
@@ -172,7 +167,7 @@ func withListUnsubscribe(extra map[string]string, l *listUnsubscribe) map[string
 		}
 		out[name] = value
 	}
-	for name, value := range l.headers() {
+	for name, value := range listUnsubscribeHeaders(l) {
 		out[name] = value
 	}
 	return out

@@ -7,29 +7,13 @@ import (
 
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
+	apitypes "github.com/restmail/restmail/internal/api/types"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/grants"
 )
 
 // Mailbox is the admin account response. Credentials and session secrets have no API field.
-type Mailbox struct {
-	ID                     uint        `json:"id"`
-	DomainID               uint        `json:"domain_id"`
-	LocalPart              string      `json:"local_part"`
-	Address                string      `json:"address" format:"email"`
-	DisplayName            string      `json:"display_name"`
-	QuotaBytes             int64       `json:"quota_bytes"`
-	QuotaUsedBytes         int64       `json:"quota_used_bytes"`
-	Active                 bool        `json:"active"`
-	LastLoginAt            *time.Time  `json:"last_login_at"`
-	PasswordChangeRequired bool        `json:"password_change_required"`
-	TwoFactorRequired      bool        `json:"two_factor_required"`
-	LastPasswordChange     *time.Time  `json:"last_password_change,omitempty"`
-	CreatedAt              time.Time   `json:"created_at"`
-	UpdatedAt              time.Time   `json:"updated_at"`
-	Domain                 Domain      `json:"domain,omitempty"`
-	QuotaUsage             *QuotaUsage `json:"quota_usage,omitempty"`
-}
+type Mailbox = apitypes.Mailbox
 
 func mailboxOf(m models.Mailbox) Mailbox {
 	return Mailbox{
@@ -74,15 +58,7 @@ func aliasOf(m models.Alias) Alias {
 	}
 }
 
-type QuotaUsage struct {
-	MailboxID       uint      `json:"mailbox_id"`
-	SubjectBytes    int64     `json:"subject_bytes"`
-	BodyBytes       int64     `json:"body_bytes"`
-	AttachmentBytes int64     `json:"attachment_bytes"`
-	MessageCount    int       `json:"message_count"`
-	UpdatedAt       time.Time `json:"updated_at"`
-	Mailbox         Mailbox   `json:"mailbox,omitempty"`
-}
+type QuotaUsage = apitypes.QuotaUsage
 
 func quotaUsageOf(m *models.QuotaUsage) *QuotaUsage {
 	if m == nil {

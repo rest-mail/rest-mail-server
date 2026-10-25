@@ -19,12 +19,12 @@ func testTime() time.Time {
 
 func testMessage() apiclient.MessageDetail {
 	return apiclient.MessageDetail{
-		MessageSummary: apiclient.MessageSummary{
-			Sender:     "alice@example.com",
-			SenderName: "Alice",
-			Subject:    "Hello",
-			ReceivedAt: testTime(),
-		},
+
+		Sender:     "alice@example.com",
+		SenderName: "Alice",
+		Subject:    "Hello",
+		ReceivedAt: testTime(),
+
 		BodyText: "Hello, world!",
 	}
 }
@@ -277,7 +277,7 @@ func TestBuild_BoundaryIsFreshEachTime(t *testing.T) {
 func TestBuild_OptionalHeaders(t *testing.T) {
 	t.Run("present when set", func(t *testing.T) {
 		msg := testMessage()
-		msg.MessageID = "abc123@example.com"
+		msg.MsgID = "abc123@example.com"
 		msg.InReplyTo = "original@example.com"
 
 		raw := Build(msg)

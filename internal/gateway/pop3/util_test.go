@@ -18,12 +18,12 @@ func newTestTime() time.Time {
 
 func TestBuildRawMessage_TextOnly(t *testing.T) {
 	msg := apiclient.MessageDetail{
-		MessageSummary: apiclient.MessageSummary{
-			Sender:     "alice@example.com",
-			SenderName: "Alice",
-			Subject:    "Hello",
-			ReceivedAt: newTestTime(),
-		},
+
+		Sender:     "alice@example.com",
+		SenderName: "Alice",
+		Subject:    "Hello",
+		ReceivedAt: newTestTime(),
+
 		BodyText: "Hello, world!",
 	}
 
@@ -46,12 +46,12 @@ func TestBuildRawMessage_TextOnly(t *testing.T) {
 
 func TestBuildRawMessage_HTMLOnly(t *testing.T) {
 	msg := apiclient.MessageDetail{
-		MessageSummary: apiclient.MessageSummary{
-			Sender:     "bob@example.com",
-			SenderName: "Bob",
-			Subject:    "HTML Test",
-			ReceivedAt: newTestTime(),
-		},
+
+		Sender:     "bob@example.com",
+		SenderName: "Bob",
+		Subject:    "HTML Test",
+		ReceivedAt: newTestTime(),
+
 		BodyHTML: "<p>Hello</p>",
 	}
 
@@ -69,12 +69,12 @@ func TestBuildRawMessage_HTMLOnly(t *testing.T) {
 func TestBuildRawMessage_MultipartTextAndHTML(t *testing.T) {
 	ts := newTestTime()
 	msg := apiclient.MessageDetail{
-		MessageSummary: apiclient.MessageSummary{
-			Sender:     "carol@example.com",
-			SenderName: "Carol",
-			Subject:    "Both",
-			ReceivedAt: ts,
-		},
+
+		Sender:     "carol@example.com",
+		SenderName: "Carol",
+		Subject:    "Both",
+		ReceivedAt: ts,
+
 		BodyText: "Plain text",
 		BodyHTML: "<p>Rich text</p>",
 	}
@@ -130,13 +130,13 @@ func TestBuildRawMessage_MultipartTextAndHTML(t *testing.T) {
 
 func TestBuildRawMessage_WithMessageID(t *testing.T) {
 	msg := apiclient.MessageDetail{
-		MessageSummary: apiclient.MessageSummary{
-			Sender:     "dave@example.com",
-			SenderName: "Dave",
-			Subject:    "ID Test",
-			ReceivedAt: newTestTime(),
-			MessageID:  "abc123@example.com",
-		},
+
+		Sender:     "dave@example.com",
+		SenderName: "Dave",
+		Subject:    "ID Test",
+		ReceivedAt: newTestTime(),
+		MsgID:      "abc123@example.com",
+
 		BodyText: "body",
 	}
 
@@ -146,12 +146,12 @@ func TestBuildRawMessage_WithMessageID(t *testing.T) {
 
 func TestBuildRawMessage_WithoutMessageID(t *testing.T) {
 	msg := apiclient.MessageDetail{
-		MessageSummary: apiclient.MessageSummary{
-			Sender:     "eve@example.com",
-			SenderName: "Eve",
-			Subject:    "No ID",
-			ReceivedAt: newTestTime(),
-		},
+
+		Sender:     "eve@example.com",
+		SenderName: "Eve",
+		Subject:    "No ID",
+		ReceivedAt: newTestTime(),
+
 		BodyText: "body",
 	}
 
@@ -163,12 +163,12 @@ func TestBuildRawMessage_WithoutMessageID(t *testing.T) {
 
 func TestBuildRawMessage_WithInReplyTo(t *testing.T) {
 	msg := apiclient.MessageDetail{
-		MessageSummary: apiclient.MessageSummary{
-			Sender:     "frank@example.com",
-			SenderName: "Frank",
-			Subject:    "Re: Thread",
-			ReceivedAt: newTestTime(),
-		},
+
+		Sender:     "frank@example.com",
+		SenderName: "Frank",
+		Subject:    "Re: Thread",
+		ReceivedAt: newTestTime(),
+
 		BodyText:  "reply body",
 		InReplyTo: "original123@example.com",
 	}
@@ -179,12 +179,12 @@ func TestBuildRawMessage_WithInReplyTo(t *testing.T) {
 
 func TestBuildRawMessage_WithoutInReplyTo(t *testing.T) {
 	msg := apiclient.MessageDetail{
-		MessageSummary: apiclient.MessageSummary{
-			Sender:     "grace@example.com",
-			SenderName: "Grace",
-			Subject:    "New Thread",
-			ReceivedAt: newTestTime(),
-		},
+
+		Sender:     "grace@example.com",
+		SenderName: "Grace",
+		Subject:    "New Thread",
+		ReceivedAt: newTestTime(),
+
 		BodyText: "first message",
 	}
 
@@ -196,12 +196,12 @@ func TestBuildRawMessage_WithoutInReplyTo(t *testing.T) {
 
 func TestBuildRawMessage_DateFormat(t *testing.T) {
 	msg := apiclient.MessageDetail{
-		MessageSummary: apiclient.MessageSummary{
-			Sender:     "hank@example.com",
-			SenderName: "Hank",
-			Subject:    "Date Check",
-			ReceivedAt: newTestTime(),
-		},
+
+		Sender:     "hank@example.com",
+		SenderName: "Hank",
+		Subject:    "Date Check",
+		ReceivedAt: newTestTime(),
+
 		BodyText: "body",
 	}
 

@@ -316,8 +316,8 @@ func TestListFolders_Success(t *testing.T) {
 	if len(resp.Data) != 2 {
 		t.Fatalf("expected 2 folders, got %d", len(resp.Data))
 	}
-	if resp.Data[0].Name != "INBOX" {
-		t.Fatalf("expected first folder 'INBOX', got %q", resp.Data[0].Name)
+	if resp.Data[0].Folder != "INBOX" {
+		t.Fatalf("expected first folder 'INBOX', got %q", resp.Data[0].Folder)
 	}
 	if resp.Data[0].Total != 10 {
 		t.Fatalf("expected total 10, got %d", resp.Data[0].Total)
@@ -553,7 +553,8 @@ func TestUpdateMessage_Success(t *testing.T) {
 	})
 
 	c := New(srv.URL)
-	err := c.UpdateMessage("tok", 10, map[string]interface{}{"is_read": true})
+	seen := true
+	err := c.UpdateMessage("tok", 10, MessageUpdate{IsRead: &seen})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -939,7 +940,7 @@ func TestQueueStats_Success(t *testing.T) {
 			"data": map[string]interface{}{
 				"total":   100,
 				"pending": 25,
-				"failed":  3,
+				"bounced": 3,
 			},
 		})
 	})
@@ -955,8 +956,8 @@ func TestQueueStats_Success(t *testing.T) {
 	if resp.Data.Pending != 25 {
 		t.Fatalf("expected pending 25, got %d", resp.Data.Pending)
 	}
-	if resp.Data.Failed != 3 {
-		t.Fatalf("expected failed 3, got %d", resp.Data.Failed)
+	if resp.Data.Bounced != 3 {
+		t.Fatalf("expected bounced 3, got %d", resp.Data.Bounced)
 	}
 }
 
@@ -1253,7 +1254,7 @@ func TestSignIn_OnePathForEveryPassword(t *testing.T) {
 			t.Fatalf("SignIn(%q): %v", password, err)
 		}
 		if resp.Data.User.ID != 7 || resp.Data.CredentialID != 3 || resp.Data.CredentialKind != "password" ||
-			!strings.HasPrefix(resp.Data.AccessToken, "Basic ") {
+			!strings.HasPrefix(resp.AccessToken, "Basic ") {
 			t.Errorf("SignIn(%q) = %+v", password, resp.Data)
 		}
 	}

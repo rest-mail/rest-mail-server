@@ -15,6 +15,7 @@ import (
 
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
+	apitypes "github.com/restmail/restmail/internal/api/types"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/bootstrap"
 	"github.com/restmail/restmail/internal/db/models"
@@ -219,22 +220,7 @@ func (h *AuthHandler) revokeAllForAccount(accountID uint) {
 	}
 }
 
-type loginRequest struct {
-	// Email is the account's address.
-	Email    string `json:"email" minLength:"1" pattern:"\\S" message:"required: the account's address" missing:"required: the account's address"`
-	Password string `json:"password" minLength:"1" message:"required" missing:"required"`
-	// TOTPCode / RecoveryCode carry the second factor for accounts with 2FA
-	// active (OSI-19). Both are optional and ignored for accounts without 2FA,
-	// so non-2FA logins are byte-for-byte unchanged. A single-step login that
-	// omits them for a 2FA account is answered with a totp_required challenge.
-	TOTPCode     string `json:"totp_code,omitempty"`
-	RecoveryCode string `json:"recovery_code,omitempty"`
-	// Client is "native" for an app that is not a browser (the mobile client):
-	// it gets the tokens in the response body instead of as cookies, and keeps
-	// them in its own secure storage. Empty means a browser. Anything else is
-	// refused, so a typo cannot quietly fall back to cookies.
-	Client string `json:"client,omitempty" enums:"native" message:"must be \"native\" or omitted"`
-}
+type loginRequest = apitypes.LoginRequest
 
 // clientNative is the loginRequest.Client value that asks for body tokens.
 const clientNative = "native"
@@ -264,21 +250,7 @@ type sessionTokenRequest struct {
 // "client": "native", or refreshed by sending its refresh token in the body. A
 // request that arrives with the refresh cookie is a browser's and never gets
 // them, whatever its body says.
-type loginResponse struct {
-	ExpiresIn          int            `json:"expires_in"`
-	User               userInfo       `json:"user"`
-	Capabilities       []string       `json:"capabilities,omitempty"`
-	ScopedCapabilities []grants.Entry `json:"scoped_capabilities,omitempty"`
-	// SetupRequired lists what the account must still do — "password" (POST
-	// /api/v1/auth/password), "two_factor" (POST /api/v1/auth/2fa/enroll, then
-	// /confirm) — before the session can reach anything else, which answers
-	// 403 setup_required until then. Absent when the account is set up.
-	SetupRequired []string `json:"setup_required,omitempty"`
-
-	AccessToken      string `json:"access_token,omitempty"`
-	RefreshToken     string `json:"refresh_token,omitempty"`
-	RefreshExpiresIn int    `json:"refresh_expires_in,omitempty"`
-}
+type loginResponse = apitypes.LoginResponse
 
 // deliverSession hands a freshly minted token pair to the client. A browser gets
 // the httpOnly refresh cookie plus the access and CSRF cookies, and resp is left
@@ -391,11 +363,7 @@ func newCSRFToken() (string, error) {
 
 // userInfo is the account a session is for: its id (the mailbox's, the
 // {id} of /api/v1/accounts/{id}/…) and address.
-type userInfo struct {
-	ID          uint   `json:"id"`
-	Email       string `json:"email"`
-	DisplayName string `json:"display_name"`
-}
+type userInfo = apitypes.UserInfo
 
 // Login signs an account in: its address, a password matching one of its
 // password credentials, and a code from one of its TOTP credentials when it
@@ -815,11 +783,7 @@ func (h *AuthHandler) newSession(account *models.Mailbox, native bool, amr []str
 // resetRequest is the body of POST /api/v1/auth/reset. Redeeming checks the token and the
 // password: a missing token is the 401 a wrong one is, a missing password the 422 a short one
 // is.
-type resetRequest struct {
-	Token    string `json:"token,omitempty"`
-	Password string `json:"password,omitempty"`
-	Client   string `json:"client,omitempty"`
-}
+type resetRequest = apitypes.ResetRequest
 
 // reset redeems a reset_admin token — minted by `restmail-api mint-token
 // --purpose reset-admin`, or for an owner key. The account it names gets the

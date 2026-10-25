@@ -18,6 +18,7 @@ import (
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
+	apitypes "github.com/restmail/restmail/internal/api/types"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
@@ -130,13 +131,7 @@ type updateMessageRequest struct {
 	Body updateMessageBody `body:""`
 }
 
-type updateMessageBody struct {
-	IsRead    *bool   `json:"is_read,omitempty"`
-	IsFlagged *bool   `json:"is_flagged,omitempty"`
-	IsStarred *bool   `json:"is_starred,omitempty"`
-	IsDraft   *bool   `json:"is_draft,omitempty"`
-	Folder    *string `json:"folder,omitempty"`
-}
+type updateMessageBody = apitypes.UpdateMessageBody
 
 // deleteMessageRequest deletes a message: to Trash, or for good when permanent is true, or
 // when it is already in Trash or deleted. The protocol gateways delete for good.
@@ -429,27 +424,7 @@ func (h *MessageHandler) deleteMessage(r *http.Request, in deleteMessageRequest)
 // a named type because a scheduled send stores the same body and replays it
 // through sendMessage when its time comes. Every field is optional to binding:
 // the handler checks from, to and the addresses, with the refusals it always gave.
-type sendMessageRequest struct {
-	From          string                  `json:"from,omitempty"`
-	To            []string                `json:"to,omitempty"`
-	Cc            []string                `json:"cc,omitempty"`
-	Bcc           []string                `json:"bcc,omitempty"`
-	Subject       string                  `json:"subject,omitempty"`
-	BodyText      string                  `json:"body_text,omitempty"`
-	BodyHTML      string                  `json:"body_html,omitempty"`
-	InReplyTo     string                  `json:"in_reply_to,omitempty"`
-	CalendarEvent *pipeline.CalendarEvent `json:"calendar_event,omitempty"`
-	// ListUnsubscribe, when set, publishes where a recipient unsubscribes
-	// (#144). Absent, the message carries no List-Unsubscribe fields.
-	ListUnsubscribe *listUnsubscribe `json:"list_unsubscribe,omitempty"`
-	// RequireTLS asks that every hop carry the message over TLS, as SMTP's
-	// REQUIRETLS does (RFC 8689): it goes only to an MTA-STS host over verified
-	// TLS that offers REQUIRETLS, and fails back to the sender otherwise (#724).
-	RequireTLS bool `json:"require_tls,omitempty"`
-	// ScheduledAt asks the server to send the message at that time instead of
-	// now. It is not part of the replayed request; the stored copy omits it.
-	ScheduledAt *time.Time `json:"scheduled_at,omitempty"`
-}
+type sendMessageRequest = apitypes.SendMessageRequest
 
 // SendMessage composes and sends a message from an authenticated user.
 func (h *MessageHandler) sendMessage(r *http.Request, req sendMessageRequest) (endpoint.Status[any], error) {
@@ -506,7 +481,7 @@ func (h *MessageHandler) sendMessage(r *http.Request, req sendMessageRequest) (e
 	// The unsubscribe targets become header fields, so they are checked here,
 	// with the addresses, before anything is stored or signed.
 	if req.ListUnsubscribe != nil {
-		if err := req.ListUnsubscribe.validate(); err != nil {
+		if err := validateListUnsubscribe(req.ListUnsubscribe); err != nil {
 			return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", err.Error())
 		}
 	}
@@ -953,56 +928,11 @@ func (h *MessageHandler) sendMessage(r *http.Request, req sendMessageRequest) (e
 // deliverMessageBody is a message a protocol gateway delivers into a mailbox, named by
 // mailbox_id or address. Every field is optional to binding: the handler checks the mailbox,
 // and the gateway sends only what it has.
-type deliverMessageBody struct {
-	MailboxID    uint            `json:"mailbox_id,omitempty"`
-	Address      string          `json:"address,omitempty"`
-	Sender       string          `json:"sender,omitempty"`
-	SenderName   string          `json:"sender_name,omitempty"`
-	RecipientsTo json.RawMessage `json:"recipients_to,omitempty"`
-	RecipientsCc json.RawMessage `json:"recipients_cc,omitempty"`
-	Subject      string          `json:"subject,omitempty"`
-	BodyText     string          `json:"body_text,omitempty"`
-	BodyHTML     string          `json:"body_html,omitempty"`
-	MessageID    string          `json:"message_id,omitempty"`
-	InReplyTo    string          `json:"in_reply_to,omitempty"`
-	References   string          `json:"references,omitempty"`
-	// RawMessage is base64-decoded from the wire ([]byte, not string) so the
-	// pristine RFC 2822 octets survive JSON transport unchanged — a JSON
-	// string field would mangle every non-UTF-8 byte to U+FFFD (see #173).
-	RawMessage []byte `json:"raw_message,omitempty"`
-	ClientIP   string `json:"client_ip,omitempty"`
-	HeloName   string `json:"helo_name,omitempty"`
-	// Folder is the destination folder the message must be created in (empty =
-	// INBOX). Set by the IMAP gateway's COPY/APPEND so the message is created
-	// directly in its destination in one atomic delivery, rather than delivered
-	// to INBOX and then moved. Flags and ReceivedAt (INTERNALDATE) let COPY
-	// preserve the source message's flags/internal date and APPEND apply the
-	// client-supplied flags at creation time. A nil flag pointer / nil (or zero)
-	// ReceivedAt keeps the delivery default, so ordinary inbound mail is
-	// unaffected.
-	Folder     string     `json:"folder,omitempty"`
-	IsRead     *bool      `json:"is_read,omitempty"`
-	IsFlagged  *bool      `json:"is_flagged,omitempty"`
-	IsStarred  *bool      `json:"is_starred,omitempty"`
-	IsDraft    *bool      `json:"is_draft,omitempty"`
-	ReceivedAt *time.Time `json:"received_at,omitempty"`
-	// Inbound transport-security metrics (always-on, inbound-MX only). A nil
-	// ReceivedTLS means the caller is not an inbound-MX delivery, persisted as
-	// NULL. TLSCipher is accepted for wire completeness but only the version is
-	// persisted on the message.
-	ReceivedTLS *bool  `json:"received_tls,omitempty"`
-	TLSVersion  string `json:"tls_version,omitempty"`
-	TLSCipher   string `json:"tls_cipher,omitempty"`
-	// RequireTLS is the REQUIRETLS tag the message arrived with (RFC 8689 §4.1): a copy
-	// REST Mail sends on, a Sieve redirect, goes with TLS required too.
-	RequireTLS bool `json:"require_tls,omitempty"`
-}
+type deliverMessageBody = apitypes.DeliverMessageBody
 
 // DeliveryProcessed is the answer to a delivery the inbound pipeline quarantined or discarded:
 // accepted, and no message made.
-type DeliveryProcessed struct {
-	Status string `json:"status" enums:"processed"`
-}
+type DeliveryProcessed = apitypes.DeliveryProcessed
 
 // RegisterDelivery mounts inbound delivery, which only the protocol gateways call: on the
 // internal mTLS listener, or the public one where internal mTLS is off. bodyLimit is the
@@ -1099,11 +1029,7 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody)
 
 // FolderSummary is a folder of an account, with how many messages it holds and how many of
 // them are unread. The standard folders are always listed, empty or not.
-type FolderSummary struct {
-	Folder string `json:"name"`
-	Total  int64  `json:"total"`
-	Unread int64  `json:"unread"`
-}
+type FolderSummary = apitypes.FolderSummary
 
 // FolderName is a folder as it was created or renamed.
 type FolderName struct {
@@ -1112,12 +1038,7 @@ type FolderName struct {
 
 // Quota is an account's storage: its limit, what it uses, and how many messages it holds.
 // Its fields are in the order the map it replaced was written in, so the bytes are unchanged.
-type Quota struct {
-	MessageCount   int64   `json:"message_count"`
-	PercentUsed    float64 `json:"percent_used"`
-	QuotaBytes     int64   `json:"quota_bytes"`
-	QuotaUsedBytes int64   `json:"quota_used_bytes"`
-}
+type Quota = apitypes.Quota
 
 // folderNameBody names a folder; the handler refuses a name rmail.FolderNameProblem finds
 // fault with, an empty one as "required".
