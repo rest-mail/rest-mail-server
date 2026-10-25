@@ -2,6 +2,7 @@
 
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -122,6 +123,24 @@ class Summary(unittest.TestCase):
                 Path(directory, "summary.md").read_text().startswith("# Contract run")
             )
 
+    def test_selected_phases_ignore_other_runs_and_their_operation_counts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for phase in ("examples", "coverage", "authorization", "fuzz"):
+                Path(directory, phase + ".xml").write_text(
+                    '<testsuite><testcase name="a"/></testsuite>'
+                )
+            # An unrelated examples report must not even be read by fuzz.
+            Path(directory, "examples.json").write_text("not this run's JSON")
+            summary.main([directory, "fuzz"])
+            table = Path(directory, "summary.md").read_text()
+            self.assertIn("| fuzz (report only) | 1 | 1 | 0 | 0 |", table)
+            for stale in ("examples", "coverage", "authorization", "Operations:"):
+                self.assertNotIn(stale, table)
+            table = summary.summary(directory, ["coverage", "authorization"])
+            self.assertIn("| coverage |", table)
+            self.assertIn("| authorization (report only) |", table)
+            self.assertNotIn("fuzz", table)
+
     def test_ci_runs_the_complete_local_command(self):
         chores = (ROOT / "chores.yml").read_text()
         workflow = (ROOT / ".github/workflows/e2e-suite.yml").read_text()
@@ -143,9 +162,15 @@ class ContractCommand(unittest.TestCase):
                 (work / ".cache").mkdir()
                 (work / ".cache/contract-principals.json").write_text("{}")
             scripts = {
-                "chore": 'echo "chore:$*" >> "$CALLS"\nexit "${FIXTURE_EXIT:-0}"\n',
-                "python3": 'echo scan >> "$CALLS"\nexit "${SCAN_EXIT:-0}"\n',
+                "chore": 'echo "chore:$*" >> "$CALLS"\n'
+                'if [ "$1" = test:e2e ]; then '
+                '[ "$API_BASE_URL" = "${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}" ] || exit 98; fi\n'
+                'exit "${FIXTURE_EXIT:-0}"\n',
+                "python3": 'case "$1" in *summary.py) echo "summary:$*" >> "$CALLS"; '
+                'exit "${SUMMARY_EXIT:-0}";; esac\n'
+                'echo scan >> "$CALLS"\nexit "${SCAN_EXIT:-0}"\n',
                 "tests/contract/run.sh": 'echo "run:$*" >> "$CALLS"\n'
+                '[ "$CONTRACT_DEFER_SUMMARY" = 1 ] || exit 99\n'
                 'case "$1" in gate) exit "${GATE_EXIT:-0}";; '
                 'authorization) exit "${AUTH_EXIT:-0}";; esac\n',
             }
@@ -159,8 +184,8 @@ class ContractCommand(unittest.TestCase):
                 PATH=str(work) + os.pathsep + os.environ["PATH"],
                 CALLS=str(calls),
                 CONTRACT_ENDPOINT="http://fixture.test:8080",
-                **settings,
             )
+            env.update(settings)
             command = yaml.safe_load((ROOT / "chores.yml").read_text())["tasks"][
                 "contract"
             ]["cmds"][0]
@@ -187,6 +212,7 @@ class ContractCommand(unittest.TestCase):
                 "run:gate --tag Domains",
                 "scan",
                 "run:authorization --tag Domains",
+                "summary:tests/contract/summary.py .cache/contract examples coverage authorization",
             ],
         )
 
@@ -206,6 +232,54 @@ class ContractCommand(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(calls[0], "chore:test:e2e -- -run ^TestContractPrincipals$")
         self.assertEqual(calls[1], "chore:test:contract-fixtures")
+
+    def test_default_endpoint_starts_the_topology_before_principal_setup(self):
+        result, calls = self.run_command(principals=False, CONTRACT_ENDPOINT="")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(calls[0], "chore:e2e:up")
+        self.assertEqual(calls[1], "chore:test:e2e -- -run ^TestContractPrincipals$")
+        self.assertEqual(sum(call.startswith("summary:") for call in calls), 1)
+
+
+class PhaseCommand(unittest.TestCase):
+    def test_real_runner_early_failure_does_not_summarize_stale_phases(self):
+        for phase, stale in (("gate", "fuzz"), ("fuzz", "examples")):
+            for deferred in (False, True):
+                with (
+                    self.subTest(phase=phase, deferred=deferred),
+                    tempfile.TemporaryDirectory() as directory,
+                ):
+                    work = Path(directory)
+                    helpers = work / "tests/contract"
+                    helpers.mkdir(parents=True)
+                    for name in ("run.sh", "summary.py"):
+                        shutil.copyfile(ROOT / "tests/contract" / name, helpers / name)
+                    reports_dir = work / ".cache/contract"
+                    reports_dir.mkdir(parents=True)
+                    (reports_dir / (stale + ".xml")).write_text(
+                        '<testsuite><testcase name="stale"><failure/></testcase></testsuite>'
+                    )
+                    vertrag = work / "vertrag"
+                    vertrag.write_text("#!/bin/sh\nexit 17\n")
+                    vertrag.chmod(0o755)
+                    result = subprocess.run(
+                        ["bash", str(helpers / "run.sh"), phase],
+                        cwd=work,
+                        env=dict(
+                            os.environ,
+                            PATH=str(work) + os.pathsep + os.environ["PATH"],
+                            CONTRACT_DEFER_SUMMARY="1" if deferred else "0",
+                        ),
+                        text=True,
+                        capture_output=True,
+                        timeout=10,
+                        check=False,
+                    )
+                    self.assertEqual(result.returncode, 17, result.stderr)
+                    self.assertNotIn("| " + stale, result.stdout)
+                    self.assertEqual(
+                        (reports_dir / "summary.md").exists(), not deferred
+                    )
 
 
 if __name__ == "__main__":

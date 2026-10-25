@@ -37,10 +37,10 @@ out=.cache/contract
 logs=${CONTRACT_LOGS:-$out}
 mkdir -p "$out" "$logs"
 # Save the document this server actually serves, with the reports, and fail on a
-# fetch error. The phases still read openapi.yaml: the generated document gives no
-# example to most path and required query parameters, and Vertrag builds no request
-# without one (2,876 refusals in E2E run 40111450987, 2026-10-24). #670 moves the
-# phases onto the served document once every parameter carries its example.
+# fetch error. Required parameter examples are covered by
+# TestEveryRequiredParameterHasAnExample (#851). The phases still read the
+# independent oracle until #670 completes its generated-description switch and
+# live contract proof.
 served="$PWD/$out/openapi.json"
 export CONTRACT_SPEC="$PWD/openapi.yaml"
 if [ "$phase" != authorization ]; then
@@ -52,7 +52,13 @@ if [ "$phase" != authorization ]; then
   done
   rm -f "$served"
 fi
-trap 'python3 tests/contract/summary.py "$out"' EXIT
+# The full command prints once after authorization. Standalone phases summarize
+# only reports from this invocation, never a previous gate or fuzz run.
+if [ "${CONTRACT_DEFER_SUMMARY:-0}" != 1 ]; then
+  summary_phases=("$phase")
+  if [ "$phase" = gate ]; then summary_phases=(examples coverage); fi
+  trap 'python3 tests/contract/summary.py "$out" "${summary_phases[@]}"' EXIT
+fi
 python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
 vertrag version
 if [ "$phase" != authorization ]; then
