@@ -179,7 +179,7 @@ func TestDANERecordsPerHost(t *testing.T) {
 	} {
 		w := daneTestWorker()
 		w.dane = tc.lookup
-		records, err := w.daneRecords("mx.example.test")
+		records, err := w.daneRecords("example.test", "mx.example.test", false)
 		var se *SMTPError
 		if len(records) != tc.records || tc.wantDefers != (errors.As(err, &se) && se.Code == 451) {
 			t.Errorf("%s: %d records, err %v", name, len(records), err)

@@ -211,8 +211,10 @@ dig +dnssec +short TLSA _25._tcp.mx1.example.org
   does not answer, a missing STARTTLS or a certificate no record matches
   defers the message; it is never sent to that host in the clear. Unset, DANE
   is off ([`internal/dane`](../../../internal/dane),
-  [`dane.go`](../../../internal/gateway/queue/dane.go)). DANE sessions are not
-  in TLS-RPT reports yet.
+  [`dane.go`](../../../internal/gateway/queue/dane.go)). DANE sessions are in
+  the recipient domain's TLS-RPT report under policy type `tlsa`, with the
+  host's TLSA records as the policy strings: a certificate no record matches is
+  `tlsa-invalid`, TLSA records that fail DNSSEC validation `dnssec-invalid`.
 
 ## Sources
 
