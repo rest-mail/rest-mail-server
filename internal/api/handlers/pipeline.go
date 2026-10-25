@@ -730,7 +730,10 @@ func (h *PipelineHandler) validateCustomFilter(r *http.Request, in validateCusto
 		return zero, endpoint.Refuse(http.StatusServiceUnavailable, "service_unavailable", jsSidecarRefused)
 	}
 
-	respBody, _ := io.ReadAll(sidecarResp.Body)
+	respBody, err := io.ReadAll(sidecarResp.Body)
+	if err != nil {
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Invalid sidecar response")
+	}
 
 	var result json.RawMessage
 	if err := json.Unmarshal(respBody, &result); err != nil {

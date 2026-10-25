@@ -5989,6 +5989,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+        "429":
+          description: Authentication refusals exceeded the configured rate limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/admin/custom-filters/{id}:
     parameters:
       - $ref: "#/components/parameters/ResourceId"

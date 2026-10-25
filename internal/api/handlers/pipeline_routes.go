@@ -211,6 +211,6 @@ func (h *PipelineHandler) Register(rs endpoint.Routes, checks PipelineRouteCheck
 		Middleware: []endpoint.Middleware{checks.At(middleware.CapPipelinesWrite), checks.TestThrottle}}, h.testCustomFilter)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/custom-filters/validate",
 		OperationID: "validateCustomFilter", Summary: "Validate custom filter", Tags: []string{"Admin: Pipelines"},
-		Errors:     []int{http.StatusServiceUnavailable},
+		Errors:     []int{http.StatusServiceUnavailable, http.StatusTooManyRequests},
 		Middleware: []endpoint.Middleware{checks.At(middleware.CapPipelinesWrite)}}, h.validateCustomFilter)
 }
