@@ -751,8 +751,18 @@ missing ID through sequencing, including when the request has a body; no hook
 rewrites these requests. `TestAdminUpdates_DocumentedMissingExamples` checks
 both descriptions, sends the registered routes' exact requests, and verifies
 that refused updates neither change existing resources nor create the missing
-target. `test_gate.py` pins all fifteen enabled operations; deletes and other
-unpaired refusals retain their exclusions.
+target.
+
+`deleteDomain`, `deleteMailbox`, `deleteAlias` and `deleteCustomFilter` also
+pair a named `missing` path ID with their exact 404 response. These requests
+have no body. Successful requests retain their existing path and link
+behavior, including bodyless 204 responses. The pinned Vertrag 0.30 runner
+was checked with a linked create/delete fixture: it sends both the absent ID
+and the created ID, with no hook rewriting either request.
+`TestAdminDeletes_DocumentedMissingExamples` checks both descriptions and
+verifies that each registered route leaves existing rows and counts intact
+when it refuses a missing target. `test_gate.py` pins all nineteen enabled
+operations; other unpaired refusals retain their exclusions.
 
 ### Browser session gate (#659)
 

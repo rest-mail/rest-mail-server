@@ -204,7 +204,7 @@ class PairedRefusals(unittest.TestCase):
 
 
 class MissingResourceRefusals(unittest.TestCase):
-    def test_only_enabled_lookups_send_their_documented_404(self):
+    def test_only_enabled_operations_send_their_documented_404(self):
         with open(os.path.join(ROOT, "openapi.yaml")) as file:
             spec = yaml.safe_load(file)
         with open(os.path.join(ROOT, "vertrag.yml")) as file:
@@ -242,6 +242,10 @@ class MissingResourceRefusals(unittest.TestCase):
                 "updateMailbox",
                 "updateAlias",
                 "updateCustomFilter",
+                "deleteDomain",
+                "deleteMailbox",
+                "deleteAlias",
+                "deleteCustomFilter",
             },
         )
 
