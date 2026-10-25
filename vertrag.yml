@@ -114,13 +114,15 @@ exclude-matching:
   # Each operation paired next comes off these patterns the same way. A path in
   # a segment none of them names is sent.
   - '> 409( >|$)'
-  # Nine GET lookups have named missing IDs; test_gate.py pins the enabled set.
+  # Eleven GET lookups have named missing IDs; test_gate.py pins the enabled set.
   # All other documented 404s still need a request that provokes them.
   - '^/(api/v1/(auth|accounts|devices|messages|attachments)|restmail|mail|autodiscover|\.well-known)(/| >).* > 404( >|$)'
   # Autoconfig's 400 (no email domain in the address or the host name) needs a
   # request to a host that is not autoconfig.<domain>, which the run cannot make.
   - '^/(mail|\.well-known/autoconfig)(/| >).* > 400( >|$)'
-  - '^/api/v1/admin/(pipelines|queue|bans|grants|messages|test)(/| >).* > 404( >|$)'
+  - '^/api/v1/admin/(pipelines|bans|grants|test)(/| >).* > 404( >|$)'
+  - '^/api/v1/admin/queue/\{id\} > Delete a queue entry > 404( >|$)'
+  - '^/api/v1/admin/queue/\{id\}/(retry|bounce) > .* > 404( >|$)'
   - '^/api/v1/admin/dkim/\{id\} > .* > 404( >|$)'
   - '^/api/v1/admin/dkim/\{id\}/rotation > Set .* > 404( >|$)'
   - '^/api/v1/admin/mailboxes/\{id\} > (Update|Delete) an account > 404( >|$)'

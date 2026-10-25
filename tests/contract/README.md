@@ -299,7 +299,7 @@ checks both lookups against PostgreSQL and verifies the existing domain
 is unchanged. Other 404s keep their exclusions; `test_gate.py` holds
 the enabled set to exactly `getDomain`, `getCertificate`, `getAlias`,
 `getCustomFilter`, `getMailbox`, `getDKIMRotation`, `domainDNSCheck`,
-`getMtaStsPolicy` and `getDomainRelay`.
+`getMtaStsPolicy`, `getDomainRelay`, `getQueueEntry` and `getMessageTrace`.
 
 `getCertificate` sends its documented 404 with the `missing` path parameter
 example, paired with the 404 alone as `getDomain`'s is, the create link
@@ -324,6 +324,17 @@ lookups. `contract_domain_lookup_examples_test.go` checks the registered routes
 against PostgreSQL, both the refusal and a successful lookup of the created
 domain, and verifies the domain stays unchanged. DNS uses deterministic test
 resolvers. DKIM, MTA-STS and relay writes keep their 404 exclusions.
+
+`getQueueEntry` and `getMessageTrace` send their named `missing` IDs,
+2147483647, with the exact `not_found` responses: `Queue entry not found`
+and `No pipeline trace for this message`. Existing links fill only the
+successful lookups from the held queue fixture and delivered message. The
+trace pacing hook leaves both path examples unchanged.
+`contract_message_lookup_examples_test.go` checks complete success and refusal
+bodies through the registered routes against PostgreSQL, preserves the stored
+queue entry and trace, and verifies that the missing IDs remain absent. Queue
+delete, retry and bounce 404s retain their exclusions; the coverage baseline
+and resource authorization checks are unchanged.
 
 `login` pairs `wrong_password` with 401 and `email_missing`,
 `password_missing` and `client_invalid` with their 422s. Its 200 is named
