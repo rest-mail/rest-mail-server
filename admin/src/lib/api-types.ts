@@ -9625,7 +9625,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 192.0.2.10 */
         ip: string;
       };
       cookie?: never;
@@ -9675,15 +9674,6 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Unprocessable Entity */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ValidationErrorResponse"];
-        };
-      };
       /** @description Internal Server Error */
       500: {
         headers: {
@@ -9709,7 +9699,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -10107,7 +10096,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -15453,7 +15441,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -15537,7 +15524,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -15623,7 +15609,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -16311,7 +16296,6 @@ export interface operations {
   verifyDelivery: {
     parameters: {
       query: {
-        /** @example admin@restmail.test */
         to: string;
         subject?: string;
         message_id?: string;
@@ -16473,7 +16457,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -18461,7 +18444,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -19091,7 +19073,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;

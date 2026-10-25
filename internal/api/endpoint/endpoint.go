@@ -25,6 +25,7 @@ import (
 	"reflect"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
@@ -570,11 +571,23 @@ func bodyCanReject(tag string) bool {
 	return false
 }
 
-// Plain optional query and header strings accept any text. Other parameter kinds
-// remain conservatively fallible, including named strings that may implement
-// TextUnmarshaler. The tags here are the string rules enforced by go-oapifly.
+// Plain optional query/header strings accept any text. A matched path segment
+// is already present and nonempty, so a plain string needs a stronger rule to
+// reject it. Named strings remain fallible because they may parse their text.
 func parameterCanReject(field reflect.StructField, in string) bool {
-	if (in != "query" && in != "header") || field.Type != reflect.TypeOf("") {
+	if field.Type != reflect.TypeOf("") {
+		return true
+	}
+	if in == "path" {
+		for _, rule := range []string{"enums", "maxLength", "pattern", "format"} {
+			if _, present := field.Tag.Lookup(rule); present {
+				return true
+			}
+		}
+		minimum, err := strconv.Atoi(field.Tag.Get("minLength"))
+		return err == nil && minimum > 1
+	}
+	if in != "query" && in != "header" {
 		return true
 	}
 	for _, option := range strings.Split(field.Tag.Get(in), ",")[1:] {
