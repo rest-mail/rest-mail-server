@@ -238,6 +238,10 @@ class MissingResourceRefusals(unittest.TestCase):
                 "getDomainRelay",
                 "getQueueEntry",
                 "getMessageTrace",
+                "updateDomain",
+                "updateMailbox",
+                "updateAlias",
+                "updateCustomFilter",
             },
         )
 
