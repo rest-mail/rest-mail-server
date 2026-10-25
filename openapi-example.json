@@ -5083,6 +5083,160 @@
       }
     }
   },
+  "mozillaAutoconfig": {
+    "available": {
+      "summary": "The mail client receives the configured servers",
+      "description": "A configured mail host serves an active domain. The actual registration reads a controlled domain row and emits the complete UTF-8 Mozilla XML document with implicit TLS on IMAP 993 and SMTP 465.",
+      "request": {
+        "query": {
+          "emailaddress": "user@example.com"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003cclientConfig version=\"1.1\"\u003e\n  \u003cemailProvider id=\"example.com\"\u003e\n    \u003cdomain\u003eexample.com\u003c/domain\u003e\n    \u003cdisplayName\u003eexample.com Mail\u003c/displayName\u003e\n    \u003cincomingServer type=\"imap\"\u003e\n      \u003chostname\u003email.example.com\u003c/hostname\u003e\n      \u003cport\u003e993\u003c/port\u003e\n      \u003csocketType\u003eSSL\u003c/socketType\u003e\n      \u003cauthentication\u003epassword-cleartext\u003c/authentication\u003e\n      \u003cusername\u003e%EMAILADDRESS%\u003c/username\u003e\n    \u003c/incomingServer\u003e\n    \u003coutgoingServer type=\"smtp\"\u003e\n      \u003chostname\u003email.example.com\u003c/hostname\u003e\n      \u003cport\u003e465\u003c/port\u003e\n      \u003csocketType\u003eSSL\u003c/socketType\u003e\n      \u003cauthentication\u003epassword-cleartext\u003c/authentication\u003e\n      \u003cusername\u003e%EMAILADDRESS%\u003c/username\u003e\n    \u003c/outgoingServer\u003e\n  \u003c/emailProvider\u003e\n\u003c/clientConfig\u003e",
+        "mediaType": "application/xml"
+      }
+    },
+    "domain_not_found": {
+      "summary": "The domain is not hosted",
+      "description": "The active-domain lookup completes successfully without a matching row. The actual handler returns the plain-text unknown-domain response.",
+      "request": {
+        "query": {
+          "emailaddress": "user@example.com"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": "domain not found\n",
+        "mediaType": "text/plain"
+      }
+    },
+    "internal_error": {
+      "summary": "The domain lookup fails",
+      "description": "The mail host is configured and the address has a domain, but the domain database lookup fails. The actual handler preserves that error and the API writer returns a sanitized JSON 500.",
+      "request": {
+        "query": {
+          "emailaddress": "user@example.com"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_address": {
+      "summary": "The address has no usable domain",
+      "description": "The optional query is a valid string but names no email domain. The handler refuses it before looking up any domain; this is a business refusal, not a schema-invalid request.",
+      "request": {
+        "query": {
+          "emailaddress": "not-an-address"
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": "no email domain in the address or the host name\n",
+        "mediaType": "text/plain"
+      }
+    },
+    "mail_host_unconfigured": {
+      "summary": "No mail host can be advertised",
+      "description": "No valid mail host is configured. The handler refuses before querying the domain database, because there is no endpoint to advertise.",
+      "request": {
+        "query": {
+          "emailaddress": "user@example.com"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": "mail host not configured\n",
+        "mediaType": "text/plain"
+      }
+    }
+  },
+  "mozillaAutoconfigWellKnown": {
+    "available": {
+      "summary": "The mail client receives the configured servers",
+      "description": "A configured mail host serves an active domain. The actual registration reads a controlled domain row and emits the complete UTF-8 Mozilla XML document with implicit TLS on IMAP 993 and SMTP 465.",
+      "request": {
+        "query": {
+          "emailaddress": "user@example.com"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003cclientConfig version=\"1.1\"\u003e\n  \u003cemailProvider id=\"example.com\"\u003e\n    \u003cdomain\u003eexample.com\u003c/domain\u003e\n    \u003cdisplayName\u003eexample.com Mail\u003c/displayName\u003e\n    \u003cincomingServer type=\"imap\"\u003e\n      \u003chostname\u003email.example.com\u003c/hostname\u003e\n      \u003cport\u003e993\u003c/port\u003e\n      \u003csocketType\u003eSSL\u003c/socketType\u003e\n      \u003cauthentication\u003epassword-cleartext\u003c/authentication\u003e\n      \u003cusername\u003e%EMAILADDRESS%\u003c/username\u003e\n    \u003c/incomingServer\u003e\n    \u003coutgoingServer type=\"smtp\"\u003e\n      \u003chostname\u003email.example.com\u003c/hostname\u003e\n      \u003cport\u003e465\u003c/port\u003e\n      \u003csocketType\u003eSSL\u003c/socketType\u003e\n      \u003cauthentication\u003epassword-cleartext\u003c/authentication\u003e\n      \u003cusername\u003e%EMAILADDRESS%\u003c/username\u003e\n    \u003c/outgoingServer\u003e\n  \u003c/emailProvider\u003e\n\u003c/clientConfig\u003e",
+        "mediaType": "application/xml"
+      }
+    },
+    "domain_not_found": {
+      "summary": "The domain is not hosted",
+      "description": "The active-domain lookup completes successfully without a matching row. The actual handler returns the plain-text unknown-domain response.",
+      "request": {
+        "query": {
+          "emailaddress": "user@example.com"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": "domain not found\n",
+        "mediaType": "text/plain"
+      }
+    },
+    "internal_error": {
+      "summary": "The domain lookup fails",
+      "description": "The mail host is configured and the address has a domain, but the domain database lookup fails. The actual handler preserves that error and the API writer returns a sanitized JSON 500.",
+      "request": {
+        "query": {
+          "emailaddress": "user@example.com"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_address": {
+      "summary": "The address has no usable domain",
+      "description": "The optional query is a valid string but names no email domain. The handler refuses it before looking up any domain; this is a business refusal, not a schema-invalid request.",
+      "request": {
+        "query": {
+          "emailaddress": "not-an-address"
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": "no email domain in the address or the host name\n",
+        "mediaType": "text/plain"
+      }
+    },
+    "mail_host_unconfigured": {
+      "summary": "No mail host can be advertised",
+      "description": "No valid mail host is configured. The handler refuses before querying the domain database, because there is no endpoint to advertise.",
+      "request": {
+        "query": {
+          "emailaddress": "user@example.com"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": "mail host not configured\n",
+        "mediaType": "text/plain"
+      }
+    }
+  },
   "openapiDocument": {
     "available": {
       "summary": "The public operation answers without credentials",
