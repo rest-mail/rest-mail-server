@@ -92,6 +92,9 @@ type Routes struct {
 	Router   chi.Router
 	Registry *Registry
 	Applied  []oapifly.Middleware
+
+	// ResponseHeaders describes headers added by the router middleware to every status.
+	ResponseHeaders func(path string) map[string]oapifly.ResponseHeader
 }
 
 // Describing returns rs with the descriptions of middleware applied to rs.Router since, for
@@ -235,6 +238,9 @@ func Register[Req, Resp any](rs Routes, op Operation, handler func(*http.Request
 	shape := requestShape(reqType)
 
 	rs.Registry.record(rs.Applied, op, reqType, respType, reflect.TypeOf((*Data[Resp])(nil)).Elem(), shape)
+	if rs.ResponseHeaders != nil {
+		rs.Registry.addResponseHeaders(rs.ResponseHeaders(op.Path))
+	}
 
 	wraps := make([]func(http.Handler) http.Handler, len(op.Middleware))
 	for i, m := range op.Middleware {
@@ -359,6 +365,34 @@ func (reg *Registry) record(applied []oapifly.Middleware, op Operation, reqType,
 		Security:    op.Security,
 		Middleware:  described(applied, op.Middleware),
 	})
+}
+
+// addResponseHeaders decorates the operation just registered, including refusals
+// from its middleware. Copy shared declarations so another listener is unchanged.
+func (reg *Registry) addResponseHeaders(headers map[string]oapifly.ResponseHeader) {
+	if len(headers) == 0 {
+		return
+	}
+	e := &reg.endpoints[len(reg.endpoints)-1]
+	decorate := func(responses []oapifly.EndpointResponse) []oapifly.EndpointResponse {
+		out := append([]oapifly.EndpointResponse(nil), responses...)
+		for i := range out {
+			combined := make(map[string]oapifly.ResponseHeader, len(out[i].Headers)+len(headers))
+			for name, h := range headers {
+				combined[name] = h
+			}
+			for name, h := range out[i].Headers {
+				combined[name] = h
+			}
+			out[i].Headers = combined
+		}
+		return out
+	}
+	e.Responses = decorate(e.Responses)
+	e.Middleware = append([]oapifly.Middleware(nil), e.Middleware...)
+	for i := range e.Middleware {
+		e.Middleware[i].Responses = decorate(e.Middleware[i].Responses)
+	}
 }
 
 // described lists what every middleware wrapping an operation adds, outermost first.

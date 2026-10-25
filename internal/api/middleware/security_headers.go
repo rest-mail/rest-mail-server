@@ -42,26 +42,35 @@ const (
 func SecurityHeaders(cfg SecurityHeadersConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			h := w.Header()
-			// Stop MIME sniffing turning a JSON/text body into an executable type.
-			h.Set("X-Content-Type-Options", "nosniff")
-			// Deny framing (clickjacking) — both X-Frame-Options and the CSP
-			// frame-ancestors directive below, for older and modern agents.
-			h.Set("X-Frame-Options", "DENY")
-			// Never leak URLs (which can carry ids/tokens) in the Referer header.
-			h.Set("Referrer-Policy", "no-referrer")
-			if cfg.HSTSMaxAgeSeconds > 0 {
-				h.Set("Strict-Transport-Security",
-					"max-age="+strconv.Itoa(cfg.HSTSMaxAgeSeconds)+"; includeSubDomains")
-			}
-			// Strict CSP for the API; a Swagger-UI-compatible policy for the
-			// bundled docs so the docs page is not blanked.
-			if strings.HasPrefix(r.URL.Path, "/api/docs") {
-				h.Set("Content-Security-Policy", docsCSP)
-			} else {
-				h.Set("Content-Security-Policy", apiCSP)
+			for name, values := range SecurityHeaderValues(cfg, r.URL.Path) {
+				w.Header()[name] = values
 			}
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// SecurityHeaderValues is the middleware's response contract for a request path.
+// Serving and describing use the same values, including the docs CSP and optional HSTS.
+func SecurityHeaderValues(cfg SecurityHeadersConfig, path string) http.Header {
+	h := http.Header{}
+	// Stop MIME sniffing turning a JSON/text body into an executable type.
+	h.Set("X-Content-Type-Options", "nosniff")
+	// Deny framing (clickjacking) — both X-Frame-Options and the CSP
+	// frame-ancestors directive below, for older and modern agents.
+	h.Set("X-Frame-Options", "DENY")
+	// Never leak URLs (which can carry ids/tokens) in the Referer header.
+	h.Set("Referrer-Policy", "no-referrer")
+	if cfg.HSTSMaxAgeSeconds > 0 {
+		h.Set("Strict-Transport-Security",
+			"max-age="+strconv.Itoa(cfg.HSTSMaxAgeSeconds)+"; includeSubDomains")
+	}
+	// Strict CSP for the API; a Swagger-UI-compatible policy for the
+	// bundled docs so the docs page is not blanked.
+	if strings.HasPrefix(path, "/api/docs") {
+		h.Set("Content-Security-Policy", docsCSP)
+	} else {
+		h.Set("Content-Security-Policy", apiCSP)
+	}
+	return h
 }
