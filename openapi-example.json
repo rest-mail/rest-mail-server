@@ -6936,6 +6936,166 @@
       }
     }
   },
+  "mtaStsPolicyFile": {
+    "domain_store_unavailable": {
+      "request": {
+        "header": {
+          "Host": "mta-sts.domain-failure.test"
+        }
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json",
+        "status": 500
+      }
+    },
+    "found": {
+      "description": "The public route resolves the HTTP authority to its hosted domain and loads only its active policy. Policy bytes, UTF-8 media type and final newline are exact.",
+      "request": {
+        "header": {
+          "Host": "mta-sts.example.com"
+        }
+      },
+      "response": {
+        "body": "version: STSv1\nmode: enforce\nmx: mail.example.com\nmax_age: 604800\n",
+        "mediaType": "text/plain",
+        "status": 200
+      }
+    },
+    "inactive_policy": {
+      "request": {
+        "header": {
+          "Host": "mta-sts.inactive.test"
+        }
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "No MTA-STS policy configured"
+          }
+        },
+        "mediaType": "application/json",
+        "status": 404
+      }
+    },
+    "internationalized_mx": {
+      "description": "An A-label Host resolves the internationalized domain; the policy serializes its Unicode MX as the RFC-required A-label.",
+      "request": {
+        "header": {
+          "Host": "mta-sts.xn--bcher-kva.example"
+        }
+      },
+      "response": {
+        "body": "version: STSv1\nmode: enforce\nmx: mail.xn--bcher-kva.example\nmax_age: 604800\n",
+        "mediaType": "text/plain",
+        "status": 200
+      }
+    },
+    "invalid_dns_host": {
+      "request": {
+        "header": {
+          "Host": "mta-sts.-bad.example"
+        }
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Domain not found"
+          }
+        },
+        "mediaType": "application/json",
+        "status": 404
+      }
+    },
+    "invalid_stored_mx": {
+      "request": {
+        "header": {
+          "Host": "mta-sts.invalid-policy.test"
+        }
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "MTA-STS policy has an invalid mx host"
+          }
+        },
+        "mediaType": "application/json",
+        "status": 500
+      }
+    },
+    "missing_domain": {
+      "request": {
+        "header": {
+          "Host": "mta-sts.missing.test"
+        }
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Domain not found"
+          }
+        },
+        "mediaType": "application/json",
+        "status": 404
+      }
+    },
+    "missing_policy": {
+      "request": {
+        "header": {
+          "Host": "mta-sts.no-policy.test"
+        }
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "No MTA-STS policy configured"
+          }
+        },
+        "mediaType": "application/json",
+        "status": 404
+      }
+    },
+    "normalized_authority": {
+      "description": "The existing route normalizes case, one trailing DNS dot and an explicit port before resolving the domain.",
+      "request": {
+        "header": {
+          "Host": "MTA-STS.EXAMPLE.COM.:443"
+        }
+      },
+      "response": {
+        "body": "version: STSv1\nmode: enforce\nmx: mail.example.com\nmax_age: 604800\n",
+        "mediaType": "text/plain",
+        "status": 200
+      }
+    },
+    "policy_store_unavailable": {
+      "request": {
+        "header": {
+          "Host": "mta-sts.policy-failure.test"
+        }
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json",
+        "status": 500
+      }
+    }
+  },
   "openapiDocument": {
     "available": {
       "summary": "The public operation answers without credentials",

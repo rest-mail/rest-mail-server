@@ -570,11 +570,11 @@ func bodyCanReject(tag string) bool {
 	return false
 }
 
-// Plain optional query strings accept any text. All other parameter kinds
+// Plain optional query and header strings accept any text. Other parameter kinds
 // remain conservatively fallible, including named strings that may implement
 // TextUnmarshaler. The tags here are the string rules enforced by go-oapifly.
 func parameterCanReject(field reflect.StructField, in string) bool {
-	if in != "query" || field.Type != reflect.TypeOf("") {
+	if (in != "query" && in != "header") || field.Type != reflect.TypeOf("") {
 		return true
 	}
 	for _, option := range strings.Split(field.Tag.Get(in), ",")[1:] {
@@ -617,6 +617,12 @@ func bind(r *http.Request, dst interface{}, s shape) error {
 		switch in {
 		case "path":
 			return pathParam(r, name)
+		case "header":
+			// net/http stores HTTP/1 Host and HTTP/2 :authority here,
+			// separately from the ordinary header map.
+			if strings.EqualFold(name, "Host") {
+				return r.Host, r.Host != ""
+			}
 		case "query":
 			values, ok := r.URL.Query()[name]
 			if !ok || len(values) == 0 {
