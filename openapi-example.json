@@ -14842,7 +14842,10 @@
     "body_array": {
       "request": {
         "body": [],
-        "invalid": true
+        "invalid": true,
+        "path": {
+          "id": 1
+        }
       },
       "response": {
         "status": 400,
@@ -14851,7 +14854,8 @@
             "code": "bad_request",
             "message": "Invalid request body"
           }
-        }
+        },
+        "mediaType": "application/json"
       }
     },
     "body_missing": {
@@ -14860,7 +14864,9 @@
           "enabled": true,
           "subject": "Out of office"
         },
-        "invalid": true
+        "path": {
+          "id": 1
+        }
       },
       "response": {
         "status": 422,
@@ -14874,8 +14880,10 @@
               }
             }
           }
-        }
-      }
+        },
+        "mediaType": "application/json"
+      },
+      "description": "The JSON request validates against its published type. Conditional required fields and cross-field date ordering are refused at runtime with the documented 422; the invalid-body marker does not describe these business rules."
     },
     "configured": {
       "request": {
@@ -14883,6 +14891,9 @@
           "enabled": true,
           "subject": "Out of office",
           "body": "I will reply when I return."
+        },
+        "path": {
+          "id": 1
         }
       },
       "response": {
@@ -14893,7 +14904,8 @@
             "subject": "Out of office",
             "body": "I will reply when I return."
           }
-        }
+        },
+        "mediaType": "application/json"
       }
     },
     "dates_reversed": {
@@ -14905,7 +14917,9 @@
           "start_date": "2030-01-02T00:00:00Z",
           "end_date": "2030-01-01T00:00:00Z"
         },
-        "invalid": true
+        "path": {
+          "id": 1
+        }
       },
       "response": {
         "status": 422,
@@ -14919,8 +14933,10 @@
               }
             }
           }
-        }
-      }
+        },
+        "mediaType": "application/json"
+      },
+      "description": "The JSON request validates against its published type. Conditional required fields and cross-field date ordering are refused at runtime with the documented 422; the invalid-body marker does not describe these business rules."
     },
     "enabled_missing": {
       "request": {
@@ -14928,7 +14944,10 @@
           "subject": "Out of office",
           "body": "I will reply when I return."
         },
-        "invalid": true
+        "invalid": true,
+        "path": {
+          "id": 1
+        }
       },
       "response": {
         "status": 422,
@@ -14942,7 +14961,8 @@
               }
             }
           }
-        }
+        },
+        "mediaType": "application/json"
       }
     },
     "reply_missing": {
@@ -14950,7 +14970,9 @@
         "body": {
           "enabled": true
         },
-        "invalid": true
+        "path": {
+          "id": 1
+        }
       },
       "response": {
         "status": 422,
@@ -14965,8 +14987,10 @@
               }
             }
           }
-        }
-      }
+        },
+        "mediaType": "application/json"
+      },
+      "description": "The JSON request validates against its published type. Conditional required fields and cross-field date ordering are refused at runtime with the documented 422; the invalid-body marker does not describe these business rules."
     },
     "subject_missing": {
       "request": {
@@ -14974,7 +14998,9 @@
           "enabled": true,
           "body": "I will reply when I return."
         },
-        "invalid": true
+        "path": {
+          "id": 1
+        }
       },
       "response": {
         "status": 422,
@@ -14988,8 +15014,908 @@
               }
             }
           }
+        },
+        "mediaType": "application/json"
+      },
+      "description": "The JSON request validates against its published type. Conditional required fields and cross-field date ordering are refused at runtime with the documented 422; the invalid-body marker does not describe these business rules."
+    },
+    "found": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon."
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "enabled": true,
+            "subject": "Away",
+            "body": "Back soon."
+          }
+        }
+      },
+      "description": "The real registered route, JWT/Basic/scoped-key checks, current holder ceilings and CSRF guards precede mailbox-bound configuration reads and writes. Local SQL verifies selectors, all configuration fields and date clearing; lookup errors do not become creation or success. Fixed rows do not prove PostgreSQL/audit persistence or actual vacation delivery; owner-blocked pipeline migration #772 remains unchanged."
+    },
+    "primary": {
+      "request": {
+        "path": {
+          "id": 10
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon."
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "enabled": true,
+            "subject": "Away",
+            "body": "Back soon."
+          }
         }
       }
+    },
+    "domain_grant": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon."
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "enabled": true,
+            "subject": "Away",
+            "body": "Back soon."
+          }
+        }
+      }
+    },
+    "cookie_session": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon."
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "enabled": true,
+            "subject": "Away",
+            "body": "Back soon."
+          }
+        }
+      }
+    },
+    "app_password": {
+      "request": {
+        "path": {
+          "id": 10
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon."
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "enabled": true,
+            "subject": "Away",
+            "body": "Back soon."
+          }
+        }
+      }
+    },
+    "app_password_other": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon."
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "key_write_only": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon."
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "enabled": true,
+            "subject": "Away",
+            "body": "Back soon."
+          }
+        }
+      }
+    },
+    "key_read": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon."
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "key_wrong_scope": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon."
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "key_write_holder_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon."
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "key_write_domain": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon."
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "enabled": true,
+            "subject": "Away",
+            "body": "Back soon."
+          }
+        }
+      }
+    },
+    "write_only": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon."
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "enabled": true,
+            "subject": "Away",
+            "body": "Back soon."
+          }
+        }
+      }
+    },
+    "no_grants": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon."
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "primary_only": {
+      "request": {
+        "path": {
+          "id": 10
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon."
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "enabled": true,
+            "subject": "Away",
+            "body": "Back soon."
+          }
+        }
+      }
+    },
+    "inaccessible": {
+      "request": {
+        "path": {
+          "id": 20
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon."
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon."
+        }
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "setup_required": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon."
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        }
+      }
+    },
+    "rate_limited": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon."
+        }
+      },
+      "response": {
+        "status": 429,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        }
+      }
+    },
+    "request_too_large": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon."
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      },
+      "description": "The configured route cap is 256 bytes. The test and Vertrag hook send 257 bytes so the real transport guard refuses the request before body parsing."
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon."
+        }
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        }
+      },
+      "description": "The JSON body validates; the malformed path value is refused by the real path binder with 422. The invalid-body marker does not describe path binding."
+    },
+    "invalid_format": {
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon."
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      },
+      "description": "The JSON body validates; the malformed path value is refused by the real path binder with 422. The invalid-body marker does not describe path binding."
+    },
+    "session_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon."
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "target_unavailable": {
+      "request": {
+        "path": {
+          "id": 3
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon."
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "grant_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon."
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "ownership_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon."
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "lookup_unavailable": {
+      "request": {
+        "path": {
+          "id": 4
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon."
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "update_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": true,
+          "subject": "update unavailable",
+          "body": "Back soon."
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to update vacation config"
+          }
+        }
+      }
+    },
+    "csrf_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon."
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "csrf_mismatch": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon."
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "created": {
+      "request": {
+        "path": {
+          "id": 2
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon."
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "enabled": true,
+            "subject": "Away",
+            "body": "Back soon."
+          }
+        }
+      }
+    },
+    "enabled_false_create": {
+      "request": {
+        "path": {
+          "id": 2
+        },
+        "body": {
+          "enabled": false
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "enabled": false,
+            "subject": "",
+            "body": ""
+          }
+        }
+      }
+    },
+    "disabled": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": false
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "enabled": false,
+            "subject": "",
+            "body": ""
+          }
+        }
+      }
+    },
+    "clear_dates": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": false,
+          "subject": "",
+          "body": ""
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "enabled": false,
+            "subject": "",
+            "body": ""
+          }
+        }
+      }
+    },
+    "dates_null": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon.",
+          "start_date": null,
+          "end_date": null
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "enabled": true,
+            "subject": "Away",
+            "body": "Back soon."
+          }
+        }
+      }
+    },
+    "dates_equal": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon.",
+          "start_date": "2030-01-01T00:00:00Z",
+          "end_date": "2030-01-01T00:00:00Z"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "enabled": true,
+            "subject": "Away",
+            "body": "Back soon.",
+            "start_date": "2030-01-01T00:00:00Z",
+            "end_date": "2030-01-01T00:00:00Z"
+          }
+        }
+      }
+    },
+    "dates_offset": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon.",
+          "start_date": "2030-01-01T12:00:00+02:00",
+          "end_date": "2030-01-02T12:00:00+02:00"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "enabled": true,
+            "subject": "Away",
+            "body": "Back soon.",
+            "start_date": "2030-01-01T12:00:00+02:00",
+            "end_date": "2030-01-02T12:00:00+02:00"
+          }
+        }
+      }
+    },
+    "create_unavailable": {
+      "request": {
+        "path": {
+          "id": 2
+        },
+        "body": {
+          "enabled": true,
+          "subject": "create unavailable",
+          "body": "Back soon."
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to create vacation config"
+          }
+        }
+      }
+    },
+    "enabled_null": {
+      "request": {
+        "body": {
+          "subject": "Out of office",
+          "body": "I will reply when I return.",
+          "enabled": null
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "enabled": "required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      },
+      "description": "Nullable enabled is schema-valid but runtime-refused as missing."
+    },
+    "malformed_json": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      },
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type. The route and Vertrag transport hook send those exact bytes rather than JSON-quoting them."
     }
   },
   "swaggerUI": {
@@ -36036,6 +36962,463 @@
           }
         }
       }
+    }
+  },
+  "disableVacation": {
+    "found": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 204
+      },
+      "description": "The real registered route, JWT/Basic/scoped-key checks, current holder ceilings and CSRF guards precede mailbox-bound configuration reads and writes. Local SQL verifies selectors, all configuration fields and date clearing; lookup errors do not become creation or success. Fixed rows do not prove PostgreSQL/audit persistence or actual vacation delivery; owner-blocked pipeline migration #772 remains unchanged."
+    },
+    "primary": {
+      "request": {
+        "path": {
+          "id": 10
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "domain_grant": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "cookie_session": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "app_password": {
+      "request": {
+        "path": {
+          "id": 10
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "app_password_other": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "key_write_only": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "key_read": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "key_wrong_scope": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "key_write_holder_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "key_write_domain": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "write_only": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "no_grants": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "primary_only": {
+      "request": {
+        "path": {
+          "id": 10
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "inaccessible": {
+      "request": {
+        "path": {
+          "id": 20
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "setup_required": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        }
+      }
+    },
+    "rate_limited": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        }
+      }
+    },
+    "request_too_large": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      },
+      "description": "The configured route cap is 256 bytes. The test and Vertrag hook send 257 bytes so the real transport guard refuses the request before body parsing."
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        }
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        }
+      },
+      "description": "The JSON body validates; the malformed path value is refused by the real path binder with 422. The invalid-body marker does not describe path binding."
+    },
+    "invalid_format": {
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      },
+      "description": "The JSON body validates; the malformed path value is refused by the real path binder with 422. The invalid-body marker does not describe path binding."
+    },
+    "session_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "target_unavailable": {
+      "request": {
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "grant_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "ownership_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "lookup_unavailable": {
+      "request": {
+        "path": {
+          "id": 4
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "update_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to disable vacation config"
+          }
+        }
+      }
+    },
+    "csrf_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "csrf_mismatch": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2
+        }
+      },
+      "response": {
+        "status": 204
+      },
+      "description": "A genuinely absent configuration is already disabled and needs no update."
     }
   }
 }

@@ -113,6 +113,12 @@ func (c sieveInstallationConnection) ExecContext(_ context.Context, q string, ar
 	return driver.RowsAffected(1), nil
 }
 func newSieveInstallationScenarios(t *testing.T) mailRemovalScenarios {
+	return newMailRulesWriteScenarios(t, func(base mailRemovalConnection) driver.Connector {
+		return sieveInstallationConnection{base}
+	})
+}
+
+func newMailRulesWriteScenarios(t *testing.T, connector func(mailRemovalConnection) driver.Connector) mailRemovalScenarios {
 	t.Helper()
 	unavailable, _, _, jwt := authReadBatchRouters(t)
 	keys := map[string]accountListKey{}
@@ -142,7 +148,7 @@ func newSieveInstallationScenarios(t *testing.T) mailRemovalScenarios {
 	store := &bulkQueueExampleStore{}
 	makeRouter := func(mode string, limited bool) http.Handler {
 		base := mailResourceReadConnection{personalDataReadConnection{accountCredentialListConnection{mode: mode, keys: keys}}}
-		pool := sql.OpenDB(sieveInstallationConnection{mailRemovalConnection{base, store}})
+		pool := sql.OpenDB(connector(mailRemovalConnection{base, store}))
 		t.Cleanup(func() { _ = pool.Close() })
 		db := openAccountReadDB(t, pool)
 		db.NowFunc = func() time.Time { return sieveInstallationTime }
