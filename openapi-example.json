@@ -2195,6 +2195,139 @@
       }
     }
   },
+  "getPipelineAnalytics": {
+    "available": {
+      "summary": "A permitted session reads the one-hour funnel",
+      "description": "A current, setup-complete session with the observability capability reads empty durable rollups and an empty live metrics snapshot. The timestamps illustrate a one-hour moving window; the actual route test verifies the window at request time.",
+      "request": {
+        "query": {
+          "window": "1h"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "window": {
+              "since": "2026-10-25T12:00:00Z",
+              "until": "2026-10-25T13:00:00Z",
+              "label": "1h"
+            },
+            "funnel": {
+              "received": [],
+              "auth_verdicts": [],
+              "stage_decisions": [],
+              "terminal_outcomes": [],
+              "top_reject_reasons": []
+            },
+            "live_totals": {
+              "received": [],
+              "auth_verdicts": [],
+              "stage_decisions": [],
+              "terminal_outcomes": [],
+              "top_reject_reasons": []
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "The rollup query fails",
+      "description": "Session and permission checks pass, but the rollup database query fails. The actual handler produces this refusal.",
+      "request": {
+        "query": {
+          "window": "1h"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to aggregate pipeline analytics"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The transport body cap is exceeded",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag hook supplies a real oversized body.",
+      "request": {
+        "query": {
+          "window": "1h"
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "request": {
+        "query": {
+          "window": "1h"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "setup_required": {
+      "summary": "The account has not completed setup",
+      "description": "The signed session is current but still requires initial account setup. The real SetupDone middleware refuses it before querying rollups.",
+      "request": {
+        "query": {
+          "window": "1h"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No session credential was sent",
+      "description": "No Authorization header or access cookie is sent. The production JWT middleware refuses the request.",
+      "request": {
+        "query": {
+          "window": "1h"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "getQueueEntry": {
     "found": {
       "request": {
