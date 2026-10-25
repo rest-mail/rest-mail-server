@@ -98,8 +98,8 @@ func TestPipelineTestErrorContract_NoEmailIs422(t *testing.T) {
 	}
 }
 
-// The spec documents exactly those two refusals beside the 200: the 400 as an
-// ErrorResponse and the 422 as the ValidationErrorResponse the 422 above is.
+// The spec documents decoding and missing-pipeline refusals as ErrorResponse,
+// and the invalid-email refusal as ValidationErrorResponse, beside the 200.
 func TestPipelineTestErrorContract_Documented(t *testing.T) {
 	served, err := restmail.OpenAPI.ReadFile("openapi.yaml")
 	if err != nil {
@@ -132,7 +132,7 @@ func TestPipelineTestErrorContract_Documented(t *testing.T) {
 		statuses = append(statuses, status)
 	}
 	sort.Strings(statuses)
-	if want := []string{"200", "400", "422"}; !reflect.DeepEqual(statuses, want) {
+	if want := []string{"200", "400", "404", "422"}; !reflect.DeepEqual(statuses, want) {
 		t.Fatalf("testPipeline documents %v, want %v", statuses, want)
 	}
 
@@ -141,6 +141,9 @@ func TestPipelineTestErrorContract_Documented(t *testing.T) {
 	}
 	if got := schemaRef(op.Responses["400"]); got != "#/components/schemas/ErrorResponse" {
 		t.Errorf("testPipeline's 400 is %v, want an ErrorResponse", got)
+	}
+	if got := schemaRef(op.Responses["404"]); got != "#/components/schemas/ErrorResponse" {
+		t.Errorf("testPipeline's 404 is %v, want an ErrorResponse", got)
 	}
 	if got := schemaRef(op.Responses["422"]); got != "#/components/schemas/ValidationErrorResponse" {
 		t.Errorf("testPipeline's 422 is %v, want a ValidationErrorResponse", got)

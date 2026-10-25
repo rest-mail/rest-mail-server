@@ -66,14 +66,16 @@ func TestPipelineUpdate_ExamplePairs(t *testing.T) {
 		got[status] = names(examples)
 	}
 	want := map[string][]string{
-		"request": {"filters_null", "filters_object", "updated"},
+		"request": {"filters_null", "filters_object", "missing", "updated"},
 		"200":     {"updated"},
+		"404":     {"missing"},
 		"422":     {"filters_null", "filters_object"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("updatePipeline pairs = %v, want %v", got, want)
 	}
 	wantRequests := map[string]interface{}{
+		"missing":        parseShapeJSON(t, `{"active":false}`),
 		"updated":        parseShapeJSON(t, `{"filters":[{"name":"spf_check","config":{}}],"active":false}`),
 		"filters_object": parseShapeJSON(t, `{"filters":{"name":"spf_check","config":{}},"active":false}`),
 		"filters_null":   parseShapeJSON(t, `{"filters":null,"active":false}`),
