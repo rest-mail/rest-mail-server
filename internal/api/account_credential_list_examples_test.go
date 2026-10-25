@@ -164,7 +164,7 @@ func accountCredentialListScenarios(t *testing.T) map[string]accountReadScenario
 	})
 }
 
-func accountListScenarios(t *testing.T, connection func(string, map[string]accountListKey) driver.Connector) map[string]accountReadScenario {
+func accountListScenarios(t *testing.T, connection func(string, map[string]accountListKey) driver.Connector, configure ...func(*config.Config)) map[string]accountReadScenario {
 	t.Helper()
 	unavailable, _, _, jwt := authReadBatchRouters(t)
 	keys := map[string]accountListKey{}
@@ -194,7 +194,11 @@ func accountListScenarios(t *testing.T, connection func(string, map[string]accou
 	makeRouter := func(mode string, limited bool) http.Handler {
 		pool := sql.OpenDB(connection(mode, keys))
 		t.Cleanup(func() { _ = pool.Close() })
-		r := NewRouters(openAccountReadDB(t, pool), jwt, &config.Config{Environment: "test", APIMaxBodyBytes: 8, AuthRateLimitEnabled: limited, AuthRateLimitRPS: 1.0 / 3600, AuthRateLimitBurst: 1}, nil)
+		cfg := &config.Config{Environment: "test", APIMaxBodyBytes: 8, AuthRateLimitEnabled: limited, AuthRateLimitRPS: 1.0 / 3600, AuthRateLimitBurst: 1}
+		for _, apply := range configure {
+			apply(cfg)
+		}
+		r := NewRouters(openAccountReadDB(t, pool), jwt, cfg, nil)
 		t.Cleanup(r.Close)
 		return r.Public
 	}
