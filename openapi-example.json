@@ -32466,5 +32466,355 @@
         }
       }
     }
+  },
+  "removePushDevice": {
+    "found": {
+      "request": {
+        "path": {
+          "device_id": "1"
+        }
+      },
+      "response": {
+        "status": 204
+      },
+      "description": "Only a password session may authenticate this configured route. The real store binds the parsed device ID to the JWT session ID; other sessions on the same account and other accounts cannot remove it. Controlled SQL proves session selector and refusal wiring, not database/audit persistence, token revocation or live APNs delivery. No device is removed from a live database."
+    },
+    "leading_zero": {
+      "request": {
+        "path": {
+          "device_id": "0001"
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "own_second_session": {
+      "request": {
+        "path": {
+          "device_id": "2"
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "cookie_session": {
+      "request": {
+        "path": {
+          "device_id": "1"
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "device_id": "2147483647"
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Device not found"
+          }
+        }
+      }
+    },
+    "foreign_session": {
+      "request": {
+        "path": {
+          "device_id": "2"
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Device not found"
+          }
+        }
+      }
+    },
+    "other_session": {
+      "request": {
+        "path": {
+          "device_id": "1"
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Device not found"
+          }
+        }
+      }
+    },
+    "other_account": {
+      "request": {
+        "path": {
+          "device_id": "1"
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Device not found"
+          }
+        }
+      }
+    },
+    "zero_id": {
+      "request": {
+        "path": {
+          "device_id": "0"
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Device not found"
+          }
+        }
+      }
+    },
+    "negative_id": {
+      "request": {
+        "path": {
+          "device_id": "-1"
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Device not found"
+          }
+        }
+      }
+    },
+    "overflow_id": {
+      "request": {
+        "path": {
+          "device_id": "4294967296"
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Device not found"
+          }
+        }
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "device_id": "not-a-device"
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Device not found"
+          }
+        }
+      },
+      "description": "Device IDs remain string parameters with handler-level 404 for unparseable IDs; this is not a schema-validation 422. Zero, negative and uint32-overflow strings preserve the same refusal."
+    },
+    "write_unavailable": {
+      "request": {
+        "path": {
+          "device_id": "3"
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to remove the device"
+          }
+        }
+      }
+    },
+    "request_too_large": {
+      "request": {
+        "path": {
+          "device_id": "1"
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "setup_required": {
+      "request": {
+        "path": {
+          "device_id": "1"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        }
+      }
+    },
+    "session_unavailable": {
+      "request": {
+        "path": {
+          "device_id": "1"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "device_id": "1"
+        }
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "csrf_missing": {
+      "request": {
+        "path": {
+          "device_id": "1"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "csrf_mismatch": {
+      "request": {
+        "path": {
+          "device_id": "1"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "invalid_token": {
+      "request": {
+        "path": {
+          "device_id": "1"
+        }
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Invalid or expired token"
+          }
+        }
+      }
+    },
+    "api_key": {
+      "request": {
+        "path": {
+          "device_id": "1"
+        }
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Invalid or expired token"
+          }
+        }
+      }
+    },
+    "app_password": {
+      "request": {
+        "path": {
+          "device_id": "1"
+        }
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Invalid authorization header format"
+          }
+        }
+      }
+    }
   }
 }
