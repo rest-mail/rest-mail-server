@@ -37,6 +37,17 @@ one set of files becomes both, without the two ever drifting apart.
   takes effect, and readers can explore it. That suits a technical guide to why
   REST Mail exists. Its JSON sources and automatic layout also suit a mechanical
   build better than coordinates placed by hand.
+- **The guide is checked in CI** (2026-10-24, owner). Every pull request runs
+  `scripts/email-explained/check.mjs` as the `Email, explained` job, part of
+  the required `CI` check: links and anchors inside the repository, front
+  matter, a Sources section in every chapter (or `sources: linked` for a page
+  sourced in the chapters it links), no orphaned diagram, Archify's validation
+  of every source, and a bundle that builds. Outside links and their anchors are
+  checked daily (`scheduled.yml`); a broken one opens an issue that closes
+  itself once it is fixed. Archify is fetched at the commit
+  `scripts/email-explained/package.json` pins, the version the diagrams were
+  made with. Still to come: that each committed static image matches what its
+  source renders.
 - **The website publishes the API reference too** (2026-10-23, owner). Once
   the server serves its generated `openapi.json` (#623), the same pipeline
   turns it into reference pages on rest-mail.com, so the reference is as
@@ -90,17 +101,6 @@ chapter by its anchor, for example
 `how-it-goes-wrong/open-relay-and-spam-machine#how-common-is-it`, instead of
 repeating its text. The build fails if that section no longer exists, so a page
 can never quote a paragraph that has gone.
-
-### Checks, in CI, on every PR that touches the guide
-
-- Every chapter's front matter matches its schema.
-- Every internal link and anchor resolves. External links and anchors are
-  checked daily, since other sites change on their own schedule (#626's daily
-  tier).
-- Every chapter has a Sources section, as `WRITING.md` requires.
-- Every diagram source passes Archify's `finalize`, and its committed static
-  image matches what the source renders.
-- No diagram is orphaned, and no chapter links a diagram that does not exist.
 
 ## Open
 

@@ -23,13 +23,13 @@ import { Marked } from "marked";
 
 export const FORMAT = 1;
 const REPOSITORY = "rest-mail/rest-mail-server";
-const GUIDE = "docs/email-explained";
+export const GUIDE = "docs/email-explained";
 const SITE_PATH = "/email-explained";
 // For the people writing it, not part of the guide.
-const SKIP = new Set(["WRITING.md"]);
+export const SKIP = new Set(["WRITING.md"]);
 // Archify's diagram types: diagrams/<name>.<type>.json is a diagram's source.
 // Its other JSON files there are receipts from checking one.
-const TYPES = new Set(["architecture", "workflow", "sequence", "dataflow", "lifecycle", "erd", "tree", "class", "timeline", "waterfall"]);
+export const TYPES = new Set(["architecture", "workflow", "sequence", "dataflow", "lifecycle", "erd", "tree", "class", "timeline", "waterfall"]);
 
 const git = (...args) => execFileSync("git", args, { encoding: "utf8" }).trim();
 
@@ -68,7 +68,7 @@ export function anchorer() {
 /** A chapter's address on the site, from its path under the guide. */
 export const slugOf = (file) => (basename(file) === "README.md" ? dirname(file) : file.replace(/\.md$/, "")).replace(/^\.$/, "");
 
-const plain = (html) => html.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+export const plain = (html) => html.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'");
 const escape = (text) => text.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 
 /**
