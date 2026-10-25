@@ -650,8 +650,10 @@
           "data": {
             "affected": 1
           }
-        }
-      }
+        },
+        "mediaType": "application/json"
+      },
+      "description": "The registered operation and actual GORM SQL are exercised with controlled transaction/row-count responses. IDs select the mutation; retry/bounce retain their transition-state guards. Controlled SQL proves wiring rather than PostgreSQL selection or persistence."
     },
     "invalid_body": {
       "request": {
@@ -665,7 +667,8 @@
             "code": "bad_request",
             "message": "Invalid request body"
           }
-        }
+        },
+        "mediaType": "application/json"
       }
     },
     "invalid_ids": {
@@ -687,13 +690,13 @@
               }
             }
           }
-        }
+        },
+        "mediaType": "application/json"
       }
     },
     "selection_missing": {
       "request": {
-        "body": {},
-        "invalid": true
+        "body": {}
       },
       "response": {
         "status": 400,
@@ -701,6 +704,264 @@
           "error": {
             "code": "bad_request",
             "message": "ids or filter required"
+          }
+        },
+        "mediaType": "application/json"
+      },
+      "description": "The body is structurally valid. Selecting IDs or a filter is the handler semantic guard, so this 400 is not marked as a schema-invalid request."
+    },
+    "empty_ids": {
+      "request": {
+        "body": {
+          "ids": []
+        }
+      },
+      "response": {
+        "status": 400,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "ids or filter required"
+          }
+        }
+      }
+    },
+    "null_filter": {
+      "request": {
+        "body": {
+          "filter": null
+        }
+      },
+      "response": {
+        "status": 400,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "ids or filter required"
+          }
+        }
+      }
+    },
+    "by_filter": {
+      "request": {
+        "body": {
+          "filter": {
+            "status": "deferred",
+            "domain": "example.test",
+            "sender": "sender%_\\",
+            "recipient": "recipient%_\\"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "affected": 3
+          }
+        }
+      }
+    },
+    "ids_take_precedence": {
+      "request": {
+        "body": {
+          "ids": [
+            1,
+            2
+          ],
+          "filter": {
+            "domain": "no-match.test",
+            "sender": "ignored"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "affected": 2
+          }
+        }
+      },
+      "description": "Nonempty IDs take precedence over every supplied filter; filter predicates must not appear in the mutation."
+    },
+    "empty_filter": {
+      "request": {
+        "body": {
+          "filter": {}
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "affected": 3
+          }
+        }
+      },
+      "description": "An explicit empty filter selects the entire controlled queue fixture, as the existing client flow expects. No live database or queue is mutated by these tests."
+    },
+    "no_match": {
+      "request": {
+        "body": {
+          "filter": {
+            "domain": "no-match.test"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "affected": 0
+          }
+        }
+      }
+    },
+    "required_capability": {
+      "request": {
+        "body": {
+          "ids": [
+            987654
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "affected": 1
+          }
+        }
+      }
+    },
+    "internal_error": {
+      "request": {
+        "body": {
+          "ids": [
+            987654
+          ]
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "request": {
+        "body": {}
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "request": {
+        "body": {}
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "setup_required": {
+      "request": {
+        "body": {}
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "body": {}
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_scope": {
+      "request": {
+        "body": {}
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "read_only": {
+      "request": {
+        "body": {}
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "permission_store_unavailable": {
+      "request": {
+        "body": {}
+      },
+      "response": {
+        "status": 503,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
           }
         }
       }
@@ -721,8 +982,10 @@
           "data": {
             "affected": 1
           }
-        }
-      }
+        },
+        "mediaType": "application/json"
+      },
+      "description": "The registered operation and actual GORM SQL are exercised with controlled transaction/row-count responses. IDs select the mutation; retry/bounce retain their transition-state guards. Controlled SQL proves wiring rather than PostgreSQL selection or persistence."
     },
     "invalid_ids": {
       "request": {
@@ -743,13 +1006,13 @@
               }
             }
           }
-        }
+        },
+        "mediaType": "application/json"
       }
     },
     "selection_missing": {
       "request": {
-        "body": {},
-        "invalid": true
+        "body": {}
       },
       "response": {
         "status": 400,
@@ -757,6 +1020,280 @@
           "error": {
             "code": "bad_request",
             "message": "ids or filter required"
+          }
+        },
+        "mediaType": "application/json"
+      },
+      "description": "The body is structurally valid. Selecting IDs or a filter is the handler semantic guard, so this 400 is not marked as a schema-invalid request."
+    },
+    "invalid_body": {
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "empty_ids": {
+      "request": {
+        "body": {
+          "ids": []
+        }
+      },
+      "response": {
+        "status": 400,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "ids or filter required"
+          }
+        }
+      }
+    },
+    "null_filter": {
+      "request": {
+        "body": {
+          "filter": null
+        }
+      },
+      "response": {
+        "status": 400,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "ids or filter required"
+          }
+        }
+      }
+    },
+    "by_filter": {
+      "request": {
+        "body": {
+          "filter": {
+            "status": "deferred",
+            "domain": "example.test",
+            "sender": "sender%_\\",
+            "recipient": "recipient%_\\"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "affected": 3
+          }
+        }
+      }
+    },
+    "ids_take_precedence": {
+      "request": {
+        "body": {
+          "ids": [
+            1,
+            2
+          ],
+          "filter": {
+            "domain": "no-match.test",
+            "sender": "ignored"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "affected": 2
+          }
+        }
+      },
+      "description": "Nonempty IDs take precedence over every supplied filter; filter predicates must not appear in the mutation."
+    },
+    "empty_filter": {
+      "request": {
+        "body": {
+          "filter": {}
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "affected": 3
+          }
+        }
+      },
+      "description": "An explicit empty filter selects the entire controlled queue fixture, as the existing client flow expects. No live database or queue is mutated by these tests."
+    },
+    "no_match": {
+      "request": {
+        "body": {
+          "filter": {
+            "domain": "no-match.test"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "affected": 0
+          }
+        }
+      }
+    },
+    "required_capability": {
+      "request": {
+        "body": {
+          "ids": [
+            987654
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "affected": 1
+          }
+        }
+      }
+    },
+    "internal_error": {
+      "request": {
+        "body": {
+          "ids": [
+            987654
+          ]
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "request": {
+        "body": {}
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "request": {
+        "body": {}
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "setup_required": {
+      "request": {
+        "body": {}
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "body": {}
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_scope": {
+      "request": {
+        "body": {}
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "read_only": {
+      "request": {
+        "body": {}
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "permission_store_unavailable": {
+      "request": {
+        "body": {}
+      },
+      "response": {
+        "status": 503,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
           }
         }
       }
@@ -777,8 +1314,10 @@
           "data": {
             "affected": 1
           }
-        }
-      }
+        },
+        "mediaType": "application/json"
+      },
+      "description": "The registered operation and actual GORM SQL are exercised with controlled transaction/row-count responses. IDs select the mutation; retry/bounce retain their transition-state guards. Controlled SQL proves wiring rather than PostgreSQL selection or persistence."
     },
     "invalid_body": {
       "request": {
@@ -792,7 +1331,8 @@
             "code": "bad_request",
             "message": "Invalid request body"
           }
-        }
+        },
+        "mediaType": "application/json"
       }
     },
     "invalid_ids": {
@@ -814,13 +1354,13 @@
               }
             }
           }
-        }
+        },
+        "mediaType": "application/json"
       }
     },
     "selection_missing": {
       "request": {
-        "body": {},
-        "invalid": true
+        "body": {}
       },
       "response": {
         "status": 400,
@@ -828,6 +1368,264 @@
           "error": {
             "code": "bad_request",
             "message": "ids or filter required"
+          }
+        },
+        "mediaType": "application/json"
+      },
+      "description": "The body is structurally valid. Selecting IDs or a filter is the handler semantic guard, so this 400 is not marked as a schema-invalid request."
+    },
+    "empty_ids": {
+      "request": {
+        "body": {
+          "ids": []
+        }
+      },
+      "response": {
+        "status": 400,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "ids or filter required"
+          }
+        }
+      }
+    },
+    "null_filter": {
+      "request": {
+        "body": {
+          "filter": null
+        }
+      },
+      "response": {
+        "status": 400,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "ids or filter required"
+          }
+        }
+      }
+    },
+    "by_filter": {
+      "request": {
+        "body": {
+          "filter": {
+            "status": "deferred",
+            "domain": "example.test",
+            "sender": "sender%_\\",
+            "recipient": "recipient%_\\"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "affected": 3
+          }
+        }
+      }
+    },
+    "ids_take_precedence": {
+      "request": {
+        "body": {
+          "ids": [
+            1,
+            2
+          ],
+          "filter": {
+            "domain": "no-match.test",
+            "sender": "ignored"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "affected": 2
+          }
+        }
+      },
+      "description": "Nonempty IDs take precedence over every supplied filter; filter predicates must not appear in the mutation."
+    },
+    "empty_filter": {
+      "request": {
+        "body": {
+          "filter": {}
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "affected": 3
+          }
+        }
+      },
+      "description": "An explicit empty filter selects the entire controlled queue fixture, as the existing client flow expects. No live database or queue is mutated by these tests."
+    },
+    "no_match": {
+      "request": {
+        "body": {
+          "filter": {
+            "domain": "no-match.test"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "affected": 0
+          }
+        }
+      }
+    },
+    "required_capability": {
+      "request": {
+        "body": {
+          "ids": [
+            987654
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "affected": 1
+          }
+        }
+      }
+    },
+    "internal_error": {
+      "request": {
+        "body": {
+          "ids": [
+            987654
+          ]
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "request": {
+        "body": {}
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "request": {
+        "body": {}
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "setup_required": {
+      "request": {
+        "body": {}
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "body": {}
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_scope": {
+      "request": {
+        "body": {}
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "read_only": {
+      "request": {
+        "body": {}
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "permission_store_unavailable": {
+      "request": {
+        "body": {}
+      },
+      "response": {
+        "status": 503,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
           }
         }
       }

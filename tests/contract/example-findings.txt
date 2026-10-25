@@ -5,9 +5,6 @@
 #   request type does not state; state it in the type (go-oapifly#23), or, for a rule no
 #   schema can state, take the mark off the example.
 # - example-invalid on a response: the example and the response type disagree.
-example-invalid bulkBounceQueue/selection_missing
-example-invalid bulkDeleteQueue/selection_missing
-example-invalid bulkRetryQueue/selection_missing
 example-invalid createAPIKey/permissions_missing
 example-invalid createAPIKey/wildcard_capability
 example-invalid createAlias/source_invalid
