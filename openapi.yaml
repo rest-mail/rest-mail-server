@@ -12747,6 +12747,42 @@ components:
     # ─────────────────────────────────────────────────────────────
     # Admin: Observability (traces + analytics)
     # ─────────────────────────────────────────────────────────────
+    TraceStageLog:
+      type: object
+      additionalProperties: false
+      required: [filter, result]
+      properties:
+        filter:
+          type: string
+        result:
+          type: string
+        detail:
+          type: string
+        duration_ms:
+          type: integer
+          format: int64
+    TraceStage:
+      type: object
+      additionalProperties: false
+      required: [filter_name, filter_type, action, log, duration_ms]
+      properties:
+        filter_name:
+          type: string
+        filter_type:
+          type: string
+        action:
+          type: string
+        skipped:
+          type: boolean
+        skip_reason:
+          type: string
+        log:
+          $ref: "#/components/schemas/TraceStageLog"
+        duration_ms:
+          type: integer
+          format: int64
+        error:
+          type: string
     MessageTrace:
       type: object
       required: [id, direction, transport, pipeline_id, final_action, outcome, duration_ms, sampled, created_at]
@@ -12790,12 +12826,11 @@ components:
           type: integer
           format: int64
         stages:
-          description: Serialized []StepResult timeline
+          description: Typed engine stage timeline, or null when none was stored
           oneOf:
             - type: array
               items:
-                type: object
-                additionalProperties: true
+                $ref: "#/components/schemas/TraceStage"
             - type: "null"
         sampled:
           type: boolean

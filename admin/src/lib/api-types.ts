@@ -3243,7 +3243,7 @@ export interface components {
       sampled: boolean;
       /** Format: float */
       spam_score?: number | null;
-      stages: unknown;
+      stages: components["schemas"]["StepResult"][] | null;
       /** @enum {string} */
       transport: "" | "plaintext" | "tls";
     };
