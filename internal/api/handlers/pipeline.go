@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -558,7 +559,10 @@ func (h *PipelineHandler) getCustomFilter(r *http.Request, in pipelinePath) (Cus
 
 	var cf models.CustomFilter
 	if err := h.db.First(&cf, id).Error; err != nil {
-		return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "Custom filter not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "Custom filter not found")
+		}
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to get custom filter")
 	}
 
 	return customFilterOf(cf), nil

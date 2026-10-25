@@ -3,6 +3,7 @@ package handlers
 import (
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -47,7 +48,10 @@ func (h *CertificateHandler) listCertificates(_ *http.Request, in listDomainsReq
 func (h *CertificateHandler) getCertificate(_ *http.Request, in certificatePath) (CertificateDetails, error) {
 	var cert models.Certificate
 	if err := h.db.Preload("Domain").First(&cert, in.ID).Error; err != nil {
-		return CertificateDetails{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Certificate not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return CertificateDetails{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Certificate not found")
+		}
+		return CertificateDetails{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to get certificate")
 	}
 
 	return certificateDetailsOf(cert), nil
