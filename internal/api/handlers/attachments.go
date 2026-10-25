@@ -8,6 +8,8 @@ import (
 	"os"
 	"strings"
 
+	oapifly "github.com/antimatter-studios/go-oapifly"
+
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/attachmentstore"
@@ -172,7 +174,13 @@ func (h *AttachmentHandler) Register(rs endpoint.Routes) {
 		Description: "The attachment's bytes, always as application/octet-stream; the type its sender gave it is " +
 			"listAttachments' content_type. Range and conditional requests are answered (206, 304, 412, 416).",
 		MediaType: "application/octet-stream",
-		Errors:    []int{http.StatusForbidden, http.StatusNotFound}, Security: security}, h.getAttachment)
+		Headers: map[string]oapifly.ResponseHeader{
+			"Content-Disposition": {Description: "Download as an attachment, with a safely encoded filename.", Required: true},
+			"Content-Length": {Description: "The number of bytes in the complete attachment.", Required: true,
+				Type: oapifly.TypeOf[int64]()},
+			"Accept-Ranges": {Description: "Byte ranges are supported.", Required: true},
+		},
+		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: security}, h.getAttachment)
 }
 
 // listAttachments returns attachment metadata for a message.
