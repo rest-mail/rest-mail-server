@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"net/mail"
 	"strings"
@@ -120,7 +121,10 @@ func (h *AliasHandler) get(r *http.Request, in adminAddressPath) (Alias, error) 
 
 	var alias models.Alias
 	if err := h.db.Preload("Domain").First(&alias, id).Error; err != nil {
-		return Alias{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Alias not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return Alias{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Alias not found")
+		}
+		return Alias{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to get alias")
 	}
 
 	redactAdminDomain(r, &alias.Domain)

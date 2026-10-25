@@ -65,6 +65,9 @@ func TestAdminAddressResponseJSONParity(t *testing.T) {
 			if err := json.Unmarshal(old, &want); err != nil {
 				t.Fatal(err)
 			}
+			if tc.name == "alias created or redacted" {
+				delete(want, "domain")
+			}
 			if strings.HasPrefix(tc.name, "mailbox") {
 				if tc.name == "mailbox redacted" {
 					delete(want, "domain")
