@@ -49,7 +49,7 @@ func TestAdminDeletes_DocumentedMissingExamples(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var generated map[string]map[string]struct {
+	type deleteExample struct {
 		Request struct {
 			Path map[string]uint `json:"path"`
 			Body interface{}     `json:"body"`
@@ -59,6 +59,9 @@ func TestAdminDeletes_DocumentedMissingExamples(t *testing.T) {
 			Body   interface{} `json:"body"`
 		} `json:"response"`
 	}
+	// Decode only the named missing pair. Other operations legitimately use
+	// strings (including invalid numeric inputs) in their path examples.
+	var generated map[string]map[string]json.RawMessage
 	if err := json.Unmarshal(data, &generated); err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +92,10 @@ func TestAdminDeletes_DocumentedMissingExamples(t *testing.T) {
 			if len(refusals) != 1 || !reflect.DeepEqual(jsonValue(t, refusals["missing"].Value), want) {
 				t.Fatalf("unexpected 404 examples: %+v", refusals)
 			}
-			pair := generated[tc.operation]["missing"]
+			var pair deleteExample
+			if err := json.Unmarshal(generated[tc.operation]["missing"], &pair); err != nil {
+				t.Fatal(err)
+			}
 			if pair.Request.Path["id"] != missing || pair.Request.Body != nil || pair.Response.Status != 404 || !reflect.DeepEqual(pair.Response.Body, want) {
 				t.Fatalf("generated-description pair differs: %+v", pair)
 			}
