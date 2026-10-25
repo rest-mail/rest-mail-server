@@ -118,8 +118,12 @@ func newSieveInstallationScenarios(t *testing.T) mailRemovalScenarios {
 	})
 }
 
-func newMailRulesWriteScenarios(t *testing.T, connector func(mailRemovalConnection) driver.Connector) mailRemovalScenarios {
+func newMailRulesWriteScenarios(t *testing.T, connector func(mailRemovalConnection) driver.Connector, limits ...int64) mailRemovalScenarios {
 	t.Helper()
+	maxBodyBytes := int64(256)
+	if len(limits) != 0 {
+		maxBodyBytes = limits[0]
+	}
 	unavailable, _, _, jwt := authReadBatchRouters(t)
 	keys := map[string]accountListKey{}
 	tokens := map[string]string{}
@@ -152,7 +156,7 @@ func newMailRulesWriteScenarios(t *testing.T, connector func(mailRemovalConnecti
 		t.Cleanup(func() { _ = pool.Close() })
 		db := openAccountReadDB(t, pool)
 		db.NowFunc = func() time.Time { return sieveInstallationTime }
-		cfg := &config.Config{Environment: "test", APIMaxBodyBytes: 256, AuthRateLimitEnabled: limited, AuthRateLimitRPS: 1.0 / 3600, AuthRateLimitBurst: 1}
+		cfg := &config.Config{Environment: "test", APIMaxBodyBytes: maxBodyBytes, AuthRateLimitEnabled: limited, AuthRateLimitRPS: 1.0 / 3600, AuthRateLimitBurst: 1}
 		r := NewRouters(db, jwt, cfg, nil)
 		t.Cleanup(r.Close)
 		return r.Public

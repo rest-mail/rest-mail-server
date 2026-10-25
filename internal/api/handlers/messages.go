@@ -1096,17 +1096,19 @@ var listedFolders = []string{"INBOX", "Sent", "Drafts", "Trash"}
 
 // folderExists reports whether the mailbox has the folder: one of the listedFolders, a
 // message in it, or the marker createFolder leaves.
-func (h *MessageHandler) folderExists(mailboxID uint, folder string) bool {
+func (h *MessageHandler) folderExists(ctx context.Context, mailboxID uint, folder string) (bool, error) {
 	for _, listed := range listedFolders {
 		if folder == listed {
-			return true
+			return true, nil
 		}
 	}
 	var count int64
-	h.db.Model(&models.Message{}).
+	if err := h.db.WithContext(ctx).Model(&models.Message{}).
 		Where("mailbox_id = ? AND folder = ?", mailboxID, folder).
-		Count(&count)
-	return count > 0
+		Count(&count).Error; err != nil {
+		return false, fmt.Errorf("check folder existence: %w", err)
+	}
+	return count > 0, nil
 }
 
 // folderNameRule is what createFolder and renameFolder take as a name, as rmail.FolderNameProblem has it.
@@ -1198,7 +1200,11 @@ func (h *MessageHandler) createFolder(r *http.Request, in createFolderRequest) (
 		return FolderName{}, err
 	}
 	name := rmail.CanonicalFolder(in.Body.Name)
-	if h.folderExists(mailboxID, name) {
+	exists, err := h.folderExists(r.Context(), mailboxID, name)
+	if err != nil {
+		return FolderName{}, err
+	}
+	if exists {
 		return FolderName{}, errFolderExists
 	}
 
@@ -1212,7 +1218,9 @@ func (h *MessageHandler) createFolder(r *http.Request, in createFolderRequest) (
 		IsDeleted: true,
 		SizeBytes: 0,
 	}
-	h.db.Create(&marker)
+	if err := h.db.WithContext(r.Context()).Create(&marker).Error; err != nil {
+		return FolderName{}, fmt.Errorf("create folder marker: %w", err)
+	}
 
 	return FolderName{Name: name}, nil
 }
@@ -1236,16 +1244,27 @@ func (h *MessageHandler) renameFolder(r *http.Request, in renameFolderRequest) (
 		return FolderName{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "Cannot rename a folder to a standard folder")
 	}
 	errNoFolder := endpoint.Refuse(http.StatusNotFound, "not_found", "Folder not found or empty")
-	if !h.folderExists(mailboxID, from) {
+	exists, err := h.folderExists(r.Context(), mailboxID, from)
+	if err != nil {
+		return FolderName{}, err
+	}
+	if !exists {
 		return FolderName{}, errNoFolder
 	}
-	if h.folderExists(mailboxID, name) {
+	exists, err = h.folderExists(r.Context(), mailboxID, name)
+	if err != nil {
+		return FolderName{}, err
+	}
+	if exists {
 		return FolderName{}, errFolderExists
 	}
 
-	result := h.db.Model(&models.Message{}).
+	result := h.db.WithContext(r.Context()).Model(&models.Message{}).
 		Where("mailbox_id = ? AND folder = ?", mailboxID, from).
 		Update("folder", name)
+	if result.Error != nil {
+		return FolderName{}, fmt.Errorf("rename folder messages: %w", result.Error)
+	}
 	if result.RowsAffected == 0 {
 		return FolderName{}, errNoFolder
 	}

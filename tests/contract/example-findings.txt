@@ -13,7 +13,6 @@ example-invalid createAppPassword/name_empty
 example-invalid createAppPassword/name_too_long
 example-invalid createContact/email_invalid
 example-invalid createContact/trust_level_invalid
-example-invalid createFolder/name_empty
 example-invalid createPipeline/direction_missing
 example-invalid createPipeline/filters_missing
 example-invalid importContacts/contacts_empty
