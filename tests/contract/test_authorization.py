@@ -78,6 +78,7 @@ class AuthorizationConfig(unittest.TestCase):
                     "password": self.fixture[fixture_name]["password"],
                     "client": "native",
                 },
+                "secrets": ["password"], "public": ["email", "client"],
             })
             self.assertEqual(principal["auth"]["header"], authorization.BEARER)
         self.assertEqual(admin["roles"], authorization.roles(self.spec))

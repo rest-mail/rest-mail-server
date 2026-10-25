@@ -175,10 +175,10 @@ jobs:
         # dependency: vertrag needs Go 1.26 and this module is on 1.25. Verified
         # the same way as chore above, never piped from the network.
         env:
-          VERTRAG_VERSION: 0.30.0
+          VERTRAG_VERSION: 0.31.0
           # sha256 of vertrag-${VERTRAG_VERSION}-linux-x86_64.tar.gz, from that
           # release's checksums.txt. Bump both together when upgrading.
-          VERTRAG_SHA256: 1e351abf1ae4e43b839072a92daa50e2aac5247f4e6c3198e238a19d2357ea5d
+          VERTRAG_SHA256: 62aefcfb47a6d435a9804a2352fbbcd47653e6bfb02e4eb1850afe2a8ed24b99
         run: |
           set -euo pipefail
           tmp="$(mktemp -d)"

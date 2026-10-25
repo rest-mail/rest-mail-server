@@ -24,6 +24,10 @@ auth:
     path: /api/v1/auth/login
     # The fixture admin, a test fixture like every password in cmd/seed.
     body: {email: admin@restmail.test, password: "admin123!@", client: native}
+    # Every body field is classified once: the password is redacted in every
+    # report; the address and client are shown, so a report says who signed in.
+    secrets: [password]
+    public: [email, client]
   header: 'Authorization: Bearer {$response.body#/data/access_token}'
   # Sent with no credential: each authenticated operation's documented 401, and
   # the two operations that take a credential other than the session's (the
