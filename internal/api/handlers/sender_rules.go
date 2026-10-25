@@ -57,7 +57,10 @@ func (h *SenderRuleHandler) addToAllowlist(_ *http.Request, in addSenderRuleInpu
 	// Verify the domain exists.
 	var domain models.Domain
 	if err := h.db.First(&domain, domainID).Error; err != nil {
-		return SenderRule{}, endpoint.Refuse(http.StatusNotFound, "domain_not_found", "Domain not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return SenderRule{}, endpoint.Refuse(http.StatusNotFound, "domain_not_found", "Domain not found")
+		}
+		return SenderRule{}, fmt.Errorf("look up allowlist domain for creation: %w", err)
 	}
 
 	rule := models.DomainSenderRule{
@@ -131,7 +134,10 @@ func (h *SenderRuleHandler) addToBlocklist(_ *http.Request, in addSenderRuleInpu
 	// Verify the domain exists.
 	var domain models.Domain
 	if err := h.db.First(&domain, domainID).Error; err != nil {
-		return SenderRule{}, endpoint.Refuse(http.StatusNotFound, "domain_not_found", "Domain not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return SenderRule{}, endpoint.Refuse(http.StatusNotFound, "domain_not_found", "Domain not found")
+		}
+		return SenderRule{}, fmt.Errorf("look up blocklist domain for creation: %w", err)
 	}
 
 	rule := models.DomainSenderRule{

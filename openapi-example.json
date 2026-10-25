@@ -1,92 +1,586 @@
 {
   "addToAllowlist": {
+    "already_exists": {
+      "description": "The SQL driver returns PostgreSQL23505. GORM and the production repository conflict mapping produce409, without exposing database details.",
+      "request": {
+        "body": {
+          "pattern": "already@example.net",
+          "reason": "A trusted partner"
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "already_exists",
+            "message": "Sender is already on the allowlist"
+          }
+        },
+        "mediaType": "application/json",
+        "status": 409
+      }
+    },
+    "body_array": {
+      "request": {
+        "body": [],
+        "invalid": true,
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json",
+        "status": 400
+      }
+    },
     "created": {
+      "description": "A domains:write grant for example.com permits creation. The real handler inserts the exact domain, list type, pattern and reason using GORM; its returned ID and timestamp are serialized.",
       "request": {
         "body": {
           "pattern": "@partner.example.com",
           "reason": "A trusted partner"
+        },
+        "path": {
+          "id": 1
         }
       },
       "response": {
-        "status": 201,
         "body": {
           "data": {
-            "id": 1,
+            "created_at": "2026-01-01T00:00:00Z",
             "domain_id": 1,
-            "pattern": "@partner.example.com",
+            "id": 1,
             "list_type": "allow",
-            "reason": "A trusted partner",
-            "created_at": "2026-01-01T00:00:00Z"
+            "pattern": "@partner.example.com",
+            "reason": "A trusted partner"
           }
-        }
+        },
+        "status": 201
       }
+    },
+    "created_without_reason": {
+      "description": "A domains:write grant for example.com permits creation. The real handler inserts the exact domain, list type, pattern and reason using GORM; its returned ID and timestamp are serialized.",
+      "request": {
+        "body": {
+          "pattern": "@partner.example.com"
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "body": {
+          "data": {
+            "created_at": "2026-01-01T00:00:00Z",
+            "domain_id": 1,
+            "id": 1,
+            "list_type": "allow",
+            "pattern": "@partner.example.com"
+          }
+        },
+        "status": 201
+      },
+      "summary": "An omitted reason stays omitted in the response"
+    },
+    "internal_error": {
+      "request": {
+        "body": {
+          "pattern": "@partner.example.com",
+          "reason": "A trusted partner"
+        },
+        "path": {
+          "id": 4
+        }
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json",
+        "status": 500
+      }
+    },
+    "missing": {
+      "request": {
+        "body": {
+          "pattern": "@partner.example.com",
+          "reason": "A trusted partner"
+        },
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "domain_not_found",
+            "message": "Domain not found"
+          }
+        },
+        "mediaType": "application/json",
+        "status": 404
+      }
+    },
+    "outside_domain": {
+      "description": "A domains:write grant only for other.test is refused by the real domain-scope middleware.",
+      "request": {
+        "body": {
+          "pattern": "@partner.example.com",
+          "reason": "A trusted partner"
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json",
+        "status": 403
+      },
+      "summary": "A grant on another domain is refused"
     },
     "pattern_missing": {
       "request": {
         "body": {
           "reason": "A trusted partner"
         },
-        "invalid": true
+        "invalid": true,
+        "path": {
+          "id": 1
+        }
       },
       "response": {
-        "status": 422,
         "body": {
           "error": {
             "code": "validation_failed",
-            "message": "Request body failed validation",
             "details": {
               "fields": {
                 "pattern": "required"
               }
-            }
+            },
+            "message": "Request body failed validation"
           }
-        }
+        },
+        "status": 422
       }
+    },
+    "request_too_large": {
+      "description": "The published JSON body exceeds the eight-byte fixture cap; the production transport limiter refuses it before insertion.",
+      "request": {
+        "body": {
+          "pattern": "@partner.example.com",
+          "reason": "A trusted partner"
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json",
+        "status": 413
+      },
+      "summary": "The request exceeds the transport body cap"
+    },
+    "save_unavailable": {
+      "request": {
+        "body": {
+          "pattern": "saving@example.net",
+          "reason": "A trusted partner"
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to create allowlist rule"
+          }
+        },
+        "mediaType": "application/json",
+        "status": 500
+      }
+    },
+    "session_unavailable": {
+      "request": {
+        "body": {
+          "pattern": "@partner.example.com",
+          "reason": "A trusted partner"
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json",
+        "status": 503
+      },
+      "summary": "The current-session lookup fails"
+    },
+    "translated_conflict": {
+      "description": "A wrapped GORM duplicate-key error follows the same409 mapping as a PostgreSQL23505.",
+      "request": {
+        "body": {
+          "pattern": "translated@example.net",
+          "reason": "A trusted partner"
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "already_exists",
+            "message": "Sender is already on the allowlist"
+          }
+        },
+        "mediaType": "application/json",
+        "status": 409
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "body": {
+          "pattern": "@partner.example.com",
+          "reason": "A trusted partner"
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json",
+        "status": 401
+      },
+      "summary": "No session credential was sent"
     }
   },
   "addToBlocklist": {
+    "already_exists": {
+      "description": "The SQL driver returns PostgreSQL23505. GORM and the production repository conflict mapping produce409, without exposing database details.",
+      "request": {
+        "body": {
+          "pattern": "already@example.net",
+          "reason": "Sends spam"
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "already_exists",
+            "message": "Sender is already on the blocklist"
+          }
+        },
+        "mediaType": "application/json",
+        "status": 409
+      }
+    },
+    "body_array": {
+      "request": {
+        "body": [],
+        "invalid": true,
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json",
+        "status": 400
+      }
+    },
     "created": {
+      "description": "A domains:write grant for example.com permits creation. The real handler inserts the exact domain, list type, pattern and reason using GORM; its returned ID and timestamp are serialized.",
       "request": {
         "body": {
           "pattern": "spam@spammer.example.com",
           "reason": "Sends spam"
+        },
+        "path": {
+          "id": 1
         }
       },
       "response": {
-        "status": 201,
         "body": {
           "data": {
-            "id": 1,
+            "created_at": "2026-01-01T00:00:00Z",
             "domain_id": 1,
-            "pattern": "spam@spammer.example.com",
+            "id": 1,
             "list_type": "block",
-            "reason": "Sends spam",
-            "created_at": "2026-01-01T00:00:00Z"
+            "pattern": "spam@spammer.example.com",
+            "reason": "Sends spam"
           }
-        }
+        },
+        "status": 201
       }
+    },
+    "created_without_reason": {
+      "description": "A domains:write grant for example.com permits creation. The real handler inserts the exact domain, list type, pattern and reason using GORM; its returned ID and timestamp are serialized.",
+      "request": {
+        "body": {
+          "pattern": "spam@spammer.example.com"
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "body": {
+          "data": {
+            "created_at": "2026-01-01T00:00:00Z",
+            "domain_id": 1,
+            "id": 1,
+            "list_type": "block",
+            "pattern": "spam@spammer.example.com"
+          }
+        },
+        "status": 201
+      },
+      "summary": "An omitted reason stays omitted in the response"
+    },
+    "internal_error": {
+      "request": {
+        "body": {
+          "pattern": "spam@spammer.example.com",
+          "reason": "Sends spam"
+        },
+        "path": {
+          "id": 4
+        }
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json",
+        "status": 500
+      }
+    },
+    "missing": {
+      "request": {
+        "body": {
+          "pattern": "spam@spammer.example.com",
+          "reason": "Sends spam"
+        },
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "domain_not_found",
+            "message": "Domain not found"
+          }
+        },
+        "mediaType": "application/json",
+        "status": 404
+      }
+    },
+    "outside_domain": {
+      "description": "A domains:write grant only for other.test is refused by the real domain-scope middleware.",
+      "request": {
+        "body": {
+          "pattern": "spam@spammer.example.com",
+          "reason": "Sends spam"
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json",
+        "status": 403
+      },
+      "summary": "A grant on another domain is refused"
     },
     "pattern_missing": {
       "request": {
         "body": {
           "reason": "Sends spam"
         },
-        "invalid": true
+        "invalid": true,
+        "path": {
+          "id": 1
+        }
       },
       "response": {
-        "status": 422,
         "body": {
           "error": {
             "code": "validation_failed",
-            "message": "Request body failed validation",
             "details": {
               "fields": {
                 "pattern": "required"
               }
-            }
+            },
+            "message": "Request body failed validation"
           }
-        }
+        },
+        "status": 422
       }
+    },
+    "request_too_large": {
+      "description": "The published JSON body exceeds the eight-byte fixture cap; the production transport limiter refuses it before insertion.",
+      "request": {
+        "body": {
+          "pattern": "spam@spammer.example.com",
+          "reason": "Sends spam"
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json",
+        "status": 413
+      },
+      "summary": "The request exceeds the transport body cap"
+    },
+    "save_unavailable": {
+      "request": {
+        "body": {
+          "pattern": "saving@example.net",
+          "reason": "Sends spam"
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to create blocklist rule"
+          }
+        },
+        "mediaType": "application/json",
+        "status": 500
+      }
+    },
+    "session_unavailable": {
+      "request": {
+        "body": {
+          "pattern": "spam@spammer.example.com",
+          "reason": "Sends spam"
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json",
+        "status": 503
+      },
+      "summary": "The current-session lookup fails"
+    },
+    "translated_conflict": {
+      "description": "A wrapped GORM duplicate-key error follows the same409 mapping as a PostgreSQL23505.",
+      "request": {
+        "body": {
+          "pattern": "translated@example.net",
+          "reason": "Sends spam"
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "already_exists",
+            "message": "Sender is already on the blocklist"
+          }
+        },
+        "mediaType": "application/json",
+        "status": 409
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "body": {
+          "pattern": "spam@spammer.example.com",
+          "reason": "Sends spam"
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json",
+        "status": 401
+      },
+      "summary": "No session credential was sent"
     }
   },
   "apiRoot": {
