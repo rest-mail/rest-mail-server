@@ -25,6 +25,9 @@ on:
   # Stack layers target parent branches; their updates need the same E2E gate.
   pull_request:
   workflow_dispatch:
+  # The merge queue on main (#825) needs `E2E (full topology)` and `Classify changed
+  # paths` to report on each group it tests before merging it.
+  merge_group:
 
 # e2e is expensive — supersede in-flight runs for the same ref.
 concurrency:
@@ -53,19 +56,21 @@ jobs:
         id: classify
         env:
           EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          # A merge queue group is classified like a pull request, against the main
+          # it was built on, so a group of docs-only pull requests skips the suite too.
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
           set -euo pipefail
 
-          # Any non-PR event (push to main, manual dispatch) always runs the
+          # Any other event (push to main, manual dispatch) always runs the
           # full suite — post-merge and on-demand validation is never gated.
-          if [ "$EVENT_NAME" != "pull_request" ]; then
+          if [ "$EVENT_NAME" != "pull_request" ] && [ "$EVENT_NAME" != "merge_group" ]; then
             echo "event=$EVENT_NAME -> run full e2e"
             echo "run_e2e=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          # PR changes relative to the merge-base with the target branch.
+          # Changes relative to the merge-base with the target branch.
           files="$(git diff --name-only "$BASE_SHA"...HEAD)"
           echo "changed files:"
           printf '%s\n' "$files"
