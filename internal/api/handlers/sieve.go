@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -194,7 +195,9 @@ func (h *SieveHandler) delete(r *http.Request, in accountPath) (SieveDeleted, er
 		return SieveDeleted{}, err
 	}
 
-	h.db.Where("mailbox_id = ?", mailboxID).Delete(&models.SieveScript{})
+	if err := h.db.WithContext(r.Context()).Where("mailbox_id = ?", mailboxID).Delete(&models.SieveScript{}).Error; err != nil {
+		return SieveDeleted{}, fmt.Errorf("delete Sieve script: %w", err)
+	}
 	return SieveDeleted{Status: "deleted"}, nil
 }
 

@@ -274,7 +274,7 @@ func TestBulkQueueCompleteExamples(t *testing.T) {
 // Isolate the published pair while preserving the registered request and
 // response schemas. A standard hook sends the canonical URI (including invalid
 // path bindings) and the transport-cap violation; expected answers stay intact.
-func checkQueueMutationPairWithVertrag(t *testing.T, binary string, s bulkQueueExampleScenario, method, path, name string, pair oapifly.ExamplePair) {
+func checkQueueMutationPairWithVertrag(t *testing.T, binary string, s bulkQueueExampleScenario, method, path, name string, pair oapifly.ExamplePair, oversizedBytes ...int) {
 	t.Helper()
 	doc := contractDocument(t, describedRouters(t).generator("bulk queue boundary"))
 	verb := strings.ToLower(method)
@@ -332,7 +332,13 @@ func checkQueueMutationPairWithVertrag(t *testing.T, binary string, s bulkQueueE
 	{
 		hook := "import vertrag_hooks as hooks\n@hooks.before_each\ndef published_request(transaction):\n    transaction['fullPath'] = " + strconv.Quote(uri) + "\n"
 		if name == "request_too_large" {
-			hook += "    transaction['request']['body'] = 'oversized'\n"
+			payload := "oversized"
+			if len(oversizedBytes) != 0 {
+				payload = strings.Repeat("x", oversizedBytes[0])
+			}
+			hook += "    transaction['request']['body'] = " + strconv.Quote(payload) + "\n"
+		} else if name == "malformed_json" {
+			hook += "    transaction['request']['body'] = '{'\n"
 		}
 		if err = os.WriteFile(filepath.Join(dir, "pair.py"), []byte(hook), 0600); err != nil {
 			t.Fatal(err)

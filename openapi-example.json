@@ -15044,7 +15044,10 @@
     "script_missing": {
       "request": {
         "body": {},
-        "invalid": true
+        "invalid": true,
+        "path": {
+          "id": 1
+        }
       },
       "response": {
         "status": 422,
@@ -15058,7 +15061,8 @@
               }
             }
           }
-        }
+        },
+        "mediaType": "application/json"
       }
     },
     "script_null": {
@@ -15066,7 +15070,9 @@
         "body": {
           "script": null
         },
-        "invalid": true
+        "path": {
+          "id": 1
+        }
       },
       "response": {
         "status": 422,
@@ -15080,13 +15086,18 @@
               }
             }
           }
-        }
-      }
+        },
+        "mediaType": "application/json"
+      },
+      "description": "Null is permitted by the published nullable string schema but refused as a missing required value at the runtime boundary. This pair is a schema-valid refusal, not an invalid-schema example."
     },
     "valid": {
       "request": {
         "body": {
           "script": "require [\"fileinto\"];\nif header :contains \"subject\" \"invoice\" {\n  fileinto \"Invoices\";\n}\n"
+        },
+        "path": {
+          "id": 1
         }
       },
       "response": {
@@ -15096,8 +15107,643 @@
             "valid": true,
             "message": "Script is valid"
           }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "found": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "script": "keep;"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "message": "Script is valid",
+            "valid": true
+          }
+        }
+      },
+      "description": "Production route/session/credential/holder/CSRF gates precede mailbox-bound deletion or side-effect-free validation. Local SQL proves exact mailbox selection, idempotent zero-row deletion and fault refusal; validation never reads or writes stored scripts. Fixed local rows do not prove PostgreSQL/audit persistence or delivery-time execution."
+    },
+    "primary": {
+      "request": {
+        "path": {
+          "id": 10
+        },
+        "body": {
+          "script": "keep;"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "message": "Script is valid",
+            "valid": true
+          }
         }
       }
+    },
+    "domain_grant": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "script": "keep;"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "message": "Script is valid",
+            "valid": true
+          }
+        }
+      }
+    },
+    "cookie_session": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "script": "keep;"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "message": "Script is valid",
+            "valid": true
+          }
+        }
+      }
+    },
+    "app_password": {
+      "request": {
+        "path": {
+          "id": 10
+        },
+        "body": {
+          "script": "keep;"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "message": "Script is valid",
+            "valid": true
+          }
+        }
+      }
+    },
+    "app_password_other": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "script": "keep;"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "key_write_only": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "script": "keep;"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "message": "Script is valid",
+            "valid": true
+          }
+        }
+      }
+    },
+    "key_read": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "script": "keep;"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "key_domain": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "script": "keep;"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "key_wrong_scope": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "script": "keep;"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "key_write_holder_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "script": "keep;"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "key_write_domain": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "script": "keep;"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "message": "Script is valid",
+            "valid": true
+          }
+        }
+      }
+    },
+    "write_only": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "script": "keep;"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "message": "Script is valid",
+            "valid": true
+          }
+        }
+      }
+    },
+    "no_grants": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "script": "keep;"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "primary_only": {
+      "request": {
+        "path": {
+          "id": 10
+        },
+        "body": {
+          "script": "keep;"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "message": "Script is valid",
+            "valid": true
+          }
+        }
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2
+        },
+        "body": {
+          "script": "keep;"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "message": "Script is valid",
+            "valid": true
+          }
+        }
+      }
+    },
+    "inaccessible": {
+      "request": {
+        "path": {
+          "id": 20
+        },
+        "body": {
+          "script": "keep;"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "script": "keep;"
+        }
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "setup_required": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "script": "keep;"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        }
+      }
+    },
+    "rate_limited": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "script": "keep;"
+        }
+      },
+      "response": {
+        "status": 429,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        }
+      }
+    },
+    "request_too_large": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "script": "keep;"
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      },
+      "description": "The configured route cap is 256 bytes. The test and Vertrag hook send 257 bytes so the real transport guard refuses the request before body parsing."
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "body": {
+          "script": "keep;"
+        }
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        }
+      },
+      "description": "The JSON body validates; the malformed path value is refused by the real path binder with 422. The invalid-body marker does not describe path binding."
+    },
+    "invalid_format": {
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "body": {
+          "script": "keep;"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      },
+      "description": "The JSON body validates; the malformed path value is refused by the real path binder with 422. The invalid-body marker does not describe path binding."
+    },
+    "session_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "script": "keep;"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "target_unavailable": {
+      "request": {
+        "path": {
+          "id": 3
+        },
+        "body": {
+          "script": "keep;"
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "grant_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "script": "keep;"
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "ownership_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "script": "keep;"
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "empty_script": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "script": ""
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "message": "Empty script is valid",
+            "valid": true
+          }
+        }
+      }
+    },
+    "valid_keep": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "script": "keep;"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "message": "Script is valid",
+            "valid": true
+          }
+        }
+      }
+    },
+    "invalid_syntax": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "script": "if"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "message": "sieve parse error: sieve: line 1: expected a test, got end of script",
+            "valid": false
+          }
+        }
+      }
+    },
+    "malformed_json": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      },
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type. The route and Vertrag transport hook send those exact bytes rather than JSON-quoting them."
     }
   },
   "restmailCheckMailbox": {
@@ -34068,6 +34714,488 @@
           }
         },
         "mediaType": "application/json"
+      }
+    }
+  },
+  "deleteSieveScript": {
+    "found": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "status": "deleted"
+          }
+        }
+      },
+      "description": "Production route/session/credential/holder/CSRF gates precede mailbox-bound deletion or side-effect-free validation. Local SQL proves exact mailbox selection, idempotent zero-row deletion and fault refusal; validation never reads or writes stored scripts. Fixed local rows do not prove PostgreSQL/audit persistence or delivery-time execution."
+    },
+    "primary": {
+      "request": {
+        "path": {
+          "id": 10
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "status": "deleted"
+          }
+        }
+      }
+    },
+    "domain_grant": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "status": "deleted"
+          }
+        }
+      }
+    },
+    "cookie_session": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "status": "deleted"
+          }
+        }
+      }
+    },
+    "app_password": {
+      "request": {
+        "path": {
+          "id": 10
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "status": "deleted"
+          }
+        }
+      }
+    },
+    "app_password_other": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "key_write_only": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "status": "deleted"
+          }
+        }
+      }
+    },
+    "key_read": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "key_domain": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "key_wrong_scope": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "key_write_holder_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "key_write_domain": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "status": "deleted"
+          }
+        }
+      }
+    },
+    "write_only": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "status": "deleted"
+          }
+        }
+      }
+    },
+    "no_grants": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "primary_only": {
+      "request": {
+        "path": {
+          "id": 10
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "status": "deleted"
+          }
+        }
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "status": "deleted"
+          }
+        }
+      }
+    },
+    "inaccessible": {
+      "request": {
+        "path": {
+          "id": 20
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "setup_required": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        }
+      }
+    },
+    "rate_limited": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        }
+      }
+    },
+    "request_too_large": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      },
+      "description": "The configured route cap is 256 bytes. The test and Vertrag hook send 257 bytes so the real transport guard refuses the request before body parsing."
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        }
+      }
+    },
+    "invalid_format": {
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "target_unavailable": {
+      "request": {
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "grant_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "ownership_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "internal_error": {
+      "request": {
+        "path": {
+          "id": 4
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
       }
     }
   }

@@ -40,4 +40,3 @@ example-invalid updateCustomFilter/name_empty
 example-invalid updateMailbox/password_short
 example-invalid updatePipeline/filters_null
 example-invalid updatePipeline/filters_object
-example-invalid validateSieveScript/script_null
