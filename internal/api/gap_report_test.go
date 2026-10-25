@@ -43,6 +43,15 @@ type gapReport struct {
 // No network or live database is needed to construct these actual registrations.
 func gapGenerators(t *testing.T) []*oapifly.Generator {
 	t.Helper()
+	var generators []*oapifly.Generator
+	for _, routers := range gapRouters(t) {
+		generators = append(generators, routers.generator("report"))
+	}
+	return generators
+}
+
+func gapRouters(t *testing.T) []*Routers {
+	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
@@ -59,14 +68,14 @@ func gapGenerators(t *testing.T) []*oapifly.Generator {
 	t.Setenv("RESTMAIL_APNS_KEY_ID", "REPORTKEY1")
 	t.Setenv("RESTMAIL_APNS_TEAM_ID", "REPORTTEAM")
 	t.Setenv("RESTMAIL_APNS_TOPIC", "")
-	var generators []*oapifly.Generator
+	var all []*Routers
 	for _, environment := range []string{"production", "test"} {
 		jwt := auth.NewJWTService(routerTestSecret, 5*time.Minute, 24*time.Hour)
 		routers := NewRouters(newFailingGormDB(t), jwt, &config.Config{Environment: environment}, nil)
 		t.Cleanup(routers.Close)
-		generators = append(generators, routers.generator("report"))
+		all = append(all, routers)
 	}
-	return generators
+	return all
 }
 
 // gapSources locates the registration's literal operation ID rather than guessing
