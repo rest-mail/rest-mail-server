@@ -351,6 +351,25 @@ func checkQueueMutationPairWithVertrag(t *testing.T, binary string, s bulkQueueE
 	cmd.Dir = dir
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		if data, readErr := os.ReadFile(filepath.Join(dir, "report.json")); readErr == nil {
+			var report map[string]json.RawMessage
+			if json.Unmarshal(data, &report) == nil {
+				for key, value := range report {
+					var results []struct {
+						Name   string
+						Errors []string
+						Beyond []string
+					}
+					if json.Unmarshal(value, &results) == nil {
+						for _, result := range results {
+							if len(result.Errors)+len(result.Beyond) > 0 {
+								t.Logf("Vertrag %s %s: errors=%v beyond=%v", key, result.Name, result.Errors, result.Beyond)
+							}
+						}
+					}
+				}
+			}
+		}
 		t.Fatalf("Vertrag rejected bulk pair: %v\n%s", err, output)
 	}
 	data, err = os.ReadFile(filepath.Join(dir, "report.json"))

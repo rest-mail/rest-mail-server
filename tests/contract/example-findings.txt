@@ -7,7 +7,6 @@
 # - example-invalid on a response: the example and the response type disagree.
 example-invalid createAPIKey/permissions_missing
 example-invalid createAPIKey/wildcard_capability
-example-invalid createAlias/source_invalid
 example-invalid createAppPassword/name_control
 example-invalid createAppPassword/name_empty
 example-invalid createAppPassword/name_too_long
@@ -22,7 +21,6 @@ example-invalid sendMessage/unsubscribe_not_allowed 422
 example-invalid sendMessage/valid 201
 example-invalid setDKIMKey/private_key_invalid
 example-invalid testFilter/filter_name_missing
-example-invalid updateAlias/destination_invalid
 example-invalid updateCustomFilter/config_array
 example-invalid updateCustomFilter/config_null
 example-invalid updateCustomFilter/name_empty

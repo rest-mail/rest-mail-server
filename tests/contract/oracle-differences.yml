@@ -740,7 +740,7 @@
 - operation: createAlias
   difference: "response 201 application/json.properties.data.properties.domain: openapi.yaml absent, generated *"
   reason: >-
-    The handlers have always included the preloaded domain (a zero domain after creation or redaction). The API type preserves that JSON without the private DKIM key; the oracle omits the association.
+    The public Alias type permits a readable, loaded domain association. Creation does not preload it and omits the association; it never emits an invalid zero domain. The oracle omits this optional property.
 - operation: createAlias
   difference: "response 404: generated only"
   reason: >-
