@@ -154,6 +154,8 @@ func (h *TestHandler) verifyDelivery(_ *http.Request, in verifyDeliveryRequest) 
 		var msg models.Message
 		if err := query.Order("received_at DESC").First(&msg).Error; err == nil {
 			return TestDelivery{Found: true, MessageID: &msg.ID, MsgID: &msg.MsgID, Subject: &msg.Subject, Sender: &msg.Sender, ReceivedAt: &msg.ReceivedAt}, nil
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return TestDelivery{}, fmt.Errorf("verify delivered message: %w", err)
 		}
 
 		if time.Now().After(deadline) {

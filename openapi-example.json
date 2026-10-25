@@ -25956,5 +25956,750 @@
         }
       }
     }
+  },
+  "verifyAuditLog": {
+    "internal_error": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "request": {},
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "setup_required": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "request": {},
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_scope": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "wrong_capability": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "permission_store_unavailable": {
+      "request": {},
+      "response": {
+        "status": 503,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
+          }
+        }
+      }
+    },
+    "found": {
+      "request": {},
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "ok": true,
+            "checked": 2,
+            "first_seq": 1,
+            "last_seq": 2,
+            "last_hash": "52bcb3083c3f488bdc23d26f1fd7ca9e546465aa60e25235d999609d8d82005c"
+          }
+        }
+      },
+      "description": "The real bounded database audit verifier walks fixed, production-hashed entries. Complete pairs expose valid/empty/broken/gapped/truncated chains and anchored matches/mismatches/missing anchors. Controlled rows prove verifier and response wiring, not PostgreSQL traversal or audit append persistence."
+    },
+    "audit_capability": {
+      "request": {},
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "ok": true,
+            "checked": 2,
+            "first_seq": 1,
+            "last_seq": 2,
+            "last_hash": "52bcb3083c3f488bdc23d26f1fd7ca9e546465aa60e25235d999609d8d82005c"
+          }
+        }
+      }
+    },
+    "cookie_session": {
+      "request": {},
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "ok": true,
+            "checked": 2,
+            "first_seq": 1,
+            "last_seq": 2,
+            "last_hash": "52bcb3083c3f488bdc23d26f1fd7ca9e546465aa60e25235d999609d8d82005c"
+          }
+        }
+      }
+    },
+    "empty": {
+      "request": {},
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "ok": true,
+            "checked": 0,
+            "first_seq": 0,
+            "last_seq": 0,
+            "last_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        }
+      }
+    },
+    "broken": {
+      "request": {},
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "ok": false,
+            "checked": 1,
+            "first_seq": 1,
+            "last_seq": 1,
+            "last_hash": "a80f07a19f2e0addd466cc2ee548e74d7335ef434b5c77652c28fde2e8383f53",
+            "broken_at_seq": 2,
+            "reason": "hash does not match the entry's contents"
+          }
+        }
+      }
+    },
+    "gap": {
+      "request": {},
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "ok": false,
+            "checked": 1,
+            "first_seq": 1,
+            "last_seq": 1,
+            "last_hash": "a80f07a19f2e0addd466cc2ee548e74d7335ef434b5c77652c28fde2e8383f53",
+            "broken_at_seq": 3,
+            "reason": "expected seq 2, found 3"
+          }
+        }
+      }
+    },
+    "truncated": {
+      "request": {},
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "ok": true,
+            "checked": 2,
+            "first_seq": 5,
+            "last_seq": 6,
+            "last_hash": "3ca65e929281aac68198b5f812775657ad3c146ea3325c72932cd649f9ffb289",
+            "note": "the log starts at seq 5; the check starts from that entry's prev_hash"
+          }
+        }
+      }
+    },
+    "anchor_valid": {
+      "request": {
+        "query": {
+          "anchor": "2:52bcb3083c3f488bdc23d26f1fd7ca9e546465aa60e25235d999609d8d82005c"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "ok": true,
+            "checked": 2,
+            "first_seq": 1,
+            "last_seq": 2,
+            "last_hash": "52bcb3083c3f488bdc23d26f1fd7ca9e546465aa60e25235d999609d8d82005c",
+            "anchor": {
+              "seq": 2,
+              "hash": "52bcb3083c3f488bdc23d26f1fd7ca9e546465aa60e25235d999609d8d82005c"
+            }
+          }
+        }
+      }
+    },
+    "anchor_uppercase": {
+      "request": {
+        "query": {
+          "anchor": "2:52BCB3083C3F488BDC23D26F1FD7CA9E546465AA60E25235D999609D8D82005C"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "ok": true,
+            "checked": 2,
+            "first_seq": 1,
+            "last_seq": 2,
+            "last_hash": "52bcb3083c3f488bdc23d26f1fd7ca9e546465aa60e25235d999609d8d82005c",
+            "anchor": {
+              "seq": 2,
+              "hash": "52bcb3083c3f488bdc23d26f1fd7ca9e546465aa60e25235d999609d8d82005c"
+            }
+          }
+        }
+      }
+    },
+    "anchor_blank": {
+      "request": {
+        "query": {
+          "anchor": ""
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "ok": true,
+            "checked": 2,
+            "first_seq": 1,
+            "last_seq": 2,
+            "last_hash": "52bcb3083c3f488bdc23d26f1fd7ca9e546465aa60e25235d999609d8d82005c"
+          }
+        }
+      }
+    },
+    "anchor_mismatch": {
+      "request": {
+        "query": {
+          "anchor": "2:0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "ok": false,
+            "checked": 1,
+            "first_seq": 1,
+            "last_seq": 1,
+            "last_hash": "a80f07a19f2e0addd466cc2ee548e74d7335ef434b5c77652c28fde2e8383f53",
+            "broken_at_seq": 2,
+            "reason": "hash does not match the anchor: the log was rewritten up to here",
+            "anchor": {
+              "seq": 2,
+              "hash": "0000000000000000000000000000000000000000000000000000000000000000"
+            }
+          }
+        }
+      }
+    },
+    "anchor_missing": {
+      "request": {
+        "query": {
+          "anchor": "3:52bcb3083c3f488bdc23d26f1fd7ca9e546465aa60e25235d999609d8d82005c"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "ok": false,
+            "checked": 2,
+            "first_seq": 1,
+            "last_seq": 2,
+            "last_hash": "52bcb3083c3f488bdc23d26f1fd7ca9e546465aa60e25235d999609d8d82005c",
+            "broken_at_seq": 3,
+            "reason": "the log ends at seq 2, before the anchor at seq 3",
+            "anchor": {
+              "seq": 3,
+              "hash": "52bcb3083c3f488bdc23d26f1fd7ca9e546465aa60e25235d999609d8d82005c"
+            }
+          }
+        }
+      }
+    },
+    "invalid_anchor": {
+      "request": {
+        "query": {
+          "anchor": "bad"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Query parameters failed validation",
+            "details": {
+              "fields": {
+                "anchor": "must be <seq>:<hash>, a positive whole number and 64 hex digits"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "verifyDelivery": {
+    "internal_error": {
+      "request": {
+        "query": {
+          "to": "recipient@example.com",
+          "timeout": "0s"
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to look up the recipient mailbox"
+          }
+        }
+      }
+    },
+    "request_too_large": {
+      "request": {
+        "query": {
+          "to": "recipient@example.com",
+          "timeout": "0s"
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "request": {
+        "query": {
+          "to": "recipient@example.com",
+          "timeout": "0s"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "setup_required": {
+      "request": {
+        "query": {
+          "to": "recipient@example.com",
+          "timeout": "0s"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "query": {
+          "to": "recipient@example.com",
+          "timeout": "0s"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_scope": {
+      "request": {
+        "query": {
+          "to": "recipient@example.com",
+          "timeout": "0s"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "wrong_capability": {
+      "request": {
+        "query": {
+          "to": "recipient@example.com",
+          "timeout": "0s"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "permission_store_unavailable": {
+      "request": {
+        "query": {
+          "to": "recipient@example.com",
+          "timeout": "0s"
+        }
+      },
+      "response": {
+        "status": 503,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
+          }
+        }
+      }
+    },
+    "found": {
+      "request": {
+        "query": {
+          "to": "recipient@example.com",
+          "timeout": "0s"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "found": true,
+            "message_id": 51,
+            "msg_id": "<verify@example.net>",
+            "subject": "50%_\\off",
+            "sender": "sender@example.net",
+            "received_at": "2026-10-20T00:00:00Z"
+          }
+        }
+      },
+      "description": "The actual non-production test route checks installation-wide wildcard permission, resolves the recipient and returns full delivered-message identity. Literal subject filtering and exact RFC message ID are verified at the SQL boundary. Test routes and their description remain absent in production."
+    },
+    "cookie_session": {
+      "request": {
+        "query": {
+          "to": "recipient@example.com",
+          "timeout": "0s"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "found": true,
+            "message_id": 51,
+            "msg_id": "<verify@example.net>",
+            "subject": "50%_\\off",
+            "sender": "sender@example.net",
+            "received_at": "2026-10-20T00:00:00Z"
+          }
+        }
+      }
+    },
+    "audit_capability": {
+      "request": {
+        "query": {
+          "to": "recipient@example.com",
+          "timeout": "0s"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "recipient_missing": {
+      "request": {
+        "query": {
+          "to": "recipient@example.com",
+          "timeout": "0s"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "found": false,
+            "message": "no mailbox at that address"
+          }
+        }
+      }
+    },
+    "empty": {
+      "request": {
+        "query": {
+          "to": "recipient@example.com",
+          "timeout": "0s"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "found": false,
+            "message": "no matching message found within timeout"
+          }
+        }
+      }
+    },
+    "message_unavailable": {
+      "request": {
+        "query": {
+          "to": "recipient@example.com",
+          "timeout": "0s"
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "filtered": {
+      "request": {
+        "query": {
+          "to": "recipient@example.com",
+          "timeout": "0s",
+          "subject": "50%_\\off",
+          "message_id": "<verify@example.net>"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "found": true,
+            "message_id": 51,
+            "msg_id": "<verify@example.net>",
+            "subject": "50%_\\off",
+            "sender": "sender@example.net",
+            "received_at": "2026-10-20T00:00:00Z"
+          }
+        }
+      }
+    },
+    "invalid_timeout": {
+      "request": {
+        "query": {
+          "to": "recipient@example.com",
+          "timeout": "not-a-duration"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "found": true,
+            "message_id": 51,
+            "msg_id": "<verify@example.net>",
+            "subject": "50%_\\off",
+            "sender": "sender@example.net",
+            "received_at": "2026-10-20T00:00:00Z"
+          }
+        }
+      }
+    },
+    "default_timeout": {
+      "request": {
+        "query": {
+          "to": "recipient@example.com",
+          "timeout": ""
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "found": true,
+            "message_id": 51,
+            "msg_id": "<verify@example.net>",
+            "subject": "50%_\\off",
+            "sender": "sender@example.net",
+            "received_at": "2026-10-20T00:00:00Z"
+          }
+        }
+      }
+    },
+    "recipient_required": {
+      "request": {
+        "query": {
+          "timeout": "0s"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Query parameters failed validation",
+            "details": {
+              "fields": {
+                "to": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "recipient_blank": {
+      "request": {
+        "query": {
+          "to": "",
+          "timeout": "0s"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Query parameters failed validation",
+            "details": {
+              "fields": {
+                "to": "recipient address required"
+              }
+            }
+          }
+        }
+      }
+    }
   }
 }
