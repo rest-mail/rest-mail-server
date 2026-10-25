@@ -5093,9 +5093,9 @@
         }
       },
       "response": {
-        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<clientConfig version=\"1.1\">\n  <emailProvider id=\"example.com\">\n    <domain>example.com</domain>\n    <displayName>example.com Mail</displayName>\n    <incomingServer type=\"imap\">\n      <hostname>mail.example.com</hostname>\n      <port>993</port>\n      <socketType>SSL</socketType>\n      <authentication>password-cleartext</authentication>\n      <username>%EMAILADDRESS%</username>\n    </incomingServer>\n    <outgoingServer type=\"smtp\">\n      <hostname>mail.example.com</hostname>\n      <port>465</port>\n      <socketType>SSL</socketType>\n      <authentication>password-cleartext</authentication>\n      <username>%EMAILADDRESS%</username>\n    </outgoingServer>\n  </emailProvider>\n</clientConfig>",
-        "mediaType": "application/xml",
-        "status": 200
+        "status": 200,
+        "body": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003cclientConfig version=\"1.1\"\u003e\n  \u003cemailProvider id=\"example.com\"\u003e\n    \u003cdomain\u003eexample.com\u003c/domain\u003e\n    \u003cdisplayName\u003eexample.com Mail\u003c/displayName\u003e\n    \u003cincomingServer type=\"imap\"\u003e\n      \u003chostname\u003email.example.com\u003c/hostname\u003e\n      \u003cport\u003e993\u003c/port\u003e\n      \u003csocketType\u003eSSL\u003c/socketType\u003e\n      \u003cauthentication\u003epassword-cleartext\u003c/authentication\u003e\n      \u003cusername\u003e%EMAILADDRESS%\u003c/username\u003e\n    \u003c/incomingServer\u003e\n    \u003coutgoingServer type=\"smtp\"\u003e\n      \u003chostname\u003email.example.com\u003c/hostname\u003e\n      \u003cport\u003e465\u003c/port\u003e\n      \u003csocketType\u003eSSL\u003c/socketType\u003e\n      \u003cauthentication\u003epassword-cleartext\u003c/authentication\u003e\n      \u003cusername\u003e%EMAILADDRESS%\u003c/username\u003e\n    \u003c/outgoingServer\u003e\n  \u003c/emailProvider\u003e\n\u003c/clientConfig\u003e",
+        "mediaType": "application/xml"
       }
     },
     "domain_not_found": {
@@ -5107,9 +5107,9 @@
         }
       },
       "response": {
+        "status": 404,
         "body": "domain not found\n",
-        "mediaType": "text/plain",
-        "status": 404
+        "mediaType": "text/plain"
       }
     },
     "internal_error": {
@@ -5121,14 +5121,14 @@
         }
       },
       "response": {
+        "status": 500,
         "body": {
           "error": {
             "code": "internal_error",
             "message": "Internal server error"
           }
         },
-        "mediaType": "application/json",
-        "status": 500
+        "mediaType": "application/json"
       }
     },
     "invalid_address": {
@@ -5140,9 +5140,9 @@
         }
       },
       "response": {
+        "status": 400,
         "body": "no email domain in the address or the host name\n",
-        "mediaType": "text/plain",
-        "status": 400
+        "mediaType": "text/plain"
       }
     },
     "mail_host_unconfigured": {
@@ -5154,9 +5154,9 @@
         }
       },
       "response": {
+        "status": 503,
         "body": "mail host not configured\n",
-        "mediaType": "text/plain",
-        "status": 503
+        "mediaType": "text/plain"
       }
     }
   },
@@ -5170,9 +5170,9 @@
         }
       },
       "response": {
-        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<clientConfig version=\"1.1\">\n  <emailProvider id=\"example.com\">\n    <domain>example.com</domain>\n    <displayName>example.com Mail</displayName>\n    <incomingServer type=\"imap\">\n      <hostname>mail.example.com</hostname>\n      <port>993</port>\n      <socketType>SSL</socketType>\n      <authentication>password-cleartext</authentication>\n      <username>%EMAILADDRESS%</username>\n    </incomingServer>\n    <outgoingServer type=\"smtp\">\n      <hostname>mail.example.com</hostname>\n      <port>465</port>\n      <socketType>SSL</socketType>\n      <authentication>password-cleartext</authentication>\n      <username>%EMAILADDRESS%</username>\n    </outgoingServer>\n  </emailProvider>\n</clientConfig>",
-        "mediaType": "application/xml",
-        "status": 200
+        "status": 200,
+        "body": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003cclientConfig version=\"1.1\"\u003e\n  \u003cemailProvider id=\"example.com\"\u003e\n    \u003cdomain\u003eexample.com\u003c/domain\u003e\n    \u003cdisplayName\u003eexample.com Mail\u003c/displayName\u003e\n    \u003cincomingServer type=\"imap\"\u003e\n      \u003chostname\u003email.example.com\u003c/hostname\u003e\n      \u003cport\u003e993\u003c/port\u003e\n      \u003csocketType\u003eSSL\u003c/socketType\u003e\n      \u003cauthentication\u003epassword-cleartext\u003c/authentication\u003e\n      \u003cusername\u003e%EMAILADDRESS%\u003c/username\u003e\n    \u003c/incomingServer\u003e\n    \u003coutgoingServer type=\"smtp\"\u003e\n      \u003chostname\u003email.example.com\u003c/hostname\u003e\n      \u003cport\u003e465\u003c/port\u003e\n      \u003csocketType\u003eSSL\u003c/socketType\u003e\n      \u003cauthentication\u003epassword-cleartext\u003c/authentication\u003e\n      \u003cusername\u003e%EMAILADDRESS%\u003c/username\u003e\n    \u003c/outgoingServer\u003e\n  \u003c/emailProvider\u003e\n\u003c/clientConfig\u003e",
+        "mediaType": "application/xml"
       }
     },
     "domain_not_found": {
@@ -5184,9 +5184,9 @@
         }
       },
       "response": {
+        "status": 404,
         "body": "domain not found\n",
-        "mediaType": "text/plain",
-        "status": 404
+        "mediaType": "text/plain"
       }
     },
     "internal_error": {
@@ -5198,14 +5198,14 @@
         }
       },
       "response": {
+        "status": 500,
         "body": {
           "error": {
             "code": "internal_error",
             "message": "Internal server error"
           }
         },
-        "mediaType": "application/json",
-        "status": 500
+        "mediaType": "application/json"
       }
     },
     "invalid_address": {
@@ -5217,9 +5217,9 @@
         }
       },
       "response": {
+        "status": 400,
         "body": "no email domain in the address or the host name\n",
-        "mediaType": "text/plain",
-        "status": 400
+        "mediaType": "text/plain"
       }
     },
     "mail_host_unconfigured": {
@@ -5231,9 +5231,9 @@
         }
       },
       "response": {
+        "status": 503,
         "body": "mail host not configured\n",
-        "mediaType": "text/plain",
-        "status": 503
+        "mediaType": "text/plain"
       }
     }
   },
