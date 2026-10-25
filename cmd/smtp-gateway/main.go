@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/restmail/restmail/internal/config"
+	"github.com/restmail/restmail/internal/dane"
 	"github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 	"github.com/restmail/restmail/internal/gateway/bancheck"
@@ -232,6 +233,17 @@ func main() {
 	// submission), which needs the key to decrypt the domain's at-rest DKIM key.
 	queueWorker.SetMasterKey(cfg.MasterKey)
 	queueWorker.SetMTASTSEnforce(cfg.MTASTSEnforce)
+	// #725: DANE needs a validating resolver on this host; a wrong address stops the
+	// gateway rather than silently sending without DANE.
+	if cfg.DANEResolver != "" {
+		resolver, err := dane.NewResolver(cfg.DANEResolver, 5*time.Second)
+		if err != nil {
+			slog.Error("DANE_RESOLVER refused", "error", err)
+			os.Exit(1)
+		}
+		queueWorker.SetDANEResolver(resolver)
+		slog.Info("DANE for outbound SMTP is on", "resolver", cfg.DANEResolver)
+	}
 	queueWorker.SetBounceRateLimit(cfg.BounceDSNMaxPerRecipient, cfg.BounceDSNRateWindow)
 	queueWorker.SetSuppressionTTL(cfg.SuppressionTTL)
 	// OSI-7: size-aware per-attempt send budget + matching reclaim interval. The

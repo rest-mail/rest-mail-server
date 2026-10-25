@@ -198,10 +198,21 @@ dig +dnssec +short TLSA _25._tcp.mx1.example.org
   records from the SMTP public certificate, with an optional staged key for
   rollover. `chore dns:show --tlsa-cert current.pem --tlsa-next-cert staged.pem`
   includes those candidates. See [preparing TLSA records](../../dane-tlsa.md)
-  for the DNSSEC prerequisites and rollover sequence. Outbound authentication
-  and automatic safe certificate/key renewal remain in
+  for the DNSSEC prerequisites and rollover sequence. Automatic safe
+  certificate/key renewal remains in
   [#725](https://github.com/rest-mail/rest-mail-server/issues/725); the current
   ACME renewal rotates keys and must be coordinated before publishing TLSA.
+- **DANE when sending:** with `DANE_RESOLVER` set to a DNSSEC-validating
+  resolver on the same host (a loopback address), the queue applies DANE for
+  SMTP ([RFC 7672](https://www.rfc-editor.org/rfc/rfc7672)) to recipient
+  domains whose MX records are DNSSEC-secure. An MX host with usable TLSA
+  records gets the message only over TLS its records authenticate, and those
+  records, not MTA-STS, decide that host's TLS. A bogus answer, a resolver that
+  does not answer, a missing STARTTLS or a certificate no record matches
+  defers the message; it is never sent to that host in the clear. Unset, DANE
+  is off ([`internal/dane`](../../../internal/dane),
+  [`dane.go`](../../../internal/gateway/queue/dane.go)). DANE sessions are not
+  in TLS-RPT reports yet.
 
 ## Sources
 

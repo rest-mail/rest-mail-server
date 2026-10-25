@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/rest-mail/go-mtasts"
+	"github.com/restmail/restmail/internal/dane"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
 	rmail "github.com/restmail/restmail/internal/mail"
@@ -169,6 +170,7 @@ type Worker struct {
 	tlsInsecure  bool
 	stsEnforce   bool
 	sts          *mtasts.Resolver
+	dane         daneLookup // nil: DANE off (#725)
 	shutdown     chan struct{}
 	wg           sync.WaitGroup
 
@@ -656,6 +658,14 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 
 	firstHost := strings.TrimSuffix(mxRecords[0].Host, ".")
 
+	// DANE (RFC 7672) applies when the MX RRset is DNSSEC-secure; then each MX host's
+	// TLSA records decide its TLS below. A domain DANE covers goes by SMTP alone: the
+	// RESTMAIL upgrade's HTTPS is checked against the Web PKI, not the TLSA records.
+	daneSecure, err := w.daneMXSecure(dnsDomain)
+	if err != nil {
+		return err
+	}
+
 	// Discover the recipient domain's MTA-STS policy (RFC 8461) BEFORE choosing a
 	// delivery path, so an enforce-mode policy gates EVERY outbound path — the
 	// plaintext EHLO-advertised RESTMAIL upgrade as well as the SMTP fallback
@@ -679,7 +689,7 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 	// A message that requires TLS goes by SMTP alone, where REQUIRETLS is checked hop by
 	// hop (RFC 8689 §4.2.1); RESTMAIL's HTTPS cannot carry that promise on.
 	var cap models.RESTMAILCapability
-	found := !item.RequireTLS && w.db.Where("domain = ?", item.Domain).First(&cap).Error == nil
+	found := !item.RequireTLS && !daneSecure && w.db.Where("domain = ?", item.Domain).First(&cap).Error == nil
 	cacheHit := found && capabilityApplies(cap, item.Domain, firstHost, time.Now())
 
 	if cacheHit {
@@ -707,7 +717,7 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 			}
 		}
 		// cap.Supported == false: skip RESTMAIL, go straight to SMTP
-	} else if !item.RequireTLS {
+	} else if !item.RequireTLS && !daneSecure {
 		// No cache or expired — do EHLO probe (gated by the policy inside tryRESTMAIL).
 		upgraded, err := w.tryRESTMAIL(firstHost, dnsDomain, item, stsPolicy, enforcing)
 		if upgraded && err == nil {
@@ -724,9 +734,19 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 	for _, mx := range mxRecords {
 		host := strings.TrimSuffix(mx.Host, ".")
 
+		// A host with usable TLSA records is DANE's, and its records, not MTA-STS,
+		// decide its TLS: MTA-STS must not override a DANE verdict (RFC 8461 §2).
+		var records []dane.TLSA
+		if daneSecure {
+			if records, lastErr = w.daneRecords(host); lastErr != nil {
+				transientErr = lastErr
+				continue
+			}
+		}
+
 		// MTA-STS MX validation: under enforce, only connect to MX hosts named
 		// by the policy (RFC 8461 section 4.1).
-		if stsPolicy != nil && len(stsPolicy.MX) > 0 && !stsPolicy.MatchesMX(host) {
+		if records == nil && stsPolicy != nil && len(stsPolicy.MX) > 0 && !stsPolicy.MatchesMX(host) {
 			if enforcing {
 				slog.Warn("queue: MTA-STS enforce — MX host not named by policy, skipping",
 					"host", host, "domain", item.Domain)
@@ -737,7 +757,7 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 				"host", host, "domain", item.Domain, "mode", stsPolicy.Mode)
 		}
 
-		lastErr = w.deliverToHost(host, item, stsPolicy, stsErr)
+		lastErr = w.deliverToHost(host, item, stsPolicy, stsErr, records)
 		if lastErr == nil {
 			return nil
 		}
@@ -1405,8 +1425,8 @@ func dsnRecipientField(addr string) string {
 //     MX offers STARTTLS, whatever its certificate, and record whether it
 //     verified; a handshake that fails is retried on a new connection without
 //     TLS. A would-fail under "testing" is logged but delivery proceeds.
-func (w *Worker) deliverToHost(host string, item models.OutboundQueue, stsPolicy *mtasts.Policy, stsErr error) error {
-	return w.deliverSMTP(net.JoinHostPort(host, "25"), host, item, stsPolicy, stsErr)
+func (w *Worker) deliverToHost(host string, item models.OutboundQueue, stsPolicy *mtasts.Policy, stsErr error, records []dane.TLSA) error {
+	return w.deliverSMTPWith(net.JoinHostPort(host, "25"), host, item, stsPolicy, stsErr, records)
 }
 
 // deliverSMTP keeps the socket address separate from the MX identity used for
@@ -1414,6 +1434,16 @@ func (w *Worker) deliverToHost(host string, item models.OutboundQueue, stsPolicy
 // stsErr is why MTA-STS discovery found no policy (nil when stsPolicy is
 // set), recorded with the session for the domain's TLS-RPT report.
 func (w *Worker) deliverSMTP(addr, host string, item models.OutboundQueue, stsPolicy *mtasts.Policy, stsErr error) error {
+	return w.deliverSMTPWith(addr, host, item, stsPolicy, stsErr, nil)
+}
+
+// deliverSMTPWith is deliverSMTP for a host DANE covers when records is not nil: TLS
+// is then required and authenticated by those TLSA records alone (RFC 7672 §2.2),
+// and the domain's MTA-STS policy does not apply to the host.
+func (w *Worker) deliverSMTPWith(addr, host string, item models.OutboundQueue, stsPolicy *mtasts.Policy, stsErr error, records []dane.TLSA) error {
+	if records != nil {
+		stsPolicy, stsErr = nil, nil
+	}
 	// Strip Bcc and DKIM-sign before transmission (#171). Fail closed on a key
 	// that cannot be loaded so the send retries rather than going out unsigned.
 	prepared, err := w.prepareOutbound(item)
@@ -1454,7 +1484,8 @@ func (w *Worker) deliverSMTP(addr, host string, item models.OutboundQueue, stsPo
 	// certificate verified for that MX, which offers REQUIRETLS once TLS is up. A bounce,
 	// with a null reverse path, is not held to it (§5).
 	requireTLS := item.RequireTLS && item.Sender != ""
-	if requireTLS {
+	// A DANE host authenticates TLS from DNSSEC, which REQUIRETLS accepts (RFC 8689 §4.2.1).
+	if requireTLS && records == nil {
 		if stsPolicy == nil || len(stsPolicy.MX) == 0 || !stsPolicy.MatchesMX(host) {
 			return &SMTPError{Code: 550, Enhanced: "5.7.10", RemoteMTA: host,
 				Message: "REQUIRETLS: " + host + " is not an MX the recipient domain's MTA-STS policy names, and REST Mail does not validate DNSSEC"}
@@ -1462,9 +1493,13 @@ func (w *Worker) deliverSMTP(addr, host string, item models.OutboundQueue, stsPo
 		enforce = true
 	}
 
-	link, err := w.openSMTP(ctx, addr, host, attemptDeadline, true, enforce)
+	link, err := w.openSMTP(ctx, addr, host, attemptDeadline, true, enforce, records)
 	if err != nil {
 		return err
+	}
+	if records != nil && (link.tlsErr != nil || link.security != transportAuthenticated) {
+		_ = link.client.Close()
+		return daneRefusal(host, link)
 	}
 	if requireTLS {
 		if link.tlsErr != nil || link.security != transportAuthenticated {
@@ -1480,7 +1515,9 @@ func (w *Worker) deliverSMTP(addr, host string, item models.OutboundQueue, stsPo
 	}
 	// What this session's TLS came to, for the recipient's TLS-RPT report
 	// (RFC 8460): a report itself is not counted (§3).
-	if !item.TLSReport {
+	// A DANE session is reported with the tlsa policy type, which is not recorded yet:
+	// leave it out rather than report it as having no policy.
+	if !item.TLSReport && records == nil {
 		w.recordTLSSession(item.Domain, host, stsPolicy, stsErr, link, time.Now())
 	}
 	if link.tlsErr != nil && !enforce {
@@ -1495,7 +1532,7 @@ func (w *Worker) deliverSMTP(addr, host string, item models.OutboundQueue, stsPo
 			slog.Info("queue: STARTTLS failed, delivering without TLS", "host", host, "error", link.tlsErr)
 		}
 		_ = link.client.Close()
-		if link, err = w.openSMTP(ctx, addr, host, attemptDeadline, false, false); err != nil {
+		if link, err = w.openSMTP(ctx, addr, host, attemptDeadline, false, false, nil); err != nil {
 			return err
 		}
 	}
@@ -1634,7 +1671,7 @@ type smtpLink struct {
 // One absolute deadline bounds the whole conversation, the greeting, EHLO, the
 // handshake, MAIL/RCPT, the message and the final reply, set on the socket
 // because net/smtp sets none; it persists across the STARTTLS upgrade.
-func (w *Worker) openSMTP(ctx context.Context, addr, host string, deadline time.Time, tryTLS, requireVerified bool) (*smtpLink, error) {
+func (w *Worker) openSMTP(ctx context.Context, addr, host string, deadline time.Time, tryTLS, requireVerified bool, records []dane.TLSA) (*smtpLink, error) {
 	dialer := w.newGuardedDialer(10 * time.Second)
 	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
@@ -1656,7 +1693,14 @@ func (w *Worker) openSMTP(ctx context.Context, addr, host string, deadline time.
 	}
 	tlsConfig := &tls.Config{ServerName: host, RootCAs: w.smtpRoots}
 	var verifyErr error
-	if !requireVerified {
+	if records != nil {
+		// DANE: the TLSA records, not the system roots or the name, authenticate the
+		// chain (RFC 7672 §3), and a chain no record matches fails the handshake.
+		tlsConfig.InsecureSkipVerify = true //nolint:gosec // dane.Verify checks the chain against the TLSA records
+		tlsConfig.VerifyConnection = func(cs tls.ConnectionState) error {
+			return dane.Verify(records, host, cs.PeerCertificates, time.Now())
+		}
+	} else if !requireVerified {
 		tlsConfig.InsecureSkipVerify = true //nolint:gosec // verified below, recorded rather than required
 		tlsConfig.VerifyConnection = func(cs tls.ConnectionState) error {
 			verifyErr = verifyPeerCertificate(cs, host, w.smtpRoots)
