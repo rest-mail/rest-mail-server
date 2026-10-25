@@ -2425,7 +2425,7 @@ export interface components {
             created_at: string;
             /** Format: email */
             destination_address: string;
-            domain?: components["schemas"]["Domain"];
+            domain?: components["schemas"]["Domain"] | null;
             domain_id: number;
             id: number;
             /** Format: email */

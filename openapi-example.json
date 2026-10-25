@@ -2565,16 +2565,111 @@
   },
   "getAlias": {
     "found": {
+      "summary": "Read the full public resource",
       "request": {
         "path": {
           "id": 1
         }
       },
       "response": {
-        "status": 200
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "source_address": "support@example.com",
+            "destination_address": "owned@destination.test",
+            "active": true,
+            "created_at": "2026-10-20T00:00:00Z",
+            "domain": {
+              "id": 1,
+              "name": "example.com",
+              "server_type": "traditional",
+              "active": true,
+              "default_quota_bytes": 1073741824,
+              "dkim_selector": "restmail",
+              "sending_policy": "bulk",
+              "dmarc_policy": "reject",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          }
+        }
+      },
+      "description": "The global capability permits this lookup. Stored fields are mapped by the production handler; the private DKIM key has no public field."
+    },
+    "inactive": {
+      "summary": "Inactive resources remain readable to administrators",
+      "request": {
+        "path": {
+          "id": 2
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 2,
+            "domain_id": 1,
+            "source_address": "quiet@example.com",
+            "destination_address": "owned@destination.test",
+            "active": false,
+            "created_at": "2026-10-20T00:00:00Z",
+            "domain": {
+              "id": 1,
+              "name": "example.com",
+              "server_type": "traditional",
+              "active": true,
+              "default_quota_bytes": 1073741824,
+              "dkim_selector": "restmail",
+              "sending_policy": "bulk",
+              "dmarc_policy": "reject",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          }
+        }
       }
     },
+    "domain_scope": {
+      "summary": "A grant on the source domain permits this lookup",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "source_address": "support@example.com",
+            "destination_address": "owned@destination.test",
+            "active": true,
+            "created_at": "2026-10-20T00:00:00Z",
+            "domain": {
+              "id": 1,
+              "name": "example.com",
+              "server_type": "traditional",
+              "active": true,
+              "default_quota_bytes": 1073741824,
+              "dkim_selector": "restmail",
+              "sending_policy": "bulk",
+              "dmarc_policy": "reject",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          }
+        }
+      },
+      "description": "The production permission query resolves example.com and evaluates the session grants. Domain data is included only when domains:read also permits it."
+    },
     "missing": {
+      "summary": "The resource does not exist",
       "request": {
         "path": {
           "id": 2147483647
@@ -2582,6 +2677,7 @@
       },
       "response": {
         "status": 404,
+        "mediaType": "application/json",
         "body": {
           "error": {
             "code": "not_found",
@@ -2589,6 +2685,243 @@
           }
         }
       }
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "outside_domain": {
+      "summary": "A grant on another domain cannot read this resource",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      },
+      "description": "The real scope query resolves example.com; a grant restricted to other.test does not reach it."
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        }
+      }
+    },
+    "invalid_format": {
+      "summary": "The domain ID cannot bind to an integer",
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a missing resource",
+      "request": {
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to get alias"
+          }
+        }
+      },
+      "description": "The production lookup encounters a controlled database error. The error writer returns a sanitized response without the dependency detail."
+    },
+    "permission_store_unavailable": {
+      "request": {
+        "path": {
+          "id": 8
+        }
+      },
+      "response": {
+        "status": 503,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
+          }
+        }
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_redacted": {
+      "summary": "Mailbox-read permission does not expose domain administration",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "source_address": "support@example.com",
+            "destination_address": "owned@destination.test",
+            "active": true,
+            "created_at": "2026-10-20T00:00:00Z"
+          }
+        }
+      },
+      "description": "The session holds mailboxes:read on example.com but no domains:read capability. The alias remains readable and its domain association is omitted instead of emitting an invalid zero record."
+    },
+    "destination_mailbox_scope": {
+      "summary": "An individual destination mailbox grant cannot administer aliases",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      },
+      "description": "Alias configuration belongs to the source domain. Holding mailboxes:read for this individual destination mailbox does not grant domain administration."
+    },
+    "source_mailbox_scope": {
+      "summary": "An individual source mailbox grant cannot administer aliases",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      },
+      "description": "Alias configuration belongs to the source domain. Holding mailboxes:read for this individual source mailbox does not grant domain administration."
+    },
+    "domain_unavailable": {
+      "summary": "The alias exists but the domain preload fails",
+      "request": {
+        "path": {
+          "id": 4
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to get alias"
+          }
+        }
+      },
+      "description": "The real GORM preload fails. Returning a partially loaded alias or a false404 would conceal the dependency error."
     }
   },
   "getCertificate": {
@@ -2931,16 +3264,87 @@
   },
   "getDomain": {
     "found": {
+      "summary": "Read the full public resource",
       "request": {
         "path": {
           "id": 1
         }
       },
       "response": {
-        "status": 200
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "name": "example.com",
+            "server_type": "traditional",
+            "active": true,
+            "default_quota_bytes": 1073741824,
+            "dkim_selector": "restmail",
+            "sending_policy": "bulk",
+            "dmarc_policy": "reject",
+            "created_at": "2026-10-20T00:00:00Z",
+            "updated_at": "2026-10-20T00:00:00Z"
+          }
+        }
+      },
+      "description": "The global capability permits this lookup. Stored fields are mapped by the production handler; the private DKIM key has no public field."
+    },
+    "inactive": {
+      "summary": "Inactive resources remain readable to administrators",
+      "request": {
+        "path": {
+          "id": 2
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 2,
+            "name": "inactive.test",
+            "server_type": "traditional",
+            "active": false,
+            "default_quota_bytes": 1073741824,
+            "dkim_selector": "restmail",
+            "sending_policy": "bulk",
+            "dmarc_policy": "reject",
+            "created_at": "2026-10-20T00:00:00Z",
+            "updated_at": "2026-10-20T00:00:00Z"
+          }
+        }
       }
     },
+    "domain_scope": {
+      "summary": "A grant on the source domain permits this lookup",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "name": "example.com",
+            "server_type": "traditional",
+            "active": true,
+            "default_quota_bytes": 1073741824,
+            "dkim_selector": "restmail",
+            "sending_policy": "bulk",
+            "dmarc_policy": "reject",
+            "created_at": "2026-10-20T00:00:00Z",
+            "updated_at": "2026-10-20T00:00:00Z"
+          }
+        }
+      },
+      "description": "The production permission query resolves example.com and evaluates the session grants. Domain data is included only when domains:read also permits it."
+    },
     "missing": {
+      "summary": "The resource does not exist",
       "request": {
         "path": {
           "id": 2147483647
@@ -2948,12 +3352,170 @@
       },
       "response": {
         "status": 404,
+        "mediaType": "application/json",
         "body": {
           "error": {
             "code": "domain_not_found",
             "message": "Domain not found"
           }
         }
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "outside_domain": {
+      "summary": "A grant on another domain cannot read this resource",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      },
+      "description": "The real scope query resolves example.com; a grant restricted to other.test does not reach it."
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        }
+      }
+    },
+    "invalid_format": {
+      "summary": "The domain ID cannot bind to an integer",
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a missing resource",
+      "request": {
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      },
+      "description": "The production lookup encounters a controlled database error. The error writer returns a sanitized response without the dependency detail."
+    },
+    "permission_store_unavailable": {
+      "request": {
+        "path": {
+          "id": 8
+        }
+      },
+      "response": {
+        "status": 503,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
+          }
+        }
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },

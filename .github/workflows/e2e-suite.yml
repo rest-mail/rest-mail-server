@@ -196,7 +196,7 @@ jobs:
         if: inputs.contract-phases == 'gate'
         env:
           RESTMAIL_VERTRAG_BINARY: /usr/local/bin/vertrag
-        run: go test ./internal/api -run '^(TestPublicJSONExamplesWithVertrag|TestAuthenticatedReadExamplesWithVertrag|TestAuthenticatedReadBatchWithVertrag|TestPaginatedReadExamplesWithVertrag|TestAnalyticsExamplesWithVertrag|TestMozillaExamplesWithVertrag|TestAutodiscoverExamplesWithVertrag|TestDomainPolicyReadExamplesWithVertrag|TestDomainPolicyGetExamplesWithVertrag|TestDomainPolicyWriteExamplesWithVertrag|TestDomainPolicyDeleteExamplesWithVertrag|TestSenderRuleCreateExamplesWithVertrag|TestMtaStsPolicyFileExamplesWithVertrag|TestMailboxLookupExamplesWithVertrag)$' -count=1 -v
+        run: go test ./internal/api -run '^(TestPublicJSONExamplesWithVertrag|TestAuthenticatedReadExamplesWithVertrag|TestAuthenticatedReadBatchWithVertrag|TestPaginatedReadExamplesWithVertrag|TestAnalyticsExamplesWithVertrag|TestMozillaExamplesWithVertrag|TestAutodiscoverExamplesWithVertrag|TestDomainPolicyReadExamplesWithVertrag|TestDomainPolicyGetExamplesWithVertrag|TestDomainPolicyWriteExamplesWithVertrag|TestDomainPolicyDeleteExamplesWithVertrag|TestSenderRuleCreateExamplesWithVertrag|TestMtaStsPolicyFileExamplesWithVertrag|TestMailboxLookupExamplesWithVertrag|TestDomainAliasReadExamplesWithVertrag)$' -count=1 -v
 
       - name: Prepare stable contract queue state for fuzz
         if: inputs.contract-phases == 'fuzz'
