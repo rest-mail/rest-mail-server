@@ -1,45 +1,25 @@
-import { create } from 'zustand'
-import { apiV1 } from '../api'
+import { create } from "zustand";
+import { apiV1 } from "../api";
+import type { JsonResponse, RequestBody } from "../api-contract";
+import { expectSuccess } from "../api-contract";
 
-interface Certificate {
-  id: number
-  domain_id: number
-  issuer: string
-  not_before: string
-  not_after: string
-  auto_renew: boolean
-  created_at: string
-  updated_at: string
-  domain?: {
-    id: number
-    name: string
-  }
-}
+type Certificate = JsonResponse<"listCertificates", 200>["data"][number];
 
-interface CertificateDetail extends Certificate {
-  cert_pem: string
-}
+type CertificateDetail = JsonResponse<"getCertificate", 200>["data"];
 
 interface CertificateState {
-  certificates: Certificate[]
-  currentCertificate: CertificateDetail | null
-  isLoading: boolean
-  error: string | null
+  certificates: Certificate[];
+  currentCertificate: CertificateDetail | null;
+  isLoading: boolean;
+  error: string | null;
 
   // Actions
-  fetchCertificates: () => Promise<void>
-  fetchCertificate: (id: number) => Promise<void>
-  uploadCertificate: (
-    data: {
-      domain_id: number
-      cert_pem: string
-      key_pem: string
-      auto_renew?: boolean
-    }
-  ) => Promise<void>
-  deleteCertificate: (id: number) => Promise<void>
-  getExpiringCertificates: (days?: number) => Certificate[]
-  clearError: () => void
+  fetchCertificates: () => Promise<void>;
+  fetchCertificate: (id: number) => Promise<void>;
+  uploadCertificate: (data: RequestBody<"createCertificate">) => Promise<void>;
+  deleteCertificate: (id: number) => Promise<void>;
+  getExpiringCertificates: (days?: number) => Certificate[];
+  clearError: () => void;
 }
 
 export const useCertificateStore = create<CertificateState>((set, get) => ({
@@ -49,96 +29,101 @@ export const useCertificateStore = create<CertificateState>((set, get) => ({
   error: null,
 
   fetchCertificates: async () => {
-    set({ isLoading: true, error: null })
+    set({ isLoading: true, error: null });
     try {
-      const response = await apiV1.request('/admin/certificates', { method: 'GET' })
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to fetch certificates')
-      }
-      const response_data = await response.json()
-      const data = response_data.data || response_data
-      set({ certificates: data.items || data, isLoading: false })
+      const response = await apiV1.request("/admin/certificates", {
+        method: "GET",
+      });
+      await expectSuccess(response, "Failed to fetch certificates");
+      const response_data: JsonResponse<"listCertificates", 200> =
+        await response.json();
+      const data = response_data.data;
+      set({ certificates: data, isLoading: false });
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to fetch certificates',
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to fetch certificates",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
   fetchCertificate: async (id: number) => {
-    set({ isLoading: true, error: null })
+    set({ isLoading: true, error: null });
     try {
-      const response = await apiV1.request(`/admin/certificates/${id}`, { method: 'GET' })
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to fetch certificate')
-      }
-      const response_data = await response.json()
-      const data = response_data.data || response_data
-      set({ currentCertificate: data, isLoading: false })
+      const response = await apiV1.request(`/admin/certificates/${id}`, {
+        method: "GET",
+      });
+      await expectSuccess(response, "Failed to fetch certificate");
+      const response_data: JsonResponse<"getCertificate", 200> =
+        await response.json();
+      const data = response_data.data;
+      set({ currentCertificate: data, isLoading: false });
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to fetch certificate',
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to fetch certificate",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
   uploadCertificate: async (data) => {
-    set({ isLoading: true, error: null })
+    set({ isLoading: true, error: null });
     try {
-      const response = await apiV1.request(
-        '/admin/certificates',
-        {
-          method: 'POST',
-          body: JSON.stringify(data),
-          headers: { 'Content-Type': 'application/json' },
-        }
-      )
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to upload certificate')
-      }
-      set({ isLoading: false })
+      const response = await apiV1.request("/admin/certificates", {
+        method: "POST",
+        body: JSON.stringify(data),
+        headers: { "Content-Type": "application/json" },
+      });
+      await expectSuccess(response, "Failed to upload certificate");
+      set({ isLoading: false });
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to upload certificate',
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to upload certificate",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
   deleteCertificate: async (id: number) => {
-    set({ isLoading: true, error: null })
+    set({ isLoading: true, error: null });
     try {
-      const response = await apiV1.request(`/admin/certificates/${id}`, { method: 'DELETE' })
-      if (!response.ok && response.status !== 204) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to delete certificate')
-      }
-      set({ isLoading: false })
+      const response = await apiV1.request(`/admin/certificates/${id}`, {
+        method: "DELETE",
+      });
+      await expectSuccess(response, "Failed to delete certificate");
+      set({ isLoading: false });
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to delete certificate',
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to delete certificate",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
   getExpiringCertificates: (days = 30) => {
-    const now = new Date()
-    const threshold = new Date(now.getTime() + days * 24 * 60 * 60 * 1000)
+    const now = new Date();
+    const threshold = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
     return get().certificates.filter((cert) => {
-      const expiryDate = new Date(cert.not_after)
-      return expiryDate <= threshold && expiryDate > now
-    })
+      const expiryDate = new Date(cert.not_after);
+      return expiryDate <= threshold && expiryDate > now;
+    });
   },
 
   clearError: () => set({ error: null }),
-}))
+}));

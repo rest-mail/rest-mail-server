@@ -1,5 +1,8 @@
-import { create } from 'zustand'
-import { apiV1 } from '../api'
+import { create } from "zustand";
+import { apiV1 } from "../api";
+import { expectSuccess } from "../api-contract";
+import type { JsonResponse } from "../api-contract";
+import type { components } from "../api-types";
 
 // ── Pipeline analytics (PR5 read surface) ────────────────────────────
 //
@@ -12,74 +15,45 @@ import { apiV1 } from '../api'
 // The visualization is deliberately dependency-free (stat tiles + CSS bars):
 // operators wanting rich over-time charts are pointed at Grafana.
 
-interface TransportCount {
-  transport: string
-  count: number
-}
+type TransportCount = components["schemas"]["TransportCount"];
 
-interface AuthVerdictCount {
-  mechanism: string
-  result: string
-  count: number
-}
+type AuthVerdictCount = components["schemas"]["AuthVerdictCount"];
 
-interface StageDecisionCount {
-  filter: string
-  action: string
-  count: number
-}
+type StageDecisionCount = components["schemas"]["StageDecisionCount"];
 
-interface TerminalCount {
-  direction: string
-  outcome: string
-  count: number
-}
+type TerminalCount = components["schemas"]["TerminalCount"];
 
-interface RejectReasonCount {
-  reason_code: string
-  count: number
-}
+type RejectReasonCount = components["schemas"]["RejectReasonCount"];
 
-interface PipelineFunnel {
-  received: TransportCount[]
-  auth_verdicts: AuthVerdictCount[]
-  stage_decisions: StageDecisionCount[]
-  terminal_outcomes: TerminalCount[]
-  top_reject_reasons: RejectReasonCount[]
-}
+type PipelineFunnel = components["schemas"]["PipelineFunnel"];
 
-interface AnalyticsWindow {
-  since: string
-  until: string
-  label?: string
-}
+type AnalyticsWindow = components["schemas"]["AnalyticsWindow"];
 
-interface PipelineAnalyticsResponse {
-  window: AnalyticsWindow
-  funnel: PipelineFunnel
-  live_totals?: PipelineFunnel
-}
+type PipelineAnalyticsResponse =
+  components["schemas"]["PipelineAnalyticsResponse"];
 
 // FunnelSummary is a flat, render-ready rollup of a PipelineFunnel: the derived
 // stage totals the widget shows as headline tiles. Pure & deterministic so it
 // is unit-testable without a store or DOM.
 interface FunnelSummary {
-  received: number
-  receivedByTransport: Record<string, number>
-  authPass: number
-  authFail: number
-  authByResult: Record<string, number>
-  terminalByOutcome: Record<string, number>
-  delivered: number
-  rejected: number
+  received: number;
+  receivedByTransport: Record<string, number>;
+  authPass: number;
+  authFail: number;
+  authByResult: Record<string, number>;
+  terminalByOutcome: Record<string, number>;
+  delivered: number;
+  rejected: number;
 }
 
 function sumCounts<T extends { count: number }>(rows: T[]): number {
-  return rows.reduce((acc, r) => acc + (r.count || 0), 0)
+  return rows.reduce((acc, r) => acc + (r.count || 0), 0);
 }
 
 // summarizeFunnel collapses the per-label funnel series into headline totals.
-export function summarizeFunnel(f: PipelineFunnel | null | undefined): FunnelSummary {
+export function summarizeFunnel(
+  f: PipelineFunnel | null | undefined,
+): FunnelSummary {
   const empty: FunnelSummary = {
     received: 0,
     receivedByTransport: {},
@@ -89,86 +63,90 @@ export function summarizeFunnel(f: PipelineFunnel | null | undefined): FunnelSum
     terminalByOutcome: {},
     delivered: 0,
     rejected: 0,
-  }
-  if (!f) return empty
+  };
+  if (!f) return empty;
 
-  const receivedByTransport: Record<string, number> = {}
+  const receivedByTransport: Record<string, number> = {};
   for (const r of f.received ?? []) {
-    receivedByTransport[r.transport || 'unknown'] =
-      (receivedByTransport[r.transport || 'unknown'] ?? 0) + (r.count || 0)
+    receivedByTransport[r.transport || "unknown"] =
+      (receivedByTransport[r.transport || "unknown"] ?? 0) + (r.count || 0);
   }
 
-  const authByResult: Record<string, number> = {}
+  const authByResult: Record<string, number> = {};
   for (const a of f.auth_verdicts ?? []) {
-    authByResult[a.result || 'unknown'] = (authByResult[a.result || 'unknown'] ?? 0) + (a.count || 0)
+    authByResult[a.result || "unknown"] =
+      (authByResult[a.result || "unknown"] ?? 0) + (a.count || 0);
   }
 
-  const terminalByOutcome: Record<string, number> = {}
+  const terminalByOutcome: Record<string, number> = {};
   for (const t of f.terminal_outcomes ?? []) {
-    terminalByOutcome[t.outcome || 'unknown'] =
-      (terminalByOutcome[t.outcome || 'unknown'] ?? 0) + (t.count || 0)
+    terminalByOutcome[t.outcome || "unknown"] =
+      (terminalByOutcome[t.outcome || "unknown"] ?? 0) + (t.count || 0);
   }
 
   return {
     received: sumCounts(f.received ?? []),
     receivedByTransport,
-    authPass: authByResult['pass'] ?? 0,
-    authFail: authByResult['fail'] ?? 0,
+    authPass: authByResult["pass"] ?? 0,
+    authFail: authByResult["fail"] ?? 0,
     authByResult,
     terminalByOutcome,
-    delivered: (terminalByOutcome['delivered'] ?? 0) + (terminalByOutcome['queued'] ?? 0),
-    rejected: terminalByOutcome['rejected'] ?? 0,
-  }
+    delivered:
+      (terminalByOutcome["delivered"] ?? 0) +
+      (terminalByOutcome["queued"] ?? 0),
+    rejected: terminalByOutcome["rejected"] ?? 0,
+  };
 }
 
 interface AnalyticsState {
-  analytics: PipelineAnalyticsResponse | null
-  window: string
-  isLoading: boolean
-  error: string | null
+  analytics: PipelineAnalyticsResponse | null;
+  window: string;
+  isLoading: boolean;
+  error: string | null;
 
-  fetchAnalytics: (window?: string) => Promise<void>
-  setWindow: (window: string) => void
-  clearError: () => void
+  fetchAnalytics: (window?: string) => Promise<void>;
+  setWindow: (window: string) => void;
+  clearError: () => void;
 }
 
 export const useAnalyticsStore = create<AnalyticsState>((set, get) => ({
   analytics: null,
-  window: '24h',
+  window: "24h",
   isLoading: false,
   error: null,
 
   fetchAnalytics: async (window?: string) => {
-    const w = window ?? get().window
-    set({ isLoading: true, error: null, window: w })
+    const w = window ?? get().window;
+    set({ isLoading: true, error: null, window: w });
 
     try {
       const response = await apiV1.request(
         `/admin/pipelines/analytics?window=${encodeURIComponent(w)}`,
-        { method: 'GET' }
-      )
+        { method: "GET" },
+      );
 
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}))
-        throw new Error(err?.error?.message || err?.error || 'Failed to fetch pipeline analytics')
-      }
+      await expectSuccess(response, "Failed to fetch pipeline analytics");
 
-      const body = await response.json()
-      const data: PipelineAnalyticsResponse = body.data ?? body
+      const body: JsonResponse<"getPipelineAnalytics", 200> =
+        await response.json();
+      const data = body.data;
 
-      set({ analytics: data, isLoading: false, error: null })
+      set({ analytics: data, isLoading: false, error: null });
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to fetch pipeline analytics',
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to fetch pipeline analytics",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
   setWindow: (window: string) => set({ window }),
   clearError: () => set({ error: null }),
-}))
+}));
 
 export type {
   PipelineFunnel,
@@ -180,4 +158,4 @@ export type {
   StageDecisionCount,
   TerminalCount,
   RejectReasonCount,
-}
+};

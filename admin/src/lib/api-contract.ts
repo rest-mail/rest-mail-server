@@ -1,5 +1,9 @@
 import type { components, operations } from "./api-types";
 
+export type QueryParameters<Operation extends keyof operations> = NonNullable<
+  operations[Operation]["parameters"]["query"]
+>;
+
 /** Wire types come from the generated document, including the response envelope. */
 export type RequestBody<Operation extends keyof operations> =
   NonNullable<operations[Operation]["requestBody"]> extends {

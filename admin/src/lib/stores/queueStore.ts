@@ -1,43 +1,33 @@
-import { create } from 'zustand'
-import { apiV1 } from '../api'
+import { create } from "zustand";
+import { apiV1 } from "../api";
+import type { JsonResponse } from "../api-contract";
+import { expectSuccess } from "../api-contract";
 
-export type QueueStatus = 'pending' | 'deferred' | 'bounced'
+export type QueueStatus = QueueEntry["status"];
 
-interface QueueEntry {
-  id: string
-  recipient: string
-  sender: string
-  subject: string
-  status: QueueStatus
-  attempts: number
-  next_attempt_at: string | null
-  error_message: string | null
-  created_at: string
-  updated_at: string
-  raw_message?: string
-}
+type QueueEntry = JsonResponse<"getQueueEntry", 200>["data"];
 
 interface QueueState {
-  entries: QueueEntry[]
-  currentEntry: QueueEntry | null
-  isLoading: boolean
-  error: string | null
-  filter: QueueStatus | 'all'
-  selectedIds: string[]
+  entries: QueueEntry[];
+  currentEntry: QueueEntry | null;
+  isLoading: boolean;
+  error: string | null;
+  filter: QueueStatus | "all";
+  selectedIds: number[];
 
   // Actions
-  fetchQueue: (filter?: QueueStatus | 'all') => Promise<void>
-  fetchEntry: (id: string) => Promise<void>
-  retryEntry: (id: string) => Promise<void>
-  deleteEntry: (id: string) => Promise<void>
-  setFilter: (filter: QueueStatus | 'all') => void
-  clearError: () => void
-  clearCurrentEntry: () => void
-  toggleSelection: (id: string) => void
-  selectAll: (ids: string[]) => void
-  clearSelection: () => void
-  retryBulk: (ids: string[]) => Promise<void>
-  deleteBulk: (ids: string[]) => Promise<void>
+  fetchQueue: (filter?: QueueStatus | "all") => Promise<void>;
+  fetchEntry: (id: number) => Promise<void>;
+  retryEntry: (id: number) => Promise<void>;
+  deleteEntry: (id: number) => Promise<void>;
+  setFilter: (filter: QueueStatus | "all") => void;
+  clearError: () => void;
+  clearCurrentEntry: () => void;
+  toggleSelection: (id: number) => void;
+  selectAll: (ids: number[]) => void;
+  clearSelection: () => void;
+  retryBulk: (ids: number[]) => Promise<void>;
+  deleteBulk: (ids: number[]) => Promise<void>;
 }
 
 export const useQueueStore = create<QueueState>((set, get) => ({
@@ -45,194 +35,209 @@ export const useQueueStore = create<QueueState>((set, get) => ({
   currentEntry: null,
   isLoading: false,
   error: null,
-  filter: 'all',
+  filter: "all",
   selectedIds: [],
 
-  fetchQueue: async (filter?: QueueStatus | 'all') => {
-    set({ isLoading: true, error: null })
+  fetchQueue: async (filter?: QueueStatus | "all") => {
+    set({ isLoading: true, error: null });
 
     try {
-      const filterParam = filter || get().filter
-      const path = filterParam === 'all'
-        ? '/admin/queue'
-        : `/admin/queue?status=${filterParam}`
+      const filterParam = filter || get().filter;
+      const path =
+        filterParam === "all"
+          ? "/admin/queue"
+          : `/admin/queue?status=${filterParam}`;
 
-      const response = await apiV1.request(path, { method: 'GET' })
+      const response = await apiV1.request(path, { method: "GET" });
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to fetch queue entries')
-      }
+      await expectSuccess(response, "Failed to fetch queue entries");
 
-      const response_data = await response.json()
-      const data = response_data.data || response_data
-      const entries = Array.isArray(data) ? data : (data.entries || [])
+      const response_data: JsonResponse<"listQueue", 200> =
+        await response.json();
+      const data = response_data.data;
+      const entries = data.items;
       set({
         entries,
         isLoading: false,
         error: null,
-      })
+      });
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to fetch queue entries',
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to fetch queue entries",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
-  fetchEntry: async (id: string) => {
-    set({ isLoading: true, error: null })
+  fetchEntry: async (id: number) => {
+    set({ isLoading: true, error: null });
 
     try {
-      const response = await apiV1.request(`/admin/queue/${id}`, { method: 'GET' })
+      const response = await apiV1.request(`/admin/queue/${id}`, {
+        method: "GET",
+      });
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to fetch queue entry')
-      }
+      await expectSuccess(response, "Failed to fetch queue entry");
 
-      const response_data = await response.json()
-      const data = response_data.data || response_data
+      const response_data: JsonResponse<"getQueueEntry", 200> =
+        await response.json();
+      const data = response_data.data;
       set({
         currentEntry: data,
         isLoading: false,
         error: null,
-      })
+      });
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to fetch queue entry',
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to fetch queue entry",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
-  retryEntry: async (id: string) => {
-    set({ isLoading: true, error: null })
+  retryEntry: async (id: number) => {
+    set({ isLoading: true, error: null });
 
     try {
-      const response = await apiV1.request(`/admin/queue/${id}/retry`, { method: 'POST' })
+      const response = await apiV1.request(`/admin/queue/${id}/retry`, {
+        method: "POST",
+      });
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to retry queue entry')
-      }
+      await expectSuccess(response, "Failed to retry queue entry");
 
       // Refresh the queue list and current entry if viewing details
-      const currentFilter = get().filter
-      await get().fetchQueue(currentFilter)
+      const currentFilter = get().filter;
+      await get().fetchQueue(currentFilter);
 
       if (get().currentEntry?.id === id) {
-        await get().fetchEntry(id)
+        await get().fetchEntry(id);
       }
 
       set({
         isLoading: false,
         error: null,
-      })
+      });
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to retry queue entry',
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to retry queue entry",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
-  deleteEntry: async (id: string) => {
-    set({ isLoading: true, error: null })
+  deleteEntry: async (id: number) => {
+    set({ isLoading: true, error: null });
 
     try {
-      const response = await apiV1.request(`/admin/queue/${id}`, { method: 'DELETE' })
+      const response = await apiV1.request(`/admin/queue/${id}`, {
+        method: "DELETE",
+      });
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to delete queue entry')
-      }
+      await expectSuccess(response, "Failed to delete queue entry");
 
       set({
         entries: get().entries.filter((e) => e.id !== id),
         currentEntry: get().currentEntry?.id === id ? null : get().currentEntry,
         isLoading: false,
         error: null,
-      })
+      });
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to delete queue entry',
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to delete queue entry",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
-  setFilter: (filter: QueueStatus | 'all') => {
-    set({ filter })
+  setFilter: (filter: QueueStatus | "all") => {
+    set({ filter });
   },
 
   clearError: () => {
-    set({ error: null })
+    set({ error: null });
   },
 
   clearCurrentEntry: () => {
-    set({ currentEntry: null })
+    set({ currentEntry: null });
   },
 
-  toggleSelection: (id: string) => {
+  toggleSelection: (id: number) => {
     set((state) => ({
       selectedIds: state.selectedIds.includes(id)
         ? state.selectedIds.filter((i) => i !== id)
         : [...state.selectedIds, id],
-    }))
+    }));
   },
 
-  selectAll: (ids: string[]) => {
-    set({ selectedIds: ids })
+  selectAll: (ids: number[]) => {
+    set({ selectedIds: ids });
   },
 
   clearSelection: () => {
-    set({ selectedIds: [] })
+    set({ selectedIds: [] });
   },
 
-  retryBulk: async (ids: string[]) => {
-    set({ isLoading: true, error: null })
+  retryBulk: async (ids: number[]) => {
+    set({ isLoading: true, error: null });
 
     try {
       // Retry each entry sequentially
       for (const id of ids) {
-        await apiV1.request(`/admin/queue/${id}/retry`, { method: 'POST' })
+        await expectSuccess(
+          await apiV1.request(`/admin/queue/${id}/retry`, { method: "POST" }),
+          "Failed to retry queue entry",
+        );
       }
 
       // Refresh queue and clear selection
-      await get().fetchQueue(get().filter)
-      set({ selectedIds: [], isLoading: false })
+      await get().fetchQueue(get().filter);
+      set({ selectedIds: [], isLoading: false });
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Bulk retry failed',
+        error: error instanceof Error ? error.message : "Bulk retry failed",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
-  deleteBulk: async (ids: string[]) => {
-    set({ isLoading: true, error: null })
+  deleteBulk: async (ids: number[]) => {
+    set({ isLoading: true, error: null });
 
     try {
       // Delete each entry sequentially
       for (const id of ids) {
-        await apiV1.request(`/admin/queue/${id}`, { method: 'DELETE' })
+        await expectSuccess(
+          await apiV1.request(`/admin/queue/${id}`, { method: "DELETE" }),
+          "Failed to delete queue entry",
+        );
       }
 
       // Refresh queue and clear selection
-      await get().fetchQueue(get().filter)
-      set({ selectedIds: [], isLoading: false })
+      await get().fetchQueue(get().filter);
+      set({ selectedIds: [], isLoading: false });
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Bulk delete failed',
+        error: error instanceof Error ? error.message : "Bulk delete failed",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
-}))
+}));

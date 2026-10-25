@@ -2779,6 +2779,9 @@ export interface components {
         "Data-SenderRule": {
             data: components["schemas"]["SenderRule"];
         };
+        "Data-ServerDescription": {
+            data: components["schemas"]["ServerDescription"];
+        };
         "Data-ServerStatus": {
             data: components["schemas"]["ServerStatus"];
         };
@@ -2850,9 +2853,6 @@ export interface components {
         };
         "Data-roleResponseList": {
             data: components["schemas"]["roleResponse"][];
-        };
-        "Data-serverDescription": {
-            data: components["schemas"]["serverDescription"];
         };
         "Data-tlsReportStored": {
             data: components["schemas"]["tlsReportStored"];
@@ -3231,6 +3231,11 @@ export interface components {
             challenge: string;
             /** Format: date-time */
             expires_at: string;
+        };
+        OwnerStatusRequest: {
+            challenge?: string;
+            public_key?: string;
+            signature?: string;
         };
         OwnerToken: {
             /** Format: date-time */
@@ -3653,6 +3658,11 @@ export interface components {
             pattern: string;
             reason?: string;
         };
+        ServerDescription: {
+            /** @enum {string} */
+            product: "rest-mail";
+            version: string;
+        };
         ServerStatus: {
             built_at: string;
             commit: string;
@@ -4073,6 +4083,7 @@ export interface components {
             address: string;
             display_name?: string;
             password?: string;
+            password_hash?: string;
         };
         createAliasRequest: {
             destination_address: string;
@@ -4327,11 +4338,6 @@ export interface components {
             setup_required?: string[];
             user: components["schemas"]["userInfo"];
         };
-        ownerStatusRequest: {
-            challenge?: string;
-            public_key?: string;
-            signature?: string;
-        };
         ownerTokenRequest: {
             address?: string;
             challenge?: string;
@@ -4522,11 +4528,6 @@ export interface components {
             from: string;
             subject?: string;
             to: string;
-        };
-        serverDescription: {
-            /** @enum {string} */
-            product: "rest-mail";
-            version: string;
         };
         setDKIMKeyBody: {
             private_key: string;
@@ -4779,6 +4780,7 @@ export interface operations {
     restmailDiscover: {
         parameters: {
             query: {
+                /** @example restmail.test */
                 domain: string;
             };
             header?: never;
@@ -4909,7 +4911,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -5084,6 +5086,7 @@ export interface operations {
     checkMailboxAddress: {
         parameters: {
             query: {
+                /** @example admin@restmail.test */
                 address: string;
             };
             header?: never;
@@ -5188,7 +5191,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -5391,7 +5394,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -5423,6 +5426,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -5487,7 +5491,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -5519,6 +5523,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -5611,6 +5616,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -5696,6 +5702,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -5773,7 +5780,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -5805,7 +5812,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
+                /** @example 1 */
                 credential_id: number;
             };
             cookie?: never;
@@ -5889,6 +5898,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -5944,7 +5954,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -5981,6 +5991,7 @@ export interface operations {
             };
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -6036,7 +6047,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -6068,6 +6079,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -6145,7 +6157,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -6177,6 +6189,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -6254,7 +6267,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -6286,6 +6299,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -6354,7 +6368,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -6388,6 +6402,7 @@ export interface operations {
             };
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -6443,7 +6458,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -6475,7 +6490,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
+                /** @example 1 */
                 cid: number;
             };
             cookie?: never;
@@ -6538,7 +6555,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -6570,7 +6587,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
+                /** @example 1 */
                 cid: number;
             };
             cookie?: never;
@@ -6648,7 +6667,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -6680,6 +6699,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -6765,6 +6785,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -6842,7 +6863,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -6874,7 +6895,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
+                /** @example 1 */
                 credential_id: number;
             };
             cookie?: never;
@@ -6958,6 +6981,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -7025,6 +7049,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -7080,7 +7105,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -7112,6 +7137,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -7189,7 +7215,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -7221,7 +7247,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
+                /** @example INBOX */
                 folder: string;
             };
             cookie?: never;
@@ -7293,7 +7321,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -7325,7 +7353,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
+                /** @example INBOX */
                 folder: string;
             };
             cookie?: never;
@@ -7412,7 +7442,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -7447,7 +7477,9 @@ export interface operations {
             };
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
+                /** @example INBOX */
                 folder: string;
             };
             cookie?: never;
@@ -7503,7 +7535,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -7538,6 +7570,7 @@ export interface operations {
             };
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -7593,7 +7626,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -7625,7 +7658,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
+                /** @example 1 */
                 mid: number;
             };
             cookie?: never;
@@ -7690,7 +7725,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -7722,7 +7757,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
+                /** @example 1 */
                 mid: number;
             };
             cookie?: never;
@@ -7787,7 +7824,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -7819,6 +7856,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -7883,7 +7921,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -7924,6 +7962,7 @@ export interface operations {
             };
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -7988,7 +8027,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -8020,6 +8059,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -8075,7 +8115,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -8107,6 +8147,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -8184,7 +8225,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -8216,6 +8257,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -8271,7 +8313,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -8303,6 +8345,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -8371,7 +8414,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -8403,7 +8446,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
+                /** @example 1 */
                 threadID: string;
             };
             cookie?: never;
@@ -8459,7 +8504,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -8491,6 +8536,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -8546,7 +8592,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -8578,6 +8624,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -8646,7 +8693,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -8678,6 +8725,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -8731,7 +8779,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -9548,6 +9596,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 192.0.2.10 */
                 ip: string;
             };
             cookie?: never;
@@ -9631,6 +9680,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -10028,6 +10078,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -10631,6 +10682,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -10814,6 +10866,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -10912,6 +10965,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -11080,6 +11134,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -11635,6 +11690,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -11711,6 +11767,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -11818,7 +11875,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
+                /** @example 1 */
                 eid: number;
             };
             cookie?: never;
@@ -11902,6 +11961,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -11978,6 +12038,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -12085,7 +12146,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
+                /** @example 1 */
                 eid: number;
             };
             cookie?: never;
@@ -12339,6 +12402,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -12446,6 +12510,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -12614,6 +12679,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -12721,6 +12787,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -12797,7 +12864,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
+                /** @example 1 */
                 sid: number;
             };
             cookie?: never;
@@ -13122,6 +13191,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -13214,6 +13284,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -13300,7 +13371,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until another try is allowed */
-                    "Retry-After": string;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -13332,6 +13403,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -13426,6 +13498,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -13512,7 +13585,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until another try is allowed */
-                    "Retry-After": string;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -13980,6 +14053,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -15353,6 +15427,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -15436,6 +15511,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -15521,6 +15597,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -16208,6 +16285,7 @@ export interface operations {
     verifyDelivery: {
         parameters: {
             query: {
+                /** @example admin@restmail.test */
                 to: string;
                 subject?: string;
                 message_id?: string;
@@ -16369,6 +16447,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -16378,6 +16457,12 @@ export interface operations {
             /** @description OK */
             200: {
                 headers: {
+                    /** @description Byte ranges are supported. */
+                    "Accept-Ranges": string;
+                    /** @description Download as an attachment, with a safely encoded filename. */
+                    "Content-Disposition": string;
+                    /** @description The number of bytes in the complete attachment. */
+                    "Content-Length": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -16433,7 +16518,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -16603,7 +16688,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -16699,7 +16784,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -16784,7 +16869,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -16875,7 +16960,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -16984,7 +17069,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -17011,7 +17096,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ownerStatusRequest"];
+                "application/json": components["schemas"]["OwnerStatusRequest"];
             };
         };
         responses: {
@@ -17082,7 +17167,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -17189,7 +17274,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -17278,7 +17363,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -17376,7 +17461,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -17467,7 +17552,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -17549,7 +17634,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -17631,7 +17716,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -17815,7 +17900,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -17847,6 +17932,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -17924,7 +18010,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -17956,6 +18042,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -18038,7 +18125,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -18114,7 +18201,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -18146,6 +18233,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -18208,7 +18296,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -18324,7 +18412,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -18356,6 +18444,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -18420,7 +18509,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -18455,6 +18544,7 @@ export interface operations {
             };
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -18517,7 +18607,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -18549,6 +18639,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -18626,7 +18717,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -18658,6 +18749,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -18722,7 +18814,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -18754,6 +18846,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -18831,7 +18924,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -18863,6 +18956,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -18949,7 +19043,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -18981,6 +19075,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -19045,7 +19140,7 @@ export interface operations {
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -19087,14 +19182,14 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Data-serverDescription"];
+                    "application/json": components["schemas"]["Data-ServerDescription"];
                 };
             };
             /** @description rate_limited: too many requests to the owner endpoints' throttle */
             429: {
                 headers: {
                     /** @description Seconds until a request may be made again */
-                    "Retry-After"?: number;
+                    "Retry-After": number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -19322,6 +19417,7 @@ export interface operations {
     restmailCheckMailbox: {
         parameters: {
             query: {
+                /** @example admin@restmail.test */
                 address: string;
             };
             header?: never;
