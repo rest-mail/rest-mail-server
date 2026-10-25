@@ -529,7 +529,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		apiKeys.Authenticate(middleware.JWTMiddleware(jwtService)),
 		middleware.RejectStaleSessions(sessionCurrent), middleware.SetupDone,
 		middleware.CSRF(), middleware.MaxBodyBytes(cfg.APIMaxBodyBytes))).
-		Describing(describedAdminSession, describedSetupDone, describedCSRF, describedBodyCap),
+		Describing(describedAdminSession, describedSetupDone).
+		DescribingWhen(middleware.CSRFProtectsMethod, describedCSRF).Describing(describedBodyCap),
 		audited(handlers.ActionAccountsCreate, middleware.AuditBodyFields("address"), middleware.AuditFailuresOnly()))
 
 	// ═══════════════════════════════════════════════════════════════
@@ -563,7 +564,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		// can poll it freely.
 		personChecks := handlers.SessionRouteChecks{Throttle: describedThrottle(authThrottle), Audit: audited}
 		inSetup := publicRoutes(r).
-			Describing(describedPersonSession, describedCSRF, describedBodyCap)
+			Describing(describedPersonSession).
+			DescribingWhen(middleware.CSRFProtectsMethod, describedCSRF).Describing(describedBodyCap)
 		twofaH.RegisterOwn(inSetup, personChecks)
 		// An account replaces its own password; with 2FA enrollment, all a
 		// session in setup can do. Throttled like login: it checks a password.
@@ -572,7 +574,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.SetupDone)
 			person := publicRoutes(r).
-				Describing(describedPersonSession, describedCSRF, describedBodyCap, describedSetupDone)
+				Describing(describedPersonSession).
+				DescribingWhen(middleware.CSRFProtectsMethod, describedCSRF).Describing(describedBodyCap, describedSetupDone)
 
 			// Accounts (#347). Creating one needs mailboxes:write covering its
 			// domain, and makes the creator its owner; the account, its grant
@@ -624,14 +627,17 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		// credential is recorded by basicCredentials, a successful sign-in
 		// here.
 		credentialH.RegisterProtocolSignIn(publicRoutes(r).
-			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap), signInChecks)
+			Describing(describedMailSession, describedSetupDone).
+			DescribingWhen(middleware.CSRFProtectsMethod, describedCSRF).Describing(describedBodyCap), signInChecks)
 
 		accountH.RegisterReads(publicRoutes(r).
-			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap))
+			Describing(describedMailSession, describedSetupDone).
+			DescribingWhen(middleware.CSRFProtectsMethod, describedCSRF).Describing(describedBodyCap))
 
 		// Folders and quota
 		mail := publicRoutes(r).
-			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap)
+			Describing(describedMailSession, describedSetupDone).
+			DescribingWhen(middleware.CSRFProtectsMethod, describedCSRF).Describing(describedBodyCap)
 		messageH.RegisterFolders(mail)
 		messageH.RegisterMessages(mail)
 		searchH.Register(mail)
@@ -640,17 +646,20 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 
 		// Contacts
 		contactH.RegisterContacts(publicRoutes(r).
-			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap))
+			Describing(describedMailSession, describedSetupDone).
+			DescribingWhen(middleware.CSRFProtectsMethod, describedCSRF).Describing(describedBodyCap))
 
 		// Mail rules: the vacation reply and the Sieve script
 		mailRules := publicRoutes(r).
-			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap)
+			Describing(describedMailSession, describedSetupDone).
+			DescribingWhen(middleware.CSRFProtectsMethod, describedCSRF).Describing(describedBodyCap)
 		vacationH.Register(mailRules)
 		sieveH.Register(mailRules)
 
 		// Quarantine
 		pipelineH.RegisterQuarantine(publicRoutes(r).
-			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap))
+			Describing(describedMailSession, describedSetupDone).
+			DescribingWhen(middleware.CSRFProtectsMethod, describedCSRF).Describing(describedBodyCap))
 	})
 
 	// ═══════════════════════════════════════════════════════════════
@@ -702,7 +711,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		// The routes registered with their types, and what this group's middleware
 		// adds to each of them (#669).
 		admin := publicRoutes(r).
-			Describing(describedAdminSession, describedSetupDone, describedCSRF, describedBodyCap)
+			Describing(describedAdminSession, describedSetupDone).
+			DescribingWhen(middleware.CSRFProtectsMethod, describedCSRF).Describing(describedBodyCap)
 
 		// Roles, capabilities, grants and escalation (#644).
 		grantH.Register(admin, handlers.GrantRouteChecks{
