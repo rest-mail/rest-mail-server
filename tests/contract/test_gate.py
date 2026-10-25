@@ -246,6 +246,9 @@ class MissingResourceRefusals(unittest.TestCase):
                 "deleteMailbox",
                 "deleteAlias",
                 "deleteCustomFilter",
+                "updatePipeline",
+                "deletePipeline",
+                "testPipeline",
             },
         )
 

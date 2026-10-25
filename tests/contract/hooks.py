@@ -11,21 +11,24 @@ example's id, which no link replaces (vertrag 0.30, antimatter-studios/vertrag#8
 The principals are the E2E fixture's (tests/e2e/contract_principals_test.go),
 read from the file it writes.
 """
+
 import base64
-from http.cookies import SimpleCookie
 import json
 import os
-from pathlib import Path
 import subprocess
 import tempfile
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from http.cookies import SimpleCookie
+from pathlib import Path
 
 import vertrag_hooks as hooks
 
-with (Path(__file__).resolve().parent / "fixtureplan" / "defaults.json").open() as _source:
+with (
+    Path(__file__).resolve().parent / "fixtureplan" / "defaults.json"
+).open() as _source:
     FIXTURE_PLAN = json.load(_source)
 
 ADMIN = FIXTURE_PLAN["principals"]["admin"]["address"]
@@ -42,7 +45,7 @@ def principals():
 
 
 def basic(address, password):
-    token = base64.b64encode(("%s:%s" % (address, password)).encode()).decode()
+    token = base64.b64encode((f"{address}:{password}").encode()).decode()
     return "Basic " + token
 
 
@@ -71,7 +74,9 @@ def admin_token(origin):
         pace_auth_requests(None)
         request = urllib.request.Request(
             origin + "/api/v1/auth/login",
-            data=json.dumps({"email": ADMIN, "password": ADMIN_PASSWORD, "client": "native"}).encode(),
+            data=json.dumps(
+                {"email": ADMIN, "password": ADMIN_PASSWORD, "client": "native"}
+            ).encode(),
             headers={"Content-Type": "application/json"},
             method="POST",
         )
@@ -114,13 +119,20 @@ def refresh_the_sign_in(transaction):
     name = transaction.get("name", "")
     # The runner gives before hooks the source transaction's name, including
     # for coverage, so the 200 response identifies the success channel here.
-    if (" > 200 > " not in name or not isinstance(body, dict) or
-            body.get("refresh_token", "") != ""):
+    if (
+        " > 200 > " not in name
+        or not isinstance(body, dict)
+        or body.get("refresh_token", "") != ""
+    ):
         return
     headers = transaction["request"].get("headers", {})
     if any(key.lower() == "cookie" for key in headers):
         return  # Keep an explicitly supplied caller credential intact.
-    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    origin = "{}//{}:{}".format(
+        transaction["protocol"],
+        transaction["host"],
+        transaction["port"],
+    )
     cookie = fresh_browser_refresh_cookie(origin)
     headers["Cookie"] = cookie
     transaction["request"]["headers"] = headers
@@ -137,7 +149,9 @@ def fresh_browser_refresh_cookie(origin):
     )
     with urllib.request.urlopen(request, timeout=10) as response:
         if response.status != 200:
-            raise RuntimeError("fixture browser sign-in failed: HTTP %d" % response.status)
+            raise RuntimeError(
+                f"fixture browser sign-in failed: HTTP {response.status:d}"
+            )
         cookies = SimpleCookie()
         for header in response.headers.get_all("Set-Cookie", []):
             cookies.load(header)
@@ -180,20 +194,34 @@ def link_a_seeded_account(transaction):
     # malformed values, wrong passwords, or the transaction's principal.
     passwords = {"eve@restmail.test": LINKABLE_PASSWORD, "someone@example.com": "x"}
     address = body.get("address")
-    if not isinstance(address, str) or address not in passwords or body.get("password") != passwords[address]:
+    if (
+        not isinstance(address, str)
+        or address not in passwords
+        or body.get("password") != passwords[address]
+    ):
         return
     headers = transaction["request"].get("headers") or {}
-    if not any(key.lower() == "authorization" and value for key, value in headers.items()):
+    if not any(
+        key.lower() == "authorization" and value for key, value in headers.items()
+    ):
         return
-    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    origin = "{}//{}:{}".format(
+        transaction["protocol"],
+        transaction["host"],
+        transaction["port"],
+    )
     if address == "someone@example.com":
         ready = hooks.stash.get("link_fixture_prepared", {})
         if origin not in ready:
             # createAccount probes need this address absent; linkAccount probes
             # need it present with their generated password. Set up the latter
             # only now, after the preceding operation's probes have finished.
-            subprocess.run(["chore", "test:contract-link-fixture"], check=True,
-                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20)
+            subprocess.run(
+                ["chore", "test:contract-link-fixture"],
+                check=True,
+                capture_output=True,
+                timeout=20,
+            )
             ready[origin] = True
             hooks.stash["link_fixture_prepared"] = ready
     ids = hooks.stash.get("link_fixture_ids", {})
@@ -205,12 +233,20 @@ def link_a_seeded_account(transaction):
         )
         with urllib.request.urlopen(request, timeout=10) as response:
             accounts = json.load(response).get("data") or []
-        ids[key] = next((account["id"] for account in accounts if account.get("address") == address), None)
+        ids[key] = next(
+            (
+                account["id"]
+                for account in accounts
+                if account.get("address") == address
+            ),
+            None,
+        )
         if ids[key] is None:
             raise RuntimeError("contract account-link fixture is missing")
         hooks.stash["link_fixture_ids"] = ids
     request = urllib.request.Request(
-        origin + "/api/v1/accounts/" + str(ids[key]), headers=headers, method="DELETE")
+        origin + "/api/v1/accounts/" + str(ids[key]), headers=headers, method="DELETE"
+    )
     try:
         with urllib.request.urlopen(request, timeout=10) as response:
             if response.status != 204:
@@ -285,10 +321,14 @@ def keep_the_created_pipeline(transaction):
 @hooks.before("testPipeline")
 def test_the_created_pipeline(transaction):
     body = hooks.get_json(transaction)
-    # The refused requests (invalid_body, 400, email_missing and
-    # pipeline_id_wrong_type, 422) are sent as documented: each is refused
-    # before any pipeline is looked up.
-    if not isinstance(body, dict) or "email" not in body or not isinstance(body.get("pipeline_id"), int):
+    # Replace only the documented successful request's placeholder. Missing
+    # IDs, invalid bodies and coverage probes must retain their own target.
+    if (
+        not isinstance(body, dict)
+        or "email" not in body
+        or type(body.get("pipeline_id")) is not int
+        or body["pipeline_id"] != 1
+    ):
         return
     body["pipeline_id"] = hooks.stash.get("pipeline_id")
     hooks.set_json(transaction, body)
@@ -323,17 +363,37 @@ def a_self_signed_certificate(transaction):
     body = hooks.get_json(transaction)
     # Leave malformed and incomplete requests intact: those are the paired
     # 400 examples, and coverage probes must keep their missing fields too.
-    if not isinstance(body, dict) or not all(body.get(field) for field in ("domain_id", "cert_pem", "key_pem")):
+    if not isinstance(body, dict) or not all(
+        body.get(field) for field in ("domain_id", "cert_pem", "key_pem")
+    ):
         return
     name = hooks.stash.get("domain") or "example.org"
     with tempfile.TemporaryDirectory() as d:
         key, cert = os.path.join(d, "tls.key"), os.path.join(d, "tls.crt")
-        openssl("req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "30",
-                "-subj", "/CN=" + name, "-addext", "subjectAltName=DNS:" + name,
-                "-keyout", key, "-out", cert)
+        openssl(
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",
+            "-days",
+            "30",
+            "-subj",
+            "/CN=" + name,
+            "-addext",
+            "subjectAltName=DNS:" + name,
+            "-keyout",
+            key,
+            "-out",
+            cert,
+        )
         with open(cert) as cert_file, open(key) as key_file:
-            on_the_created_domain(transaction, cert_pem=cert_file.read(), key_pem=key_file.read(),
-                                  auto_renew=False)
+            on_the_created_domain(
+                transaction,
+                cert_pem=cert_file.read(),
+                key_pem=key_file.read(),
+                auto_renew=False,
+            )
 
 
 @hooks.before("updateDomain")
@@ -347,15 +407,24 @@ def a_certificate_before_going_live(transaction):
         return
     path = transaction["fullPath"].split("?")[0]
     domain_id = path.rstrip("/").rsplit("/", 1)[-1]
-    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    origin = "{}//{}:{}".format(
+        transaction["protocol"],
+        transaction["host"],
+        transaction["port"],
+    )
     ready = hooks.stash.get("certified_domains", {})
     if not domain_id.isdigit() or (origin + "\n" + domain_id) in ready:
         return
-    headers = {"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)}
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + admin_token(origin),
+    }
 
     def call(method, path, body=None):
         data = json.dumps(body).encode() if body is not None else None
-        request = urllib.request.Request(origin + path, data=data, headers=headers, method=method)
+        request = urllib.request.Request(
+            origin + path, data=data, headers=headers, method=method
+        )
         with urllib.request.urlopen(request, timeout=10) as response:
             return json.load(response).get("data")
 
@@ -368,13 +437,34 @@ def a_certificate_before_going_live(transaction):
         raise
     with tempfile.TemporaryDirectory() as d:
         key, cert = os.path.join(d, "tls.key"), os.path.join(d, "tls.crt")
-        openssl("req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "30",
-                "-subj", "/CN=" + name, "-addext", "subjectAltName=DNS:" + name,
-                "-keyout", key, "-out", cert)
+        openssl(
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",
+            "-days",
+            "30",
+            "-subj",
+            "/CN=" + name,
+            "-addext",
+            "subjectAltName=DNS:" + name,
+            "-keyout",
+            key,
+            "-out",
+            cert,
+        )
         with open(cert) as cert_file, open(key) as key_file:
-            call("POST", "/api/v1/admin/certificates",
-                 {"domain_id": int(domain_id), "cert_pem": cert_file.read(),
-                  "key_pem": key_file.read(), "auto_renew": False})
+            call(
+                "POST",
+                "/api/v1/admin/certificates",
+                {
+                    "domain_id": int(domain_id),
+                    "cert_pem": cert_file.read(),
+                    "key_pem": key_file.read(),
+                    "auto_renew": False,
+                },
+            )
     ready[origin + "\n" + domain_id] = True
     hooks.stash["certified_domains"] = ready
 
@@ -382,7 +472,9 @@ def a_certificate_before_going_live(transaction):
 @hooks.before("mtaStsPolicyFile")
 def ask_for_the_created_domains_policy(transaction):
     # Served at mta-sts.<domain>: the domain is the Host's, not a parameter.
-    transaction["request"]["headers"]["Host"] = "mta-sts." + (hooks.stash.get("domain") or "")
+    transaction["request"]["headers"]["Host"] = "mta-sts." + (
+        hooks.stash.get("domain") or ""
+    )
 
 
 def set_the_admin_domains_policy(transaction, policy):
@@ -390,19 +482,30 @@ def set_the_admin_domains_policy(transaction, policy):
     admin API, unless it already is."""
     if hooks.stash.get("admin_domain_policy", "") == policy:
         return
-    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
-    headers = {"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)}
+    origin = "{}//{}:{}".format(
+        transaction["protocol"],
+        transaction["host"],
+        transaction["port"],
+    )
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + admin_token(origin),
+    }
     domain_id = hooks.stash.get("admin_domain_id")
     if domain_id is None:
-        request = urllib.request.Request(origin + "/api/v1/admin/domains", headers=headers)
+        request = urllib.request.Request(
+            origin + "/api/v1/admin/domains", headers=headers
+        )
         with urllib.request.urlopen(request, timeout=10) as response:
             domains = json.load(response).get("data") or []
-        domain_id = next((d["id"] for d in domains if d.get("name") == ADMIN.split("@")[1]), None)
+        domain_id = next(
+            (d["id"] for d in domains if d.get("name") == ADMIN.split("@")[1]), None
+        )
         if domain_id is None:
             raise RuntimeError("the fixture admin's domain is not listed")
         hooks.stash["admin_domain_id"] = domain_id
     request = urllib.request.Request(
-        origin + "/api/v1/admin/domains/%d" % domain_id,
+        origin + f"/api/v1/admin/domains/{domain_id:d}",
         data=json.dumps({"sending_policy": policy}).encode(),
         headers=headers,
         method="PATCH",
@@ -420,24 +523,42 @@ def a_signing_mailbox_at(transaction, address):
     if not isinstance(address, str) or address.count("@") != 1:
         return
     local, domain = address.split("@")
-    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    origin = "{}//{}:{}".format(
+        transaction["protocol"],
+        transaction["host"],
+        transaction["port"],
+    )
     ready = hooks.stash.get("sender_mailboxes", {})
     if not local or "." not in domain or (origin + "\n" + address.lower()) in ready:
         return
-    headers = {"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)}
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + admin_token(origin),
+    }
 
     def call(method, path, body=None):
         data = json.dumps(body).encode() if body is not None else None
-        request = urllib.request.Request(origin + path, data=data, headers=headers, method=method)
+        request = urllib.request.Request(
+            origin + path, data=data, headers=headers, method=method
+        )
         with urllib.request.urlopen(request, timeout=10) as response:
             return json.load(response).get("data")
 
-    domain_id = next((d["id"] for d in call("GET", "/api/v1/admin/domains") or []
-                      if (d.get("name") or "").lower() == domain.lower()), None)
+    domain_id = next(
+        (
+            d["id"]
+            for d in call("GET", "/api/v1/admin/domains") or []
+            if (d.get("name") or "").lower() == domain.lower()
+        ),
+        None,
+    )
     if domain_id is None:
         try:
-            domain_id = call("POST", "/api/v1/admin/domains",
-                             {"name": domain, "server_type": "traditional"})["id"]
+            domain_id = call(
+                "POST",
+                "/api/v1/admin/domains",
+                {"name": domain, "server_type": "traditional"},
+            )["id"]
         except urllib.error.HTTPError as error:
             if 400 <= error.code < 500:
                 return
@@ -446,14 +567,19 @@ def a_signing_mailbox_at(transaction, address):
     # (dkim_required). The domain may already be hosted without a key (the
     # createAccount hook hosts probe domains too), so a domain with no key
     # gets one; a key already in place is kept.
-    if not any(k.get("domain_id") == domain_id for k in call("GET", "/api/v1/admin/dkim") or []):
+    if not any(
+        k.get("domain_id") == domain_id for k in call("GET", "/api/v1/admin/dkim") or []
+    ):
         with tempfile.TemporaryDirectory() as d:
             key = os.path.join(d, "dkim.key")
             openssl("genrsa", "-out", key, "2048")
             with open(key) as key_file:
-                call("PUT", "/api/v1/admin/dkim/%d" % domain_id,
-                     {"selector": "contract", "private_key": key_file.read()})
-    mailboxes = call("GET", "/api/v1/admin/mailboxes?domain_id=%d" % domain_id) or []
+                call(
+                    "PUT",
+                    f"/api/v1/admin/dkim/{domain_id:d}",
+                    {"selector": "contract", "private_key": key_file.read()},
+                )
+    mailboxes = call("GET", f"/api/v1/admin/mailboxes?domain_id={domain_id:d}") or []
     if not any((m.get("address") or "").lower() == address.lower() for m in mailboxes):
         call("POST", "/api/v1/accounts", {"address": address})
     ready[origin + "\n" + address.lower()] = True
@@ -493,7 +619,11 @@ def a_mailbox_at_each_test_send_address(transaction):
     body = hooks.get_json(transaction)
     if not isinstance(body, dict):
         return
-    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    origin = "{}//{}:{}".format(
+        transaction["protocol"],
+        transaction["host"],
+        transaction["port"],
+    )
     ready = hooks.stash.get("test_send_mailboxes", {})
     for field in ("from", "to"):
         address = body.get(field)
@@ -502,15 +632,22 @@ def a_mailbox_at_each_test_send_address(transaction):
         local, domain = address.split("@")
         if not local or "." not in domain or (origin + "\n" + address.lower()) in ready:
             continue  # Leave a malformed address to the actual probe.
-        headers = {"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)}
-        request = urllib.request.Request(origin + "/api/v1/admin/domains", headers=headers)
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + admin_token(origin),
+        }
+        request = urllib.request.Request(
+            origin + "/api/v1/admin/domains", headers=headers
+        )
         with urllib.request.urlopen(request, timeout=10) as response:
             domains = json.load(response).get("data") or []
         domain_id = next((d["id"] for d in domains if d.get("name") == domain), None)
         if domain_id is None:
             request = urllib.request.Request(
                 origin + "/api/v1/admin/domains",
-                data=json.dumps({"name": domain, "server_type": "traditional"}).encode(),
+                data=json.dumps(
+                    {"name": domain, "server_type": "traditional"}
+                ).encode(),
                 headers=headers,
                 method="POST",
             )
@@ -522,10 +659,14 @@ def a_mailbox_at_each_test_send_address(transaction):
                     continue  # Not a domain the server can host: leave it to the probe.
                 raise
         request = urllib.request.Request(
-            origin + "/api/v1/admin/mailboxes?domain_id=%d" % domain_id, headers=headers)
+            origin + f"/api/v1/admin/mailboxes?domain_id={domain_id:d}",
+            headers=headers,
+        )
         with urllib.request.urlopen(request, timeout=10) as response:
             accounts = json.load(response).get("data") or []
-        if not any((a.get("address") or "").lower() == address.lower() for a in accounts):
+        if not any(
+            (a.get("address") or "").lower() == address.lower() for a in accounts
+        ):
             request = urllib.request.Request(
                 origin + "/api/v1/accounts",
                 data=json.dumps({"address": address}).encode(),
@@ -542,14 +683,23 @@ def a_mailbox_at_each_test_send_address(transaction):
 def schedule_a_message(transaction):
     """Store a scheduled message through the API and return its id, so the
     list and cancel examples have something of their own to act on."""
-    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
-    headers = {"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)}
+    origin = "{}//{}:{}".format(
+        transaction["protocol"],
+        transaction["host"],
+        transaction["port"],
+    )
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + admin_token(origin),
+    }
     body = {
         "from": ADMIN,
         "to": [ADMIN],
         "subject": "contract scheduled message",
         "body_text": "Contract fixture.",
-        "scheduled_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + 3600)),
+        "scheduled_at": time.strftime(
+            "%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + 3600)
+        ),
     }
     request = urllib.request.Request(
         origin + "/api/v1/messages/send",
@@ -564,11 +714,18 @@ def schedule_a_message(transaction):
         try:
             with urllib.request.urlopen(request, timeout=10) as response:
                 if response.status != 202:
-                    raise RuntimeError("could not schedule a contract message: HTTP %d" % response.status)
+                    raise RuntimeError(
+                        f"could not schedule a contract message: HTTP {response.status:d}"
+                    )
                 return (json.load(response).get("data") or {}).get("id")
         except urllib.error.HTTPError as error:
             retry_after = error.headers.get("Retry-After", "")
-            if attempt or error.code != 429 or not retry_after.isdecimal() or not 1 <= int(retry_after) <= 60:
+            if (
+                attempt
+                or error.code != 429
+                or not retry_after.isdecimal()
+                or not 1 <= int(retry_after) <= 60
+            ):
                 raise
             error.close()
             time.sleep(int(retry_after))
@@ -596,7 +753,7 @@ def cancel_a_message_we_made(transaction):
         return
     scheduled_id = schedule_a_message(transaction)
     if isinstance(scheduled_id, int):
-        transaction["fullPath"] = "/api/v1/messages/scheduled/%d" % scheduled_id
+        transaction["fullPath"] = f"/api/v1/messages/scheduled/{scheduled_id:d}"
 
 
 @hooks.before("listQueue")
@@ -607,8 +764,9 @@ def list_the_sent_messages_queue_entry(transaction):
     # until tomorrow, for the linked queue examples. Only the pending example
     # is redirected; invalid boundary queries and caller credentials stay intact.
     if transaction.get("fullPath", "").endswith("/api/v1/admin/queue?status=pending"):
-        transaction["fullPath"] = "/api/v1/admin/queue?" + urllib.parse.urlencode({
-            "recipient": FIXTURE_PLAN["queue"]["retry"]["recipient"]})
+        transaction["fullPath"] = "/api/v1/admin/queue?" + urllib.parse.urlencode(
+            {"recipient": FIXTURE_PLAN["queue"]["retry"]["recipient"]}
+        )
 
 
 @hooks.before("getMessageTrace")
@@ -635,7 +793,11 @@ def host_the_reported_policy_domains(transaction):
     policies = body.get("policies") if isinstance(body, dict) else None
     if not isinstance(policies, list):
         return
-    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    origin = "{}//{}:{}".format(
+        transaction["protocol"],
+        transaction["host"],
+        transaction["port"],
+    )
     hosted = set()
     for entry in policies:
         policy = entry.get("policy") if isinstance(entry, dict) else None
@@ -652,7 +814,9 @@ def created_folder_path(transaction):
     name = body.get("name") if isinstance(body, dict) else None
     if not isinstance(name, str) or not name:
         return None
-    return transaction["fullPath"].split("?")[0] + "/" + urllib.parse.quote(name, safe="")
+    return (
+        transaction["fullPath"].split("?")[0] + "/" + urllib.parse.quote(name, safe="")
+    )
 
 
 @hooks.before("createFolder")
@@ -666,7 +830,11 @@ def remove_a_previous_folder_probe(transaction):
     if not path or not account_id.isdecimal() or int(account_id) < 1:
         return
     created = hooks.stash.get("created_folders", {})
-    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    origin = "{}//{}:{}".format(
+        transaction["protocol"],
+        transaction["host"],
+        transaction["port"],
+    )
     headers = {"Authorization": "Bearer " + admin_token(origin)}
     if path not in created:
         # Coverage runs before hooks only. Remember an absent destination
@@ -714,12 +882,19 @@ def give_each_rename_probe_a_folder(transaction):
         return
     serial = hooks.stash.get("rename_probe", 0) + 1
     hooks.stash["rename_probe"] = serial
-    folder = "contract-rename-%d" % serial
-    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    folder = f"contract-rename-{serial:d}"
+    origin = "{}//{}:{}".format(
+        transaction["protocol"],
+        transaction["host"],
+        transaction["port"],
+    )
     request = urllib.request.Request(
         origin + parent,
         data=json.dumps({"name": folder}).encode(),
-        headers={"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)},
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + admin_token(origin),
+        },
         method="POST",
     )
     with urllib.request.urlopen(request, timeout=10) as response:
@@ -733,7 +908,13 @@ def give_each_rename_probe_a_folder(transaction):
     target = body.get("name") if isinstance(body, dict) else None
     if not isinstance(target, str) or not target.strip():
         return
-    if target.upper() == "INBOX" or target in ("Sent", "Drafts", "Trash", "Spam", "Archive"):
+    if target.upper() == "INBOX" or target in (
+        "Sent",
+        "Drafts",
+        "Trash",
+        "Spam",
+        "Archive",
+    ):
         return
     request = urllib.request.Request(
         origin + parent + "/" + urllib.parse.quote(target, safe=""),
@@ -764,7 +945,8 @@ def an_outlook_autodiscover_request(transaction):
     # Vertrag 0.29 pairs the named examples but does not serialize XML.
     # Keep the malformed request on its 400; the 200 needs the valid XML.
     transaction["request"]["body"] = (
-        "<Autodiscover><Request>" if " > 400 > " in transaction["name"]
+        "<Autodiscover><Request>"
+        if " > 400 > " in transaction["name"]
         else AUTODISCOVER_REQUEST
     )
 
@@ -774,7 +956,9 @@ def an_outlook_autodiscover_request(transaction):
 @hooks.before("/api/v1/auth/protocol-sign-in > * > 422 > application/json")
 def sign_in_a_mail_client(transaction):
     app = principals()["app_password"]
-    transaction["request"]["headers"]["Authorization"] = basic(app["address"], app["secret"])
+    transaction["request"]["headers"]["Authorization"] = basic(
+        app["address"], app["secret"]
+    )
 
 
 @hooks.before("createContact")
@@ -789,9 +973,18 @@ def remove_a_previous_contact_probe(transaction):
     email = body.get("email") if isinstance(body, dict) else None
     parent = transaction["fullPath"].split("?")[0]
     account_id = parent.split("/")[-2]
-    if not isinstance(email, str) or not email or not account_id.isdecimal() or int(account_id) < 1:
+    if (
+        not isinstance(email, str)
+        or not email
+        or not account_id.isdecimal()
+        or int(account_id) < 1
+    ):
         return
-    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    origin = "{}//{}:{}".format(
+        transaction["protocol"],
+        transaction["host"],
+        transaction["port"],
+    )
     headers = {"Authorization": "Bearer " + admin_token(origin)}
     key = origin + parent + "\n" + email
     owned = hooks.stash.get("created_contact_probes", {})
@@ -812,7 +1005,10 @@ def remove_a_previous_contact_probe(transaction):
             if key not in owned:
                 return
             request = urllib.request.Request(
-                origin + parent + "/" + str(contact["id"]), headers=headers, method="DELETE")
+                origin + parent + "/" + str(contact["id"]),
+                headers=headers,
+                method="DELETE",
+            )
             with urllib.request.urlopen(request, timeout=10) as response:
                 if response.status != 204:
                     raise RuntimeError("could not remove the previous contact probe")
@@ -858,7 +1054,11 @@ def remove_a_previous_sender_rule_probe(transaction):
     path = sender_rules_path(transaction)
     if not isinstance(pattern, str) or not pattern or path is None:
         return
-    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    origin = "{}//{}:{}".format(
+        transaction["protocol"],
+        transaction["host"],
+        transaction["port"],
+    )
     headers = {"Authorization": "Bearer " + admin_token(origin)}
     rules = sender_rules(origin, path, headers)
     if rules is None:
@@ -873,7 +1073,8 @@ def remove_a_previous_sender_rule_probe(transaction):
     if key not in owned:
         return
     request = urllib.request.Request(
-        origin + path + "/" + str(rule["id"]), headers=headers, method="DELETE")
+        origin + path + "/" + str(rule["id"]), headers=headers, method="DELETE"
+    )
     with urllib.request.urlopen(request, timeout=10) as response:
         if response.status != 204:
             raise RuntimeError("could not remove the previous sender rule probe")
@@ -906,16 +1107,36 @@ def on_the_added_sender_rule(transaction):
     created = hooks.stash.get("created_sender_rules", {}).get(parent)
     if not created or entry_id != str(created["id"]):
         return
-    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
-    headers = {"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)}
+    origin = "{}//{}:{}".format(
+        transaction["protocol"],
+        transaction["host"],
+        transaction["port"],
+    )
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + admin_token(origin),
+    }
     pattern = created["body"]["pattern"]
-    rule = next((r for r in sender_rules(origin, parent, headers) or [] if r.get("pattern") == pattern), None)
+    rule = next(
+        (
+            r
+            for r in sender_rules(origin, parent, headers) or []
+            if r.get("pattern") == pattern
+        ),
+        None,
+    )
     if rule is None:
         request = urllib.request.Request(
-            origin + parent, data=json.dumps(created["body"]).encode(), headers=headers, method="POST")
+            origin + parent,
+            data=json.dumps(created["body"]).encode(),
+            headers=headers,
+            method="POST",
+        )
         with urllib.request.urlopen(request, timeout=10) as response:
             rule = json.load(response)["data"]
-    transaction["fullPath"] = parent + "/" + str(rule["id"]) + ("?" + query if query else "")
+    transaction["fullPath"] = (
+        parent + "/" + str(rule["id"]) + ("?" + query if query else "")
+    )
 
 
 def hosted_domain_id(origin, headers, name):
@@ -955,35 +1176,75 @@ def an_active_domain_for_autoconfig(transaction):
     local, name = address.split("@")
     if not local or "." not in name:
         return  # Leave malformed addresses to the actual probe.
-    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
-    headers = {"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)}
+    origin = "{}//{}:{}".format(
+        transaction["protocol"],
+        transaction["host"],
+        transaction["port"],
+    )
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + admin_token(origin),
+    }
     domain_id = hosted_domain_id(origin, headers, name)
     if domain_id is None:
         return
     path = origin + "/api/v1/admin/domains/" + str(domain_id)
-    with urllib.request.urlopen(urllib.request.Request(path, headers=headers), timeout=10) as response:
+    with urllib.request.urlopen(
+        urllib.request.Request(path, headers=headers), timeout=10
+    ) as response:
         domain = json.load(response).get("data") or {}
     if domain.get("active"):
         return
-    activate = urllib.request.Request(path, data=b'{"active":true}', headers=headers, method="PATCH")
+    activate = urllib.request.Request(
+        path, data=b'{"active":true}', headers=headers, method="PATCH"
+    )
     try:
         with urllib.request.urlopen(activate, timeout=10):
             return
     except urllib.error.HTTPError as error:
-        if error.code != 409 or (json.load(error).get("error") or {}).get("code") != "certificate_required":
+        if (
+            error.code != 409
+            or (json.load(error).get("error") or {}).get("code")
+            != "certificate_required"
+        ):
             raise
     # Activation uses the production certificate gate. Supply a real fixture
     # certificate only when that precondition is missing, then activate it.
     with tempfile.TemporaryDirectory() as directory:
-        key, cert = os.path.join(directory, "tls.key"), os.path.join(directory, "tls.crt")
-        openssl("req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "30",
-                "-subj", "/CN=" + name, "-addext", "subjectAltName=DNS:" + name,
-                "-keyout", key, "-out", cert)
+        key, cert = (
+            os.path.join(directory, "tls.key"),
+            os.path.join(directory, "tls.crt"),
+        )
+        openssl(
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",
+            "-days",
+            "30",
+            "-subj",
+            "/CN=" + name,
+            "-addext",
+            "subjectAltName=DNS:" + name,
+            "-keyout",
+            key,
+            "-out",
+            cert,
+        )
         with open(cert) as cert_file, open(key) as key_file:
-            body = {"domain_id": domain_id, "cert_pem": cert_file.read(),
-                    "key_pem": key_file.read(), "auto_renew": False}
-        request = urllib.request.Request(origin + "/api/v1/admin/certificates",
-                                         data=json.dumps(body).encode(), headers=headers, method="POST")
+            body = {
+                "domain_id": domain_id,
+                "cert_pem": cert_file.read(),
+                "key_pem": key_file.read(),
+                "auto_renew": False,
+            }
+        request = urllib.request.Request(
+            origin + "/api/v1/admin/certificates",
+            data=json.dumps(body).encode(),
+            headers=headers,
+            method="POST",
+        )
         with urllib.request.urlopen(request, timeout=10):
             pass
     with urllib.request.urlopen(activate, timeout=10):
@@ -992,10 +1253,19 @@ def an_active_domain_for_autoconfig(transaction):
 
 def alias_on(origin, headers, domain_id, source):
     request = urllib.request.Request(
-        origin + "/api/v1/admin/aliases?domain_id=%d" % domain_id, headers=headers)
+        origin + f"/api/v1/admin/aliases?domain_id={domain_id:d}",
+        headers=headers,
+    )
     with urllib.request.urlopen(request, timeout=10) as response:
         aliases = json.load(response).get("data") or []
-    return next((a for a in aliases if (a.get("source_address") or "").lower() == source.lower()), None)
+    return next(
+        (
+            a
+            for a in aliases
+            if (a.get("source_address") or "").lower() == source.lower()
+        ),
+        None,
+    )
 
 
 @hooks.before("createAlias")
@@ -1013,7 +1283,11 @@ def remove_a_previous_alias_probe(transaction):
     local, domain = source.split("@")
     if not local or "." not in domain:
         return  # Leave a malformed address to the actual probe.
-    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    origin = "{}//{}:{}".format(
+        transaction["protocol"],
+        transaction["host"],
+        transaction["port"],
+    )
     headers = {"Authorization": "Bearer " + admin_token(origin)}
     domain_id = hosted_domain_id(origin, headers, domain.lower())
     if domain_id is None:
@@ -1028,7 +1302,10 @@ def remove_a_previous_alias_probe(transaction):
     if key not in owned:
         return
     request = urllib.request.Request(
-        origin + "/api/v1/admin/aliases/%d" % alias["id"], headers=headers, method="DELETE")
+        origin + "/api/v1/admin/aliases/{:d}".format(alias["id"]),
+        headers=headers,
+        method="DELETE",
+    )
     with urllib.request.urlopen(request, timeout=10) as response:
         if response.status != 204:
             raise RuntimeError("could not remove the previous alias probe")
@@ -1042,7 +1319,10 @@ def keep_the_created_alias(transaction):
     data = hooks.get_json(transaction, "real").get("data") or {}
     if not data.get("id"):
         return
-    hooks.stash["created_alias"] = {"id": data["id"], "body": hooks.get_json(transaction)}
+    hooks.stash["created_alias"] = {
+        "id": data["id"],
+        "body": hooks.get_json(transaction),
+    }
 
 
 @hooks.before("getAlias")
@@ -1057,18 +1337,30 @@ def on_the_created_alias(transaction):
     parent, _, alias_id = path.rpartition("/")
     if not created or alias_id != str(created["id"]):
         return
-    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
-    headers = {"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)}
+    origin = "{}//{}:{}".format(
+        transaction["protocol"],
+        transaction["host"],
+        transaction["port"],
+    )
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + admin_token(origin),
+    }
     source = created["body"]["source_address"]
     domain_id = hosted_domain_id(origin, headers, source.split("@")[1].lower())
     alias = alias_on(origin, headers, domain_id, source)
     if alias is None:
         request = urllib.request.Request(
-            origin + "/api/v1/admin/aliases", data=json.dumps(created["body"]).encode(),
-            headers=headers, method="POST")
+            origin + "/api/v1/admin/aliases",
+            data=json.dumps(created["body"]).encode(),
+            headers=headers,
+            method="POST",
+        )
         with urllib.request.urlopen(request, timeout=10) as response:
             alias = json.load(response)["data"]
-    transaction["fullPath"] = parent + "/" + str(alias["id"]) + ("?" + query if query else "")
+    transaction["fullPath"] = (
+        parent + "/" + str(alias["id"]) + ("?" + query if query else "")
+    )
 
 
 def a_mailbox_at(transaction, address):
@@ -1078,29 +1370,47 @@ def a_mailbox_at(transaction, address):
     if not isinstance(address, str) or address.count("@") != 1:
         return
     local, domain = address.split("@")
-    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    origin = "{}//{}:{}".format(
+        transaction["protocol"],
+        transaction["host"],
+        transaction["port"],
+    )
     ready = hooks.stash.get("probe_mailboxes", {})
     if not local or "." not in domain or (origin + "\n" + address.lower()) in ready:
         return
-    headers = {"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)}
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + admin_token(origin),
+    }
 
     def call(method, path, body=None):
         data = json.dumps(body).encode() if body is not None else None
-        request = urllib.request.Request(origin + path, data=data, headers=headers, method=method)
+        request = urllib.request.Request(
+            origin + path, data=data, headers=headers, method=method
+        )
         with urllib.request.urlopen(request, timeout=10) as response:
             return json.load(response).get("data")
 
-    domain_id = next((d["id"] for d in call("GET", "/api/v1/admin/domains") or []
-                      if (d.get("name") or "").lower() == domain.lower()), None)
+    domain_id = next(
+        (
+            d["id"]
+            for d in call("GET", "/api/v1/admin/domains") or []
+            if (d.get("name") or "").lower() == domain.lower()
+        ),
+        None,
+    )
     if domain_id is None:
         try:
-            domain_id = call("POST", "/api/v1/admin/domains",
-                             {"name": domain, "server_type": "traditional"})["id"]
+            domain_id = call(
+                "POST",
+                "/api/v1/admin/domains",
+                {"name": domain, "server_type": "traditional"},
+            )["id"]
         except urllib.error.HTTPError as error:
             if 400 <= error.code < 500:
                 return
             raise
-    mailboxes = call("GET", "/api/v1/admin/mailboxes?domain_id=%d" % domain_id) or []
+    mailboxes = call("GET", f"/api/v1/admin/mailboxes?domain_id={domain_id:d}") or []
     if not any((m.get("address") or "").lower() == address.lower() for m in mailboxes):
         call("POST", "/api/v1/accounts", {"address": address})
     ready[origin + "\n" + address.lower()] = True
@@ -1134,13 +1444,22 @@ def host_the_account_probe_domain(transaction):
     local, domain = address.split("@")
     if not local or "." not in domain:
         return  # Leave a malformed address to the actual probe.
-    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    origin = "{}//{}:{}".format(
+        transaction["protocol"],
+        transaction["host"],
+        transaction["port"],
+    )
     if address.lower() == "someone@example.com":
         # A later create can replace the account whose credential/id the link
         # hook prepared. Rebuild its proof before the next generated link.
         hooks.stash.get("link_fixture_prepared", {}).pop(origin, None)
-        hooks.stash.get("link_fixture_ids", {}).pop(origin + "\n" + address.lower(), None)
-    headers = {"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)}
+        hooks.stash.get("link_fixture_ids", {}).pop(
+            origin + "\n" + address.lower(), None
+        )
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + admin_token(origin),
+    }
     request = urllib.request.Request(origin + "/api/v1/admin/domains", headers=headers)
     with urllib.request.urlopen(request, timeout=10) as response:
         domains = json.load(response).get("data") or []
@@ -1160,10 +1479,15 @@ def host_the_account_probe_domain(transaction):
                 return  # Not a domain the server can host: leave it to the probe.
             raise
     request = urllib.request.Request(
-        origin + "/api/v1/admin/mailboxes?domain_id=%d" % domain_id, headers=headers)
+        origin + f"/api/v1/admin/mailboxes?domain_id={domain_id:d}",
+        headers=headers,
+    )
     with urllib.request.urlopen(request, timeout=10) as response:
         accounts = json.load(response).get("data") or []
-    account = next((a for a in accounts if (a.get("address") or "").lower() == address.lower()), None)
+    account = next(
+        (a for a in accounts if (a.get("address") or "").lower() == address.lower()),
+        None,
+    )
     owned = hooks.stash.get("created_account_probes", {})
     key = origin + "\n" + address.lower()
     if account is None:
@@ -1173,7 +1497,10 @@ def host_the_account_probe_domain(transaction):
     if key not in owned:
         return
     request = urllib.request.Request(
-        origin + "/api/v1/admin/mailboxes/%d" % account["id"], headers=headers, method="DELETE")
+        origin + "/api/v1/admin/mailboxes/{:d}".format(account["id"]),
+        headers=headers,
+        method="DELETE",
+    )
     with urllib.request.urlopen(request, timeout=10) as response:
         if response.status != 204:
             raise RuntimeError("could not remove the previous account probe")
@@ -1187,7 +1514,10 @@ def keep_the_created_account(transaction):
     data = hooks.get_json(transaction, "real").get("data") or {}
     if not data.get("id"):
         return
-    hooks.stash["created_account"] = {"id": data["id"], "body": hooks.get_json(transaction)}
+    hooks.stash["created_account"] = {
+        "id": data["id"],
+        "body": hooks.get_json(transaction),
+    }
 
 
 @hooks.before("getMailbox")
@@ -1202,24 +1532,39 @@ def on_the_created_account(transaction):
     parent, _, account_id = path.rpartition("/")
     if not created or account_id != str(created["id"]):
         return
-    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
-    headers = {"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)}
+    origin = "{}//{}:{}".format(
+        transaction["protocol"],
+        transaction["host"],
+        transaction["port"],
+    )
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + admin_token(origin),
+    }
     address = created["body"]["address"]
     request = urllib.request.Request(origin + "/api/v1/admin/domains", headers=headers)
     with urllib.request.urlopen(request, timeout=10) as response:
         domains = json.load(response).get("data") or []
     domain_id = next(d["id"] for d in domains if d.get("name") == address.split("@")[1])
     request = urllib.request.Request(
-        origin + "/api/v1/admin/mailboxes?domain_id=%d" % domain_id, headers=headers)
+        origin + f"/api/v1/admin/mailboxes?domain_id={domain_id:d}",
+        headers=headers,
+    )
     with urllib.request.urlopen(request, timeout=10) as response:
         accounts = json.load(response).get("data") or []
-    account = next((a for a in accounts if (a.get("address") or "").lower() == address.lower()), None)
+    account = next(
+        (a for a in accounts if (a.get("address") or "").lower() == address.lower()),
+        None,
+    )
     if account is None:
         request = urllib.request.Request(
-            origin + "/api/v1/accounts", data=json.dumps(created["body"]).encode(),
-            headers=headers, method="POST")
+            origin + "/api/v1/accounts",
+            data=json.dumps(created["body"]).encode(),
+            headers=headers,
+            method="POST",
+        )
         with urllib.request.urlopen(request, timeout=10) as response:
             account = json.load(response)["data"]
-    transaction["fullPath"] = parent + "/" + str(account["id"]) + ("?" + query if query else "")
-
-
+    transaction["fullPath"] = (
+        parent + "/" + str(account["id"]) + ("?" + query if query else "")
+    )
