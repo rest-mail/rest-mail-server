@@ -551,6 +551,7 @@ All configuration is done via environment variables. The API, gateways, and tool
 | `QUEUE_POLL_INTERVAL`         | `5s`               | Queue polling interval        |
 | `SUPPRESSION_TTL`             | `2160h` (90 days)  | How long a recipient that hard bounced stays suppressed for the sending domain |
 | `MTASTS_ENFORCE`              | `true`             | Enforce recipient MTA-STS policies on outbound delivery |
+| `DANE_RESOLVER`               | (empty)            | Loopback DNSSEC-validating resolver; set, outbound SMTP applies DANE (RFC 7672) |
 | `CORS_ALLOWED_ORIGINS`        | `http://localhost:3000` | Comma-separated CORS origins |
 | `PROXY_PROTOCOL_TRUSTED_CIDRS`| *(empty)*          | Trusted front-proxy CIDRs. Also gates HTTP `X-Forwarded-For`: a forwarded client IP is honored only when the direct peer is listed; empty = trust no proxy, use the real socket peer |
 | `DNS_PROVIDER`                | `dnsmasq`          | DNS provider (`dnsmasq`, `externaldns`, `manual`) |

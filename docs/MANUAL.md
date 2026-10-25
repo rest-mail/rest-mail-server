@@ -771,6 +771,7 @@ gateways: run the instance task before restarting a gateway with a broken pair.
 | `QUEUE_POLL_INTERVAL` | `5s` | |
 | `SUPPRESSION_TTL` | `2160h` (90 days) | How long a recipient that hard bounced (no such mailbox or domain) stays suppressed for the sending domain |
 | `MTASTS_ENFORCE` | `true` | Enforce recipient MTA-STS policies on outbound delivery (RFC 8461) |
+| `DANE_RESOLVER` | (empty) | Loopback address of a DNSSEC-validating resolver, such as `127.0.0.1:53`; set, outbound SMTP applies DANE (RFC 7672) to DNSSEC-secure recipient domains. Any other address stops the SMTP gateway |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:3000` | Comma-separated |
 | `PROXY_PROTOCOL_TRUSTED_CIDRS` | *(empty)* | Comma-separated CIDRs; empty disables. SMTP gateway only |
 | `DNS_PROVIDER` | `dnsmasq` | `dnsmasq`, `externaldns`, `manual` |

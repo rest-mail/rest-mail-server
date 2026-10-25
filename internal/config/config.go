@@ -221,6 +221,9 @@ type Config struct {
 	QueueWorkers      int
 	QueuePollInterval time.Duration
 	MTASTSEnforce     bool // enforce recipient MTA-STS policies on outbound delivery (RFC 8461)
+	// DANEResolver is the loopback address of a DNSSEC-validating resolver; set, the
+	// queue applies DANE for SMTP (RFC 7672) to recipient domains with DNSSEC (#725).
+	DANEResolver string
 
 	// OutboundAllowPrivateDestinations opts outbound delivery in to dialing
 	// non-public addresses (loopback/link-local/private/metadata) for the MX host
@@ -513,6 +516,7 @@ func Load() (*Config, error) {
 		QueueWorkers:          getEnvInt("QUEUE_WORKERS", 4),
 		QueuePollInterval:     getEnvDuration("QUEUE_POLL_INTERVAL", 5*time.Second),
 		MTASTSEnforce:         getEnvBool("MTASTS_ENFORCE", true),
+		DANEResolver:          getEnv("DANE_RESOLVER", ""),
 
 		OutboundAllowPrivateDestinations: getEnvBool("OUTBOUND_ALLOW_PRIVATE_DESTINATIONS", false),
 
