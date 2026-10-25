@@ -9,6 +9,7 @@ import (
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
 	apitypes "github.com/restmail/restmail/internal/api/types"
+	"github.com/restmail/restmail/internal/pipeline"
 
 	"github.com/restmail/restmail/internal/db/models"
 )
@@ -54,15 +55,35 @@ type MessageTrace struct {
 
 	ReasonCode string `json:"reason_code"`
 
-	SpamScore  *float32        `json:"spam_score,omitempty"`
-	DurationMS int64           `json:"duration_ms"`
-	Stages     json.RawMessage `json:"stages"` // []pipeline.StepResult
+	SpamScore  *float32               `json:"spam_score,omitempty"`
+	DurationMS int64                  `json:"duration_ms"`
+	Stages     *[]pipeline.StepResult `json:"stages"`
 
 	Sampled bool `json:"sampled"`
 
 	CreatedAt time.Time `json:"created_at"`
 
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+}
+
+// messageTraceOf crosses the stored JSON boundary before answering it. A nil
+// timeline stays null; populated stages use the engine's closed wire types.
+func messageTraceOf(row models.MessageTrace) (MessageTrace, error) {
+	var stages *[]pipeline.StepResult
+	if len(row.Stages) > 0 {
+		if err := json.Unmarshal(row.Stages, &stages); err != nil {
+			return MessageTrace{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to read pipeline trace stages")
+		}
+	}
+	return MessageTrace{
+		ID: row.ID, MessageID: row.MessageID, RFCMessageID: row.RFCMessageID,
+		Direction: row.Direction, Transport: row.Transport,
+		MailFrom: row.MailFrom, RcptTo: row.RcptTo, ClientIP: row.ClientIP,
+		PipelineID: row.PipelineID, FinalAction: row.FinalAction,
+		Outcome: row.Outcome, ReasonCode: row.ReasonCode,
+		SpamScore: row.SpamScore, DurationMS: row.DurationMS, Stages: stages,
+		Sampled: row.Sampled, CreatedAt: row.CreatedAt, ExpiresAt: row.ExpiresAt,
+	}, nil
 }
 
 func pipelineOf(p models.Pipeline) Pipeline {

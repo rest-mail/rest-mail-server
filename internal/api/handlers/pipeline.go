@@ -242,7 +242,11 @@ func (h *PipelineHandler) listPipelineLogs(r *http.Request, in listPipelineLogsR
 	}
 	out := make([]MessageTrace, len(traces))
 	for i, item := range traces {
-		out[i] = MessageTrace(item)
+		var err error
+		out[i], err = messageTraceOf(item)
+		if err != nil {
+			return zero, err
+		}
 	}
 	return endpoint.List[MessageTrace]{Data: out, Pagination: &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total}}, nil
 }
@@ -263,7 +267,7 @@ func (h *PipelineHandler) getMessageTrace(r *http.Request, in pipelinePath) (Mes
 	if err := h.db.Where("message_id = ?", uint(id)).Order("created_at DESC").First(&trace).Error; err != nil {
 		return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "No pipeline trace for this message")
 	}
-	return MessageTrace(trace), nil
+	return messageTraceOf(trace)
 }
 
 // CreatePipeline creates a new pipeline.

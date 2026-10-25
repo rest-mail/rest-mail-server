@@ -56,7 +56,11 @@ func TestPartialSampleEmailKeepsDecoderSemantics(t *testing.T) {
 func TestPipelineAPIValuesKeepModelJSON(t *testing.T) {
 	p := models.Pipeline{ID: 1, DomainID: 2, Direction: "inbound", Filters: json.RawMessage(`[{"name":"custom","type":"action","enabled":false,"config":{"key":null}}]`)}
 	f := models.CustomFilter{ID: 3, DomainID: 2, Name: "custom", FilterType: "action", Direction: "both", Config: json.RawMessage(`{"script":"noop"}`)}
-	for _, pair := range [][2]any{{p, pipelineOf(p)}, {f, customFilterOf(f)}, {models.MessageTrace{}, MessageTrace(models.MessageTrace{})}} {
+	trace, err := messageTraceOf(models.MessageTrace{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pair := range [][2]any{{p, pipelineOf(p)}, {f, customFilterOf(f)}, {models.MessageTrace{}, trace}} {
 		before, err := json.Marshal(pair[0])
 		if err != nil {
 			t.Fatal(err)

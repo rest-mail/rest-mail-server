@@ -63,7 +63,11 @@ describe("views of opaque JSON fields", () => {
     expect(traceView({ ...trace, stages: [step] }).stages).toEqual([step]);
     expect(traceView({ ...trace, stages: null }).stages).toEqual([]);
     expect(() =>
-      traceView({ ...trace, stages: [{ ...step, log: "bad" }] }),
+      traceView(
+        JSON.parse(
+          JSON.stringify({ ...trace, stages: [{ ...step, log: "bad" }] }),
+        ),
+      ),
     ).toThrow("invalid stages");
   });
   it("preserves extra script configuration while rejecting a non-string script", () => {
