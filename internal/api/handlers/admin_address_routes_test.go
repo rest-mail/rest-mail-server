@@ -30,8 +30,8 @@ func aliasRoutes(h *AliasHandler) http.Handler {
 	return r
 }
 
-// These are the association shapes actually loaded by the admin handlers. Comparing
-// the old model JSON pins zero domains, null logins and quota's unloaded back-reference.
+// Loaded associations retain their fields and null logins. Unloaded or redacted
+// associations are omitted instead of serializing invalid zero-filled records.
 func TestAdminAddressResponseJSONParity(t *testing.T) {
 	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	domain := models.Domain{ID: 2, Name: "example.test", DKIMPrivateKey: "secret-key", DKIMSelector: "mail", CreatedAt: now}
@@ -39,12 +39,16 @@ func TestAdminAddressResponseJSONParity(t *testing.T) {
 		LastLoginAt: &now, LastPasswordChange: &now, CredentialEpoch: 9, BootstrapExpiresAt: &now,
 		QuotaUsage: &models.QuotaUsage{MailboxID: 3, SubjectBytes: 4, UpdatedAt: now}}
 	alias := models.Alias{ID: 4, DomainID: 2, Domain: domain, SourceAddress: "alias@example.test", DestinationAddress: "remote@example.test"}
+	loadedMailbox := mailbox
+	loadedMailbox.QuotaUsage = nil
+	loadedQuota := models.QuotaUsage{MailboxID: mailbox.ID, SubjectBytes: 4, UpdatedAt: now, Mailbox: loadedMailbox}
 	for _, tc := range []struct {
 		name         string
 		old, current interface{}
 	}{
 		{"mailbox loaded", mailbox, mailboxOf(mailbox)},
 		{"mailbox redacted", models.Mailbox{}, mailboxOf(models.Mailbox{})},
+		{"quota mailbox loaded", loadedQuota, quotaUsageOf(&loadedQuota)},
 		{"alias loaded", alias, aliasOf(alias)},
 		{"alias created or redacted", models.Alias{}, aliasOf(models.Alias{})},
 	} {
@@ -57,8 +61,32 @@ func TestAdminAddressResponseJSONParity(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if string(old) != string(current) {
-				t.Fatalf("response JSON changed:\nold %s\nnew %s", old, current)
+			var want map[string]interface{}
+			if err := json.Unmarshal(old, &want); err != nil {
+				t.Fatal(err)
+			}
+			if strings.HasPrefix(tc.name, "mailbox") {
+				if tc.name == "mailbox redacted" {
+					delete(want, "domain")
+				}
+				if quota, ok := want["quota_usage"].(map[string]interface{}); ok {
+					delete(quota, "mailbox")
+				}
+			}
+			var got map[string]interface{}
+			if err := json.Unmarshal(current, &got); err != nil {
+				t.Fatal(err)
+			}
+			wanted, err := json.Marshal(want)
+			if err != nil {
+				t.Fatal(err)
+			}
+			actual, err := json.Marshal(got)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(wanted) != string(actual) {
+				t.Fatalf("response JSON differs:\nwant %s\ngot %s", wanted, actual)
 			}
 			if strings.Contains(string(current), "secret-key") || strings.Contains(string(current), "credential_epoch") || strings.Contains(string(current), "bootstrap_expires_at") {
 				t.Fatalf("secret leaked: %s", current)
