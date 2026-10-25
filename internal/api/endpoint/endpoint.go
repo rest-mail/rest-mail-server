@@ -47,7 +47,7 @@ type Operation struct {
 	Status int
 	// Errors are the error statuses the operation can answer. Each is described with
 	// respond's error envelope. 422 for a request that breaks its type's rules is added when
-	// the request type has anything to bind, 400 for a body that is not JSON and 413 for one
+	// binding can reject a parameter or body, 400 for a body that is not JSON and 413 for one
 	// over the size cap when it has a body, and 500 always.
 	Errors []int
 
@@ -333,7 +333,7 @@ func (reg *Registry) record(applied []oapifly.Middleware, op Operation, reqType,
 		}
 	}
 	errorStatuses := map[int]bool{http.StatusInternalServerError: true}
-	if shape.binds {
+	if shape.validates {
 		errorStatuses[http.StatusUnprocessableEntity] = true
 	}
 	if shape.body {
@@ -526,21 +526,23 @@ func WriteError(w http.ResponseWriter, err error) { writeError(w, err) }
 // shape is what a request type takes from a request, read once at registration by the rules
 // go-oapifly's Endpoint.Request describes it with.
 type shape struct {
-	binds bool // anything at all: a parameter or a body
-	body  bool // a body
-	forms int  // the body fields: more than one is a body taken in several media types
+	binds     bool // anything at all: a parameter or a body
+	validates bool // binding can refuse a parameter or body
+	body      bool // a body
+	forms     int  // the body fields: more than one is a body taken in several media types
 }
 
 func requestShape(t reflect.Type) shape {
 	if t.Kind() != reflect.Struct {
-		return shape{binds: true, body: true}
+		return shape{binds: true, validates: true, body: true}
 	}
-	params, forms := false, 0
+	params, forms, validates := false, 0, false
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
 		for _, in := range []string{"path", "query", "header"} {
 			if f.Tag.Get(in) != "" {
 				params = true
+				validates = validates || parameterCanReject(f, in)
 			}
 		}
 		if _, ok := f.Tag.Lookup("body"); ok {
@@ -549,7 +551,27 @@ func requestShape(t reflect.Type) shape {
 	}
 	bodyField := forms > 0
 	whole := !params && !bodyField && t.NumField() > 0
-	return shape{binds: params || bodyField || whole, body: bodyField || whole, forms: forms}
+	return shape{binds: params || bodyField || whole, validates: validates || bodyField || whole, body: bodyField || whole, forms: forms}
+}
+
+// Plain optional query strings accept any text. All other parameter kinds
+// remain conservatively fallible, including named strings that may implement
+// TextUnmarshaler. The tags here are the string rules enforced by go-oapifly.
+func parameterCanReject(field reflect.StructField, in string) bool {
+	if in != "query" || field.Type != reflect.TypeOf("") {
+		return true
+	}
+	for _, option := range strings.Split(field.Tag.Get(in), ",")[1:] {
+		if option == "required" {
+			return true
+		}
+	}
+	for _, rule := range []string{"enums", "minLength", "maxLength", "pattern", "format"} {
+		if _, present := field.Tag.Lookup(rule); present {
+			return true
+		}
+	}
+	return false
 }
 
 // bind reads the request into dst with go-oapifly, which enforces the rules the document
