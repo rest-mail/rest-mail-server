@@ -17,6 +17,8 @@ func TestImportedPasswordRehashOnlyOnMatch(t *testing.T) {
 	for _, hash := range []string{
 		"{SHA256-CRYPT}$5$importsalt$bHBgUR.cLP5CqE2HvtcibUnobsIEkJ3fMmuinleEQt/",
 		"{SHA512-CRYPT}$6$importsalt$ObInO4qcr134i8FQT.XNC6Ma04n9aRTAUNHmm8Yb1idoDBOXKoDTmdosY1xwfageGXo4ZSSrkIPRk9zMWfsG7/",
+		"{ARGON2ID}$argon2id$v=19$m=4096,t=2,p=1$aW1wb3J0c2FsdDAxMjM0NQ$JCLzuH2QfsNfwyNUzLd3IjMXXY7Rb46hqjBt5hs545I",
+		"{ARGON2I}$argon2i$v=19$m=4096,t=2,p=1$aW1wb3J0c2FsdDAxMjM0NQ$EPRiJ1+NEb2FB7BCy10XiOs7h9DWzbOWtI9FhJRyFYE",
 	} {
 		original, err := repo.SetPassword(mb.ID, hash, nil, now)
 		if err != nil {
