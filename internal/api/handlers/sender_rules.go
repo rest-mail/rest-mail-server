@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/restmail/restmail/internal/api/endpoint"
@@ -85,7 +87,10 @@ func (h *SenderRuleHandler) removeFromAllowlist(_ *http.Request, in senderRulePa
 	var rule models.DomainSenderRule
 	if err := h.db.Where("id = ? AND domain_id = ? AND list_type = ?", ruleID, domainID, "allow").
 		First(&rule).Error; err != nil {
-		return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Allowlist rule not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Allowlist rule not found")
+		}
+		return endpoint.Empty{}, fmt.Errorf("look up allowlist rule for deletion: %w", err)
 	}
 
 	if err := h.db.Delete(&rule).Error; err != nil {
@@ -156,7 +161,10 @@ func (h *SenderRuleHandler) removeFromBlocklist(_ *http.Request, in senderRulePa
 	var rule models.DomainSenderRule
 	if err := h.db.Where("id = ? AND domain_id = ? AND list_type = ?", ruleID, domainID, "block").
 		First(&rule).Error; err != nil {
-		return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Blocklist rule not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Blocklist rule not found")
+		}
+		return endpoint.Empty{}, fmt.Errorf("look up blocklist rule for deletion: %w", err)
 	}
 
 	if err := h.db.Delete(&rule).Error; err != nil {
