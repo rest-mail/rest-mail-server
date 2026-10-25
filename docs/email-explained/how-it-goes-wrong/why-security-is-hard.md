@@ -18,7 +18,7 @@ A 2023 study of email security across the top 10 million domains summed up the
 result as "grim yet slightly improving"
 ([Blechschmidt and Stock, USENIX Security 2023](https://www.usenix.org/conference/usenixsecurity23/presentation/blechschmidt)).
 
-![Everything one domain needs for mail that is delivered and trusted](../diagrams/domain-needs.png)
+![Everything one domain needs for mail that is delivered and trusted](../diagrams/domain-needs.svg)
 
 *The diagram's source is [`domain-needs.tree.json`](../diagrams/domain-needs.tree.json).*
 

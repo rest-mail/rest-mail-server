@@ -18,7 +18,7 @@ receive billions of messages a day, about half of them spam
 largely on **reputation**: what they have seen from your address and your domain
 before. A new server has none.
 
-![How a mailbox provider decides: inbox, spam folder or refused](../diagrams/reputation.png)
+![How a mailbox provider decides: inbox, spam folder or refused](../diagrams/reputation.svg)
 
 *The diagram's source is [`reputation.workflow.json`](../diagrams/reputation.workflow.json).*
 

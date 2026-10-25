@@ -17,7 +17,7 @@ message over HTTPS. To every other server, it is an ordinary SMTP server.
 This is REST Mail's own protocol, not an IETF standard. Its endpoints are part of
 REST Mail's API description ([`openapi.yaml`](../../../openapi.yaml)).
 
-![How a REST Mail server delivers to another over HTTPS](../diagrams/restmail.png)
+![How a REST Mail server delivers to another over HTTPS](../diagrams/restmail.svg)
 
 *The diagram's source is [`restmail.sequence.json`](../diagrams/restmail.sequence.json).*
 

@@ -21,7 +21,7 @@ community expectations that mail is either delivered or returned"
 We have not found a reliable measurement of how much mail is lost this way. By
 its nature, it is the failure nobody reports.
 
-![Where a message can disappear without a word](../diagrams/black-hole.png)
+![Where a message can disappear without a word](../diagrams/black-hole.svg)
 
 *The diagram's source is [`black-hole.workflow.json`](../diagrams/black-hole.workflow.json).*
 

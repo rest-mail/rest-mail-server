@@ -16,7 +16,7 @@ and what to do with mail that fails its checks.
 Get the DNS right and mail flows. Get one record wrong and mail goes to the
 wrong place, or nowhere, often without an error anyone sees.
 
-![How a sending server finds where to deliver](../diagrams/dns.png)
+![How a sending server finds where to deliver](../diagrams/dns.svg)
 
 *The diagram's source is [`dns.workflow.json`](../diagrams/dns.workflow.json).*
 

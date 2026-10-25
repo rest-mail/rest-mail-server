@@ -9,6 +9,7 @@
 // The guide's own checks need nothing but the repository. Outside links change
 // on other people's schedules, so CI checks those daily, not on every PR.
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { get as httpGet } from "node:http";
 import { get as httpsGet } from "node:https";
 import { readdir, readFile, stat } from "node:fs/promises";
@@ -52,10 +53,11 @@ export function anchorsOf(text) {
 /**
  * The guide's own checks. `pages` maps each Markdown file under the guide to
  * its text; `repo` answers for any path in the repository: whether it is a
- * file or a directory, and a file's text. Returns the problems found, each
+ * file or a directory, and a file's text. `archify` is the pinned version and
+ * commit every static image must say drew it. Returns the problems found, each
  * with the file and line it is on.
  */
-export function checkGuide({ pages, repo, diagramFiles }) {
+export function checkGuide({ pages, repo, diagramFiles, archify }) {
   const problems = [];
   const problem = (file, line, message) => problems.push({ file: posix.join(GUIDE, file), line, message });
   const anchors = new Map([...pages].map(([file, text]) => [file, anchorsOf(text)]));
@@ -113,8 +115,8 @@ export function checkGuide({ pages, repo, diagramFiles }) {
         continue;
       }
       if (image) {
-        const diagram = inGuide.match(/^diagrams\/([a-z0-9-]+)\.png$/)?.[1];
-        if (!diagram || !diagramFiles.has(`${diagram}.png`)) problem(file, line, `image ${href} is not a diagram's static image`);
+        const diagram = inGuide.match(/^diagrams\/([a-z0-9-]+)\.svg$/)?.[1];
+        if (!diagram || !diagramFiles.has(`${diagram}.svg`)) problem(file, line, `image ${href} is not a diagram's static image`);
         else used.add(diagram);
         continue;
       }
@@ -136,12 +138,24 @@ export function checkGuide({ pages, repo, diagramFiles }) {
     }
   }
 
-  // Diagrams: every source is used, and has its static image.
+  // Diagrams: every source is used, and has its static image, exported from
+  // the source as it is now by the pinned Archify (svg.mjs records both).
   for (const name of [...diagramFiles].sort()) {
     const source = name.match(/^([a-z0-9-]+)\.([a-z]+)\.json$/);
     if (!source || !TYPES.has(source[2])) continue;
     if (!used.has(source[1])) problem(`diagrams/${name}`, null, "no chapter shows this diagram");
-    if (!diagramFiles.has(`${source[1]}.png`)) problem(`diagrams/${name}`, null, `no static image (${source[1]}.png) beside it`);
+    const image = `${source[1]}.svg`;
+    if (!diagramFiles.has(image)) {
+      problem(`diagrams/${name}`, null, `no static image (${image}) beside it`);
+      continue;
+    }
+    const svg = repo.text(posix.join(GUIDE, "diagrams", image)) ?? "";
+    const root = svg.match(/<svg\b[^>]*>/)?.[0] ?? "";
+    const made = root.match(/\sdata-source-sha256="([0-9a-f]{64})"/)?.[1];
+    const drawnBy = root.match(/\sdata-archify="([^"]*)"/)?.[1];
+    const hash = createHash("sha256").update(repo.text(posix.join(GUIDE, "diagrams", name)) ?? "").digest("hex");
+    if (made !== hash) problem(`diagrams/${image}`, null, `was not exported from ${name} as it is now: run svg.mjs ${source[1]}`);
+    else if (archify && drawnBy !== archify) problem(`diagrams/${image}`, null, `was drawn by Archify ${drawnBy ?? "(unknown)"}, not the pinned ${archify}: run svg.mjs ${source[1]}`);
   }
   return problems;
 }
@@ -277,7 +291,8 @@ async function main() {
   }
   const diagramFiles = new Set((await readdir(join(guide, "diagrams"))).filter((name) => kinds.has(posix.join(GUIDE, "diagrams", name))));
 
-  const problems = checkGuide({ pages, repo, diagramFiles });
+  const { archify: pin } = JSON.parse(await readFile(new URL("package.json", import.meta.url), "utf8"));
+  const problems = checkGuide({ pages, repo, diagramFiles, archify: `${pin.version} ${pin.commit}` });
 
   if (values.archify) {
     for (const name of [...diagramFiles].sort()) {

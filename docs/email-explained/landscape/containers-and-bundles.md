@@ -20,7 +20,7 @@ REST Mail's author built two of these: a Docker-based mail server, and
 chapter draws on that experience: what packaging solves, and what stays the
 same inside the package.
 
-![One message through a packaged mail server](../diagrams/bundle.png)
+![One message through a packaged mail server](../diagrams/bundle.svg)
 
 *The diagram's source is [`bundle.workflow.json`](../diagrams/bundle.workflow.json).*
 

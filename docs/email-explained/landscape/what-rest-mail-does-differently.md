@@ -16,7 +16,7 @@ mail app sees an ordinary mail server, and REST Mail's own apps, automations and
 agents use the API directly. The protections in this guide are built into that
 one program, mostly as behaviour rather than as settings.
 
-![REST Mail's architecture: gateways in front of one REST API](../diagrams/rest-mail.png)
+![REST Mail's architecture: gateways in front of one REST API](../diagrams/rest-mail.svg)
 
 *The diagram's source is [`rest-mail.architecture.json`](../diagrams/rest-mail.architecture.json).*
 

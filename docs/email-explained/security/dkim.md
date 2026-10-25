@@ -20,7 +20,7 @@ and publishes the key that checks it in the DNS. Any server, anywhere along the
 way, can then check that the message really was signed by that domain and has
 not been changed since.
 
-![Signing and checking a DKIM signature](../diagrams/dkim.png)
+![Signing and checking a DKIM signature](../diagrams/dkim.svg)
 
 *The diagram's source is [`dkim.sequence.json`](../diagrams/dkim.sequence.json).*
 

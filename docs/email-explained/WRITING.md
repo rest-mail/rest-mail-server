@@ -83,8 +83,8 @@ node bundle.mjs --archify "$ARCHIFY"         # and it builds into the website's 
 - front matter that is missing `title`, `part` or `summary`, has a key the
   website does not read, or has a value GitHub cannot read as YAML;
 - a chapter with no `## Sources` section (or `sources: linked`);
-- a diagram no chapter shows, one without its static image, or a source Archify
-  does not accept.
+- a diagram no chapter shows, one without its static image, an image not
+  exported from its source as it is now, or a source Archify does not accept.
 
 Outside links change on other sites' schedules, so `node check.mjs --external`
 runs daily instead (`scheduled.yml`). A link that no longer answers, or an
@@ -108,16 +108,20 @@ example `open-relay.workflow.json`).
   `finalize` validates the source, renders it, and checks the page in a real
   browser (set `ARCHIFY_CHROME` to a Chrome or Chromium binary). The HTML and
   its receipts are generated, and git-ignored.
-- **The static image** for GitHub readers is committed beside the source
-  (`<name>.png`). It is exported from the rendered page, never edited by hand:
+- **The static image** for GitHub readers is an SVG committed beside the
+  source (`<name>.svg`), and a chapter shows it as `![…](../diagrams/<name>.svg)`.
+  It is Archify's own SVG export, never edited by hand. From
+  `scripts/email-explained/`:
 
   ```sh
-  CHROME=<chrome or chromium> node scripts/email-explained/png.mjs \
-    docs/email-explained/diagrams/open-relay.html docs/email-explained/diagrams/open-relay.png
+  CHROME=<chrome or chromium> node svg.mjs --archify "$ARCHIFY" open-relay
   ```
 
-  The script opens the page in its embed mode, light theme, motion stopped, and
-  captures the diagram at a width that suits it.
+  With no name it exports every diagram. Each SVG is sharp at any size, carries
+  its typeface inside (only the subsets its text uses), follows the reader's
+  light or dark theme, and is cropped to the drawing. It also records the hash
+  of the source it was exported from and the Archify that drew it, so CI fails
+  when a source changes and its image is not exported again.
 - **The interactive version** is what the website shows, built from the same
   source.
 - **A diagram's facts are the chapter's facts.** Every label that states

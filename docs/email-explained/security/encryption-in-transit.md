@@ -21,7 +21,7 @@ encrypted in transit
 But the way it was added, as an optional upgrade offered in the clear, leaves a
 gap that an attacker on the path can use.
 
-![How STARTTLS can be stripped](../diagrams/starttls.png)
+![How STARTTLS can be stripped](../diagrams/starttls.svg)
 
 *The diagram's source is [`starttls.sequence.json`](../diagrams/starttls.sequence.json).*
 

@@ -21,7 +21,7 @@ standard in May 2026 as [RFC 9989](https://www.rfc-editor.org/rfc/rfc9989), with
 its reports in [RFC 9990](https://www.rfc-editor.org/rfc/rfc9990) and
 [RFC 9991](https://www.rfc-editor.org/rfc/rfc9991).
 
-![How a receiver applies DMARC](../diagrams/dmarc.png)
+![How a receiver applies DMARC](../diagrams/dmarc.svg)
 
 *The diagram's source is [`dmarc.workflow.json`](../diagrams/dmarc.workflow.json).*
 
