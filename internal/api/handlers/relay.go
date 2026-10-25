@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/restmail/restmail/internal/api/endpoint"
@@ -50,7 +51,10 @@ func viewRelay(domainID uint, rel *models.DomainRelay) relayView {
 func (h *RelayHandler) domain(id uint32) (*models.Domain, error) {
 	var domain models.Domain
 	if err := h.db.First(&domain, id).Error; err != nil {
-		return nil, endpoint.Refuse(http.StatusNotFound, "not_found", "Domain not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, endpoint.Refuse(http.StatusNotFound, "not_found", "Domain not found")
+		}
+		return nil, fmt.Errorf("look up relay domain: %w", err)
 	}
 	return &domain, nil
 }

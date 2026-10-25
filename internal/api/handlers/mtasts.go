@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"strings"
@@ -31,14 +32,21 @@ func (h *MTASTSHandler) getPolicy(_ *http.Request, in domainPath) (MTASTSPolicy,
 	// Verify domain exists
 	var domain models.Domain
 	if err := h.db.First(&domain, domainID).Error; err != nil {
-		return MTASTSPolicy{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Domain not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return MTASTSPolicy{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Domain not found")
+		}
+		return MTASTSPolicy{}, fmt.Errorf("look up MTA-STS domain: %w", err)
 	}
 
 	var policy models.MTASTSPolicy
 	if err := h.db.Where("domain_id = ?", domainID).First(&policy).Error; err != nil {
-		return MTASTSPolicy{}, endpoint.Refuse(http.StatusNotFound, "not_found", "No MTA-STS policy found for this domain")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return MTASTSPolicy{}, endpoint.Refuse(http.StatusNotFound, "not_found", "No MTA-STS policy found for this domain")
+		}
+		return MTASTSPolicy{}, fmt.Errorf("look up MTA-STS policy: %w", err)
 	}
 
+	policy.Domain = domain
 	return mtaSTSPolicyOf(policy), nil
 }
 
@@ -126,6 +134,9 @@ func (h *MTASTSHandler) deletePolicy(_ *http.Request, in domainPath) (endpoint.E
 	domainID := in.ID
 
 	result := h.db.Where("domain_id = ?", domainID).Delete(&models.MTASTSPolicy{})
+	if result.Error != nil {
+		return endpoint.Empty{}, fmt.Errorf("delete MTA-STS policy: %w", result.Error)
+	}
 	if result.RowsAffected == 0 {
 		return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "No MTA-STS policy found for this domain")
 	}

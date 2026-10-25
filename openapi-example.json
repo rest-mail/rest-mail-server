@@ -1473,6 +1473,157 @@
       }
     }
   },
+  "deleteMtaStsPolicy": {
+    "found": {
+      "summary": "The permitted domain policy operation succeeds",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 204
+      },
+      "description": "The session holds the required capability at domain:example.com. The real target lookup resolves domain1 and the handler maps stored settings or executes the policy deletion inside GORM transaction callbacks."
+    },
+    "internal_error": {
+      "summary": "The domain-policy query fails",
+      "request": {
+        "path": {
+          "id": 4
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      },
+      "description": "A dependency failure is preserved as a sanitized500, rather than mistaken for an absent domain or policy. The real handler and error writer execute against a controlled database fault."
+    },
+    "invalid_domain": {
+      "summary": "The domain ID cannot bind to an integer",
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "No policy belongs to the requested domain",
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "No MTA-STS policy found for this domain"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "outside_domain": {
+      "summary": "A grant on another domain is refused",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      },
+      "description": "The setup-complete session holds domains:read only at domain:other.test. The real scope lookup resolves the requested domain1 to example.com, so permission middleware refuses access before listing data."
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No session credential was sent",
+      "description": "No Authorization header or access cookie is sent. The production JWT middleware refuses the request.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "deletePipeline": {
     "missing": {
       "request": {
@@ -1996,6 +2147,25 @@
     }
   },
   "getDomainRelay": {
+    "direct": {
+      "summary": "No configured relay uses direct delivery",
+      "request": {
+        "path": {
+          "id": 2
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 2,
+            "transport": "direct",
+            "password_set": false
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "found": {
       "request": {
         "path": {
@@ -2014,7 +2184,53 @@
             "username": "apikey",
             "password_set": true
           }
+        },
+        "mediaType": "application/json"
+      },
+      "summary": "The permitted domain policy operation succeeds",
+      "description": "The session holds the required capability at domain:example.com. The real target lookup resolves domain1 and the handler maps stored settings or executes the policy deletion inside GORM transaction callbacks."
+    },
+    "internal_error": {
+      "summary": "The domain-policy query fails",
+      "request": {
+        "path": {
+          "id": 4
         }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      },
+      "description": "A dependency failure is preserved as a sanitized500, rather than mistaken for an absent domain or policy. The real handler and error writer execute against a controlled database fault."
+    },
+    "invalid_domain": {
+      "summary": "The domain ID cannot bind to an integer",
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "missing": {
@@ -2030,7 +2246,102 @@
             "code": "not_found",
             "message": "Domain not found"
           }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "outside_domain": {
+      "summary": "A grant on another domain is refused",
+      "request": {
+        "path": {
+          "id": 1
         }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      },
+      "description": "The setup-complete session holds domains:read only at domain:other.test. The real scope lookup resolves the requested domain1 to example.com, so permission middleware refuses access before listing data."
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "settings_unavailable": {
+      "summary": "The domain exists but its settings query fails",
+      "request": {
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to load the relay settings"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No session credential was sent",
+      "description": "No Authorization header or access cookie is sent. The production JWT middleware refuses the request.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },
@@ -2159,7 +2470,77 @@
         }
       },
       "response": {
-        "status": 200
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 7,
+            "domain_id": 1,
+            "mode": "testing",
+            "mx_hosts": "mail.example.com",
+            "max_age": 604800,
+            "active": true,
+            "created_at": "2026-10-20T00:00:00Z",
+            "updated_at": "2026-10-20T00:00:00Z",
+            "domain": {
+              "id": 1,
+              "name": "example.com",
+              "server_type": "traditional",
+              "active": true,
+              "default_quota_bytes": 1073741824,
+              "dkim_selector": "restmail",
+              "sending_policy": "",
+              "dmarc_policy": "none",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          }
+        },
+        "mediaType": "application/json"
+      },
+      "summary": "The permitted domain policy operation succeeds",
+      "description": "The session holds the required capability at domain:example.com. The real target lookup resolves domain1 and the handler maps stored settings or executes the policy deletion inside GORM transaction callbacks."
+    },
+    "internal_error": {
+      "summary": "The domain-policy query fails",
+      "request": {
+        "path": {
+          "id": 4
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      },
+      "description": "A dependency failure is preserved as a sanitized500, rather than mistaken for an absent domain or policy. The real handler and error writer execute against a controlled database fault."
+    },
+    "invalid_domain": {
+      "summary": "The domain ID cannot bind to an integer",
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "missing": {
@@ -2175,8 +2556,28 @@
             "code": "not_found",
             "message": "Domain not found"
           }
-        }
+        },
+        "mediaType": "application/json"
       }
+    },
+    "outside_domain": {
+      "summary": "A grant on another domain is refused",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      },
+      "description": "The setup-complete session holds domains:read only at domain:other.test. The real scope lookup resolves the requested domain1 to example.com, so permission middleware refuses access before listing data."
     },
     "policy_absent": {
       "request": {
@@ -2191,7 +2592,83 @@
             "code": "not_found",
             "message": "No MTA-STS policy found for this domain"
           }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "request": {
+        "path": {
+          "id": 1
         }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "settings_unavailable": {
+      "summary": "The domain exists but its settings query fails",
+      "request": {
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No session credential was sent",
+      "description": "No Authorization header or access cookie is sent. The production JWT middleware refuses the request.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },
