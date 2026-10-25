@@ -19662,5 +19662,1010 @@
         }
       }
     }
+  },
+  "listAttachments": {
+    "found": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 61,
+              "message_id": 1,
+              "filename": "résumé.pdf",
+              "content_type": "application/pdf",
+              "size_bytes": 123,
+              "checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "created_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 62,
+              "message_id": 1,
+              "filename": "",
+              "content_type": "application/octet-stream",
+              "size_bytes": 0,
+              "checksum": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "created_at": "2026-10-20T00:00:00Z"
+            }
+          ]
+        }
+      },
+      "summary": "A readable message exposes attachment metadata without storage details or content",
+      "description": "Real credential and holder access checks precede the message-scoped, ID-ordered metadata query. Fixed rows include private disk/object-reference sentinels that must not appear in the complete public response; this GET reads no object/file bytes."
+    },
+    "primary": {
+      "request": {
+        "path": {
+          "id": 10
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 61,
+              "message_id": 10,
+              "filename": "résumé.pdf",
+              "content_type": "application/pdf",
+              "size_bytes": 123,
+              "checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "created_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 62,
+              "message_id": 10,
+              "filename": "",
+              "content_type": "application/octet-stream",
+              "size_bytes": 0,
+              "checksum": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "created_at": "2026-10-20T00:00:00Z"
+            }
+          ]
+        }
+      }
+    },
+    "domain_grant": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 61,
+              "message_id": 1,
+              "filename": "résumé.pdf",
+              "content_type": "application/pdf",
+              "size_bytes": 123,
+              "checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "created_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 62,
+              "message_id": 1,
+              "filename": "",
+              "content_type": "application/octet-stream",
+              "size_bytes": 0,
+              "checksum": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "created_at": "2026-10-20T00:00:00Z"
+            }
+          ]
+        }
+      }
+    },
+    "cookie_session": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 61,
+              "message_id": 1,
+              "filename": "résumé.pdf",
+              "content_type": "application/pdf",
+              "size_bytes": 123,
+              "checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "created_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 62,
+              "message_id": 1,
+              "filename": "",
+              "content_type": "application/octet-stream",
+              "size_bytes": 0,
+              "checksum": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "created_at": "2026-10-20T00:00:00Z"
+            }
+          ]
+        }
+      }
+    },
+    "app_password": {
+      "request": {
+        "path": {
+          "id": 10
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 61,
+              "message_id": 10,
+              "filename": "résumé.pdf",
+              "content_type": "application/pdf",
+              "size_bytes": 123,
+              "checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "created_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 62,
+              "message_id": 10,
+              "filename": "",
+              "content_type": "application/octet-stream",
+              "size_bytes": 0,
+              "checksum": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "created_at": "2026-10-20T00:00:00Z"
+            }
+          ]
+        }
+      }
+    },
+    "key_read": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 61,
+              "message_id": 1,
+              "filename": "résumé.pdf",
+              "content_type": "application/pdf",
+              "size_bytes": 123,
+              "checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "created_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 62,
+              "message_id": 1,
+              "filename": "",
+              "content_type": "application/octet-stream",
+              "size_bytes": 0,
+              "checksum": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "created_at": "2026-10-20T00:00:00Z"
+            }
+          ]
+        }
+      }
+    },
+    "key_domain": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 61,
+              "message_id": 1,
+              "filename": "résumé.pdf",
+              "content_type": "application/pdf",
+              "size_bytes": 123,
+              "checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "created_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 62,
+              "message_id": 1,
+              "filename": "",
+              "content_type": "application/octet-stream",
+              "size_bytes": 0,
+              "checksum": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "created_at": "2026-10-20T00:00:00Z"
+            }
+          ]
+        }
+      }
+    },
+    "empty": {
+      "request": {
+        "path": {
+          "id": 2
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": []
+        }
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "setup_required": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        }
+      }
+    },
+    "rate_limited": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        }
+      }
+    },
+    "request_too_large": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        }
+      }
+    },
+    "invalid_format": {
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Message not found"
+          }
+        }
+      }
+    },
+    "write_only": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Message not found"
+          }
+        }
+      }
+    },
+    "key_wrong_scope": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Message not found"
+          }
+        }
+      }
+    },
+    "key_write_only": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Message not found"
+          }
+        }
+      }
+    },
+    "key_holder_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Message not found"
+          }
+        }
+      }
+    },
+    "inaccessible": {
+      "request": {
+        "path": {
+          "id": 20
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Message not found"
+          }
+        }
+      }
+    },
+    "app_password_other": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Message not found"
+          }
+        }
+      }
+    },
+    "target_unavailable": {
+      "request": {
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "content_unavailable": {
+      "request": {
+        "path": {
+          "id": 4
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "grant_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "ownership_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "mailbox_unavailable": {
+      "request": {
+        "path": {
+          "id": 5
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    }
+  },
+  "listScheduledMessages": {
+    "found": {
+      "summary": "Waiting sends are filtered by current send-as permission, retaining soonest-first order",
+      "request": {},
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 51,
+              "account_id": 10,
+              "from": "user@example.com",
+              "to": [
+                "recipient@example.net"
+              ],
+              "subject": "Send café",
+              "scheduled_at": "2026-10-27T00:00:00Z",
+              "status": "pending",
+              "attempts": 0,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 52,
+              "account_id": 10,
+              "from": "linked@example.com",
+              "to": [
+                "recipient@example.net"
+              ],
+              "subject": "Send café",
+              "scheduled_at": "2026-10-27T01:00:00Z",
+              "status": "sending",
+              "attempts": 2,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "last_error": "Delivery deferred"
+            },
+            {
+              "id": 53,
+              "account_id": 10,
+              "from": "linked@example.com",
+              "to": [],
+              "subject": "Send café",
+              "scheduled_at": "2026-10-27T02:00:00Z",
+              "status": "pending",
+              "attempts": 0,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          ]
+        }
+      },
+      "description": "The real query restricts the owner and pending/sending states. A fourth row from an unpermitted sender is hidden. The complete public mapping retains attempts and optional last error, normalizes absent recipients to [], and excludes the private replay request. Fixed SQL rows prove wiring, not PostgreSQL filtering/ordering, scheduler delivery or persistence."
+    },
+    "cookie_session": {
+      "summary": "A current cookie session sees the same permitted sends",
+      "request": {},
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 51,
+              "account_id": 10,
+              "from": "user@example.com",
+              "to": [
+                "recipient@example.net"
+              ],
+              "subject": "Send café",
+              "scheduled_at": "2026-10-27T00:00:00Z",
+              "status": "pending",
+              "attempts": 0,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 52,
+              "account_id": 10,
+              "from": "linked@example.com",
+              "to": [
+                "recipient@example.net"
+              ],
+              "subject": "Send café",
+              "scheduled_at": "2026-10-27T01:00:00Z",
+              "status": "sending",
+              "attempts": 2,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "last_error": "Delivery deferred"
+            },
+            {
+              "id": 53,
+              "account_id": 10,
+              "from": "linked@example.com",
+              "to": [],
+              "subject": "Send café",
+              "scheduled_at": "2026-10-27T02:00:00Z",
+              "status": "pending",
+              "attempts": 0,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          ]
+        }
+      }
+    },
+    "primary_only": {
+      "summary": "Implicit ownership permits the primary sender without linked grants",
+      "request": {},
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 51,
+              "account_id": 10,
+              "from": "user@example.com",
+              "to": [
+                "recipient@example.net"
+              ],
+              "subject": "Send café",
+              "scheduled_at": "2026-10-27T00:00:00Z",
+              "status": "pending",
+              "attempts": 0,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          ]
+        }
+      }
+    },
+    "app_password": {
+      "summary": "A real app password sees waiting sends only from its own mailbox",
+      "request": {},
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 51,
+              "account_id": 10,
+              "from": "user@example.com",
+              "to": [
+                "recipient@example.net"
+              ],
+              "subject": "Send café",
+              "scheduled_at": "2026-10-27T00:00:00Z",
+              "status": "pending",
+              "attempts": 0,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          ]
+        }
+      }
+    },
+    "key_send": {
+      "summary": "A real API key may list sends only from its permitted sender mailbox",
+      "request": {},
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 52,
+              "account_id": 10,
+              "from": "linked@example.com",
+              "to": [
+                "recipient@example.net"
+              ],
+              "subject": "Send café",
+              "scheduled_at": "2026-10-27T01:00:00Z",
+              "status": "sending",
+              "attempts": 2,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "last_error": "Delivery deferred"
+            },
+            {
+              "id": 53,
+              "account_id": 10,
+              "from": "linked@example.com",
+              "to": [],
+              "subject": "Send café",
+              "scheduled_at": "2026-10-27T02:00:00Z",
+              "status": "pending",
+              "attempts": 0,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          ]
+        }
+      }
+    },
+    "key_send_domain": {
+      "summary": "A domain send scope still requires the holder to permit each sender",
+      "request": {},
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 51,
+              "account_id": 10,
+              "from": "user@example.com",
+              "to": [
+                "recipient@example.net"
+              ],
+              "subject": "Send café",
+              "scheduled_at": "2026-10-27T00:00:00Z",
+              "status": "pending",
+              "attempts": 0,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 52,
+              "account_id": 10,
+              "from": "linked@example.com",
+              "to": [
+                "recipient@example.net"
+              ],
+              "subject": "Send café",
+              "scheduled_at": "2026-10-27T01:00:00Z",
+              "status": "sending",
+              "attempts": 2,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "last_error": "Delivery deferred"
+            },
+            {
+              "id": 53,
+              "account_id": 10,
+              "from": "linked@example.com",
+              "to": [],
+              "subject": "Send café",
+              "scheduled_at": "2026-10-27T02:00:00Z",
+              "status": "pending",
+              "attempts": 0,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          ]
+        }
+      }
+    },
+    "key_read": {
+      "summary": "Read permission cannot substitute for send-as permission",
+      "request": {},
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": []
+        }
+      }
+    },
+    "key_write_only": {
+      "summary": "Write permission cannot substitute for send-as permission",
+      "request": {},
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": []
+        }
+      }
+    },
+    "key_send_holder_missing": {
+      "summary": "An API key cannot restore send-as permission absent from its holder",
+      "request": {},
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": []
+        }
+      }
+    },
+    "empty_scheduled": {
+      "summary": "An account with no waiting sends has an empty array",
+      "request": {},
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": []
+        }
+      }
+    },
+    "unauthenticated": {
+      "request": {},
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "setup_required": {
+      "summary": "A session still in setup cannot use account reads",
+      "request": {},
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        }
+      }
+    },
+    "rate_limited": {
+      "summary": "Repeated malformed API-key guesses exhaust the real refusal budget",
+      "request": {},
+      "response": {
+        "status": 429,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        }
+      },
+      "description": "The test primes a one-token per-peer budget with an invalid key, then repeats it without sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After."
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "request": {},
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "list_unavailable": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to list scheduled messages"
+          }
+        }
+      }
+    },
+    "sender_unavailable": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to list scheduled messages"
+          }
+        }
+      }
+    },
+    "grant_unavailable": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to list scheduled messages"
+          }
+        }
+      }
+    },
+    "ownership_unavailable": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to list scheduled messages"
+          }
+        }
+      }
+    }
   }
 }
