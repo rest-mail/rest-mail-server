@@ -87,6 +87,9 @@ type restmailMailboxQuery struct {
 func (h *RestmailHandler) checkMailbox(r *http.Request, in restmailMailboxQuery) (RestmailMailboxCheck, error) {
 	var mailbox models.Mailbox
 	if err := repositories.FindActiveMailboxByAddress(h.db, in.Address, &mailbox); err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return RestmailMailboxCheck{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to look up mailbox")
+		}
 		// Negative lookup: tarpit the source to throttle recipient enumeration
 		// (OSI-1). The delay escalates per source and is capped; a positive
 		// lookup (below) skips it and returns promptly. Keyed on the request
