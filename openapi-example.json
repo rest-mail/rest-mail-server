@@ -18198,5 +18198,1469 @@
         }
       }
     }
+  },
+  "listFolders": {
+    "found": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "name": "Archive",
+              "total": 2,
+              "unread": 1
+            },
+            {
+              "name": "INBOX",
+              "total": 5,
+              "unread": 2
+            },
+            {
+              "name": "Projects/2026",
+              "total": 0,
+              "unread": 0
+            },
+            {
+              "name": "Sent",
+              "total": 0,
+              "unread": 0
+            },
+            {
+              "name": "Drafts",
+              "total": 0,
+              "unread": 0
+            },
+            {
+              "name": "Trash",
+              "total": 0,
+              "unread": 0
+            }
+          ]
+        }
+      },
+      "description": "Actual production routes, repositories and credential/grant checks map controlled rows. SQL restrictions and returned fields are asserted, but PostgreSQL aggregation, filtering, ordering and persistence are not claimed.",
+      "summary": "Grouped counts retain populated folders and zero-count hierarchy markers without duplicating INBOX"
+    },
+    "primary": {
+      "request": {
+        "path": {
+          "id": 10
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "name": "Archive",
+              "total": 2,
+              "unread": 1
+            },
+            {
+              "name": "INBOX",
+              "total": 5,
+              "unread": 2
+            },
+            {
+              "name": "Projects/2026",
+              "total": 0,
+              "unread": 0
+            },
+            {
+              "name": "Sent",
+              "total": 0,
+              "unread": 0
+            },
+            {
+              "name": "Drafts",
+              "total": 0,
+              "unread": 0
+            },
+            {
+              "name": "Trash",
+              "total": 0,
+              "unread": 0
+            }
+          ]
+        }
+      }
+    },
+    "domain_grant": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "name": "Archive",
+              "total": 2,
+              "unread": 1
+            },
+            {
+              "name": "INBOX",
+              "total": 5,
+              "unread": 2
+            },
+            {
+              "name": "Projects/2026",
+              "total": 0,
+              "unread": 0
+            },
+            {
+              "name": "Sent",
+              "total": 0,
+              "unread": 0
+            },
+            {
+              "name": "Drafts",
+              "total": 0,
+              "unread": 0
+            },
+            {
+              "name": "Trash",
+              "total": 0,
+              "unread": 0
+            }
+          ]
+        }
+      }
+    },
+    "cookie_session": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "name": "Archive",
+              "total": 2,
+              "unread": 1
+            },
+            {
+              "name": "INBOX",
+              "total": 5,
+              "unread": 2
+            },
+            {
+              "name": "Projects/2026",
+              "total": 0,
+              "unread": 0
+            },
+            {
+              "name": "Sent",
+              "total": 0,
+              "unread": 0
+            },
+            {
+              "name": "Drafts",
+              "total": 0,
+              "unread": 0
+            },
+            {
+              "name": "Trash",
+              "total": 0,
+              "unread": 0
+            }
+          ]
+        }
+      }
+    },
+    "app_password": {
+      "request": {
+        "path": {
+          "id": 10
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "name": "Archive",
+              "total": 2,
+              "unread": 1
+            },
+            {
+              "name": "INBOX",
+              "total": 5,
+              "unread": 2
+            },
+            {
+              "name": "Projects/2026",
+              "total": 0,
+              "unread": 0
+            },
+            {
+              "name": "Sent",
+              "total": 0,
+              "unread": 0
+            },
+            {
+              "name": "Drafts",
+              "total": 0,
+              "unread": 0
+            },
+            {
+              "name": "Trash",
+              "total": 0,
+              "unread": 0
+            }
+          ]
+        }
+      }
+    },
+    "key_read": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "name": "Archive",
+              "total": 2,
+              "unread": 1
+            },
+            {
+              "name": "INBOX",
+              "total": 5,
+              "unread": 2
+            },
+            {
+              "name": "Projects/2026",
+              "total": 0,
+              "unread": 0
+            },
+            {
+              "name": "Sent",
+              "total": 0,
+              "unread": 0
+            },
+            {
+              "name": "Drafts",
+              "total": 0,
+              "unread": 0
+            },
+            {
+              "name": "Trash",
+              "total": 0,
+              "unread": 0
+            }
+          ]
+        }
+      }
+    },
+    "key_domain": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "name": "Archive",
+              "total": 2,
+              "unread": 1
+            },
+            {
+              "name": "INBOX",
+              "total": 5,
+              "unread": 2
+            },
+            {
+              "name": "Projects/2026",
+              "total": 0,
+              "unread": 0
+            },
+            {
+              "name": "Sent",
+              "total": 0,
+              "unread": 0
+            },
+            {
+              "name": "Drafts",
+              "total": 0,
+              "unread": 0
+            },
+            {
+              "name": "Trash",
+              "total": 0,
+              "unread": 0
+            }
+          ]
+        }
+      }
+    },
+    "empty": {
+      "request": {
+        "path": {
+          "id": 2
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "name": "INBOX",
+              "total": 0,
+              "unread": 0
+            },
+            {
+              "name": "Sent",
+              "total": 0,
+              "unread": 0
+            },
+            {
+              "name": "Drafts",
+              "total": 0,
+              "unread": 0
+            },
+            {
+              "name": "Trash",
+              "total": 0,
+              "unread": 0
+            }
+          ]
+        }
+      },
+      "summary": "A successful empty aggregation still lists the four ordinary standard folders"
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "setup_required": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        }
+      }
+    },
+    "rate_limited": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        }
+      }
+    },
+    "request_too_large": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        }
+      }
+    },
+    "invalid_format": {
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "write_only": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "key_wrong_scope": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "key_write_only": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "key_holder_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "inaccessible": {
+      "request": {
+        "path": {
+          "id": 20
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "app_password_other": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "target_unavailable": {
+      "request": {
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "content_unavailable": {
+      "request": {
+        "path": {
+          "id": 4
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "grant_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "ownership_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    }
+  },
+  "listQuarantine": {
+    "found": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 41,
+              "mailbox_id": 1,
+              "sender": "sender@example.net",
+              "subject": "Held café",
+              "body_preview": "Preview only",
+              "spam_score": 4.5,
+              "quarantine_reason": "spam",
+              "received_at": "2026-10-20T00:00:00Z",
+              "expires_at": "2026-10-27T00:00:00Z",
+              "released": false
+            },
+            {
+              "id": 40,
+              "mailbox_id": 1,
+              "sender": "other@example.net",
+              "subject": "No score",
+              "body_preview": "Review this",
+              "quarantine_reason": "custom_filter",
+              "received_at": "2026-10-19T00:00:00Z",
+              "expires_at": "2026-10-26T00:00:00Z",
+              "released": false
+            }
+          ],
+          "pagination": {
+            "has_more": false,
+            "total": 2
+          }
+        }
+      },
+      "description": "Actual production routes, repositories and credential/grant checks map controlled rows. SQL restrictions and returned fields are asserted, but PostgreSQL aggregation, filtering, ordering and persistence are not claimed.",
+      "summary": "Unreleased quarantine metadata includes optional scores and excludes raw message source"
+    },
+    "primary": {
+      "request": {
+        "path": {
+          "id": 10
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 41,
+              "mailbox_id": 10,
+              "sender": "sender@example.net",
+              "subject": "Held café",
+              "body_preview": "Preview only",
+              "spam_score": 4.5,
+              "quarantine_reason": "spam",
+              "received_at": "2026-10-20T00:00:00Z",
+              "expires_at": "2026-10-27T00:00:00Z",
+              "released": false
+            },
+            {
+              "id": 40,
+              "mailbox_id": 10,
+              "sender": "other@example.net",
+              "subject": "No score",
+              "body_preview": "Review this",
+              "quarantine_reason": "custom_filter",
+              "received_at": "2026-10-19T00:00:00Z",
+              "expires_at": "2026-10-26T00:00:00Z",
+              "released": false
+            }
+          ],
+          "pagination": {
+            "has_more": false,
+            "total": 2
+          }
+        }
+      }
+    },
+    "domain_grant": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 41,
+              "mailbox_id": 1,
+              "sender": "sender@example.net",
+              "subject": "Held café",
+              "body_preview": "Preview only",
+              "spam_score": 4.5,
+              "quarantine_reason": "spam",
+              "received_at": "2026-10-20T00:00:00Z",
+              "expires_at": "2026-10-27T00:00:00Z",
+              "released": false
+            },
+            {
+              "id": 40,
+              "mailbox_id": 1,
+              "sender": "other@example.net",
+              "subject": "No score",
+              "body_preview": "Review this",
+              "quarantine_reason": "custom_filter",
+              "received_at": "2026-10-19T00:00:00Z",
+              "expires_at": "2026-10-26T00:00:00Z",
+              "released": false
+            }
+          ],
+          "pagination": {
+            "has_more": false,
+            "total": 2
+          }
+        }
+      }
+    },
+    "cookie_session": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 41,
+              "mailbox_id": 1,
+              "sender": "sender@example.net",
+              "subject": "Held café",
+              "body_preview": "Preview only",
+              "spam_score": 4.5,
+              "quarantine_reason": "spam",
+              "received_at": "2026-10-20T00:00:00Z",
+              "expires_at": "2026-10-27T00:00:00Z",
+              "released": false
+            },
+            {
+              "id": 40,
+              "mailbox_id": 1,
+              "sender": "other@example.net",
+              "subject": "No score",
+              "body_preview": "Review this",
+              "quarantine_reason": "custom_filter",
+              "received_at": "2026-10-19T00:00:00Z",
+              "expires_at": "2026-10-26T00:00:00Z",
+              "released": false
+            }
+          ],
+          "pagination": {
+            "has_more": false,
+            "total": 2
+          }
+        }
+      }
+    },
+    "app_password": {
+      "request": {
+        "path": {
+          "id": 10
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 41,
+              "mailbox_id": 10,
+              "sender": "sender@example.net",
+              "subject": "Held café",
+              "body_preview": "Preview only",
+              "spam_score": 4.5,
+              "quarantine_reason": "spam",
+              "received_at": "2026-10-20T00:00:00Z",
+              "expires_at": "2026-10-27T00:00:00Z",
+              "released": false
+            },
+            {
+              "id": 40,
+              "mailbox_id": 10,
+              "sender": "other@example.net",
+              "subject": "No score",
+              "body_preview": "Review this",
+              "quarantine_reason": "custom_filter",
+              "received_at": "2026-10-19T00:00:00Z",
+              "expires_at": "2026-10-26T00:00:00Z",
+              "released": false
+            }
+          ],
+          "pagination": {
+            "has_more": false,
+            "total": 2
+          }
+        }
+      }
+    },
+    "key_read": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 41,
+              "mailbox_id": 1,
+              "sender": "sender@example.net",
+              "subject": "Held café",
+              "body_preview": "Preview only",
+              "spam_score": 4.5,
+              "quarantine_reason": "spam",
+              "received_at": "2026-10-20T00:00:00Z",
+              "expires_at": "2026-10-27T00:00:00Z",
+              "released": false
+            },
+            {
+              "id": 40,
+              "mailbox_id": 1,
+              "sender": "other@example.net",
+              "subject": "No score",
+              "body_preview": "Review this",
+              "quarantine_reason": "custom_filter",
+              "received_at": "2026-10-19T00:00:00Z",
+              "expires_at": "2026-10-26T00:00:00Z",
+              "released": false
+            }
+          ],
+          "pagination": {
+            "has_more": false,
+            "total": 2
+          }
+        }
+      }
+    },
+    "key_domain": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 41,
+              "mailbox_id": 1,
+              "sender": "sender@example.net",
+              "subject": "Held café",
+              "body_preview": "Preview only",
+              "spam_score": 4.5,
+              "quarantine_reason": "spam",
+              "received_at": "2026-10-20T00:00:00Z",
+              "expires_at": "2026-10-27T00:00:00Z",
+              "released": false
+            },
+            {
+              "id": 40,
+              "mailbox_id": 1,
+              "sender": "other@example.net",
+              "subject": "No score",
+              "body_preview": "Review this",
+              "quarantine_reason": "custom_filter",
+              "received_at": "2026-10-19T00:00:00Z",
+              "expires_at": "2026-10-26T00:00:00Z",
+              "released": false
+            }
+          ],
+          "pagination": {
+            "has_more": false,
+            "total": 2
+          }
+        }
+      }
+    },
+    "empty": {
+      "request": {
+        "path": {
+          "id": 2
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [],
+          "pagination": {
+            "has_more": false
+          }
+        }
+      },
+      "summary": "An empty quarantine has an empty array and omits the zero total"
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "setup_required": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        }
+      }
+    },
+    "rate_limited": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        }
+      }
+    },
+    "request_too_large": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        }
+      }
+    },
+    "invalid_format": {
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "write_only": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "key_wrong_scope": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "key_write_only": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "key_holder_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "inaccessible": {
+      "request": {
+        "path": {
+          "id": 20
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "app_password_other": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "target_unavailable": {
+      "request": {
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "content_unavailable": {
+      "request": {
+        "path": {
+          "id": 4
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "grant_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "ownership_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "first_page": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "limit": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 41,
+              "mailbox_id": 1,
+              "sender": "sender@example.net",
+              "subject": "Held café",
+              "body_preview": "Preview only",
+              "spam_score": 4.5,
+              "quarantine_reason": "spam",
+              "received_at": "2026-10-20T00:00:00Z",
+              "expires_at": "2026-10-27T00:00:00Z",
+              "released": false
+            }
+          ],
+          "pagination": {
+            "total": 2,
+            "has_more": true
+          }
+        }
+      }
+    },
+    "paged": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "limit": 1,
+          "offset": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 40,
+              "mailbox_id": 1,
+              "sender": "other@example.net",
+              "subject": "No score",
+              "body_preview": "Review this",
+              "quarantine_reason": "custom_filter",
+              "received_at": "2026-10-19T00:00:00Z",
+              "expires_at": "2026-10-26T00:00:00Z",
+              "released": false
+            }
+          ],
+          "pagination": {
+            "total": 2,
+            "has_more": false
+          }
+        }
+      }
+    },
+    "clamped": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "limit": 10000,
+          "offset": -10
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 41,
+              "mailbox_id": 1,
+              "sender": "sender@example.net",
+              "subject": "Held café",
+              "body_preview": "Preview only",
+              "spam_score": 4.5,
+              "quarantine_reason": "spam",
+              "received_at": "2026-10-20T00:00:00Z",
+              "expires_at": "2026-10-27T00:00:00Z",
+              "released": false
+            },
+            {
+              "id": 40,
+              "mailbox_id": 1,
+              "sender": "other@example.net",
+              "subject": "No score",
+              "body_preview": "Review this",
+              "quarantine_reason": "custom_filter",
+              "received_at": "2026-10-19T00:00:00Z",
+              "expires_at": "2026-10-26T00:00:00Z",
+              "released": false
+            }
+          ],
+          "pagination": {
+            "total": 2,
+            "has_more": false
+          }
+        }
+      }
+    },
+    "invalid_limit": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "limit": "bad"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Query parameters failed validation",
+            "details": {
+              "fields": {
+                "limit": "must be an integer"
+              }
+            }
+          }
+        }
+      }
+    },
+    "count_unavailable": {
+      "request": {
+        "path": {
+          "id": 5
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    }
   }
 }
