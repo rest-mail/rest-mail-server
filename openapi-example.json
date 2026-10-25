@@ -20667,5 +20667,3466 @@
         }
       }
     }
+  },
+  "listMessages": {
+    "found": {
+      "request": {
+        "path": {
+          "id": 1,
+          "folder": "INBOX"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 51,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [
+                "recipient@example.net"
+              ],
+              "recipients_cc": [
+                "copy@example.net"
+              ],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": true,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": true,
+              "is_starred": true,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T02:00:00Z",
+              "date_header": "2026-10-20T00:00:00Z",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Hello café",
+              "body_html": "<p>Hello café</p>",
+              "headers": {
+                "Subject": [
+                  "Hello café"
+                ],
+                "X-Trace": [
+                  "a",
+                  "b"
+                ]
+              },
+              "calendar_events": [
+                {
+                  "uid": "event-1"
+                }
+              ],
+              "received_tls": true,
+              "tls_version": "TLS1.3"
+            },
+            {
+              "id": 53,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 52,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": true,
+              "is_dsn": true,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Plain delivery",
+              "received_tls": false
+            }
+          ],
+          "pagination": {
+            "has_more": false,
+            "total": 3
+          }
+        }
+      },
+      "description": "Production routes load real credential/holder ceilings and map fixed message rows. Complete results cover public message fields, JSON recipients/headers/calendar data, TLS true/false/unknown, null dates and body omissions; raw source and unloaded mailbox metadata are omitted. Controlled SQL proves wiring, not PostgreSQL filtering or ordering.",
+      "summary": "A folder page is newest first, with the ID breaking equal-date ties"
+    },
+    "primary": {
+      "request": {
+        "path": {
+          "id": 10,
+          "folder": "INBOX"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 51,
+              "mailbox_id": 10,
+              "folder": "INBOX",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [
+                "recipient@example.net"
+              ],
+              "recipients_cc": [
+                "copy@example.net"
+              ],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": true,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": true,
+              "is_starred": true,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T02:00:00Z",
+              "date_header": "2026-10-20T00:00:00Z",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Hello café",
+              "body_html": "<p>Hello café</p>",
+              "headers": {
+                "Subject": [
+                  "Hello café"
+                ],
+                "X-Trace": [
+                  "a",
+                  "b"
+                ]
+              },
+              "calendar_events": [
+                {
+                  "uid": "event-1"
+                }
+              ],
+              "received_tls": true,
+              "tls_version": "TLS1.3"
+            },
+            {
+              "id": 53,
+              "mailbox_id": 10,
+              "folder": "INBOX",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 52,
+              "mailbox_id": 10,
+              "folder": "INBOX",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": true,
+              "is_dsn": true,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Plain delivery",
+              "received_tls": false
+            }
+          ],
+          "pagination": {
+            "has_more": false,
+            "total": 3
+          }
+        }
+      }
+    },
+    "domain_grant": {
+      "request": {
+        "path": {
+          "id": 1,
+          "folder": "INBOX"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 51,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [
+                "recipient@example.net"
+              ],
+              "recipients_cc": [
+                "copy@example.net"
+              ],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": true,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": true,
+              "is_starred": true,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T02:00:00Z",
+              "date_header": "2026-10-20T00:00:00Z",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Hello café",
+              "body_html": "<p>Hello café</p>",
+              "headers": {
+                "Subject": [
+                  "Hello café"
+                ],
+                "X-Trace": [
+                  "a",
+                  "b"
+                ]
+              },
+              "calendar_events": [
+                {
+                  "uid": "event-1"
+                }
+              ],
+              "received_tls": true,
+              "tls_version": "TLS1.3"
+            },
+            {
+              "id": 53,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 52,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": true,
+              "is_dsn": true,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Plain delivery",
+              "received_tls": false
+            }
+          ],
+          "pagination": {
+            "has_more": false,
+            "total": 3
+          }
+        }
+      }
+    },
+    "cookie_session": {
+      "request": {
+        "path": {
+          "id": 1,
+          "folder": "INBOX"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 51,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [
+                "recipient@example.net"
+              ],
+              "recipients_cc": [
+                "copy@example.net"
+              ],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": true,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": true,
+              "is_starred": true,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T02:00:00Z",
+              "date_header": "2026-10-20T00:00:00Z",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Hello café",
+              "body_html": "<p>Hello café</p>",
+              "headers": {
+                "Subject": [
+                  "Hello café"
+                ],
+                "X-Trace": [
+                  "a",
+                  "b"
+                ]
+              },
+              "calendar_events": [
+                {
+                  "uid": "event-1"
+                }
+              ],
+              "received_tls": true,
+              "tls_version": "TLS1.3"
+            },
+            {
+              "id": 53,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 52,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": true,
+              "is_dsn": true,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Plain delivery",
+              "received_tls": false
+            }
+          ],
+          "pagination": {
+            "has_more": false,
+            "total": 3
+          }
+        }
+      }
+    },
+    "app_password": {
+      "request": {
+        "path": {
+          "id": 10,
+          "folder": "INBOX"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 51,
+              "mailbox_id": 10,
+              "folder": "INBOX",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [
+                "recipient@example.net"
+              ],
+              "recipients_cc": [
+                "copy@example.net"
+              ],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": true,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": true,
+              "is_starred": true,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T02:00:00Z",
+              "date_header": "2026-10-20T00:00:00Z",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Hello café",
+              "body_html": "<p>Hello café</p>",
+              "headers": {
+                "Subject": [
+                  "Hello café"
+                ],
+                "X-Trace": [
+                  "a",
+                  "b"
+                ]
+              },
+              "calendar_events": [
+                {
+                  "uid": "event-1"
+                }
+              ],
+              "received_tls": true,
+              "tls_version": "TLS1.3"
+            },
+            {
+              "id": 53,
+              "mailbox_id": 10,
+              "folder": "INBOX",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 52,
+              "mailbox_id": 10,
+              "folder": "INBOX",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": true,
+              "is_dsn": true,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Plain delivery",
+              "received_tls": false
+            }
+          ],
+          "pagination": {
+            "has_more": false,
+            "total": 3
+          }
+        }
+      }
+    },
+    "key_read": {
+      "request": {
+        "path": {
+          "id": 1,
+          "folder": "INBOX"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 51,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [
+                "recipient@example.net"
+              ],
+              "recipients_cc": [
+                "copy@example.net"
+              ],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": true,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": true,
+              "is_starred": true,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T02:00:00Z",
+              "date_header": "2026-10-20T00:00:00Z",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Hello café",
+              "body_html": "<p>Hello café</p>",
+              "headers": {
+                "Subject": [
+                  "Hello café"
+                ],
+                "X-Trace": [
+                  "a",
+                  "b"
+                ]
+              },
+              "calendar_events": [
+                {
+                  "uid": "event-1"
+                }
+              ],
+              "received_tls": true,
+              "tls_version": "TLS1.3"
+            },
+            {
+              "id": 53,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 52,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": true,
+              "is_dsn": true,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Plain delivery",
+              "received_tls": false
+            }
+          ],
+          "pagination": {
+            "has_more": false,
+            "total": 3
+          }
+        }
+      }
+    },
+    "key_domain": {
+      "request": {
+        "path": {
+          "id": 1,
+          "folder": "INBOX"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 51,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [
+                "recipient@example.net"
+              ],
+              "recipients_cc": [
+                "copy@example.net"
+              ],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": true,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": true,
+              "is_starred": true,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T02:00:00Z",
+              "date_header": "2026-10-20T00:00:00Z",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Hello café",
+              "body_html": "<p>Hello café</p>",
+              "headers": {
+                "Subject": [
+                  "Hello café"
+                ],
+                "X-Trace": [
+                  "a",
+                  "b"
+                ]
+              },
+              "calendar_events": [
+                {
+                  "uid": "event-1"
+                }
+              ],
+              "received_tls": true,
+              "tls_version": "TLS1.3"
+            },
+            {
+              "id": 53,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 52,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": true,
+              "is_dsn": true,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Plain delivery",
+              "received_tls": false
+            }
+          ],
+          "pagination": {
+            "has_more": false,
+            "total": 3
+          }
+        }
+      }
+    },
+    "empty": {
+      "request": {
+        "path": {
+          "id": 2,
+          "folder": "INBOX"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [],
+          "pagination": {
+            "has_more": false
+          }
+        }
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 1,
+          "folder": "INBOX"
+        }
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "setup_required": {
+      "request": {
+        "path": {
+          "id": 1,
+          "folder": "INBOX"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        }
+      }
+    },
+    "rate_limited": {
+      "request": {
+        "path": {
+          "id": 1,
+          "folder": "INBOX"
+        }
+      },
+      "response": {
+        "status": 429,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        }
+      }
+    },
+    "request_too_large": {
+      "request": {
+        "path": {
+          "id": 1,
+          "folder": "INBOX"
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0,
+          "folder": "INBOX"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        }
+      }
+    },
+    "invalid_format": {
+      "request": {
+        "path": {
+          "id": "not-an-integer",
+          "folder": "INBOX"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "request": {
+        "path": {
+          "id": 1,
+          "folder": "INBOX"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647,
+          "folder": "INBOX"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "write_only": {
+      "request": {
+        "path": {
+          "id": 1,
+          "folder": "INBOX"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "key_wrong_scope": {
+      "request": {
+        "path": {
+          "id": 1,
+          "folder": "INBOX"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "key_write_only": {
+      "request": {
+        "path": {
+          "id": 1,
+          "folder": "INBOX"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "key_holder_missing": {
+      "request": {
+        "path": {
+          "id": 1,
+          "folder": "INBOX"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "inaccessible": {
+      "request": {
+        "path": {
+          "id": 20,
+          "folder": "INBOX"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "app_password_other": {
+      "request": {
+        "path": {
+          "id": 1,
+          "folder": "INBOX"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "target_unavailable": {
+      "request": {
+        "path": {
+          "id": 3,
+          "folder": "INBOX"
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "content_unavailable": {
+      "request": {
+        "path": {
+          "id": 4,
+          "folder": "INBOX"
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to list messages"
+          }
+        }
+      }
+    },
+    "grant_unavailable": {
+      "request": {
+        "path": {
+          "id": 1,
+          "folder": "INBOX"
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "ownership_unavailable": {
+      "request": {
+        "path": {
+          "id": 1,
+          "folder": "INBOX"
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "first_page": {
+      "request": {
+        "path": {
+          "id": 1,
+          "folder": "INBOX"
+        },
+        "query": {
+          "limit": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 51,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [
+                "recipient@example.net"
+              ],
+              "recipients_cc": [
+                "copy@example.net"
+              ],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": true,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": true,
+              "is_starred": true,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T02:00:00Z",
+              "date_header": "2026-10-20T00:00:00Z",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Hello café",
+              "body_html": "<p>Hello café</p>",
+              "headers": {
+                "Subject": [
+                  "Hello café"
+                ],
+                "X-Trace": [
+                  "a",
+                  "b"
+                ]
+              },
+              "calendar_events": [
+                {
+                  "uid": "event-1"
+                }
+              ],
+              "received_tls": true,
+              "tls_version": "TLS1.3"
+            }
+          ],
+          "pagination": {
+            "has_more": true,
+            "total": 3,
+            "cursor": "eyJyZWNlaXZlZF9hdCI6IjIwMjYtMTAtMjBUMDI6MDA6MDBaIiwiaWQiOjUxfQ=="
+          }
+        }
+      },
+      "description": "The next cursor carries both date and ID. The older rows have IDs above the newest row, so an ID-only cut would skip them."
+    },
+    "next_page": {
+      "request": {
+        "path": {
+          "id": 1,
+          "folder": "INBOX"
+        },
+        "query": {
+          "limit": 1,
+          "cursor": "eyJyZWNlaXZlZF9hdCI6IjIwMjYtMTAtMjBUMDI6MDA6MDBaIiwiaWQiOjUxfQ=="
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 53,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          ],
+          "pagination": {
+            "has_more": true,
+            "total": 3,
+            "cursor": "eyJyZWNlaXZlZF9hdCI6IjIwMjYtMTAtMjBUMDE6MDA6MDBaIiwiaWQiOjUzfQ=="
+          }
+        }
+      }
+    },
+    "last_page": {
+      "request": {
+        "path": {
+          "id": 1,
+          "folder": "INBOX"
+        },
+        "query": {
+          "limit": 1,
+          "cursor": "eyJyZWNlaXZlZF9hdCI6IjIwMjYtMTAtMjBUMDE6MDA6MDBaIiwiaWQiOjUzfQ=="
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 52,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": true,
+              "is_dsn": true,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Plain delivery",
+              "received_tls": false
+            }
+          ],
+          "pagination": {
+            "has_more": false,
+            "total": 3
+          }
+        }
+      }
+    },
+    "invalid_cursor": {
+      "request": {
+        "path": {
+          "id": 1,
+          "folder": "INBOX"
+        },
+        "query": {
+          "cursor": "not-base64"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 51,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [
+                "recipient@example.net"
+              ],
+              "recipients_cc": [
+                "copy@example.net"
+              ],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": true,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": true,
+              "is_starred": true,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T02:00:00Z",
+              "date_header": "2026-10-20T00:00:00Z",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Hello café",
+              "body_html": "<p>Hello café</p>",
+              "headers": {
+                "Subject": [
+                  "Hello café"
+                ],
+                "X-Trace": [
+                  "a",
+                  "b"
+                ]
+              },
+              "calendar_events": [
+                {
+                  "uid": "event-1"
+                }
+              ],
+              "received_tls": true,
+              "tls_version": "TLS1.3"
+            },
+            {
+              "id": 53,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 52,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": true,
+              "is_dsn": true,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Plain delivery",
+              "received_tls": false
+            }
+          ],
+          "pagination": {
+            "has_more": false,
+            "total": 3
+          }
+        }
+      }
+    },
+    "partial_cursor": {
+      "request": {
+        "path": {
+          "id": 1,
+          "folder": "INBOX"
+        },
+        "query": {
+          "cursor": "eyJpZCI6NTF9"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 51,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [
+                "recipient@example.net"
+              ],
+              "recipients_cc": [
+                "copy@example.net"
+              ],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": true,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": true,
+              "is_starred": true,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T02:00:00Z",
+              "date_header": "2026-10-20T00:00:00Z",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Hello café",
+              "body_html": "<p>Hello café</p>",
+              "headers": {
+                "Subject": [
+                  "Hello café"
+                ],
+                "X-Trace": [
+                  "a",
+                  "b"
+                ]
+              },
+              "calendar_events": [
+                {
+                  "uid": "event-1"
+                }
+              ],
+              "received_tls": true,
+              "tls_version": "TLS1.3"
+            },
+            {
+              "id": 53,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 52,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": true,
+              "is_dsn": true,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Plain delivery",
+              "received_tls": false
+            }
+          ],
+          "pagination": {
+            "has_more": false,
+            "total": 3
+          }
+        }
+      }
+    },
+    "blank_cursor": {
+      "request": {
+        "path": {
+          "id": 1,
+          "folder": "INBOX"
+        },
+        "query": {
+          "cursor": ""
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 51,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [
+                "recipient@example.net"
+              ],
+              "recipients_cc": [
+                "copy@example.net"
+              ],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": true,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": true,
+              "is_starred": true,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T02:00:00Z",
+              "date_header": "2026-10-20T00:00:00Z",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Hello café",
+              "body_html": "<p>Hello café</p>",
+              "headers": {
+                "Subject": [
+                  "Hello café"
+                ],
+                "X-Trace": [
+                  "a",
+                  "b"
+                ]
+              },
+              "calendar_events": [
+                {
+                  "uid": "event-1"
+                }
+              ],
+              "received_tls": true,
+              "tls_version": "TLS1.3"
+            },
+            {
+              "id": 53,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 52,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": true,
+              "is_dsn": true,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Plain delivery",
+              "received_tls": false
+            }
+          ],
+          "pagination": {
+            "has_more": false,
+            "total": 3
+          }
+        }
+      }
+    },
+    "default_limit": {
+      "request": {
+        "path": {
+          "id": 1,
+          "folder": "INBOX"
+        },
+        "query": {
+          "limit": 10000
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 51,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [
+                "recipient@example.net"
+              ],
+              "recipients_cc": [
+                "copy@example.net"
+              ],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": true,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": true,
+              "is_starred": true,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T02:00:00Z",
+              "date_header": "2026-10-20T00:00:00Z",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Hello café",
+              "body_html": "<p>Hello café</p>",
+              "headers": {
+                "Subject": [
+                  "Hello café"
+                ],
+                "X-Trace": [
+                  "a",
+                  "b"
+                ]
+              },
+              "calendar_events": [
+                {
+                  "uid": "event-1"
+                }
+              ],
+              "received_tls": true,
+              "tls_version": "TLS1.3"
+            },
+            {
+              "id": 53,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 52,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": true,
+              "is_dsn": true,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Plain delivery",
+              "received_tls": false
+            }
+          ],
+          "pagination": {
+            "has_more": false,
+            "total": 3
+          }
+        }
+      },
+      "description": "An out-of-range limit retains the documented default of 50."
+    },
+    "max_limit": {
+      "request": {
+        "path": {
+          "id": 1,
+          "folder": "INBOX"
+        },
+        "query": {
+          "limit": 100
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 51,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [
+                "recipient@example.net"
+              ],
+              "recipients_cc": [
+                "copy@example.net"
+              ],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": true,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": true,
+              "is_starred": true,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T02:00:00Z",
+              "date_header": "2026-10-20T00:00:00Z",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Hello café",
+              "body_html": "<p>Hello café</p>",
+              "headers": {
+                "Subject": [
+                  "Hello café"
+                ],
+                "X-Trace": [
+                  "a",
+                  "b"
+                ]
+              },
+              "calendar_events": [
+                {
+                  "uid": "event-1"
+                }
+              ],
+              "received_tls": true,
+              "tls_version": "TLS1.3"
+            },
+            {
+              "id": 53,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 52,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": true,
+              "is_dsn": true,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Plain delivery",
+              "received_tls": false
+            }
+          ],
+          "pagination": {
+            "has_more": false,
+            "total": 3
+          }
+        }
+      }
+    },
+    "encoded_folder": {
+      "request": {
+        "path": {
+          "id": 1,
+          "folder": "Projects/2026 café"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 51,
+              "mailbox_id": 1,
+              "folder": "Projects/2026 café",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [
+                "recipient@example.net"
+              ],
+              "recipients_cc": [
+                "copy@example.net"
+              ],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": true,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": true,
+              "is_starred": true,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T02:00:00Z",
+              "date_header": "2026-10-20T00:00:00Z",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Hello café",
+              "body_html": "<p>Hello café</p>",
+              "headers": {
+                "Subject": [
+                  "Hello café"
+                ],
+                "X-Trace": [
+                  "a",
+                  "b"
+                ]
+              },
+              "calendar_events": [
+                {
+                  "uid": "event-1"
+                }
+              ],
+              "received_tls": true,
+              "tls_version": "TLS1.3"
+            },
+            {
+              "id": 53,
+              "mailbox_id": 1,
+              "folder": "Projects/2026 café",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 52,
+              "mailbox_id": 1,
+              "folder": "Projects/2026 café",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": true,
+              "is_dsn": true,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Plain delivery",
+              "received_tls": false
+            }
+          ],
+          "pagination": {
+            "has_more": false,
+            "total": 3
+          }
+        }
+      },
+      "summary": "Escaped hierarchy delimiters and UTF-8 reach the real folder lookup"
+    },
+    "unknown_folder": {
+      "request": {
+        "path": {
+          "id": 1,
+          "folder": "Unknown"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [],
+          "pagination": {
+            "has_more": false
+          }
+        }
+      }
+    },
+    "invalid_limit": {
+      "request": {
+        "path": {
+          "id": 1,
+          "folder": "INBOX"
+        },
+        "query": {
+          "limit": "bad"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Query parameters failed validation",
+            "details": {
+              "fields": {
+                "limit": "must be an integer"
+              }
+            }
+          }
+        }
+      }
+    },
+    "count_unavailable": {
+      "request": {
+        "path": {
+          "id": 5,
+          "folder": "INBOX"
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      },
+      "summary": "A failed total-count query is not a successful page"
+    }
+  },
+  "getThread": {
+    "found": {
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "thread/2026@example.net"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 52,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": true,
+              "is_dsn": true,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Plain delivery",
+              "received_tls": false
+            },
+            {
+              "id": 53,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 51,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [
+                "recipient@example.net"
+              ],
+              "recipients_cc": [
+                "copy@example.net"
+              ],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": true,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": true,
+              "is_starred": true,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T02:00:00Z",
+              "date_header": "2026-10-20T00:00:00Z",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Hello café",
+              "body_html": "<p>Hello café</p>",
+              "headers": {
+                "Subject": [
+                  "Hello café"
+                ],
+                "X-Trace": [
+                  "a",
+                  "b"
+                ]
+              },
+              "calendar_events": [
+                {
+                  "uid": "event-1"
+                }
+              ],
+              "received_tls": true,
+              "tls_version": "TLS1.3"
+            }
+          ]
+        }
+      },
+      "description": "Production routes load real credential/holder ceilings and map fixed message rows. Complete results cover public message fields, JSON recipients/headers/calendar data, TLS true/false/unknown, null dates and body omissions; raw source and unloaded mailbox metadata are omitted. Controlled SQL proves wiring, not PostgreSQL filtering or ordering.",
+      "summary": "A thread is read at its escaped identity in chronological order"
+    },
+    "primary": {
+      "request": {
+        "path": {
+          "id": 10,
+          "threadID": "thread/2026@example.net"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 52,
+              "mailbox_id": 10,
+              "folder": "INBOX",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": true,
+              "is_dsn": true,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Plain delivery",
+              "received_tls": false
+            },
+            {
+              "id": 53,
+              "mailbox_id": 10,
+              "folder": "INBOX",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 51,
+              "mailbox_id": 10,
+              "folder": "INBOX",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [
+                "recipient@example.net"
+              ],
+              "recipients_cc": [
+                "copy@example.net"
+              ],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": true,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": true,
+              "is_starred": true,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T02:00:00Z",
+              "date_header": "2026-10-20T00:00:00Z",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Hello café",
+              "body_html": "<p>Hello café</p>",
+              "headers": {
+                "Subject": [
+                  "Hello café"
+                ],
+                "X-Trace": [
+                  "a",
+                  "b"
+                ]
+              },
+              "calendar_events": [
+                {
+                  "uid": "event-1"
+                }
+              ],
+              "received_tls": true,
+              "tls_version": "TLS1.3"
+            }
+          ]
+        }
+      }
+    },
+    "domain_grant": {
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "thread/2026@example.net"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 52,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": true,
+              "is_dsn": true,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Plain delivery",
+              "received_tls": false
+            },
+            {
+              "id": 53,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 51,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [
+                "recipient@example.net"
+              ],
+              "recipients_cc": [
+                "copy@example.net"
+              ],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": true,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": true,
+              "is_starred": true,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T02:00:00Z",
+              "date_header": "2026-10-20T00:00:00Z",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Hello café",
+              "body_html": "<p>Hello café</p>",
+              "headers": {
+                "Subject": [
+                  "Hello café"
+                ],
+                "X-Trace": [
+                  "a",
+                  "b"
+                ]
+              },
+              "calendar_events": [
+                {
+                  "uid": "event-1"
+                }
+              ],
+              "received_tls": true,
+              "tls_version": "TLS1.3"
+            }
+          ]
+        }
+      }
+    },
+    "cookie_session": {
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "thread/2026@example.net"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 52,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": true,
+              "is_dsn": true,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Plain delivery",
+              "received_tls": false
+            },
+            {
+              "id": 53,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 51,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [
+                "recipient@example.net"
+              ],
+              "recipients_cc": [
+                "copy@example.net"
+              ],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": true,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": true,
+              "is_starred": true,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T02:00:00Z",
+              "date_header": "2026-10-20T00:00:00Z",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Hello café",
+              "body_html": "<p>Hello café</p>",
+              "headers": {
+                "Subject": [
+                  "Hello café"
+                ],
+                "X-Trace": [
+                  "a",
+                  "b"
+                ]
+              },
+              "calendar_events": [
+                {
+                  "uid": "event-1"
+                }
+              ],
+              "received_tls": true,
+              "tls_version": "TLS1.3"
+            }
+          ]
+        }
+      }
+    },
+    "app_password": {
+      "request": {
+        "path": {
+          "id": 10,
+          "threadID": "thread/2026@example.net"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 52,
+              "mailbox_id": 10,
+              "folder": "INBOX",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": true,
+              "is_dsn": true,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Plain delivery",
+              "received_tls": false
+            },
+            {
+              "id": 53,
+              "mailbox_id": 10,
+              "folder": "INBOX",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 51,
+              "mailbox_id": 10,
+              "folder": "INBOX",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [
+                "recipient@example.net"
+              ],
+              "recipients_cc": [
+                "copy@example.net"
+              ],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": true,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": true,
+              "is_starred": true,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T02:00:00Z",
+              "date_header": "2026-10-20T00:00:00Z",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Hello café",
+              "body_html": "<p>Hello café</p>",
+              "headers": {
+                "Subject": [
+                  "Hello café"
+                ],
+                "X-Trace": [
+                  "a",
+                  "b"
+                ]
+              },
+              "calendar_events": [
+                {
+                  "uid": "event-1"
+                }
+              ],
+              "received_tls": true,
+              "tls_version": "TLS1.3"
+            }
+          ]
+        }
+      }
+    },
+    "key_read": {
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "thread/2026@example.net"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 52,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": true,
+              "is_dsn": true,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Plain delivery",
+              "received_tls": false
+            },
+            {
+              "id": 53,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 51,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [
+                "recipient@example.net"
+              ],
+              "recipients_cc": [
+                "copy@example.net"
+              ],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": true,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": true,
+              "is_starred": true,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T02:00:00Z",
+              "date_header": "2026-10-20T00:00:00Z",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Hello café",
+              "body_html": "<p>Hello café</p>",
+              "headers": {
+                "Subject": [
+                  "Hello café"
+                ],
+                "X-Trace": [
+                  "a",
+                  "b"
+                ]
+              },
+              "calendar_events": [
+                {
+                  "uid": "event-1"
+                }
+              ],
+              "received_tls": true,
+              "tls_version": "TLS1.3"
+            }
+          ]
+        }
+      }
+    },
+    "key_domain": {
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "thread/2026@example.net"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 52,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-52@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": true,
+              "is_dsn": true,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Plain delivery",
+              "received_tls": false
+            },
+            {
+              "id": 53,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-53@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [],
+              "recipients_cc": [],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": false,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T01:00:00Z",
+              "date_header": null,
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 51,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "<message-51@example.net>",
+              "in_reply_to": "<parent@example.net>",
+              "references": "<parent@example.net>",
+              "thread_id": "thread/2026@example.net",
+              "sender": "sender@example.net",
+              "sender_name": "Sender café",
+              "recipients_to": [
+                "recipient@example.net"
+              ],
+              "recipients_cc": [
+                "copy@example.net"
+              ],
+              "subject": "Subject café",
+              "size_bytes": 80,
+              "raw_size": 128,
+              "has_attachments": true,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": true,
+              "is_starred": true,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T02:00:00Z",
+              "date_header": "2026-10-20T00:00:00Z",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z",
+              "body_text": "Hello café",
+              "body_html": "<p>Hello café</p>",
+              "headers": {
+                "Subject": [
+                  "Hello café"
+                ],
+                "X-Trace": [
+                  "a",
+                  "b"
+                ]
+              },
+              "calendar_events": [
+                {
+                  "uid": "event-1"
+                }
+              ],
+              "received_tls": true,
+              "tls_version": "TLS1.3"
+            }
+          ]
+        }
+      }
+    },
+    "empty": {
+      "request": {
+        "path": {
+          "id": 2,
+          "threadID": "thread/2026@example.net"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": []
+        }
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "thread/2026@example.net"
+        }
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "setup_required": {
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "thread/2026@example.net"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        }
+      }
+    },
+    "rate_limited": {
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "thread/2026@example.net"
+        }
+      },
+      "response": {
+        "status": 429,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        }
+      }
+    },
+    "request_too_large": {
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "thread/2026@example.net"
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0,
+          "threadID": "thread/2026@example.net"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        }
+      }
+    },
+    "invalid_format": {
+      "request": {
+        "path": {
+          "id": "not-an-integer",
+          "threadID": "thread/2026@example.net"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "thread/2026@example.net"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647,
+          "threadID": "thread/2026@example.net"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "write_only": {
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "thread/2026@example.net"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "key_wrong_scope": {
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "thread/2026@example.net"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "key_write_only": {
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "thread/2026@example.net"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "key_holder_missing": {
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "thread/2026@example.net"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "inaccessible": {
+      "request": {
+        "path": {
+          "id": 20,
+          "threadID": "thread/2026@example.net"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "app_password_other": {
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "thread/2026@example.net"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "target_unavailable": {
+      "request": {
+        "path": {
+          "id": 3,
+          "threadID": "thread/2026@example.net"
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "content_unavailable": {
+      "request": {
+        "path": {
+          "id": 4,
+          "threadID": "thread/2026@example.net"
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to retrieve thread"
+          }
+        }
+      }
+    },
+    "grant_unavailable": {
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "thread/2026@example.net"
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "ownership_unavailable": {
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "thread/2026@example.net"
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "unknown_thread": {
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "unknown-thread"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": []
+        }
+      },
+      "summary": "An unknown thread on an accessible account is an empty list"
+    }
   }
 }

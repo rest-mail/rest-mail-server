@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -11,8 +12,8 @@ import (
 	"github.com/restmail/restmail/internal/db/models"
 )
 
-// A message is written as the model wrote it, its raw source never: the gateways, webmail and
-// the mobile app all read these bytes.
+// Public message fields retain their values. The raw source and an unloaded
+// mailbox association are omitted rather than exposing a fictitious mailbox.
 func TestMessageResponseJSONParity(t *testing.T) {
 	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	encrypted := true
@@ -39,13 +40,32 @@ func TestMessageResponseJSONParity(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if string(old) != string(current) {
+			var oldFields, currentFields map[string]json.RawMessage
+			if err := json.Unmarshal(old, &oldFields); err != nil {
+				t.Fatal(err)
+			}
+			if err := json.Unmarshal(current, &currentFields); err != nil {
+				t.Fatal(err)
+			}
+			delete(oldFields, "mailbox") // These two model fixtures have no loaded mailbox.
+			if !reflect.DeepEqual(oldFields, currentFields) {
 				t.Fatalf("response JSON changed:\nold %s\nnew %s", old, current)
 			}
 			if strings.Contains(string(current), "secret-raw") {
 				t.Fatalf("raw message answered: %s", current)
 			}
 		})
+	}
+}
+
+func TestMessageLoadedMailboxIsPreserved(t *testing.T) {
+	got := messageOf(models.Message{ID: 3, MailboxID: 4,
+		Mailbox: models.Mailbox{ID: 4, Address: "owner@example.com", DisplayName: "Owner", Active: true}})
+	if got.Mailbox == nil || got.Mailbox.ID != 4 || got.Mailbox.Address != "owner@example.com" || got.Mailbox.DisplayName != "Owner" || !got.Mailbox.Active {
+		t.Fatalf("loaded mailbox lost: %+v", got.Mailbox)
+	}
+	if got.Mailbox.Domain != nil {
+		t.Fatal("unloaded parent domain was invented")
 	}
 }
 
