@@ -738,7 +738,7 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 		// decide its TLS: MTA-STS must not override a DANE verdict (RFC 8461 §2).
 		var records []dane.TLSA
 		if daneSecure {
-			if records, lastErr = w.daneRecords(host); lastErr != nil {
+			if records, lastErr = w.daneRecords(item.Domain, host, !item.TLSReport); lastErr != nil {
 				transientErr = lastErr
 				continue
 			}
@@ -1497,6 +1497,9 @@ func (w *Worker) deliverSMTPWith(addr, host string, item models.OutboundQueue, s
 	if err != nil {
 		return err
 	}
+	if records != nil && !item.TLSReport {
+		w.recordDANESession(item.Domain, host, records, link, time.Now())
+	}
 	if records != nil && (link.tlsErr != nil || link.security != transportAuthenticated) {
 		_ = link.client.Close()
 		return daneRefusal(host, link)
@@ -1515,8 +1518,7 @@ func (w *Worker) deliverSMTPWith(addr, host string, item models.OutboundQueue, s
 	}
 	// What this session's TLS came to, for the recipient's TLS-RPT report
 	// (RFC 8460): a report itself is not counted (§3).
-	// A DANE session is reported with the tlsa policy type, which is not recorded yet:
-	// leave it out rather than report it as having no policy.
+	// A DANE session was recorded above, with the tlsa policy type.
 	if !item.TLSReport && records == nil {
 		w.recordTLSSession(item.Domain, host, stsPolicy, stsErr, link, time.Now())
 	}
