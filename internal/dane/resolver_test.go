@@ -43,7 +43,7 @@ func startFake(t *testing.T, replyFor func(q dnsmessage.Question) reply) *fakeRe
 		t.Fatal(err)
 	}
 	f := &fakeResolver{addr: udp.LocalAddr().String(), replyFor: replyFor}
-	t.Cleanup(func() { udp.Close(); tcp.Close() })
+	t.Cleanup(func() { _ = udp.Close(); _ = tcp.Close() })
 	go func() {
 		buf := make([]byte, 65535)
 		for {
@@ -70,7 +70,7 @@ func startFake(t *testing.T, replyFor func(q dnsmessage.Question) reply) *fakeRe
 					_, _ = conn.Write(framed)
 				}
 			}
-			conn.Close()
+			_ = conn.Close()
 		}
 	}()
 	return f

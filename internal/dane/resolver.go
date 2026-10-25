@@ -159,7 +159,7 @@ func (r *Resolver) exchange(ctx context.Context, network string, query []byte) (
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	if deadline, ok := ctx.Deadline(); ok {
 		_ = conn.SetDeadline(deadline)
 	}
