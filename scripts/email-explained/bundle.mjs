@@ -25,6 +25,7 @@ import { copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promi
 import { basename, dirname, join, posix, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { Marked } from "marked";
+import { withLook } from "./look.mjs";
 
 export const FORMAT = 1;
 const REPOSITORY = "rest-mail/rest-mail-server";
@@ -230,7 +231,8 @@ async function main() {
       env: { ...process.env, ARCHIFY_UPDATE_CHECK_DISABLED: "1" },
       stdio: ["ignore", "ignore", "inherit"],
     });
-    const { html: page, fonts } = extractFonts(await readFile(join(out, html), "utf8"));
+    // In the site's look (look.mjs), the same as the static image.
+    const { html: page, fonts } = extractFonts(withLook(await readFile(join(out, html), "utf8")));
     await writeFile(join(out, html), page);
     await mkdir(join(out, "diagrams", "fonts"), { recursive: true });
     for (const [file, bytes] of fonts) await writeFile(join(out, "diagrams", file), bytes);

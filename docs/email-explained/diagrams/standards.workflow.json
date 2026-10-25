@@ -2,6 +2,7 @@
   "schema_version": 2,
   "diagram_type": "workflow",
   "meta": {
+    "visual_preset": "editorial",
     "title": "Forty years of email standards, each added without breaking the rest",
     "locale": "en",
     "quality_profile": "showcase",

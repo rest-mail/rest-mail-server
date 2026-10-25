@@ -2,6 +2,7 @@
   "schema_version": 1,
   "diagram_type": "tree",
   "meta": {
+    "visual_preset": "editorial",
     "title": "One email, taken apart: envelope, header and MIME body",
     "locale": "en",
     "quality_profile": "showcase",

@@ -2,6 +2,7 @@
   "schema_version": 1,
   "diagram_type": "tree",
   "meta": {
+    "visual_preset": "editorial",
     "title": "What one domain needs for mail that is delivered and trusted",
     "locale": "en",
     "quality_profile": "showcase",

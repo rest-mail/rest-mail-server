@@ -2,6 +2,7 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
+    "visual_preset": "editorial",
     "title": "REST Mail: protocol gateways in front of one REST API",
     "locale": "en",
     "quality_profile": "showcase",

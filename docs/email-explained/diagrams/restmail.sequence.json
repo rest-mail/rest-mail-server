@@ -2,6 +2,7 @@
   "schema_version": 1,
   "diagram_type": "sequence",
   "meta": {
+    "visual_preset": "editorial",
     "title": "RESTMAIL: one REST Mail server delivering to another over HTTPS",
     "locale": "en",
     "quality_profile": "showcase",

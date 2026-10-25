@@ -2,6 +2,7 @@
   "schema_version": 2,
   "diagram_type": "workflow",
   "meta": {
+    "visual_preset": "editorial",
     "title": "Checking SPF: is this server allowed to send for example.com?",
     "locale": "en",
     "quality_profile": "showcase",

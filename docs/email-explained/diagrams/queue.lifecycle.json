@@ -2,6 +2,7 @@
   "schema_version": 3,
   "diagram_type": "lifecycle",
   "meta": {
+    "visual_preset": "editorial",
     "title": "A queued message: delivered, retried, or bounced",
     "locale": "en",
     "quality_profile": "showcase",

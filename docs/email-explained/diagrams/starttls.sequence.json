@@ -2,6 +2,7 @@
   "schema_version": 1,
   "diagram_type": "sequence",
   "meta": {
+    "visual_preset": "editorial",
     "title": "STARTTLS stripping: why an optional upgrade is not enough",
     "locale": "en",
     "quality_profile": "showcase",

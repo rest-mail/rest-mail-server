@@ -2,6 +2,7 @@
   "schema_version": 1,
   "diagram_type": "sequence",
   "meta": {
+    "visual_preset": "editorial",
     "title": "One-click unsubscribe (RFC 8058): from the button to the sender's list",
     "locale": "en",
     "quality_profile": "showcase",
