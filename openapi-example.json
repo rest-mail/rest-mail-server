@@ -16625,5 +16625,1578 @@
       },
       "summary": "Credential management accepts no API key, even one valid for mail reads"
     }
+  },
+  "listContacts": {
+    "found": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 31,
+              "mailbox_id": 1,
+              "email": "\"a100%_\\\\\"@example.com",
+              "name": "Friend café",
+              "trust_level": "trusted",
+              "source": "manual",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 32,
+              "mailbox_id": 1,
+              "email": "z@example.com",
+              "name": "Blocked",
+              "trust_level": "blocked",
+              "source": "import",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          ],
+          "pagination": {
+            "total": 2,
+            "has_more": false
+          }
+        }
+      },
+      "description": "The production route loads current grants and maps fixed SQL rows through the real handler. Controlled rows prove wiring and response grouping, not PostgreSQL filtering, ordering or persistence."
+    },
+    "primary": {
+      "request": {
+        "path": {
+          "id": 10
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 31,
+              "mailbox_id": 10,
+              "email": "\"a100%_\\\\\"@example.com",
+              "name": "Friend café",
+              "trust_level": "trusted",
+              "source": "manual",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 32,
+              "mailbox_id": 10,
+              "email": "z@example.com",
+              "name": "Blocked",
+              "trust_level": "blocked",
+              "source": "import",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          ],
+          "pagination": {
+            "total": 2,
+            "has_more": false
+          }
+        }
+      }
+    },
+    "domain_grant": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 31,
+              "mailbox_id": 1,
+              "email": "\"a100%_\\\\\"@example.com",
+              "name": "Friend café",
+              "trust_level": "trusted",
+              "source": "manual",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 32,
+              "mailbox_id": 1,
+              "email": "z@example.com",
+              "name": "Blocked",
+              "trust_level": "blocked",
+              "source": "import",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          ],
+          "pagination": {
+            "total": 2,
+            "has_more": false
+          }
+        }
+      },
+      "summary": "A domain-scoped mail-read grant reaches this account"
+    },
+    "cookie_session": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 31,
+              "mailbox_id": 1,
+              "email": "\"a100%_\\\\\"@example.com",
+              "name": "Friend café",
+              "trust_level": "trusted",
+              "source": "manual",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 32,
+              "mailbox_id": 1,
+              "email": "z@example.com",
+              "name": "Blocked",
+              "trust_level": "blocked",
+              "source": "import",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          ],
+          "pagination": {
+            "total": 2,
+            "has_more": false
+          }
+        }
+      }
+    },
+    "app_password": {
+      "request": {
+        "path": {
+          "id": 10
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 31,
+              "mailbox_id": 10,
+              "email": "\"a100%_\\\\\"@example.com",
+              "name": "Friend café",
+              "trust_level": "trusted",
+              "source": "manual",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 32,
+              "mailbox_id": 10,
+              "email": "z@example.com",
+              "name": "Blocked",
+              "trust_level": "blocked",
+              "source": "import",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          ],
+          "pagination": {
+            "total": 2,
+            "has_more": false
+          }
+        }
+      },
+      "summary": "An actual HTTP Basic app password reads its own account"
+    },
+    "key_read": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 31,
+              "mailbox_id": 1,
+              "email": "\"a100%_\\\\\"@example.com",
+              "name": "Friend café",
+              "trust_level": "trusted",
+              "source": "manual",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 32,
+              "mailbox_id": 1,
+              "email": "z@example.com",
+              "name": "Blocked",
+              "trust_level": "blocked",
+              "source": "import",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          ],
+          "pagination": {
+            "total": 2,
+            "has_more": false
+          }
+        }
+      },
+      "summary": "A real API key and its holder both permit this mailbox read"
+    },
+    "key_domain": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 31,
+              "mailbox_id": 1,
+              "email": "\"a100%_\\\\\"@example.com",
+              "name": "Friend café",
+              "trust_level": "trusted",
+              "source": "manual",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 32,
+              "mailbox_id": 1,
+              "email": "z@example.com",
+              "name": "Blocked",
+              "trust_level": "blocked",
+              "source": "import",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          ],
+          "pagination": {
+            "total": 2,
+            "has_more": false
+          }
+        }
+      }
+    },
+    "empty": {
+      "request": {
+        "path": {
+          "id": 2
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [],
+          "pagination": {
+            "has_more": false
+          }
+        }
+      },
+      "summary": "An accessible account without rows returns an empty array"
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "setup_required": {
+      "summary": "A session still in setup cannot use account reads",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        }
+      }
+    },
+    "rate_limited": {
+      "summary": "Repeated malformed API-key guesses exhaust the real refusal budget",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        }
+      },
+      "description": "The test primes a one-token per-peer budget with an invalid key, then repeats it without sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After."
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        }
+      }
+    },
+    "invalid_format": {
+      "summary": "The domain ID cannot bind to an integer",
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "A missing account retains the existing privacy refusal",
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      },
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller."
+    },
+    "write_only": {
+      "summary": "A mail-write grant alone does not permit a read",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      },
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller."
+    },
+    "key_wrong_scope": {
+      "summary": "A valid API key scoped to another mailbox is refused",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      },
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller."
+    },
+    "key_write_only": {
+      "summary": "A valid API key with only mail-write permission cannot read",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      },
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller."
+    },
+    "key_holder_missing": {
+      "summary": "A valid key cannot exceed its holder's current grants",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      },
+      "description": "The production verifier accepts the scoped key, but the actual grant loader supplies only mail:write for its holder on this account. The old key permission cannot supply the missing mail:read capability."
+    },
+    "inaccessible": {
+      "summary": "An inaccessible account and a missing one have the same refusal",
+      "request": {
+        "path": {
+          "id": 20
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      },
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller."
+    },
+    "app_password_other": {
+      "summary": "An app password cannot read a linked account",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      },
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller."
+    },
+    "target_unavailable": {
+      "summary": "A dependency fault is an internal error, not an empty result or a permission decision",
+      "request": {
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "content_unavailable": {
+      "summary": "A dependency fault is an internal error, not an empty result or a permission decision",
+      "request": {
+        "path": {
+          "id": 4
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to list contacts"
+          }
+        }
+      }
+    },
+    "grant_unavailable": {
+      "summary": "A dependency fault is an internal error, not an empty result or a permission decision",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "ownership_unavailable": {
+      "summary": "A dependency fault is an internal error, not an empty result or a permission decision",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "count_unavailable": {
+      "summary": "A dependency fault is an internal error, not an empty result or a permission decision",
+      "request": {
+        "path": {
+          "id": 5
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to list contacts"
+          }
+        }
+      }
+    },
+    "filtered": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "trust_level": "trusted",
+          "search": "100%_\\"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 31,
+              "mailbox_id": 1,
+              "email": "\"a100%_\\\\\"@example.com",
+              "name": "Friend café",
+              "trust_level": "trusted",
+              "source": "manual",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          ],
+          "pagination": {
+            "total": 1,
+            "has_more": false
+          }
+        }
+      },
+      "summary": "Trust and literal search filters reach both the count and row queries"
+    },
+    "paged": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "limit": 1,
+          "offset": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 32,
+              "mailbox_id": 1,
+              "email": "z@example.com",
+              "name": "Blocked",
+              "trust_level": "blocked",
+              "source": "import",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          ],
+          "pagination": {
+            "total": 2,
+            "has_more": false
+          }
+        }
+      },
+      "summary": "Offset pagination retains the total count"
+    },
+    "clamped": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "limit": 10000,
+          "offset": -10
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 31,
+              "mailbox_id": 1,
+              "email": "\"a100%_\\\\\"@example.com",
+              "name": "Friend café",
+              "trust_level": "trusted",
+              "source": "manual",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 32,
+              "mailbox_id": 1,
+              "email": "z@example.com",
+              "name": "Blocked",
+              "trust_level": "blocked",
+              "source": "import",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          ],
+          "pagination": {
+            "total": 2,
+            "has_more": false
+          }
+        }
+      },
+      "summary": "An excessive limit is capped and a negative offset becomes zero"
+    },
+    "blank_search": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "search": ""
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 31,
+              "mailbox_id": 1,
+              "email": "\"a100%_\\\\\"@example.com",
+              "name": "Friend café",
+              "trust_level": "trusted",
+              "source": "manual",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 32,
+              "mailbox_id": 1,
+              "email": "z@example.com",
+              "name": "Blocked",
+              "trust_level": "blocked",
+              "source": "import",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          ],
+          "pagination": {
+            "total": 2,
+            "has_more": false
+          }
+        }
+      },
+      "summary": "An explicit blank search does not add a LIKE filter"
+    },
+    "invalid_trust": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "trust_level": "unknown"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Query parameters failed validation",
+            "details": {
+              "fields": {
+                "trust_level": "must be one of auto, trusted, blocked"
+              }
+            }
+          }
+        }
+      }
+    },
+    "invalid_limit": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "limit": "bad"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Query parameters failed validation",
+            "details": {
+              "fields": {
+                "limit": "must be an integer"
+              }
+            }
+          }
+        }
+      }
+    },
+    "first_page": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "limit": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 31,
+              "mailbox_id": 1,
+              "email": "\"a100%_\\\\\"@example.com",
+              "name": "Friend café",
+              "trust_level": "trusted",
+              "source": "manual",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          ],
+          "pagination": {
+            "total": 2,
+            "has_more": true
+          }
+        }
+      },
+      "summary": "The first page retains the total and reports more results"
+    }
+  },
+  "listCalendarEvents": {
+    "found": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "uid": "event-a",
+              "method": "REQUEST",
+              "status": "CONFIRMED",
+              "summary": "Latest café",
+              "sequence": 3,
+              "is_cancelled": true,
+              "message_id": 77,
+              "versions": 3
+            },
+            {
+              "uid": "event-b",
+              "method": "REQUEST",
+              "status": "CANCELLED",
+              "summary": "Cancelled",
+              "sequence": 1,
+              "is_cancelled": true,
+              "versions": 1
+            },
+            {
+              "uid": "event-c",
+              "method": "REQUEST",
+              "status": "TENTATIVE",
+              "summary": "Tentative",
+              "sequence": 0,
+              "is_cancelled": false,
+              "message_id": 88,
+              "versions": 1
+            }
+          ]
+        }
+      },
+      "description": "The production route loads current grants and maps fixed SQL rows through the real handler. Controlled rows prove wiring and response grouping, not PostgreSQL filtering, ordering or persistence. Existing cancellation aggregation is preserved: an older CANCEL marks the group, a CANCELLED latest status also marks it, and an absent message ID is omitted.",
+      "summary": "Versions are grouped by UID, retaining the latest fields and counting older versions"
+    },
+    "primary": {
+      "request": {
+        "path": {
+          "id": 10
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "uid": "event-a",
+              "method": "REQUEST",
+              "status": "CONFIRMED",
+              "summary": "Latest café",
+              "sequence": 3,
+              "is_cancelled": true,
+              "message_id": 77,
+              "versions": 3
+            },
+            {
+              "uid": "event-b",
+              "method": "REQUEST",
+              "status": "CANCELLED",
+              "summary": "Cancelled",
+              "sequence": 1,
+              "is_cancelled": true,
+              "versions": 1
+            },
+            {
+              "uid": "event-c",
+              "method": "REQUEST",
+              "status": "TENTATIVE",
+              "summary": "Tentative",
+              "sequence": 0,
+              "is_cancelled": false,
+              "message_id": 88,
+              "versions": 1
+            }
+          ]
+        }
+      }
+    },
+    "domain_grant": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "uid": "event-a",
+              "method": "REQUEST",
+              "status": "CONFIRMED",
+              "summary": "Latest café",
+              "sequence": 3,
+              "is_cancelled": true,
+              "message_id": 77,
+              "versions": 3
+            },
+            {
+              "uid": "event-b",
+              "method": "REQUEST",
+              "status": "CANCELLED",
+              "summary": "Cancelled",
+              "sequence": 1,
+              "is_cancelled": true,
+              "versions": 1
+            },
+            {
+              "uid": "event-c",
+              "method": "REQUEST",
+              "status": "TENTATIVE",
+              "summary": "Tentative",
+              "sequence": 0,
+              "is_cancelled": false,
+              "message_id": 88,
+              "versions": 1
+            }
+          ]
+        }
+      },
+      "summary": "A domain-scoped mail-read grant reaches this account"
+    },
+    "cookie_session": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "uid": "event-a",
+              "method": "REQUEST",
+              "status": "CONFIRMED",
+              "summary": "Latest café",
+              "sequence": 3,
+              "is_cancelled": true,
+              "message_id": 77,
+              "versions": 3
+            },
+            {
+              "uid": "event-b",
+              "method": "REQUEST",
+              "status": "CANCELLED",
+              "summary": "Cancelled",
+              "sequence": 1,
+              "is_cancelled": true,
+              "versions": 1
+            },
+            {
+              "uid": "event-c",
+              "method": "REQUEST",
+              "status": "TENTATIVE",
+              "summary": "Tentative",
+              "sequence": 0,
+              "is_cancelled": false,
+              "message_id": 88,
+              "versions": 1
+            }
+          ]
+        }
+      }
+    },
+    "app_password": {
+      "request": {
+        "path": {
+          "id": 10
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "uid": "event-a",
+              "method": "REQUEST",
+              "status": "CONFIRMED",
+              "summary": "Latest café",
+              "sequence": 3,
+              "is_cancelled": true,
+              "message_id": 77,
+              "versions": 3
+            },
+            {
+              "uid": "event-b",
+              "method": "REQUEST",
+              "status": "CANCELLED",
+              "summary": "Cancelled",
+              "sequence": 1,
+              "is_cancelled": true,
+              "versions": 1
+            },
+            {
+              "uid": "event-c",
+              "method": "REQUEST",
+              "status": "TENTATIVE",
+              "summary": "Tentative",
+              "sequence": 0,
+              "is_cancelled": false,
+              "message_id": 88,
+              "versions": 1
+            }
+          ]
+        }
+      },
+      "summary": "An actual HTTP Basic app password reads its own account"
+    },
+    "key_read": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "uid": "event-a",
+              "method": "REQUEST",
+              "status": "CONFIRMED",
+              "summary": "Latest café",
+              "sequence": 3,
+              "is_cancelled": true,
+              "message_id": 77,
+              "versions": 3
+            },
+            {
+              "uid": "event-b",
+              "method": "REQUEST",
+              "status": "CANCELLED",
+              "summary": "Cancelled",
+              "sequence": 1,
+              "is_cancelled": true,
+              "versions": 1
+            },
+            {
+              "uid": "event-c",
+              "method": "REQUEST",
+              "status": "TENTATIVE",
+              "summary": "Tentative",
+              "sequence": 0,
+              "is_cancelled": false,
+              "message_id": 88,
+              "versions": 1
+            }
+          ]
+        }
+      },
+      "summary": "A real API key and its holder both permit this mailbox read"
+    },
+    "key_domain": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "uid": "event-a",
+              "method": "REQUEST",
+              "status": "CONFIRMED",
+              "summary": "Latest café",
+              "sequence": 3,
+              "is_cancelled": true,
+              "message_id": 77,
+              "versions": 3
+            },
+            {
+              "uid": "event-b",
+              "method": "REQUEST",
+              "status": "CANCELLED",
+              "summary": "Cancelled",
+              "sequence": 1,
+              "is_cancelled": true,
+              "versions": 1
+            },
+            {
+              "uid": "event-c",
+              "method": "REQUEST",
+              "status": "TENTATIVE",
+              "summary": "Tentative",
+              "sequence": 0,
+              "is_cancelled": false,
+              "message_id": 88,
+              "versions": 1
+            }
+          ]
+        }
+      }
+    },
+    "empty": {
+      "request": {
+        "path": {
+          "id": 2
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": []
+        }
+      },
+      "summary": "An accessible account without rows returns an empty array"
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "setup_required": {
+      "summary": "A session still in setup cannot use account reads",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        }
+      }
+    },
+    "rate_limited": {
+      "summary": "Repeated malformed API-key guesses exhaust the real refusal budget",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        }
+      },
+      "description": "The test primes a one-token per-peer budget with an invalid key, then repeats it without sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After."
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        }
+      }
+    },
+    "invalid_format": {
+      "summary": "The domain ID cannot bind to an integer",
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "A missing account retains the existing privacy refusal",
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      },
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller."
+    },
+    "write_only": {
+      "summary": "A mail-write grant alone does not permit a read",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      },
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller."
+    },
+    "key_wrong_scope": {
+      "summary": "A valid API key scoped to another mailbox is refused",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      },
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller."
+    },
+    "key_write_only": {
+      "summary": "A valid API key with only mail-write permission cannot read",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      },
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller."
+    },
+    "key_holder_missing": {
+      "summary": "A valid key cannot exceed its holder's current grants",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      },
+      "description": "The production verifier accepts the scoped key, but the actual grant loader supplies only mail:write for its holder on this account. The old key permission cannot supply the missing mail:read capability."
+    },
+    "inaccessible": {
+      "summary": "An inaccessible account and a missing one have the same refusal",
+      "request": {
+        "path": {
+          "id": 20
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      },
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller."
+    },
+    "app_password_other": {
+      "summary": "An app password cannot read a linked account",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      },
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller."
+    },
+    "target_unavailable": {
+      "summary": "A dependency fault is an internal error, not an empty result or a permission decision",
+      "request": {
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "content_unavailable": {
+      "summary": "A dependency fault is an internal error, not an empty result or a permission decision",
+      "request": {
+        "path": {
+          "id": 4
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "grant_unavailable": {
+      "summary": "A dependency fault is an internal error, not an empty result or a permission decision",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "ownership_unavailable": {
+      "summary": "A dependency fault is an internal error, not an empty result or a permission decision",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    }
   }
 }
