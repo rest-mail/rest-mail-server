@@ -25,12 +25,15 @@ on:
     types: [opened, reopened, synchronize, ready_for_review, edited]
   push:
     branches: [main]
+  # `Check native auto-merge configuration` is a required check, so it has to report on
+  # each group the merge queue on main tests (#825). Nothing is armed or updated then.
+  merge_group:
 
 # Nothing here uses GITHUB_TOKEN, so it is given nothing.
 permissions: {}
 
 concurrency:
-  group: auto-merge-${{ github.event.pull_request.number || 'main' }}
+  group: auto-merge-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 jobs:
