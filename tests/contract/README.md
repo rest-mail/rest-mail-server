@@ -1,9 +1,10 @@
 # Contract tests
 
-[vertrag](https://github.com/antimatter-studios/vertrag) sends every request
-the generated `/api/docs/openapi.json` documents to a running API and checks
-each answer against what the spec promises: the status, the headers and the
-body's schema (#376).
+[vertrag](https://github.com/antimatter-studios/vertrag) sends the selected
+contract requests to a running API and checks each answer against the spec's
+status, headers and body schema (#376). Every run saves the served
+`/api/docs/openapi.json`; the primary phases still use `openapi.yaml` until
+#670 completes the generated-description switch, as explained below.
 
 ## Where it runs
 
@@ -666,21 +667,27 @@ reports without the surface gate and the baseline, which are about the whole API
 The secret scan also runs locally, including after a failing examples gate.
 The API key proof and every Vertrag phase honor `CONTRACT_ENDPOINT`. A fetch
 failure stops the run. The phases themselves still read `openapi.yaml`: the
-generated description gives no example to most path and required query
-parameters, and Vertrag builds no request without one. The saved description is
-published with the reports, and #670 moves the phases onto it once every
-parameter carries its example. `openapi.yaml` is also the independent oracle for
+saved generated description is published with the reports, while #670 tracks
+the switch and its live contract proof. Required parameter examples were added
+in #851 and are held by `TestEveryRequiredParameterHasAnExample`; they are no
+longer the blocker. `openapi.yaml` remains the independent oracle for
 `chore contract:diff`.
 
 When the shared principal fixture is absent, `chore contract` runs only
-`TestContractPrincipals` from the E2E suite to create it. CI reuses the fixture
-its earlier E2E stages created. Lifecycle and scope gates remain #626.
+`TestContractPrincipals` from the E2E suite to create it, using
+`CONTRACT_ENDPOINT` as that test's `API_BASE_URL`. CI reuses the fixture its
+earlier E2E stages created. The endpoint override names the same disposable
+`restmail.test` topology: fixture resets still run in its local API container;
+it does not turn this into a check for arbitrary or production servers.
+Lifecycle and scope gates remain #626.
 
 Each phase writes JUnit, JSON, HTML and Markdown to `.cache/contract/` (`examples.html`,
 `coverage.md`, …), and the run ends with a summary, also in
 `.cache/contract/summary.md`. The summary includes Vertrag's own operation
 counts and each operation/status exclusion with its reason; it also runs when
-a gate fails:
+a gate fails. The complete command prints it once, after the authorization
+report. Standalone gate and fuzz commands summarize only their own phases,
+so an earlier fuzz report cannot appear in a later gate verdict:
 
 ```
 | Phase | Transactions | Passed | Failed | Skipped |

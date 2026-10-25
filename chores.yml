@@ -581,10 +581,12 @@ tasks:
         set -eu
         if [ -z "${CONTRACT_ENDPOINT:-}" ]; then chore e2e:up; fi
         if [ ! -s .cache/contract-principals.json ]; then
-          E2E_REQUIRE_STACK=1 chore test:e2e -- -run '^TestContractPrincipals$'
+          API_BASE_URL="${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}" E2E_REQUIRE_STACK=1 chore test:e2e -- -run '^TestContractPrincipals$'
         fi
         chore test:contract-fixtures
         chore test:contract-api-keys
+        export CONTRACT_DEFER_SUMMARY=1
+        trap 'python3 tests/contract/summary.py .cache/contract examples coverage authorization' EXIT
         code=0
         tests/contract/run.sh gate {{.CLI_ARGS}} || code=$?
         scan=0
