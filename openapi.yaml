@@ -11439,6 +11439,10 @@ components:
     # ─────────────────────────────────────────────────────────────
     Alias:
       type: object
+      description: >-
+        The optional domain association is included only when loaded and readable
+        with domains:read. Redacted or unloaded domains are omitted, and private
+        DKIM keys have no public field.
       required: [id, domain_id, source_address, destination_address, active, created_at]
       properties:
         id:
