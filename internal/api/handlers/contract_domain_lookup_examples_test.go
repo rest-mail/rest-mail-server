@@ -73,7 +73,11 @@ func TestDomainLookups_DocumentedMissingExamples(t *testing.T) {
 				t.Fatalf("unexpected operation or parameters: %+v", op)
 			}
 			parameter := op.Parameters[0]
-			if parameter.Name != "id" || parameter.In != "path" || !parameter.Required || len(parameter.Examples) != 2 {
+			parameterCount, refusalCount := 2, 1
+			if tc.operation == "getMtaStsPolicy" {
+				parameterCount, refusalCount = 3, 2
+			}
+			if parameter.Name != "id" || parameter.In != "path" || !parameter.Required || len(parameter.Examples) != parameterCount {
 				t.Fatalf("unexpected ID parameter: %+v", parameter)
 			}
 			missing := parameter.Examples["missing"].Value
@@ -82,7 +86,7 @@ func TestDomainLookups_DocumentedMissingExamples(t *testing.T) {
 			}
 			examples := op.Responses["404"].Content["application/json"].Examples
 			want := map[string]interface{}{"error": map[string]interface{}{"code": tc.code, "message": "Domain not found"}}
-			if len(examples) != 1 || !reflect.DeepEqual(jsonValue(t, examples["missing"].Value), want) {
+			if len(examples) != refusalCount || !reflect.DeepEqual(jsonValue(t, examples["missing"].Value), want) {
 				t.Fatalf("unexpected 404 examples: %+v", examples)
 			}
 

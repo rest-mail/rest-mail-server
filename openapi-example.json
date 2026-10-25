@@ -1686,6 +1686,22 @@
           }
         }
       }
+    },
+    "policy_absent": {
+      "request": {
+        "path": {
+          "id": 2147483646
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "No MTA-STS policy found for this domain"
+          }
+        }
+      }
     }
   },
   "getQueueEntry": {

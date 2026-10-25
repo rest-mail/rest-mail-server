@@ -8719,7 +8719,7 @@ paths:
         - BearerAuth: [domains:read]
         - APIKeyAuth: [domains:read]
       summary: Get the MTA-STS policy for a domain
-      # Links fill the successful lookup; this named ID stays absent.
+      # Links fill the successful lookup; named refusals keep their own IDs.
       parameters:
         - name: id
           in: path
@@ -8732,6 +8732,9 @@ paths:
               value: 1
             missing:
               value: 2147483647
+            policy_absent:
+              summary: An existing domain without an MTA-STS policy
+              value: 2147483646
       responses:
         "200":
           description: MTA-STS policy
@@ -8749,7 +8752,7 @@ paths:
               parameters:
                 id: '$request.path.id'
         "404":
-          description: Domain not found
+          description: Domain or MTA-STS policy not found
           content:
             application/json:
               schema:
@@ -8760,6 +8763,11 @@ paths:
                     error:
                       code: not_found
                       message: Domain not found
+                policy_absent:
+                  value:
+                    error:
+                      code: not_found
+                      message: No MTA-STS policy found for this domain
     put:
       operationId: setMtaStsPolicy
       tags: ["Admin: MTA-STS"]

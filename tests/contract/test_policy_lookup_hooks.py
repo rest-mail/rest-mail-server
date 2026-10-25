@@ -207,6 +207,27 @@ class PolicyAbsentFixture(unittest.TestCase):
         self.assertEqual(len(other.calls), 2)
         self.assertEqual(len(self.server.calls), 2)
 
+    def test_documented_pair_selects_the_fixture_through_the_real_entrypoint(self):
+        spec = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        operation = spec["paths"]["/api/v1/admin/domains/{id}/mta-sts"]["get"]
+        example_id = operation["parameters"][0]["examples"]["policy_absent"]["value"]
+        response = operation["responses"]["404"]["content"]["application/json"][
+            "examples"
+        ]["policy_absent"]["value"]
+        pair = json.loads((ROOT / "openapi-example.json").read_text())[
+            "getMtaStsPolicy"
+        ]["policy_absent"]
+        self.assertEqual(example_id, self.loaded["policy"]["POLICY_ABSENT_ID"])
+        self.assertEqual(pair["request"]["path"]["id"], example_id)
+        self.assertEqual(pair["response"], {"status": 404, "body": response})
+        transaction = self.transaction()
+        transaction["fullPath"] = f"/api/v1/admin/domains/{example_id}/mta-sts"
+        transaction["expected"] = {"statusCode": "404", "body": json.dumps(response)}
+        before = copy.deepcopy(transaction)
+        self.prepare(transaction)
+        before["fullPath"] = "/api/v1/admin/domains/42/mta-sts"
+        self.assertEqual(transaction, before)
+
 
 if __name__ == "__main__":
     unittest.main()
