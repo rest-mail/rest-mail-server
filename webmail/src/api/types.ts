@@ -3165,7 +3165,7 @@ export interface components {
             is_flagged: boolean;
             is_read: boolean;
             is_starred: boolean;
-            mailbox?: components["schemas"]["Mailbox"];
+            mailbox?: components["schemas"]["Mailbox"] | null;
             mailbox_id: number;
             message_id: string;
             raw_size: number;
@@ -4783,7 +4783,6 @@ export interface operations {
     restmailDiscover: {
         parameters: {
             query: {
-                /** @example restmail.test */
                 domain: string;
             };
             header?: never;
@@ -5428,7 +5427,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -5618,7 +5616,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -5900,7 +5897,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -5993,7 +5989,6 @@ export interface operations {
             };
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -6701,7 +6696,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -7051,7 +7045,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -7479,9 +7472,7 @@ export interface operations {
             };
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
-                /** @example INBOX */
                 folder: string;
             };
             cookie?: never;
@@ -7572,7 +7563,6 @@ export interface operations {
             };
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -7858,7 +7848,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -8061,7 +8050,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -8448,9 +8436,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
-                /** @example 1 */
                 threadID: string;
             };
             cookie?: never;
@@ -8538,7 +8524,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -18719,7 +18704,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -19369,7 +19353,6 @@ export interface operations {
     restmailCheckMailbox: {
         parameters: {
             query: {
-                /** @example admin@restmail.test */
                 address: string;
             };
             header?: never;

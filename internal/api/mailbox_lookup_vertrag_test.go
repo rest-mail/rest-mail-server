@@ -46,7 +46,7 @@ func checkMailboxLookupWithVertrag(t *testing.T, binary string, handler http.Han
 		if numeric, ok := value.(float64); ok {
 			text = strconv.FormatFloat(numeric, 'f', -1, 64)
 		}
-		uri = strings.ReplaceAll(uri, "{"+key+"}", text)
+		uri = strings.ReplaceAll(uri, "{"+key+"}", url.PathEscape(text))
 	}
 	query := url.Values{}
 	for key, value := range pair.Request.Query {
@@ -65,7 +65,7 @@ func checkMailboxLookupWithVertrag(t *testing.T, binary string, handler http.Han
 		for _, item := range parameters {
 			parameter := item.(map[string]interface{})
 			delete(parameter, "examples")
-			if parameter["in"] == "query" {
+			if parameter["in"] == "query" || parameter["in"] == "path" {
 				var illustration interface{} = "compiler@example.com"
 				if schema, ok := parameter["schema"].(map[string]interface{}); ok {
 					switch schema["type"] {

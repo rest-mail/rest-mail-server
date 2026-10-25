@@ -248,7 +248,9 @@ func (h *MessageHandler) listMessages(r *http.Request, in listMessagesRequest) (
 	}
 
 	var total int64
-	h.db.Model(&models.Message{}).Where("mailbox_id = ? AND folder = ? AND is_deleted = ?", mailboxID, folder, false).Count(&total)
+	if err := h.db.Model(&models.Message{}).Where("mailbox_id = ? AND folder = ? AND is_deleted = ?", mailboxID, folder, false).Count(&total).Error; err != nil {
+		return zero, fmt.Errorf("count messages: %w", err)
+	}
 
 	return endpoint.List[Message]{Data: messagesOf(messages), Pagination: &respond.Pagination{
 		Cursor:  nextCursor,
