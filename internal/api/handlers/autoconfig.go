@@ -3,6 +3,8 @@ package handlers
 import (
 	"bytes"
 	"encoding/xml"
+	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"strings"
@@ -66,9 +68,16 @@ func requestDomain(r *http.Request, email string) (string, bool) {
 }
 
 // hostedDomain reports whether REST Mail hosts the active domain name.
-func (h *AutoconfigHandler) hostedDomain(name string) bool {
+func (h *AutoconfigHandler) hostedDomain(name string) (bool, error) {
 	var domain models.Domain
-	return h.db.Where("name = ? AND active = ?", name, true).First(&domain).Error == nil
+	err := h.db.Where("name = ? AND active = ?", name, true).First(&domain).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("look up autoconfig domain: %w", err)
+	}
+	return true, nil
 }
 
 // The ports rest-mail advertises to mail clients. Client access is implicit TLS only —
@@ -263,7 +272,11 @@ func (h *AutoconfigHandler) mozillaAutoconfig(r *http.Request, in autoconfigRequ
 	if h.mailHost == "" {
 		return endpoint.Document{}, endpoint.RefuseText(http.StatusServiceUnavailable, "mail host not configured")
 	}
-	if !h.hostedDomain(domainName) {
+	hosted, err := h.hostedDomain(domainName)
+	if err != nil {
+		return endpoint.Document{}, err
+	}
+	if !hosted {
 		return endpoint.Document{}, endpoint.RefuseText(http.StatusNotFound, "domain not found")
 	}
 	return xmlDocument(mozillaClientConfig(domainName, h.mailHost)), nil
@@ -307,7 +320,11 @@ func (h *AutoconfigHandler) microsoftAutodiscover(r *http.Request, in autodiscov
 	if h.mailHost == "" {
 		return endpoint.Document{}, endpoint.RefuseText(http.StatusServiceUnavailable, "mail host not configured")
 	}
-	if !h.hostedDomain(domainName) {
+	hosted, err := h.hostedDomain(domainName)
+	if err != nil {
+		return endpoint.Document{}, err
+	}
+	if !hosted {
 		return endpoint.Document{}, endpoint.RefuseText(http.StatusNotFound, "domain not found")
 	}
 
