@@ -1,43 +1,23 @@
-import { create } from 'zustand'
-import { apiV1 } from '../api'
+import { create } from "zustand";
+import { apiV1 } from "../api";
+import { expectSuccess, readJSON } from "../api-contract";
+import type { JsonResponse, RequestBody } from "../api-contract";
 
-interface Alias {
-  id: number
-  source_address: string
-  destination_address: string
-  domain_id: number
-  active: boolean
-  created_at: string
-  domain?: {
-    id: number
-    name: string
-  }
-}
+type Alias = JsonResponse<"listAliases", 200>["data"][number];
 
 interface AliasState {
-  aliases: Alias[]
-  isLoading: boolean
-  error: string | null
-  selectedDomain: string | null
+  aliases: Alias[];
+  isLoading: boolean;
+  error: string | null;
+  selectedDomain: string | null;
 
   // Actions
-  fetchAliases: (domainId?: string) => Promise<void>
-  createAlias: (
-    data: {
-      source_address: string
-      destination_address: string
-    }
-  ) => Promise<void>
-  updateAlias: (
-    id: number,
-    data: {
-      destination_address?: string
-      active?: boolean
-    }
-  ) => Promise<void>
-  deleteAlias: (id: number) => Promise<void>
-  setSelectedDomain: (domain: string | null) => void
-  clearError: () => void
+  fetchAliases: (domainId?: string) => Promise<void>;
+  createAlias: (data: RequestBody<"createAlias">) => Promise<void>;
+  updateAlias: (id: number, data: RequestBody<"updateAlias">) => Promise<void>;
+  deleteAlias: (id: number) => Promise<void>;
+  setSelectedDomain: (domain: string | null) => void;
+  clearError: () => void;
 }
 
 export const useAliasStore = create<AliasState>((set, get) => ({
@@ -47,109 +27,103 @@ export const useAliasStore = create<AliasState>((set, get) => ({
   selectedDomain: null,
 
   fetchAliases: async (domainId?: string) => {
-    set({ isLoading: true, error: null })
+    set({ isLoading: true, error: null });
 
     try {
       const url = domainId
         ? `/admin/aliases?domain_id=${domainId}`
-        : '/admin/aliases'
+        : "/admin/aliases";
 
-      const response = await apiV1.request(url, { method: 'GET' })
+      const response = await apiV1.request(url, { method: "GET" });
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to fetch aliases')
-      }
-
-      const response_data = await response.json()
-      const data = response_data.data || response_data
-      set({ aliases: data.data || [], isLoading: false })
+      const { data } = await readJSON<JsonResponse<"listAliases", 200>>(
+        response,
+        "Failed to fetch aliases",
+      );
+      set({ aliases: data, isLoading: false });
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to fetch aliases',
+        error:
+          error instanceof Error ? error.message : "Failed to fetch aliases",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
   createAlias: async (data) => {
-    set({ isLoading: true, error: null })
+    set({ isLoading: true, error: null });
 
     try {
-      const response = await apiV1.request('/admin/aliases', {
-        method: 'POST',
+      const response = await apiV1.request("/admin/aliases", {
+        method: "POST",
         body: JSON.stringify(data),
-      })
+      });
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to create alias')
-      }
+      await expectSuccess(response, "Failed to create alias");
 
       // Refresh the list
-      await get().fetchAliases()
+      await get().fetchAliases();
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to create alias',
+        error:
+          error instanceof Error ? error.message : "Failed to create alias",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
   updateAlias: async (id: number, data) => {
-    set({ isLoading: true, error: null })
+    set({ isLoading: true, error: null });
 
     try {
       const response = await apiV1.request(`/admin/aliases/${id}`, {
-        method: 'PATCH',
+        method: "PATCH",
         body: JSON.stringify(data),
-      })
+      });
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to update alias')
-      }
+      await expectSuccess(response, "Failed to update alias");
 
       // Refresh the list
-      await get().fetchAliases()
+      await get().fetchAliases();
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to update alias',
+        error:
+          error instanceof Error ? error.message : "Failed to update alias",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
   deleteAlias: async (id: number) => {
-    set({ isLoading: true, error: null })
+    set({ isLoading: true, error: null });
 
     try {
-      const response = await apiV1.request(`/admin/aliases/${id}`, { method: 'DELETE' })
+      const response = await apiV1.request(`/admin/aliases/${id}`, {
+        method: "DELETE",
+      });
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to delete alias')
-      }
+      await expectSuccess(response, "Failed to delete alias");
 
       // Refresh the list
-      await get().fetchAliases()
+      await get().fetchAliases();
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to delete alias',
+        error:
+          error instanceof Error ? error.message : "Failed to delete alias",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
   setSelectedDomain: (domain) => {
-    set({ selectedDomain: domain })
+    set({ selectedDomain: domain });
   },
 
   clearError: () => {
-    set({ error: null })
+    set({ error: null });
   },
-}))
+}));
