@@ -6338,6 +6338,19 @@ paths:
         - BearerAuth: [queue:read]
         - APIKeyAuth: [queue:read]
       summary: Get a single queue entry
+      # Links supply the successful lookup; the missing ID stays absent.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          examples:
+            found:
+              value: 1
+            missing:
+              value: 2147483647
       responses:
         "200":
           description: Queue entry details
@@ -6350,7 +6363,17 @@ paths:
                   data:
                     $ref: "#/components/schemas/OutboundQueue"
         "404":
-          $ref: "#/components/responses/NotFound"
+          description: Queue entry not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missing:
+                  value:
+                    error:
+                      code: not_found
+                      message: Queue entry not found
     delete:
       operationId: deleteQueueEntry
       tags: ["Admin: Queue"]
@@ -9239,6 +9262,19 @@ paths:
         Returns the trace joined on message_id, which is set only on the
         delivered/queued path. Non-delivered or unknown ids yield 404 (correlate
         those via rfc_message_id on the pipeline logs endpoint instead).
+      # Links supply the successful lookup; the missing ID stays absent.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          examples:
+            found:
+              value: 1
+            missing:
+              value: 2147483647
       responses:
         "200":
           description: Message trace
@@ -9251,7 +9287,17 @@ paths:
                   data:
                     $ref: "#/components/schemas/MessageTrace"
         "404":
-          $ref: "#/components/responses/NotFound"
+          description: No pipeline trace for this message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missing:
+                  value:
+                    error:
+                      code: not_found
+                      message: No pipeline trace for this message
 
   # ═══════════════════════════════════════════════════════════════
   # Admin: Testing (non-production only; requires wildcard capability)

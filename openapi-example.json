@@ -1632,6 +1632,34 @@
       }
     }
   },
+  "getMessageTrace": {
+    "found": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "No pipeline trace for this message"
+          }
+        }
+      }
+    }
+  },
   "getMtaStsPolicy": {
     "found": {
       "request": {
@@ -1655,6 +1683,34 @@
           "error": {
             "code": "not_found",
             "message": "Domain not found"
+          }
+        }
+      }
+    }
+  },
+  "getQueueEntry": {
+    "found": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Queue entry not found"
           }
         }
       }
