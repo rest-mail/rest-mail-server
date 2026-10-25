@@ -101,13 +101,13 @@ Only when nothing has arrived at the old server for several days:
   settings are implicit TLS on 465 and 993, so apps set up for 587 or 143 need
   changing.
 - **Existing passwords:** import an account's ARGON2ID, ARGON2I, BLF-CRYPT,
-  SHA256-CRYPT or SHA512-CRYPT hash with `restmail import-account`, without
-  issuing a new password. See [importing accounts](../../migrating-accounts.md)
-  for permissions, work-factor limits and the API. SHA-crypt and Argon2 hashes
+  SHA256-CRYPT or SHA512-CRYPT hash with `restmail import-account`, or a whole
+  Dovecot passwd-file with `restmail import-passwd-file`, without issuing a new
+  password. See [importing accounts](../../migrating-accounts.md) for
+  permissions, work-factor limits and the API. SHA-crypt and Argon2 hashes
   become bcrypt after a matching password proof, when the password fits
   bcrypt's length limit.
-- **Still to come:** bulk passwd-file import, and importing mail from
-  IMAP, Maildir or mbox, remain in
+- **Still to come:** importing mail from IMAP, Maildir or mbox remains in
   [#734](https://github.com/rest-mail/rest-mail-server/issues/734). Mail can be
   copied over IMAP with a tool such as imapsync; that cutover still needs proof
   against REST Mail.

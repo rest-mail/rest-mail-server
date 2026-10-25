@@ -26,6 +26,7 @@ const topUsage = `restmail — run a rest-mail server
   restmail sign-in-link  the link, and QR code, that opens the app signed in
   restmail password-hash a bcrypt hash of an admin password, for a deployment
   restmail import-account create an account with its existing password hash
+  restmail import-passwd-file create a Dovecot passwd-file's accounts, keeping passwords
   restmail tlsa-records   prepare SMTP TLSA records from public certificates
   restmail version       print the version
   restmail [flags]       the interactive admin console (-api, -user, -pass)
@@ -108,6 +109,8 @@ func runSubcommand(args []string, stdout, stderr io.Writer) (code int, handled b
 		return runPasswordHash(args[2:], os.Stdin, stdout, stderr), true
 	case "import-account":
 		return runImportAccount(context.Background(), args[2:], os.Stdin, os.Getenv("RESTMAIL_API_KEY"), client, stdout, stderr), true
+	case "import-passwd-file":
+		return runImportPasswdFile(context.Background(), args[2:], os.Stdin, os.Getenv("RESTMAIL_API_KEY"), client, stdout, stderr), true
 	case "tlsa-records":
 		return runTLSARecords(args[2:], stdout, stderr), true
 	case "version":
