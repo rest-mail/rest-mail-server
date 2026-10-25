@@ -262,15 +262,22 @@ func (h *MessageHandler) listMessages(r *http.Request, in listMessagesRequest) (
 // ownedMessage is the message the path names, when the session may reach its account with
 // capability.
 func (h *MessageHandler) ownedMessage(r *http.Request, id uint32, capability string) (models.Message, error) {
-	if middleware.GetClaims(r) == nil {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
 		return models.Message{}, errNotSignedIn
 	}
 	var msg models.Message
 	if err := h.db.First(&msg, id).Error; err != nil {
-		return models.Message{}, errMessageNotFound
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return models.Message{}, errMessageNotFound
+		}
+		return models.Message{}, fmt.Errorf("load message: %w", err)
 	}
-	if !h.verifyMessageOwnership(nil, r, &msg, capability) {
-		return models.Message{}, errMessageAccess
+	if _, err := mayReach(h.db, claims, msg.MailboxID, capability); err != nil {
+		if errors.Is(err, errNoAccess) {
+			return models.Message{}, errMessageAccess
+		}
+		return models.Message{}, fmt.Errorf("check message access: %w", err)
 	}
 	return msg, nil
 }
