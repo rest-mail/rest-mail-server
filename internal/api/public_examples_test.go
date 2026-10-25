@@ -52,7 +52,7 @@ func TestPublicReadExamplesMatchRegisteredResponses(t *testing.T) {
 				t.Fatal("the named success pair is missing")
 			}
 			rr := httptest.NewRecorder()
-			var handler http.Handler = routers.Public
+			handler := routers.Public
 			if id == "prometheusMetrics" {
 				handler = metrics // the production registration, with an isolated collector
 			}
