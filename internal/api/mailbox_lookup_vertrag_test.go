@@ -66,7 +66,19 @@ func checkMailboxLookupWithVertrag(t *testing.T, binary string, handler http.Han
 			parameter := item.(map[string]interface{})
 			delete(parameter, "examples")
 			if parameter["in"] == "query" {
-				parameter["example"] = "compiler@example.com"
+				var illustration interface{} = "compiler@example.com"
+				if schema, ok := parameter["schema"].(map[string]interface{}); ok {
+					switch schema["type"] {
+					case "integer", "number":
+						illustration = 1
+					case "boolean":
+						illustration = true
+					}
+					if values, ok := schema["enum"].([]interface{}); ok && len(values) > 0 {
+						illustration = values[0]
+					}
+				}
+				parameter["example"] = illustration
 			} else {
 				parameter["example"] = 1
 			}

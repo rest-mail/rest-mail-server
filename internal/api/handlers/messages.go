@@ -2338,9 +2338,11 @@ func (h *MessageHandler) listCalendarEvents(r *http.Request, in accountPath) ([]
 	}
 
 	var versions []models.CalendarEventVersion
-	h.db.Where("mailbox_id = ?", mailboxID).
+	if err := h.db.Where("mailbox_id = ?", mailboxID).
 		Order("uid, sequence DESC").
-		Find(&versions)
+		Find(&versions).Error; err != nil {
+		return nil, fmt.Errorf("list calendar events: %w", err)
+	}
 
 	seen := map[string]*CalendarEventSummary{}
 	var order []string // preserve insertion order

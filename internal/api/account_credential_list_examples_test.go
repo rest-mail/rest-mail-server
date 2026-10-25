@@ -159,6 +159,13 @@ func (c accountCredentialListConnection) QueryContext(_ context.Context, query s
 
 func accountCredentialListScenarios(t *testing.T) map[string]accountReadScenario {
 	t.Helper()
+	return accountListScenarios(t, func(mode string, keys map[string]accountListKey) driver.Connector {
+		return accountCredentialListConnection{mode: mode, keys: keys}
+	})
+}
+
+func accountListScenarios(t *testing.T, connection func(string, map[string]accountListKey) driver.Connector) map[string]accountReadScenario {
+	t.Helper()
 	unavailable, _, _, jwt := authReadBatchRouters(t)
 	keys := map[string]accountListKey{}
 	tokens := map[string]string{}
@@ -185,7 +192,7 @@ func accountCredentialListScenarios(t *testing.T) map[string]accountReadScenario
 	}
 	keys[public] = accountListKey{accountReadKey{hash: hash, scope: []byte(`{}`)}, models.CredentialKindAppPassword}
 	makeRouter := func(mode string, limited bool) http.Handler {
-		pool := sql.OpenDB(accountCredentialListConnection{mode: mode, keys: keys})
+		pool := sql.OpenDB(connection(mode, keys))
 		t.Cleanup(func() { _ = pool.Close() })
 		r := NewRouters(openAccountReadDB(t, pool), jwt, &config.Config{Environment: "test", APIMaxBodyBytes: 8, AuthRateLimitEnabled: limited, AuthRateLimitRPS: 1.0 / 3600, AuthRateLimitBurst: 1}, nil)
 		t.Cleanup(r.Close)
