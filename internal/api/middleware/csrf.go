@@ -28,7 +28,7 @@ import (
 func CSRF() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if isSafeMethod(r.Method) {
+			if !CSRFProtectsMethod(r.Method) {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -54,13 +54,13 @@ func CSRF() func(http.Handler) http.Handler {
 	}
 }
 
-// isSafeMethod reports whether an HTTP method is read-only per RFC 7231 and thus
-// exempt from CSRF enforcement.
-func isSafeMethod(method string) bool {
+// CSRFProtectsMethod reports whether the guard can refuse a method. The runtime
+// middleware and its route descriptions share this decision; safe methods are exempt.
+func CSRFProtectsMethod(method string) bool {
 	switch method {
 	case http.MethodGet, http.MethodHead, http.MethodOptions:
-		return true
-	default:
 		return false
+	default:
+		return true
 	}
 }
