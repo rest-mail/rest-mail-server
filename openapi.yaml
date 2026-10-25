@@ -5255,6 +5255,18 @@ paths:
         - BearerAuth: [pipelines:write]
         - APIKeyAuth: [pipelines:write]
       summary: Update a pipeline
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          examples:
+            found:
+              value: 1
+            missing:
+              value: 2147483647
       requestBody:
         required: true
         content:
@@ -5275,6 +5287,9 @@ paths:
               filters_null:
                 value:
                   filters: null
+                  active: false
+              missing:
+                value:
                   active: false
       responses:
         "200":
@@ -5301,7 +5316,17 @@ paths:
                       created_at: "2026-01-01T00:00:00Z"
                       updated_at: "2026-01-01T00:00:00Z"
         "404":
-          $ref: "#/components/responses/NotFound"
+          description: Pipeline not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missing:
+                  value:
+                    error:
+                      code: not_found
+                      message: Pipeline not found
         "422":
           description: Request body failed validation
           content:
@@ -5333,6 +5358,18 @@ paths:
         - BearerAuth: [pipelines:delete]
         - APIKeyAuth: [pipelines:delete]
       summary: Delete a pipeline
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          examples:
+            found:
+              value: 1
+            missing:
+              value: 2147483647
       responses:
         "200":
           description: Pipeline deleted
@@ -5350,7 +5387,17 @@ paths:
                         type: string
                         example: deleted
         "404":
-          $ref: "#/components/responses/NotFound"
+          description: Pipeline not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missing:
+                  value:
+                    error:
+                      code: not_found
+                      message: Pipeline not found
 
   /api/v1/admin/pipelines/test:
     post:
@@ -5373,6 +5420,10 @@ paths:
               valid:
                 value:
                   pipeline_id: 1
+                  email: {}
+              missing:
+                value:
+                  pipeline_id: 2147483647
                   email: {}
               # JSON but not a request object: refused before any pipeline is
               # looked up.
@@ -5429,6 +5480,18 @@ paths:
                     error:
                       code: bad_request
                       message: Invalid request body
+        "404":
+          description: Pipeline not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missing:
+                  value:
+                    error:
+                      code: not_found
+                      message: Pipeline not found
         "422":
           description: Request body failed validation
           content:

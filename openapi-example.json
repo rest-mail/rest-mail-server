@@ -1434,6 +1434,24 @@
       }
     }
   },
+  "deletePipeline": {
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Pipeline not found"
+          }
+        }
+      }
+    }
+  },
   "domainDNSCheck": {
     "found": {
       "request": {
@@ -4018,6 +4036,23 @@
         }
       }
     },
+    "missing": {
+      "request": {
+        "body": {
+          "pipeline_id": 2147483647,
+          "email": {}
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Pipeline not found"
+          }
+        }
+      }
+    },
     "pipeline_id_wrong_type": {
       "request": {
         "body": {
@@ -4545,6 +4580,25 @@
                 "filters": "must be an array of filter objects"
               }
             }
+          }
+        }
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        },
+        "body": {
+          "active": false
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Pipeline not found"
           }
         }
       }

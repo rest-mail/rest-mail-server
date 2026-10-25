@@ -464,10 +464,6 @@
   reason: >-
     The engine emits its concrete ExecutionResult/FilterResult fields, including the structured log and final email where applicable; the oracle's required set describes a different result shape.
 - operation: testPipeline
-  difference: "response 404: generated only"
-  reason: >-
-    A saved pipeline must exist before it can be tested. A missing pipeline remains a handler-level 404 not_found.
-- operation: testPipeline
   difference: "response 429: generated only"
   reason: >-
     The per-IP pipeline preview throttle can refuse this operation before binding, returning rate_limited and Retry-After.
