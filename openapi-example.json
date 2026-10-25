@@ -1780,6 +1780,67 @@
       }
     }
   },
+  "getHealth": {
+    "available": {
+      "summary": "A successful database ping gives public liveness",
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "db": "connected",
+            "status": "healthy"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "database_connection_unavailable": {
+      "summary": "The configured database handle cannot provide a connection pool",
+      "description": "Fault precondition: database pool acquisition fails. The public response does not disclose connection configuration.",
+      "request": {},
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unhealthy",
+            "message": "Database connection unavailable"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "database_ping_failed": {
+      "summary": "The database pool exists but its probe fails",
+      "description": "Fault precondition: the database ping fails. Exercised through the real health registration with a controlled SQL connector.",
+      "request": {},
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unhealthy",
+            "message": "Database ping failed"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "Unexpected handler errors use the shared sanitized envelope",
+      "description": "Checked through the production endpoint error adapter. The normal liveness probe returns503 for its expected database failures.",
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "getMailbox": {
     "found": {
       "request": {

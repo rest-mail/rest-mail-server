@@ -1,0 +1,11 @@
+{
+  "630": [
+    "apiRoot",
+    "describeServer",
+    "getHealth",
+    "openapiDocument",
+    "openapiSpec",
+    "prometheusMetrics",
+    "swaggerUI"
+  ]
+}

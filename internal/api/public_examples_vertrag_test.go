@@ -30,7 +30,7 @@ func TestPublicJSONExamplesWithVertrag(t *testing.T) {
 	// Select the actual public JSON operations without changing their response schemas
 	// or examples. Fault responses are proved by the separate adapter test.
 	selected := map[string]interface{}{}
-	for _, path := range []string{"/api/docs/openapi.json", "/restmail/capabilities", "/api", "/api/v1/server"} {
+	for _, path := range []string{"/api/docs/openapi.json", "/restmail/capabilities", "/api", "/api/v1/server", "/api/health"} {
 		selected[path] = paths[path]
 	}
 	doc["paths"] = selected
@@ -45,7 +45,12 @@ func TestPublicJSONExamplesWithVertrag(t *testing.T) {
 			if err := os.WriteFile(spec, document, 0600); err != nil {
 				t.Fatal(err)
 			}
+			healthy := healthExampleRouter(t, nil)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/health" {
+					healthy.ServeHTTP(w, r)
+					return
+				}
 				if r.URL.Path == "/api/docs/openapi.json" && fault != "none" {
 					actual := httptest.NewRecorder()
 					routers.Public.ServeHTTP(actual, r)
@@ -89,11 +94,11 @@ func TestPublicJSONExamplesWithVertrag(t *testing.T) {
 			if err := json.Unmarshal(data, &report); err != nil {
 				t.Fatal(err)
 			}
-			passing := 4
+			passing := 5
 			if fault != "none" {
-				passing = 3
+				passing = 4
 			}
-			if report.Summary.Total != 4 || report.Summary.Passing != passing || report.Summary.Failing != 4-passing || report.Summary.Errors != 0 || report.Summary.Skipped != 0 {
+			if report.Summary.Total != 5 || report.Summary.Passing != passing || report.Summary.Failing != 5-passing || report.Summary.Errors != 0 || report.Summary.Skipped != 0 {
 				t.Fatalf("the selected public transactions were not all exercised: %s", data)
 			}
 		})
