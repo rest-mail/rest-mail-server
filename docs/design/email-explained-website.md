@@ -54,6 +54,32 @@ one set of files becomes both, without the two ever drifting apart.
   the reader's light or dark theme, cropped to the drawing.
   `scripts/email-explained/svg.mjs` makes them all in one headless Chrome. The
   26 come to 3.3 MB, against 3.5 MB as PNGs.
+- **On the website, a diagram is framed, in Archify's embed mode** (2026-10-25,
+  owner, #822; a start, to be changed if it doesn't feel right once live). Each
+  diagram is Archify's own page with `?embed=1`: the diagram alone, without the
+  title, toolbar, cards and node index that repeat the chapter. It sits in a
+  same-origin frame the page sizes to fit, served with a policy of its own
+  (`frame-ancestors 'self'`). The site and the diagram can't affect each other,
+  and a new Archify release drops in unchanged. The prototype compared eight
+  ways on the real site (the table is in #822): drawing the diagram into the
+  page worked only behind a rewriting layer that had to follow every Archify
+  release, and still clashed when a diagram appeared twice. A link can't yet
+  open a diagram focused on one node; the page can pass that into the frame
+  later.
+- **The diagrams keep one look, in the live design's colours and type**
+  (2026-10-25, owner, #823). Archify's colours and typefaces are set to match
+  the design rest-mail.com runs (Safe), and the SVG GitHub shows is exported
+  the same way, so the site and GitHub never show different pictures. The
+  diagrams don't change with `?design=`.
+- **No diagram is wider than about 900px, and phones scroll diagrams sideways**
+  (2026-10-25, owner, #824; provisional, may change once seen). Every diagram
+  is as wide as the text (793px in a 1440px window). A wider canvas shrinks to
+  fit, which took the widest's node titles down to 6.4px on a laptop and 3.7px
+  on a phone. So the widest (`rest-mail`, `open-relay`, `queue`, `spf`) are
+  redrawn narrower, by stacking lanes, putting fewer boxes in a row or
+  splitting one in two, keeping titles at 9.5px or more on a laptop. On a
+  phone a diagram keeps a readable size in a box that scrolls sideways, with a
+  hint that it does.
 - **This repository builds the bundle; the website takes it by itself**
   (2026-10-24, owner, who asked that a merged chapter go live with nobody
   running the steps by hand). On every change to the guide on `main`,
@@ -64,8 +90,11 @@ one set of files becomes both, without the two ever drifting apart.
   the bundle's format and it rises with every publish. The website checks for a
   newer version on a schedule, commits it, runs its own tests, and releases
   itself: a tag, its image, and its chart. A failing test stops it there. The
-  last step, antimatter-vps deploying the new chart, waits on the owner's
-  answer to #826. An OCI image, not a branch here, because every clone of this
+  last step, antimatter-vps deploying the new chart, stays with the owner's
+  agent on purpose (2026-10-25, owner, #826): no pipeline holds a credential
+  that can deploy, so breaking into a repository or a workflow can publish a
+  release but can't put it live. The agent checks for a newer chart on every
+  run and deploys it behind the Pulumi preview. An OCI image, not a branch here, because every clone of this
   repository would otherwise carry every bundle's rendered diagrams (about
   20 MB each), and not a GitHub release, which would compete with the server's
   own releases.
@@ -102,50 +131,10 @@ can never quote a paragraph that has gone.
 
 ## Open
 
-1. **How interactive diagrams sit in the page** (asked in #822). To be decided by looking at a
-   working prototype (owner, 2026-10-23). The prototype is the website's
-   `feat/email-explained-prototype` branch: every chapter takes `?embed=` to
-   switch between six ways, on the real site with its real
-   Content-Security-Policy. What each one did, in headless Chrome, 2026-10-23:
-
-   | `?embed=` | Result | Why |
-   |---|---|---|
-   | `image` | Works, static | The static image GitHub shows (a PNG then, an SVG since). Nothing to explore. |
-   | `iframe` | Blocked, then works | The site sends `frame-ancestors 'none'` on every response, and refuses Archify's `data:` typefaces. Served with a policy of their own (`frame-ancestors 'self'`, `font-src data:`), diagrams load, and the page sizes the frame to fit because it is the same origin. |
-   | `iframe-embed` | Works | The same, in Archify's `?embed=1` mode: only the diagram, without the title, toolbar, cards and node index that repeat the chapter. |
-   | `srcdoc` | Works, with a fixed height | Archify's own advice. An opaque sandboxed frame cannot be measured, so it scrolls inside a fixed box. |
-   | `shadow` | Broken | Archify's stylesheet is written for a whole document (`:root`, `html[...]`), so inside a shadow root none of its colours resolve and every box is black. Its script looks its elements up in `document`, finds none, and throws. The page's typefaces still inherit in. |
-   | `inline` | Renders, but the site leaks in | Its CSS scoped to the diagram, so its variables cannot reach the site. The other way still leaks: the site's own rules (`.doc-body li`) match Archify's elements and make its cards unreadable. The site's policy also refuses its typefaces, and its script writes 12 attributes and a style onto the site's `<html>`. |
-   | `inline-ns` | Works, with one diagram | Everything Archify names is prefixed or redirected (below). It looks and behaves like the frame, the site's `<html>`, anchors and typefaces are untouched, and nothing is refused. |
-   | `inline-ns-x2` | Two diagrams mostly independent | Each has its own state, theme and address. They still share element ids: the second's arrowheads are drawn with the first's markers (the wrong colour when their themes differ), and its accessible name points at the first's title. |
-
-   **Namespacing, collision by collision** (`inline-ns`, the website's
-   `src/guide/namespaced.ts`):
-
-   | Collision | Namespaced by |
-   |---|---|
-   | The site's rules and inherited styles reach Archify's elements | The diagram's element is reset to the browser's defaults (`all: initial`, its descendants `all: revert`), and every Archify rule is prefixed with the element's id, which outranks the site's classes |
-   | Archify's rules for `html`, `:root`, `body` and bare `[data-theme]` | Rewritten to the element itself |
-   | Its script writes its state onto `<html>` | It is given a document whose `documentElement`, `body` and lookups are the element |
-   | Both define a typeface called JetBrains Mono | Archify's is renamed |
-   | The site's policy refuses Archify's `data:` typefaces | The bundle writes them out as files beside the diagram |
-   | Archify keeps its state after `#`, and clears it, overwriting the site's anchors | Its script sees an address of its own, kept in `?<diagram>=` (`?open-relay=focus%3Drelay`); a link to that address opens the diagram focused. Archify's `data-reading-link-template` makes its "copy link" give the same |
-   | Absolutely placed parts (its toolbar) anchor to the site's figure | The element is their positioning context |
-   | Element ids repeat when a diagram appears twice | **Not solved.** Prefixing the ids would change values Archify's script reads back; it needs an id prefix in Archify itself |
-   | Its saved theme (`localStorage` `archify-theme`) | Left shared on purpose: a reader's choice applies to every diagram |
-
-   So namespacing does avoid the collisions, all but repeated ids, at the
-   cost of a rewriting layer between Archify and the page that has to follow
-   Archify's releases. A frame needs none of it.
-
-2. **Matching the site's three designs** (asked in #823). Archify has its own looks (classic,
-   editorial and others). Does a diagram follow the visitor's chosen design,
-   or keep one look everywhere? To be decided by seeing it, in the same
-   prototype (owner, 2026-10-23).
-3. **What the website adds of its own:** navigation between chapters, a
+1. **What the website adds of its own:** navigation between chapters, a
    contents page, search, "last updated from commit …" on every page. These
    live in the website repository and are not part of the bundle.
-4. **Other repositories' documentation.** The guide may later split, with
+2. **Other repositories' documentation.** The guide may later split, with
    protocol chapters moving to their libraries' repositories. The bundle format
    should not assume one repository, so the website can merge several bundles
    later.
