@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/restmail/restmail/internal/auth"
@@ -72,13 +73,34 @@ func runImportAccount(ctx context.Context, args []string, stdin io.Reader, token
 	if err != nil {
 		return o.fail(exitUsage, "invalid_hash", err.Error())
 	}
-	body, err := json.Marshal(map[string]string{"address": name, "display_name": *displayName, "password_hash": hash})
+	id, status, err := postImportedAccount(ctx, client, base, token, name, *displayName, hash)
+	switch {
+	case err != nil:
+		return o.fail(exitFailed, "request_failed", err.Error())
+	case status != http.StatusCreated:
+		return o.fail(exitFailed, "import_refused", fmt.Sprintf("the server refused the import (HTTP %d); check the domain, API key scope and whether the account already exists", status))
+	case id == 0:
+		return o.fail(exitFailed, "invalid_response", "the server returned an invalid account response")
+	}
+	if o.json {
+		_ = json.NewEncoder(stdout).Encode(map[string]any{"id": id, "address": name})
+	} else {
+		fmt.Fprintf(stdout, "Created %s (account %d).\n", name, id)
+	}
+	return exitOK
+}
+
+// postImportedAccount creates one account with an imported hash, returning the
+// new account's ID (0 unless the server answered 201) and the HTTP status. The
+// error is only for a request that could not be made or answered.
+func postImportedAccount(ctx context.Context, client *http.Client, base *url.URL, token, address, displayName, hash string) (uint, int, error) {
+	body, err := json.Marshal(map[string]string{"address": address, "display_name": displayName, "password_hash": hash})
 	if err != nil {
-		return o.fail(exitFailed, "encode_failed", "could not encode the import")
+		return 0, 0, fmt.Errorf("could not encode the import")
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base.String()+"/api/v1/accounts", bytes.NewReader(body))
 	if err != nil {
-		return o.fail(exitFailed, "request_failed", "could not prepare the import")
+		return 0, 0, fmt.Errorf("could not prepare the import")
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
@@ -87,24 +109,19 @@ func runImportAccount(ctx context.Context, args []string, stdin io.Reader, token
 	noRedirect.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	resp, err := noRedirect.Do(req)
 	if err != nil {
-		return o.fail(exitFailed, "request_failed", "the import request failed")
+		return 0, 0, fmt.Errorf("the import request failed")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
-		return o.fail(exitFailed, "import_refused", fmt.Sprintf("the server refused the import (HTTP %d); check the domain, API key scope and whether the account already exists", resp.StatusCode))
+		return 0, resp.StatusCode, nil
 	}
 	var result struct {
 		Data struct {
 			ID uint `json:"id"`
 		} `json:"data"`
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&result); err != nil || result.Data.ID == 0 {
-		return o.fail(exitFailed, "invalid_response", "the server returned an invalid account response")
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&result); err != nil {
+		return 0, resp.StatusCode, nil
 	}
-	if o.json {
-		_ = json.NewEncoder(stdout).Encode(map[string]any{"id": result.Data.ID, "address": name})
-	} else {
-		fmt.Fprintf(stdout, "Created %s (account %d).\n", name, result.Data.ID)
-	}
-	return exitOK
+	return result.Data.ID, resp.StatusCode, nil
 }

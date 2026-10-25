@@ -1,8 +1,8 @@
 # Importing accounts with their existing password hashes
 
 An operator with `mailboxes:write` on a hosted domain can create an account
-without resetting its password. This first migration step imports one account
-at a time; aliases, forwarding and mail must still be moved separately.
+without resetting its password, one at a time or a whole Dovecot passwd-file at
+once. Aliases, forwarding and mail must still be moved separately.
 
 Create the domain first. Set `RESTMAIL_API_KEY` to a scoped API key covering
 that domain, then pipe the existing hash into the CLI:
@@ -56,6 +56,27 @@ are never truncated. Imported-hash verification accepts at most 4096 password
 bytes. Check these bounds before moving accounts whose source passwords or
 hash work factors exceed them.
 
-This does not yet import Dovecot passwd-files in bulk, move mail, or prove an
+## A whole Dovecot passwd-file
+
+`restmail import-passwd-file` creates one account per user of a Dovecot
+passwd-file (`user:{SCHEME}hash:uid:gid:gecos:home:shell:extra`), with the same
+request, schemes, limits and refusals as `import-account`:
+
+```sh
+restmail import-passwd-file --server https://mail.example.com \
+  --domain example.com /etc/dovecot/users
+```
+
+A user written without a domain takes `--domain`. Each line succeeds or fails
+on its own. An existing account is reported and left alone, never replaced. A
+line with no password, a weak or unsupported scheme, or an invalid address is
+reported with its line number, and the other users are still imported. The exit
+status is 0 only when every user was created or already present, so a second run
+after fixing the failed lines imports only those. `--dry-run` checks every line
+and sends nothing; `--json` prints one object listing every user by outcome.
+Hashes are never printed. Display names, quotas and Dovecot's extra fields are
+not imported.
+
+This does not yet move mail, or prove an
 imapsync cutover. Keep the source mailbox available while planning that part
 of the migration.
