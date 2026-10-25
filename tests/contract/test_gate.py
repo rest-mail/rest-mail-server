@@ -236,6 +236,8 @@ class MissingResourceRefusals(unittest.TestCase):
                 "domainDNSCheck",
                 "getMtaStsPolicy",
                 "getDomainRelay",
+                "getQueueEntry",
+                "getMessageTrace",
             },
         )
 

@@ -22,8 +22,8 @@ name: E2E
 on:
   push:
     branches: [main]
+  # Stack layers target parent branches; their updates need the same E2E gate.
   pull_request:
-    branches: [main]
   workflow_dispatch:
 
 # e2e is expensive — supersede in-flight runs for the same ref.
