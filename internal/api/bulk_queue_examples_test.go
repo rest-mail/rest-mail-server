@@ -301,7 +301,11 @@ func checkQueueMutationPairWithVertrag(t *testing.T, binary string, s bulkQueueE
 		for _, value := range parameters {
 			parameter := value.(map[string]interface{})
 			delete(parameter, "examples")
-			parameter["example"] = 1
+			var illustration interface{} = "compiler-value"
+			if schema, ok := parameter["schema"].(map[string]interface{}); ok && (schema["type"] == "integer" || schema["type"] == "number") {
+				illustration = 1
+			}
+			parameter["example"] = illustration
 		}
 	}
 	status := strconv.Itoa(pair.Response.Status)
