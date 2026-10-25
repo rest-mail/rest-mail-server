@@ -4042,6 +4042,25 @@
         }
       }
     },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        },
+        "body": {
+          "destination_address": "admin@restmail.test"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Alias not found"
+          }
+        }
+      }
+    },
     "updated": {
       "request": {
         "body": {
@@ -4156,6 +4175,29 @@
         }
       }
     },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        },
+        "body": {
+          "description": "Tags mail about invoices and receipts",
+          "config": {
+            "script": "function filter(email) { return { action: \"continue\" }; }"
+          },
+          "enabled": true
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Custom filter not found"
+          }
+        }
+      }
+    },
     "name_empty": {
       "request": {
         "body": {
@@ -4211,6 +4253,25 @@
     }
   },
   "updateDomain": {
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        },
+        "body": {
+          "sending_policy": "transactional"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "domain_not_found",
+            "message": "Domain not found"
+          }
+        }
+      }
+    },
     "sending_policy_invalid": {
       "request": {
         "body": {
@@ -4277,6 +4338,27 @@
     }
   },
   "updateMailbox": {
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        },
+        "body": {
+          "display_name": "Contract Test",
+          "quota_bytes": 1073741824,
+          "active": true
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "mailbox_not_found",
+            "message": "Mailbox not found"
+          }
+        }
+      }
+    },
     "password_short": {
       "request": {
         "body": {

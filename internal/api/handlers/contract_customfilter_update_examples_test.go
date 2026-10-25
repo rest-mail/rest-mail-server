@@ -66,7 +66,8 @@ func TestCustomFilterUpdate_ExamplePairs(t *testing.T) {
 		got[status] = names(examples)
 	}
 	want := map[string][]string{
-		"request": {"config_array", "config_null", "direction_invalid", "filter_type_invalid", "name_empty", "updated"},
+		"request": {"config_array", "config_null", "direction_invalid", "filter_type_invalid", "missing", "name_empty", "updated"},
+		"404":     {"missing"},
 		"200":     {"updated"},
 		"422":     {"config_array", "config_null", "direction_invalid", "filter_type_invalid", "name_empty"},
 	}

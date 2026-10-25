@@ -63,7 +63,8 @@ func TestDomainUpdate_ExamplePairs(t *testing.T) {
 		got[status] = names(examples)
 	}
 	want := map[string][]string{
-		"request": {"dmarc_policy_invalid", "sending_policy_invalid", "updated"},
+		"request": {"dmarc_policy_invalid", "missing", "sending_policy_invalid", "updated"},
+		"404":     {"missing"},
 		"200":     {"updated"},
 		"422":     {"dmarc_policy_invalid", "sending_policy_invalid"},
 	}
