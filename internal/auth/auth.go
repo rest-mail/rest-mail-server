@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -347,9 +346,9 @@ func HashPassword(password string) (string, error) {
 	return "{BLF-CRYPT}" + string(hash), nil
 }
 
-// CheckPassword verifies bcrypt or an imported SHA-crypt password hash.
+// CheckPassword verifies bcrypt or an imported SHA-crypt or Argon2 password hash.
 func CheckPassword(password, hash string) error {
-	if strings.HasPrefix(hash, "{SHA") || strings.HasPrefix(hash, "$5$") || strings.HasPrefix(hash, "$6$") {
+	if isImportedHash(hash) {
 		return checkImportedPassword(password, hash)
 	}
 	// Strip the {BLF-CRYPT} prefix if present

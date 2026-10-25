@@ -201,9 +201,9 @@ type createAccountRequest struct {
 	// can be signed in to. Without one the account has no credentials, and is
 	// reached only through its owners.
 	Password string `json:"password,omitempty"`
-	// PasswordHash imports an existing crypt(3) password without resetting it.
+	// PasswordHash imports an existing crypt(3) or Argon2 password without resetting it.
 	// Mutually exclusive with Password; never returned or written to audit.
-	PasswordHash string `json:"password_hash,omitempty" maxLength:"256" pattern:"^((\\{BLF-CRYPT\\})?\\$2[aby]\\$(0[4-9]|1[0-4])\\$[./A-Za-z0-9]{53}|(\\{SHA256-CRYPT\\})?\\$5\\$(rounds=([1-9][0-9]{3,5}|1000000)\\$)?[./A-Za-z0-9]{1,16}\\$[./A-Za-z0-9]{43}|(\\{SHA512-CRYPT\\})?\\$6\\$(rounds=([1-9][0-9]{3,5}|1000000)\\$)?[./A-Za-z0-9]{1,16}\\$[./A-Za-z0-9]{86}|)$"`
+	PasswordHash string `json:"password_hash,omitempty" maxLength:"256" pattern:"^((\\{BLF-CRYPT\\})?\\$2[aby]\\$(0[4-9]|1[0-4])\\$[./A-Za-z0-9]{53}|(\\{SHA256-CRYPT\\})?\\$5\\$(rounds=([1-9][0-9]{3,5}|1000000)\\$)?[./A-Za-z0-9]{1,16}\\$[./A-Za-z0-9]{43}|(\\{SHA512-CRYPT\\})?\\$6\\$(rounds=([1-9][0-9]{3,5}|1000000)\\$)?[./A-Za-z0-9]{1,16}\\$[./A-Za-z0-9]{86}|(\\{ARGON2ID\\})?\\$argon2id\\$v=19\\$m=([89]|[1-9][0-9]{1,4}|1[0-9]{5}|2[0-5][0-9]{4}|26[01][0-9]{3}|2620[0-9]{2}|2621[0-3][0-9]|26214[0-4]),t=([1-9]|10),p=[1-8]\\$[A-Za-z0-9+/]{11,86}\\$[A-Za-z0-9+/]{22,86}|(\\{ARGON2I\\})?\\$argon2i\\$v=19\\$m=([89]|[1-9][0-9]{1,4}|1[0-9]{5}|2[0-5][0-9]{4}|26[01][0-9]{3}|2620[0-9]{2}|2621[0-3][0-9]|26214[0-4]),t=([1-9]|10),p=[1-8]\\$[A-Za-z0-9+/]{11,86}\\$[A-Za-z0-9+/]{22,86}|)$"`
 }
 
 // ActionAccountsCreate is the audit action of a created account.

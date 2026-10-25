@@ -18,8 +18,9 @@ const importAccountUsage = `restmail import-account — create an account with i
 
   printf '%s' "$HASH" | restmail import-account --server https://mail.example.com --address user@example.com
 
-Reads one BLF-CRYPT, SHA256-CRYPT or SHA512-CRYPT hash from stdin. Authentication
-uses RESTMAIL_API_KEY, a scoped API key with mailboxes:write on the domain.
+Reads one ARGON2ID, ARGON2I, BLF-CRYPT, SHA256-CRYPT or SHA512-CRYPT hash from
+stdin. Authentication uses RESTMAIL_API_KEY, a scoped API key with
+mailboxes:write on the domain.
 The domain must already exist. An existing account is refused, never replaced.
 The hash and API key are never printed. This imports one account, without mail,
 aliases or forwarding. See docs/migrating-accounts.md for limits and cutover.
