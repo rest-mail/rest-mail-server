@@ -2892,6 +2892,23 @@ paths:
           description: >-
             The attachment's bytes, always as application/octet-stream; the
             type its sender gave it is listAttachments' content_type.
+          headers:
+            Content-Disposition:
+              description: Download as an attachment, with a safely encoded filename.
+              required: true
+              schema:
+                type: string
+            Content-Length:
+              description: The number of bytes in the complete attachment.
+              required: true
+              schema:
+                type: integer
+                format: int64
+            Accept-Ranges:
+              description: Byte ranges are supported.
+              required: true
+              schema:
+                type: string
           content:
             application/octet-stream:
               schema:
