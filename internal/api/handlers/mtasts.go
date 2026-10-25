@@ -62,7 +62,10 @@ func (h *MTASTSHandler) setPolicy(_ *http.Request, in setMTASTSInput) (endpoint.
 	// Verify domain exists
 	var domain models.Domain
 	if err := h.db.First(&domain, domainID).Error; err != nil {
-		return endpoint.Status[MTASTSPolicy]{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Domain not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return endpoint.Status[MTASTSPolicy]{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Domain not found")
+		}
+		return endpoint.Status[MTASTSPolicy]{}, fmt.Errorf("look up MTA-STS domain for update: %w", err)
 	}
 
 	// Upsert: find existing or create new
@@ -106,6 +109,9 @@ func (h *MTASTSHandler) setPolicy(_ *http.Request, in setMTASTSInput) (endpoint.
 		return endpoint.Status[MTASTSPolicy]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to save MTA-STS policy")
 	}
 
+	// Populate the response after saving, so GORM does not write the domain
+	// association as part of a policy update.
+	policy.Domain = domain
 	status := http.StatusOK
 	if created {
 		status = http.StatusCreated

@@ -31,8 +31,6 @@ example-invalid sendMessage/unsubscribe_not_allowed
 example-invalid sendMessage/unsubscribe_not_allowed 422
 example-invalid sendMessage/valid 201
 example-invalid setDKIMKey/private_key_invalid
-example-invalid setDomainRelay/credentials_mismatch
-example-invalid setDomainRelay/host_invalid
 example-invalid setVacation/body_missing
 example-invalid setVacation/dates_reversed
 example-invalid setVacation/reply_missing
