@@ -2,6 +2,7 @@
   "schema_version": 2,
   "diagram_type": "workflow",
   "meta": {
+    "visual_preset": "editorial",
     "title": "From the mailbox to the apps that read it: Sieve, POP3, IMAP and JMAP",
     "locale": "en",
     "quality_profile": "showcase",

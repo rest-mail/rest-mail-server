@@ -83,8 +83,9 @@ node bundle.mjs --archify "$ARCHIFY"         # and it builds into the website's 
 - front matter that is missing `title`, `part` or `summary`, has a key the
   website does not read, or has a value GitHub cannot read as YAML;
 - a chapter with no `## Sources` section (or `sources: linked`);
-- a diagram no chapter shows, one without its static image, an image not
-  exported from its source as it is now, or a source Archify does not accept.
+- a diagram no chapter shows, one not in the site's look, one without its
+  static image, an image not exported from its source as it is now (or in the
+  current look), or a source Archify does not accept.
 
 Outside links change on other sites' schedules, so `node check.mjs --external`
 runs daily instead (`scheduled.yml`). A link that no longer answers, or an
@@ -97,6 +98,13 @@ Diagrams are made with [Archify](https://github.com/tt-a1i/archify). Each one is
 a JSON source in [`diagrams/`](diagrams/), named `<name>.<type>.json` (for
 example `open-relay.workflow.json`).
 
+- **One look, the website's.** Every source sets `"visual_preset": "editorial"`
+  in its `meta`. `scripts/email-explained/look.mjs` then sets that preset's
+  paper, ink and emphasis to the colours of the design rest-mail.com runs
+  (Safe), for the website's diagram pages and the SVGs alike, so the site and
+  GitHub show the same picture. The typeface stays Archify's JetBrains Mono,
+  Safe's own monospace. To change the look, change `look.mjs` and export every
+  SVG again.
 - **Render and check it** from the repository root:
 
   ```sh
@@ -120,8 +128,8 @@ example `open-relay.workflow.json`).
   With no name it exports every diagram. Each SVG is sharp at any size, carries
   its typeface inside (only the subsets its text uses), follows the reader's
   light or dark theme, and is cropped to the drawing. It also records the hash
-  of the source it was exported from and the Archify that drew it, so CI fails
-  when a source changes and its image is not exported again.
+  of the source it was exported from, the Archify that drew it and the look, so
+  CI fails when any of them changes and the image is not exported again.
 - **The interactive version** is what the website shows, built from the same
   source.
 - **A diagram's facts are the chapter's facts.** Every label that states

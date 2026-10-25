@@ -2,6 +2,7 @@
   "schema_version": 2,
   "diagram_type": "workflow",
   "meta": {
+    "visual_preset": "editorial",
     "title": "How a large mailbox provider weighs a message: inbox, spam folder or refused",
     "locale": "en",
     "quality_profile": "showcase",

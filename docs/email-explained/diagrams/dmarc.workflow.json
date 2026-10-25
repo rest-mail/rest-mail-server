@@ -2,6 +2,7 @@
   "schema_version": 2,
   "diagram_type": "workflow",
   "meta": {
+    "visual_preset": "editorial",
     "title": "DMARC: does SPF or DKIM pass for the domain in From:?",
     "locale": "en",
     "quality_profile": "showcase",

@@ -2,6 +2,7 @@
   "schema_version": 1,
   "diagram_type": "tree",
   "meta": {
+    "visual_preset": "editorial",
     "title": "A mail server's jobs, and the programs that do them",
     "locale": "en",
     "quality_profile": "showcase",

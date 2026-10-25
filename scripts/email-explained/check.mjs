@@ -17,6 +17,7 @@ import { join, posix, relative } from "node:path";
 import { parseArgs } from "node:util";
 import { Marked } from "marked";
 import { anchorer, GUIDE, plain, SKIP, splitFrontMatter, TYPES } from "./bundle.mjs";
+import { lookHash, PRESET } from "./look.mjs";
 
 // What a chapter's front matter may say. The front page (README.md) has none.
 const REQUIRED = ["title", "part", "summary"];
@@ -54,10 +55,11 @@ export function anchorsOf(text) {
  * The guide's own checks. `pages` maps each Markdown file under the guide to
  * its text; `repo` answers for any path in the repository: whether it is a
  * file or a directory, and a file's text. `archify` is the pinned version and
- * commit every static image must say drew it. Returns the problems found, each
+ * commit every static image must say drew it, and `look` the hash of the look
+ * (look.mjs) it must say it was drawn in. Returns the problems found, each
  * with the file and line it is on.
  */
-export function checkGuide({ pages, repo, diagramFiles, archify }) {
+export function checkGuide({ pages, repo, diagramFiles, archify, look }) {
   const problems = [];
   const problem = (file, line, message) => problems.push({ file: posix.join(GUIDE, file), line, message });
   const anchors = new Map([...pages].map(([file, text]) => [file, anchorsOf(text)]));
@@ -138,12 +140,20 @@ export function checkGuide({ pages, repo, diagramFiles, archify }) {
     }
   }
 
-  // Diagrams: every source is used, and has its static image, exported from
-  // the source as it is now by the pinned Archify (svg.mjs records both).
+  // Diagrams: every source is used and drawn in the site's look, and has its
+  // static image, exported from the source as it is now by the pinned Archify
+  // in the current look (svg.mjs records all three).
   for (const name of [...diagramFiles].sort()) {
     const source = name.match(/^([a-z0-9-]+)\.([a-z]+)\.json$/);
     if (!source || !TYPES.has(source[2])) continue;
     if (!used.has(source[1])) problem(`diagrams/${name}`, null, "no chapter shows this diagram");
+    let preset;
+    try {
+      preset = JSON.parse(repo.text(posix.join(GUIDE, "diagrams", name)) ?? "").meta?.visual_preset;
+    } catch {
+      preset = undefined;
+    }
+    if (preset !== PRESET) problem(`diagrams/${name}`, null, `is not drawn in the site's look: its meta.visual_preset must be "${PRESET}" (look.mjs)`);
     const image = `${source[1]}.svg`;
     if (!diagramFiles.has(image)) {
       problem(`diagrams/${name}`, null, `no static image (${image}) beside it`);
@@ -153,9 +163,11 @@ export function checkGuide({ pages, repo, diagramFiles, archify }) {
     const root = svg.match(/<svg\b[^>]*>/)?.[0] ?? "";
     const made = root.match(/\sdata-source-sha256="([0-9a-f]{64})"/)?.[1];
     const drawnBy = root.match(/\sdata-archify="([^"]*)"/)?.[1];
+    const drawnIn = root.match(/\sdata-look-sha256="([0-9a-f]{64})"/)?.[1];
     const hash = createHash("sha256").update(repo.text(posix.join(GUIDE, "diagrams", name)) ?? "").digest("hex");
     if (made !== hash) problem(`diagrams/${image}`, null, `was not exported from ${name} as it is now: run svg.mjs ${source[1]}`);
     else if (archify && drawnBy !== archify) problem(`diagrams/${image}`, null, `was drawn by Archify ${drawnBy ?? "(unknown)"}, not the pinned ${archify}: run svg.mjs ${source[1]}`);
+    else if (look && drawnIn !== look) problem(`diagrams/${image}`, null, `was not drawn in the current look (look.mjs): run svg.mjs ${source[1]}`);
   }
   return problems;
 }
@@ -292,7 +304,7 @@ async function main() {
   const diagramFiles = new Set((await readdir(join(guide, "diagrams"))).filter((name) => kinds.has(posix.join(GUIDE, "diagrams", name))));
 
   const { archify: pin } = JSON.parse(await readFile(new URL("package.json", import.meta.url), "utf8"));
-  const problems = checkGuide({ pages, repo, diagramFiles, archify: `${pin.version} ${pin.commit}` });
+  const problems = checkGuide({ pages, repo, diagramFiles, archify: `${pin.version} ${pin.commit}`, look: lookHash });
 
   if (values.archify) {
     for (const name of [...diagramFiles].sort()) {
