@@ -25,7 +25,7 @@ type folderMutationConnection struct{ mailRemovalConnection }
 func (c folderMutationConnection) Connect(context.Context) (driver.Conn, error) { return c, nil }
 func (c folderMutationConnection) Driver() driver.Driver                        { return c }
 func (c folderMutationConnection) Open(string) (driver.Conn, error)             { return c, nil }
-func folderMarkerFields(q string, args []driver.NamedValue) (map[string]driver.Value, error) {
+func exampleInsertFields(q string, args []driver.NamedValue) (map[string]driver.Value, error) {
 	start, end := strings.Index(q, "("), strings.Index(q, ") VALUES (")
 	ret := strings.Index(q, " RETURNING")
 	if start < 0 || end < start || ret < end {
@@ -54,7 +54,7 @@ func folderMarkerFields(q string, args []driver.NamedValue) (map[string]driver.V
 func (c folderMutationConnection) QueryContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
 	if strings.HasPrefix(q, `INSERT INTO "messages"`) {
 		c.record(q, args)
-		fields, err := folderMarkerFields(q, args)
+		fields, err := exampleInsertFields(q, args)
 		if err != nil {
 			return nil, err
 		}
@@ -169,7 +169,7 @@ func TestFolderMutationExamples(t *testing.T) {
 					}
 					writes++
 					if op == "createFolder" {
-						fields, err := folderMarkerFields(m.query, m.args)
+						fields, err := exampleInsertFields(m.query, m.args)
 						if err != nil {
 							t.Fatal(err)
 						}

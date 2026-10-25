@@ -11,6 +11,7 @@ import (
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/db/repositories"
 	"gorm.io/gorm"
 )
 
@@ -216,8 +217,11 @@ func (h *ContactHandler) create(r *http.Request, in createContactRequest) (Conta
 		Source:     "manual",
 	}
 
-	if err := h.db.Create(&contact).Error; err != nil {
-		return Contact{}, endpoint.Refuse(http.StatusConflict, "already_exists", "Contact already exists")
+	if err := h.db.WithContext(r.Context()).Create(&contact).Error; err != nil {
+		if repositories.IsUniqueViolation(err) {
+			return Contact{}, endpoint.Refuse(http.StatusConflict, "already_exists", "Contact already exists")
+		}
+		return Contact{}, fmt.Errorf("create contact: %w", err)
 	}
 
 	return contactOf(contact), nil
@@ -244,8 +248,11 @@ func (h *ContactHandler) update(r *http.Request, in updateContactRequest) (Conta
 	}
 
 	var contact models.Contact
-	if err := h.db.Where("id = ? AND mailbox_id = ?", in.CID, mailboxID).First(&contact).Error; err != nil {
-		return Contact{}, errContactNotFound
+	if err := h.db.WithContext(r.Context()).Where("id = ? AND mailbox_id = ?", in.CID, mailboxID).First(&contact).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return Contact{}, errContactNotFound
+		}
+		return Contact{}, fmt.Errorf("find contact for update: %w", err)
 	}
 
 	req := in.Body
@@ -258,12 +265,17 @@ func (h *ContactHandler) update(r *http.Request, in updateContactRequest) (Conta
 	}
 
 	if len(updates) > 0 {
-		if err := h.db.Model(&contact).Updates(updates).Error; err != nil {
+		if err := h.db.WithContext(r.Context()).Model(&contact).Updates(updates).Error; err != nil {
 			return Contact{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to update contact")
 		}
 	}
 
-	h.db.Where("id = ? AND mailbox_id = ?", in.CID, mailboxID).First(&contact)
+	if err := h.db.WithContext(r.Context()).Where("id = ? AND mailbox_id = ?", in.CID, mailboxID).First(&contact).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return Contact{}, errContactNotFound
+		}
+		return Contact{}, fmt.Errorf("reload updated contact: %w", err)
+	}
 	return contactOf(contact), nil
 }
 
@@ -313,16 +325,23 @@ func (h *ContactHandler) block(r *http.Request, in blockSenderRequest) (endpoint
 	}
 
 	var contact models.Contact
-	result := h.db.Where("mailbox_id = ? AND email = ?", mailboxID, email).First(&contact)
+	result := h.db.WithContext(r.Context()).Where("mailbox_id = ? AND email = ?", mailboxID, email).First(&contact)
 
 	if result.Error == nil {
 		// Contact exists, update to blocked
-		h.db.Model(&contact).Updates(map[string]interface{}{
+		if err := h.db.WithContext(r.Context()).Model(&contact).Updates(map[string]interface{}{
 			"trust_level": "blocked",
 			"source":      "manual",
-		})
-		h.db.First(&contact, contact.ID)
+		}).Error; err != nil {
+			return endpoint.Status[Contact]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to block sender")
+		}
+		if err := h.db.WithContext(r.Context()).Where("id = ? AND mailbox_id = ?", contact.ID, mailboxID).First(&contact).Error; err != nil {
+			return endpoint.Status[Contact]{}, fmt.Errorf("reload blocked contact: %w", err)
+		}
 		return endpoint.Status[Contact]{Code: http.StatusOK, Value: contactOf(contact)}, nil
+	}
+	if !errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		return endpoint.Status[Contact]{}, fmt.Errorf("find contact to block: %w", result.Error)
 	}
 
 	// Contact does not exist, create as blocked
@@ -333,7 +352,7 @@ func (h *ContactHandler) block(r *http.Request, in blockSenderRequest) (endpoint
 		Source:     "manual",
 	}
 
-	if err := h.db.Create(&contact).Error; err != nil {
+	if err := h.db.WithContext(r.Context()).Create(&contact).Error; err != nil {
 		return endpoint.Status[Contact]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to block sender")
 	}
 
