@@ -800,3 +800,21 @@ python3 scripts/contract_diff.py base.json revision.json \
 This is the server PR gate. The mobile client's check against the newest server
 description remains part of #116; #653 stays open until its client requirements
 are met as well.
+
+### MTA-STS lookup without a policy
+
+`getMtaStsPolicy` also pairs `policy_absent` with its distinct 404:
+`not_found`, "No MTA-STS policy found for this domain". The hook entrypoint
+loads the shared hooks once and reuses their setup session for an isolated,
+inactive domain created through the public admin API. It substitutes that
+fixture only for this GET/404 placeholder, preserving the caller credential
+and complete expected response. It never deletes a policy or changes the
+linked success domain. Coverage mutations, missing-domain and unauthenticated
+requests retain their original inputs.
+
+`test_policy_lookup_hooks.py` exercises the configured entrypoint, setup HTTP
+requests, reuse per origin and unmodified refusals/failures.
+`TestMtaStsPolicy_DocumentedAbsentExample` checks the pair and, against
+PostgreSQL, the registered route, unchanged domains and policy state. Both
+API descriptions carry the same request/response pair; the existing lookup
+404 selection requires it in the examples gate.
