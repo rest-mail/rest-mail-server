@@ -50,7 +50,13 @@ func checkMailboxLookupWithVertrag(t *testing.T, binary string, handler http.Han
 	}
 	query := url.Values{}
 	for key, value := range pair.Request.Query {
-		query.Set(key, fmt.Sprint(value))
+		if repeated, ok := value.([]interface{}); ok {
+			for _, item := range repeated {
+				query.Add(key, fmt.Sprint(item))
+			}
+		} else {
+			query.Set(key, fmt.Sprint(value))
+		}
 	}
 	if len(query) > 0 {
 		uri += "?" + query.Encode()
