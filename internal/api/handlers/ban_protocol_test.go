@@ -5,30 +5,47 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
-	"runtime/debug"
 	"strings"
 	"testing"
+
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
-// createBanNoDB posts body to CreateBan on a handler without a database. The
-// first thing past validation is the lookup of the IP, which panics on the nil
-// database, so reachedDB says the request was accepted as valid. A panic
-// anywhere else fails the test.
+// Stop at an explicit dry-run query callback, without opening a connection.
+// A valid body reaches the ban lookup; validation failures never reach it.
 func createBanNoDB(t *testing.T, body string) (rr *httptest.ResponseRecorder, reachedDB bool) {
 	t.Helper()
+	db, err := gorm.Open(postgres.Open("host=127.0.0.1 port=1 user=unused dbname=unused sslmode=disable"), &gorm.Config{DryRun: true, DisableAutomaticPing: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { pool.Close() })
+	stop := &struct{ name string }{"ban lookup reached"}
+	if err := db.Callback().Query().Before("gorm:query").Register("ban_protocol_lookup_boundary", func(tx *gorm.DB) {
+		if tx.Statement.Table != "bans" {
+			t.Fatalf("unexpected query table: %s", tx.Statement.Table)
+		}
+		reachedDB = true
+		panic(stop)
+	}); err != nil {
+		t.Fatal(err)
+	}
 	rr = httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/bans", strings.NewReader(body))
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
-				stack := string(debug.Stack())
-				if !strings.Contains(stack, "gorm.io/gorm.(*DB).Where") {
-					t.Fatalf("%s panicked outside the lookup of the IP: %v\n%s", body, r, stack)
+				if r != stop {
+					t.Fatalf("%s panicked outside the controlled lookup: %v", body, r)
 				}
-				reachedDB = true
 			}
 		}()
-		banRoutes(NewBanHandler(nil)).ServeHTTP(rr, req)
+		banRoutes(NewBanHandler(db)).ServeHTTP(rr, req)
 	}()
 	return rr, reachedDB
 }

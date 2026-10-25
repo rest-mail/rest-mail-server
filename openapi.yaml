@@ -7716,6 +7716,13 @@ paths:
                         fields:
                           duration: invalid duration format (e.g. 24h, 168h)
 
+        "429":
+          description: Authentication refusals exceeded the configured rate limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/admin/bans/{id}:
     parameters:
       - $ref: "#/components/parameters/ResourceId"

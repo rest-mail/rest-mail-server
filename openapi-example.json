@@ -3717,7 +3717,8 @@
           "protocol": "all",
           "duration": "1h",
           "created_by": "admin@restmail.test"
-        }
+        },
+        "mediaType": "application/json"
       },
       "response": {
         "status": 201,
@@ -3731,7 +3732,8 @@
             "expires_at": "2026-01-01T01:00:00Z",
             "created_at": "2026-01-01T00:00:00Z"
           }
-        }
+        },
+        "mediaType": "application/json"
       }
     },
     "duration_invalid": {
@@ -3743,7 +3745,8 @@
           "duration": "not-a-duration",
           "created_by": "admin@restmail.test"
         },
-        "invalid": true
+        "invalid": true,
+        "mediaType": "application/json"
       },
       "response": {
         "status": 422,
@@ -3757,7 +3760,8 @@
               }
             }
           }
-        }
+        },
+        "mediaType": "application/json"
       }
     },
     "ip_missing": {
@@ -3768,7 +3772,8 @@
           "duration": "1h",
           "created_by": "admin@restmail.test"
         },
-        "invalid": true
+        "invalid": true,
+        "mediaType": "application/json"
       },
       "response": {
         "status": 422,
@@ -3782,8 +3787,1096 @@
               }
             }
           }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "write_only": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "1h",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 201,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "ip": "192.0.2.10",
+            "reason": "Repeated failed sign-ins",
+            "protocol": "all",
+            "created_by": "admin@restmail.test",
+            "created_at": "2026-01-01T00:00:00Z",
+            "expires_at": "2026-01-01T01:00:00Z"
+          }
         }
       }
+    },
+    "key_write": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "1h",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 201,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "ip": "192.0.2.10",
+            "reason": "Repeated failed sign-ins",
+            "protocol": "all",
+            "created_by": "admin@restmail.test",
+            "created_at": "2026-01-01T00:00:00Z",
+            "expires_at": "2026-01-01T01:00:00Z"
+          }
+        }
+      }
+    },
+    "cookie_session": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "1h",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 201,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "ip": "192.0.2.10",
+            "reason": "Repeated failed sign-ins",
+            "protocol": "all",
+            "created_by": "admin@restmail.test",
+            "created_at": "2026-01-01T00:00:00Z",
+            "expires_at": "2026-01-01T01:00:00Z"
+          }
+        }
+      }
+    },
+    "body_boundary": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "1h",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 201,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "ip": "192.0.2.10",
+            "reason": "Repeated failed sign-ins",
+            "protocol": "all",
+            "created_by": "admin@restmail.test",
+            "created_at": "2026-01-01T00:00:00Z",
+            "expires_at": "2026-01-01T01:00:00Z"
+          }
+        }
+      },
+      "description": "The readable request is padded with JSON whitespace to exactly512 bytes by the route and Vertrag transport tests."
+    },
+    "read_only": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "1h",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "domain_scope": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "1h",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "mailbox_scope": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "1h",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_read": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "1h",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_domain": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "1h",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_mailbox": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "1h",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_holder_missing": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "1h",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "1h",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "session_unavailable": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "1h",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 503,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        }
+      }
+    },
+    "permission_store_unavailable": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "1h",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 503,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
+          }
+        }
+      }
+    },
+    "csrf_missing": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "1h",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "csrf_mismatch": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "1h",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "rate_limited": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "1h",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 429,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        }
+      }
+    },
+    "lookup_unavailable": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.30",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "1h",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "insert_unavailable": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.40",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "1h",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "update_unavailable": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.21",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "1h",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "updated": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.20",
+          "reason": "Updated reason",
+          "protocol": "imap",
+          "duration": "2h",
+          "created_by": "operator@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 20,
+            "ip": "192.0.2.20",
+            "reason": "Updated reason",
+            "protocol": "imap",
+            "created_by": "operator@restmail.test",
+            "created_at": "2025-12-31T00:00:00Z",
+            "expires_at": "2026-01-01T02:00:00Z"
+          }
+        }
+      }
+    },
+    "permanent": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 201,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "ip": "192.0.2.10",
+            "reason": "Repeated failed sign-ins",
+            "protocol": "all",
+            "created_by": "admin@restmail.test",
+            "created_at": "2026-01-01T00:00:00Z"
+          }
+        }
+      }
+    },
+    "clear_expiry": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.20",
+          "reason": "Permanent override",
+          "protocol": "all",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 20,
+            "ip": "192.0.2.20",
+            "reason": "Permanent override",
+            "protocol": "all",
+            "created_by": "admin@restmail.test",
+            "created_at": "2025-12-31T00:00:00Z"
+          }
+        }
+      }
+    },
+    "null_duration": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": null,
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 201,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "ip": "192.0.2.10",
+            "reason": "Repeated failed sign-ins",
+            "protocol": "all",
+            "created_by": "admin@restmail.test",
+            "created_at": "2026-01-01T00:00:00Z"
+          }
+        }
+      }
+    },
+    "zero_duration": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "0",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 201,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "ip": "192.0.2.10",
+            "reason": "Repeated failed sign-ins",
+            "protocol": "all",
+            "created_by": "admin@restmail.test",
+            "created_at": "2026-01-01T00:00:00Z",
+            "expires_at": "2026-01-01T00:00:00Z"
+          }
+        }
+      }
+    },
+    "negative_duration": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "-1h",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 201,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "ip": "192.0.2.10",
+            "reason": "Repeated failed sign-ins",
+            "protocol": "all",
+            "created_by": "admin@restmail.test",
+            "created_at": "2026-01-01T00:00:00Z",
+            "expires_at": "2025-12-31T23:00:00Z"
+          }
+        }
+      }
+    },
+    "fractional_duration": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "1.5h",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 201,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "ip": "192.0.2.10",
+            "reason": "Repeated failed sign-ins",
+            "protocol": "all",
+            "created_by": "admin@restmail.test",
+            "created_at": "2026-01-01T00:00:00Z",
+            "expires_at": "2026-01-01T01:30:00Z"
+          }
+        }
+      }
+    },
+    "compound_duration": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "1h30m",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 201,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "ip": "192.0.2.10",
+            "reason": "Repeated failed sign-ins",
+            "protocol": "all",
+            "created_by": "admin@restmail.test",
+            "created_at": "2026-01-01T00:00:00Z",
+            "expires_at": "2026-01-01T01:30:00Z"
+          }
+        }
+      }
+    },
+    "ipv6": {
+      "request": {
+        "body": {
+          "ip": "2001:db8::1",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "1h",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 201,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "ip": "2001:db8::1",
+            "reason": "Repeated failed sign-ins",
+            "protocol": "all",
+            "created_by": "admin@restmail.test",
+            "created_at": "2026-01-01T00:00:00Z",
+            "expires_at": "2026-01-01T01:00:00Z"
+          }
+        }
+      }
+    },
+    "protocol_smtp": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "smtp",
+          "duration": "1h",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 201,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "ip": "192.0.2.10",
+            "reason": "Repeated failed sign-ins",
+            "protocol": "smtp",
+            "created_by": "admin@restmail.test",
+            "created_at": "2026-01-01T00:00:00Z",
+            "expires_at": "2026-01-01T01:00:00Z"
+          }
+        }
+      }
+    },
+    "protocol_imap": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "imap",
+          "duration": "1h",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 201,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "ip": "192.0.2.10",
+            "reason": "Repeated failed sign-ins",
+            "protocol": "imap",
+            "created_by": "admin@restmail.test",
+            "created_at": "2026-01-01T00:00:00Z",
+            "expires_at": "2026-01-01T01:00:00Z"
+          }
+        }
+      }
+    },
+    "protocol_pop3": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "pop3",
+          "duration": "1h",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 201,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "ip": "192.0.2.10",
+            "reason": "Repeated failed sign-ins",
+            "protocol": "pop3",
+            "created_by": "admin@restmail.test",
+            "created_at": "2026-01-01T00:00:00Z",
+            "expires_at": "2026-01-01T01:00:00Z"
+          }
+        }
+      }
+    },
+    "created_by_empty": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "1h",
+          "created_by": ""
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 201,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "ip": "192.0.2.10",
+            "reason": "Repeated failed sign-ins",
+            "protocol": "all",
+            "created_by": "",
+            "created_at": "2026-01-01T00:00:00Z",
+            "expires_at": "2026-01-01T01:00:00Z"
+          }
+        }
+      }
+    },
+    "duration_overflow": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "9223372036854775808h",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "duration": "invalid duration format (e.g. 24h, 168h)"
+              }
+            }
+          }
+        }
+      }
+    },
+    "protocol_missing": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "duration": "1h",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "protocol": "protocol must be one of smtp, imap, pop3, all"
+              }
+            }
+          }
+        }
+      }
+    },
+    "protocol_invalid": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "SMTP",
+          "duration": "1h",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "protocol": "protocol must be one of smtp, imap, pop3, all"
+              }
+            }
+          }
+        }
+      }
+    },
+    "duration_wrong_type": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": 1,
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "duration": "must be a string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "created_by_missing": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "1h"
+        },
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "created_by": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "ip_empty": {
+      "request": {
+        "body": {
+          "ip": "",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "1h",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "ip": "IP address is required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "ip_wrong_type": {
+      "request": {
+        "body": {
+          "ip": 1,
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "1h",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "ip": "must be a string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "unknown_field": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "1h",
+          "created_by": "admin@restmail.test",
+          "surprise": true
+        },
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "surprise": "not allowed"
+              }
+            }
+          }
+        }
+      }
+    },
+    "body_array": {
+      "request": {
+        "body": [],
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "malformed_json": {
+      "request": {
+        "body": "{",
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      },
+      "description": "The route and Vertrag transport hook send the raw truncated JSON byte { with application/json content type."
+    },
+    "request_too_large": {
+      "request": {
+        "body": {
+          "ip": "192.0.2.10",
+          "reason": "Repeated failed sign-ins",
+          "protocol": "all",
+          "duration": "1h",
+          "created_by": "admin@restmail.test"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 413,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        }
+      },
+      "description": "The route and Vertrag transport hook send exactly513 bytes against the configured512-byte cap."
     }
   },
   "createCertificate": {
