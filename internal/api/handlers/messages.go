@@ -1140,7 +1140,10 @@ func (h *MessageHandler) accountMailbox(r *http.Request, accountID uint32, capab
 	}
 	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims, capability)
 	if err != nil {
-		return 0, errMailboxAccess
+		if errors.Is(err, errNoAccess) {
+			return 0, errMailboxAccess
+		}
+		return 0, err
 	}
 	return mailboxID, nil
 }
@@ -1284,15 +1287,24 @@ func (h *MessageHandler) getQuota(r *http.Request, in accountPath) (Quota, error
 
 	var mailbox models.Mailbox
 	if err := h.db.First(&mailbox, mailboxID).Error; err != nil {
-		return Quota{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Mailbox not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return Quota{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Mailbox not found")
+		}
+		return Quota{}, err
 	}
 
 	var messageCount int64
-	h.db.Model(&models.Message{}).Where("mailbox_id = ?", mailboxID).Count(&messageCount)
+	if err := h.db.Model(&models.Message{}).Where("mailbox_id = ?", mailboxID).Count(&messageCount).Error; err != nil {
+		return Quota{}, err
+	}
+	percentUsed := 0.0
+	if mailbox.QuotaBytes > 0 {
+		percentUsed = float64(mailbox.QuotaUsedBytes) / float64(mailbox.QuotaBytes) * 100
+	}
 
 	return Quota{
 		MessageCount:   messageCount,
-		PercentUsed:    float64(mailbox.QuotaUsedBytes) / float64(mailbox.QuotaBytes) * 100,
+		PercentUsed:    percentUsed,
 		QuotaBytes:     mailbox.QuotaBytes,
 		QuotaUsedBytes: mailbox.QuotaUsedBytes,
 	}, nil

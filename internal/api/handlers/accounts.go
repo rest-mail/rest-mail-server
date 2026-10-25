@@ -182,7 +182,10 @@ func (h *AccountHandler) get(r *http.Request, in accountPath) (accountResponse, 
 	}
 	mb, err := mayReach(h.db, claims, uint(in.ID), models.CapMailRead)
 	if err != nil {
-		return accountResponse{}, errAccountNotFound
+		if errors.Is(err, errNoAccess) {
+			return accountResponse{}, errAccountNotFound
+		}
+		return accountResponse{}, err
 	}
 	return toAccountResponse(mb, claims.AccountID), nil
 }
