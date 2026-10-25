@@ -115,7 +115,7 @@ func checkAuthReadWithVertrag(t *testing.T, binary string, handler http.Handler,
 		Summary struct{ Total, Passing, Failing, Errors, Skipped int }
 	}
 	if err := json.Unmarshal(data, &report); err != nil {
-		t.Fatal(err)
+		t.Fatalf("decode Vertrag report (%d bytes): %v\nCLI output: %s\nReport: %s", len(data), err, output, data)
 	}
 	if report.Summary.Total != len(paths) || report.Summary.Passing != len(paths) || report.Summary.Failing != 0 || report.Summary.Errors != 0 || report.Summary.Skipped != 0 {
 		t.Fatalf("not every selected transaction ran and passed: %s", data)
