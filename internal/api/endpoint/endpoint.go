@@ -547,11 +547,27 @@ func requestShape(t reflect.Type) shape {
 		}
 		if _, ok := f.Tag.Lookup("body"); ok {
 			forms++
+			validates = validates || bodyCanReject(f.Tag.Get("body"))
 		}
 	}
 	bodyField := forms > 0
 	whole := !params && !bodyField && t.NumField() > 0
-	return shape{binds: params || bodyField || whole, validates: validates || bodyField || whole, body: bodyField || whole, forms: forms}
+	return shape{binds: params || bodyField || whole, validates: validates || whole, body: bodyField || whole, forms: forms}
+}
+
+// Raw body forms are copied without validation by go-oapifly. Only JSON
+// forms can add body violations; parameter and explicit handler rules still apply.
+func bodyCanReject(tag string) bool {
+	if strings.Trim(tag, " ,") == "" {
+		return true // An unnamed body form is JSON.
+	}
+	for _, media := range strings.Split(tag, ",") {
+		base := strings.TrimSpace(strings.SplitN(media, ";", 2)[0])
+		if base == "application/json" || strings.HasSuffix(base, "+json") {
+			return true
+		}
+	}
+	return false
 }
 
 // Plain optional query strings accept any text. All other parameter kinds

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -58,11 +59,54 @@ func TestAuthenticatedReadExamplesWithVertrag(t *testing.T) {
 
 func checkAuthReadWithVertrag(t *testing.T, binary string, handler http.Handler, token, status string, paths []string) {
 	t.Helper()
+	checkRegisteredExamplesWithVertrag(t, binary, handler, token, http.MethodGet, status, paths, len(paths), status == "413")
+}
+
+func checkRegisteredExamplesWithVertrag(t *testing.T, binary string, handler http.Handler, token, method, status string, paths []string, want int, transportBody bool, rawPair ...string) {
+	t.Helper()
 	doc := contractDocument(t, describedRouters(t).generator("authenticated example boundary"))
 	all := doc["paths"].(map[string]interface{})
 	selected := map[string]interface{}{}
 	for _, path := range paths {
-		selected[path] = map[string]interface{}{"get": all[path].(map[string]interface{})["get"]}
+		verb := strings.ToLower(method)
+		selected[path] = map[string]interface{}{verb: all[path].(map[string]interface{})[verb]}
+	}
+	var rawFixture map[string]interface{}
+	if len(rawPair) > 0 {
+		// Vertrag 0.30.0 does not render explicit application/xml examples
+		// (Vertrag #89). Isolate one named exchange and bridge its published
+		// bytes through a standard hook, retaining the actual schema and status.
+		operation := selected[paths[0]].(map[string]interface{})[strings.ToLower(method)].(map[string]interface{})
+		content := operation["requestBody"].(map[string]interface{})["content"].(map[string]interface{})
+		media := content["application/xml"].(map[string]interface{})
+		example := media["examples"].(map[string]interface{})[rawPair[0]]
+		if example == nil {
+			t.Fatal("raw request example is missing")
+		}
+		media["examples"] = map[string]interface{}{rawPair[0]: example}
+		query := map[string]interface{}{}
+		for _, parameter := range operation["parameters"].([]interface{}) {
+			p := parameter.(map[string]interface{})
+			if p["in"] != "query" {
+				continue
+			}
+			if examples, ok := p["examples"].(map[string]interface{}); ok {
+				if named, ok := examples[rawPair[0]]; ok {
+					p["examples"] = map[string]interface{}{rawPair[0]: named}
+					query[p["name"].(string)] = named.(map[string]interface{})["value"]
+				}
+			}
+		}
+		rawFixture = map[string]interface{}{"body": example.(map[string]interface{})["value"], "query": query}
+		response := operation["responses"].(map[string]interface{})[status].(map[string]interface{})
+		for _, value := range response["content"].(map[string]interface{}) {
+			examples := value.(map[string]interface{})["examples"].(map[string]interface{})
+			if pair, ok := examples[rawPair[0]]; ok {
+				if body, ok := pair.(map[string]interface{})["value"].(string); ok {
+					rawFixture["responseBody"] = body
+				}
+			}
+		}
 	}
 	doc["paths"] = selected
 	data, err := json.Marshal(doc)
@@ -74,13 +118,29 @@ func checkAuthReadWithVertrag(t *testing.T, binary string, handler http.Handler,
 	if err := os.WriteFile(spec, data, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if status == "413" {
+	if rawFixture != nil {
+		fixture, err := json.Marshal(rawFixture)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "raw-pair.json"), fixture, 0600); err != nil {
+			t.Fatal(err)
+		}
+		hook := "import json\nfrom urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode\nimport vertrag_hooks as hooks\nwith open('raw-pair.json') as f:\n    pair = json.load(f)\n@hooks.before_each\ndef published_xml_bytes(transaction):\n    transaction['request']['body'] = pair['body']\n    parts = urlsplit(transaction['fullPath'])\n    query = dict(parse_qsl(parts.query, keep_blank_values=True))\n    query.update(pair['query'])\n    transaction['fullPath'] = urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))\n    if 'responseBody' in pair:\n        transaction['expected']['body'] = pair['responseBody']\n"
+		if err := os.WriteFile(filepath.Join(dir, "raw-pair.py"), []byte(hook), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "vertrag.yml"), []byte("language: python\nhookfiles: ./raw-pair.py\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if transportBody {
 		// Transport preconditions are outside the typed GET request. A
 		// normal Vertrag hook supplies nine real bytes to the eight-byte
 		// fixture cap; no schema or expected response is rewritten.
 		hook := "import vertrag_hooks as hooks\n"
 		for _, path := range paths {
-			operation := selected[path].(map[string]interface{})["get"].(map[string]interface{})["operationId"].(string)
+			operation := selected[path].(map[string]interface{})[strings.ToLower(method)].(map[string]interface{})["operationId"].(string)
 			hook += "@hooks.before('" + operation + "')\n"
 		}
 		hook += "def oversized_body(transaction):\n    transaction['request']['body'] = 'oversized'\n"
@@ -117,7 +177,7 @@ func checkAuthReadWithVertrag(t *testing.T, binary string, handler http.Handler,
 	if err := json.Unmarshal(data, &report); err != nil {
 		t.Fatalf("decode Vertrag report (%d bytes): %v\nCLI output: %s\nReport: %s", len(data), err, output, data)
 	}
-	if report.Summary.Total != len(paths) || report.Summary.Passing != len(paths) || report.Summary.Failing != 0 || report.Summary.Errors != 0 || report.Summary.Skipped != 0 {
+	if report.Summary.Total != want || report.Summary.Passing != want || report.Summary.Failing != 0 || report.Summary.Errors != 0 || report.Summary.Skipped != 0 {
 		t.Fatalf("not every selected transaction ran and passed: %s", data)
 	}
 }
