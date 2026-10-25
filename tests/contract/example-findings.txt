@@ -13,9 +13,6 @@ example-invalid createAppPassword/name_empty
 example-invalid createAppPassword/name_too_long
 example-invalid createPipeline/direction_missing
 example-invalid createPipeline/filters_missing
-example-invalid importContacts/contacts_empty
-example-invalid importContacts/email_invalid
-example-invalid importContacts/mixed_batch
 example-invalid probeServices/service_unknown
 example-invalid protocolSignIn/protocol_missing
 example-invalid restmailDeliver/recipients_missing

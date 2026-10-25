@@ -32,7 +32,12 @@ func exampleInsertFields(q string, args []driver.NamedValue) (map[string]driver.
 		return nil, errors.New("unexpected marker insert")
 	}
 	cols := strings.Split(q[start+1:end], ",")
-	values := strings.Split(strings.TrimSuffix(q[end+len(") VALUES ("):ret], ")"), ",")
+	valuesStart := end + len(") VALUES (")
+	valuesEnd := strings.Index(q[valuesStart:], ")")
+	if valuesEnd < 0 {
+		return nil, errors.New("unterminated insert values")
+	}
+	values := strings.Split(q[valuesStart:valuesStart+valuesEnd], ",")
 	if len(cols) != len(values) {
 		return nil, errors.New("marker insert value count changed")
 	}

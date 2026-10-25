@@ -13,6 +13,7 @@ import (
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type ContactHandler struct {
@@ -378,11 +379,13 @@ func (h *ContactHandler) suggest(r *http.Request, in suggestContactsRequest) (en
 
 	var contacts []models.Contact
 	escaped := "%" + escapeLike(in.Q) + "%"
-	h.db.Where("mailbox_id = ? AND (email LIKE ? ESCAPE '\\' OR name LIKE ? ESCAPE '\\') AND trust_level != ?",
+	if err := h.db.WithContext(r.Context()).Where("mailbox_id = ? AND (email LIKE ? ESCAPE '\\' OR name LIKE ? ESCAPE '\\') AND trust_level != ?",
 		mailboxID, escaped, escaped, "blocked").
 		Order("name ASC, email ASC").
 		Limit(10).
-		Find(&contacts)
+		Find(&contacts).Error; err != nil {
+		return endpoint.List[Contact]{}, fmt.Errorf("suggest contacts: %w", err)
+	}
 
 	return endpoint.List[Contact]{Data: contactsOf(contacts)}, nil
 }
@@ -430,20 +433,30 @@ func (h *ContactHandler) importContacts(r *http.Request, in importContactsReques
 	}
 
 	imported := 0
-	for _, entry := range entries {
-		contact := models.Contact{
-			MailboxID:  mailboxID,
-			Email:      entry.Email,
-			Name:       entry.Name,
-			TrustLevel: "auto",
-			Source:     "import",
+	if err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
+		for _, entry := range entries {
+			contact := models.Contact{
+				MailboxID:  mailboxID,
+				Email:      entry.Email,
+				Name:       entry.Name,
+				TrustLevel: "auto",
+				Source:     "import",
+			}
+			// A duplicate must not abort PostgreSQL's batch transaction. Other
+			// failures roll back the whole batch rather than reporting a partial
+			// import as a success.
+			result := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "mailbox_id"}, {Name: "email"}},
+				DoNothing: true,
+			}).Create(&contact)
+			if result.Error != nil {
+				return fmt.Errorf("import contact: %w", result.Error)
+			}
+			imported += int(result.RowsAffected)
 		}
-
-		if err := h.db.Create(&contact).Error; err != nil {
-			// Skip duplicates, continue importing
-			continue
-		}
-		imported++
+		return nil
+	}); err != nil {
+		return ContactsImported{}, err
 	}
 
 	return ContactsImported{Imported: imported}, nil

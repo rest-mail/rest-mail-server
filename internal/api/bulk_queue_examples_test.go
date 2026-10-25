@@ -7,10 +7,8 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -289,14 +287,7 @@ func checkQueueMutationPairWithVertrag(t *testing.T, binary string, s bulkQueueE
 		}
 		media["examples"] = map[string]interface{}{name: selected}
 	}
-	uri := path
-	for key, value := range pair.Request.Path {
-		text := fmt.Sprint(value)
-		if numeric, ok := value.(float64); ok {
-			text = strconv.FormatFloat(numeric, 'f', -1, 64)
-		}
-		uri = strings.ReplaceAll(uri, "{"+key+"}", url.PathEscape(text))
-	}
+	uri := messageCollectionReadURI(path, pair)
 	if parameters, ok := op["parameters"].([]interface{}); ok {
 		for _, value := range parameters {
 			parameter := value.(map[string]interface{})
