@@ -8210,6 +8210,13 @@ paths:
       summary: MTA-STS policy file (RFC 8461)
       description: Served to external MTAs. The domain is resolved from the Host header.
       security: []
+      parameters:
+        - name: Host
+          in: header
+          required: false
+          description: Authority naming mta-sts.<domain>, normally supplied by the request URL
+          schema:
+            type: string
       responses:
         "200":
           description: MTA-STS policy in text/plain

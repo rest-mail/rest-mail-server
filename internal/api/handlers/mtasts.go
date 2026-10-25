@@ -150,6 +150,10 @@ func (h *MTASTSHandler) deletePolicy(_ *http.Request, in domainPath) (endpoint.E
 	return endpoint.Empty{}, nil
 }
 
+type mtaSTSPolicyFileRequest struct {
+	Host string `header:"Host" description:"Authority naming mta-sts.<domain>, normally supplied by the request URL"`
+}
+
 // RegisterPolicyFile mounts the MTA-STS policy file, which any MTA may fetch (RFC 8461 §3.3).
 func (h *MTASTSHandler) RegisterPolicyFile(rs endpoint.Routes) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/.well-known/mta-sts.txt",
@@ -164,8 +168,8 @@ func (h *MTASTSHandler) RegisterPolicyFile(rs endpoint.Routes) {
 // It extracts the domain from the Host header and returns the appropriate
 // text/plain policy file per RFC 8461.
 // GET /.well-known/mta-sts.txt
-func (h *MTASTSHandler) servePolicy(r *http.Request, _ endpoint.Empty) (endpoint.Document, error) {
-	host := r.Host
+func (h *MTASTSHandler) servePolicy(_ *http.Request, in mtaSTSPolicyFileRequest) (endpoint.Document, error) {
+	host := in.Host
 	if name, _, err := net.SplitHostPort(host); err == nil {
 		host = name
 	}
@@ -187,13 +191,19 @@ func (h *MTASTSHandler) servePolicy(r *http.Request, _ endpoint.Empty) (endpoint
 	// Look up the domain
 	var domain models.Domain
 	if err := h.db.Where("name IN ?", names).First(&domain).Error; err != nil {
-		return endpoint.Document{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Domain not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return endpoint.Document{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Domain not found")
+		}
+		return endpoint.Document{}, fmt.Errorf("look up public MTA-STS domain: %w", err)
 	}
 
 	// Look up the MTA-STS policy
 	var policy models.MTASTSPolicy
 	if err := h.db.Where("domain_id = ? AND active = ?", domain.ID, true).First(&policy).Error; err != nil {
-		return endpoint.Document{}, endpoint.Refuse(http.StatusNotFound, "not_found", "No MTA-STS policy configured")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return endpoint.Document{}, endpoint.Refuse(http.StatusNotFound, "not_found", "No MTA-STS policy configured")
+		}
+		return endpoint.Document{}, fmt.Errorf("look up active public MTA-STS policy: %w", err)
 	}
 
 	// The policy file, as the _mta-sts record's id is derived from it. One whose
