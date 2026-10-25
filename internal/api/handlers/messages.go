@@ -1156,12 +1156,14 @@ func (h *MessageHandler) listFolders(r *http.Request, in accountPath) (endpoint.
 	}
 
 	var folders []FolderSummary
-	h.db.Model(&models.Message{}).
+	if err := h.db.Model(&models.Message{}).
 		Select("folder, COUNT(CASE WHEN is_deleted = false THEN 1 END) as total, COUNT(CASE WHEN is_deleted = false AND is_read = false THEN 1 END) as unread").
 		Where("mailbox_id = ?", mailboxID).
 		Group("folder").
 		Order("folder ASC").
-		Scan(&folders)
+		Scan(&folders).Error; err != nil {
+		return endpoint.List[FolderSummary]{}, fmt.Errorf("list folders: %w", err)
+	}
 
 	folderMap := make(map[string]bool)
 	for _, f := range folders {

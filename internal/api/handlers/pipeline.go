@@ -884,7 +884,10 @@ func (h *PipelineHandler) quarantineMailbox(r *http.Request, accountID uint32) (
 	}
 	mailboxID, err := resolveAccountMailbox(h.db, uint(accountID), claims, mailCapabilityFor(r))
 	if err != nil {
-		return 0, errQuarantineAccess
+		if errors.Is(err, errNoAccess) {
+			return 0, errQuarantineAccess
+		}
+		return 0, fmt.Errorf("resolve quarantine account: %w", err)
 	}
 	return mailboxID, nil
 }
@@ -901,10 +904,14 @@ func (h *PipelineHandler) listQuarantine(r *http.Request, in quarantineListReque
 	query := h.db.Model(&models.Quarantine{}).Where("mailbox_id = ? AND released = false", mailboxID)
 
 	var total int64
-	query.Count(&total)
+	if err := query.Count(&total).Error; err != nil {
+		return endpoint.List[QuarantinedMessage]{}, fmt.Errorf("count quarantined messages: %w", err)
+	}
 
 	var items []models.Quarantine
-	query.Order("received_at DESC").Limit(limit).Offset(offset).Find(&items)
+	if err := query.Order("received_at DESC").Limit(limit).Offset(offset).Find(&items).Error; err != nil {
+		return endpoint.List[QuarantinedMessage]{}, fmt.Errorf("list quarantined messages: %w", err)
+	}
 
 	out := make([]QuarantinedMessage, len(items))
 	for i, item := range items {
