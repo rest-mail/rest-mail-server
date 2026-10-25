@@ -330,6 +330,12 @@ func checkQueueMutationPairWithVertrag(t *testing.T, binary string, s bulkQueueE
 			hook += "    transaction['request']['body'] = " + strconv.Quote(payload) + "\n"
 		} else if name == "malformed_json" {
 			hook += "    transaction['request']['body'] = '{'\n"
+		} else if name == "body_boundary" {
+			payload := string(pair.Request.Body)
+			if len(payload) > 512 {
+				t.Fatal("boundary example exceeds the configured cap")
+			}
+			hook += "    transaction['request']['body'] = " + strconv.Quote(payload+strings.Repeat(" ", 512-len(payload))) + "\n"
 		}
 		if err = os.WriteFile(filepath.Join(dir, "pair.py"), []byte(hook), 0600); err != nil {
 			t.Fatal(err)

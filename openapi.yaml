@@ -5890,6 +5890,13 @@ paths:
                         fields:
                           enabled: must be a boolean
 
+        "429":
+          description: Authentication refusals exceeded the configured rate limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/admin/custom-filters/validate:
     post:
       operationId: validateCustomFilter
@@ -6158,6 +6165,12 @@ paths:
                       message: Request body failed validation
                       details:
                         fields: {config: must be an object}
+        "429":
+          description: Authentication refusals exceeded the configured rate limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
       parameters:
         - name: id

@@ -4752,8 +4752,10 @@
           "config": {
             "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
           },
-          "enabled": false
-        }
+          "enabled": false,
+          "domain_id": 1
+        },
+        "mediaType": "application/json"
       },
       "response": {
         "status": 201,
@@ -4770,9 +4772,22 @@
             },
             "enabled": false,
             "created_at": "2026-01-01T00:00:00Z",
-            "updated_at": "2026-01-01T00:00:00Z"
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
           }
-        }
+        },
+        "mediaType": "application/json"
       }
     },
     "enabled_wrong_type": {
@@ -4785,7 +4800,8 @@
           "config": {},
           "enabled": "false"
         },
-        "invalid": true
+        "invalid": true,
+        "mediaType": "application/json"
       },
       "response": {
         "status": 422,
@@ -4799,7 +4815,8 @@
               }
             }
           }
-        }
+        },
+        "mediaType": "application/json"
       }
     },
     "filter_type_invalid": {
@@ -4814,7 +4831,8 @@
           },
           "enabled": false
         },
-        "invalid": true
+        "invalid": true,
+        "mediaType": "application/json"
       },
       "response": {
         "status": 422,
@@ -4826,6 +4844,1281 @@
               "fields": {
                 "filter_type": "must be action or transform"
               }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "write_only": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "enabled": false,
+          "domain_id": 1
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 201,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "name": "tag-invoices",
+            "description": "Tags mail about invoices",
+            "filter_type": "action",
+            "direction": "inbound",
+            "config": {
+              "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+            },
+            "enabled": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "key_write": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "enabled": false,
+          "domain_id": 1
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 201,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "name": "tag-invoices",
+            "description": "Tags mail about invoices",
+            "filter_type": "action",
+            "direction": "inbound",
+            "config": {
+              "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+            },
+            "enabled": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "cookie_session": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "enabled": false,
+          "domain_id": 1
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 201,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "name": "tag-invoices",
+            "description": "Tags mail about invoices",
+            "filter_type": "action",
+            "direction": "inbound",
+            "config": {
+              "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+            },
+            "enabled": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "read_only": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "enabled": false,
+          "domain_id": 1
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "domain_scope": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "enabled": false,
+          "domain_id": 1
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "mailbox_scope": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "enabled": false,
+          "domain_id": 1
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_read": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "enabled": false,
+          "domain_id": 1
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_domain": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "enabled": false,
+          "domain_id": 1
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_mailbox": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "enabled": false,
+          "domain_id": 1
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_holder_missing": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "enabled": false,
+          "domain_id": 1
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "enabled": false,
+          "domain_id": 1
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "session_unavailable": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "enabled": false,
+          "domain_id": 1
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 503,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        }
+      }
+    },
+    "permission_store_unavailable": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "enabled": false,
+          "domain_id": 1
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 503,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
+          }
+        }
+      }
+    },
+    "csrf_missing": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "enabled": false,
+          "domain_id": 1
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "csrf_mismatch": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "enabled": false,
+          "domain_id": 1
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "rate_limited": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "enabled": false,
+          "domain_id": 1
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 429,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        }
+      }
+    },
+    "write_unavailable": {
+      "request": {
+        "body": {
+          "name": "WriteFailure",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "enabled": false,
+          "domain_id": 1
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to create custom filter"
+          }
+        }
+      }
+    },
+    "body_array": {
+      "request": {
+        "body": [],
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "malformed_json": {
+      "request": {
+        "body": "{",
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      },
+      "description": "The route and Vertrag transport hook send the raw truncated JSON byte { with application/json content type."
+    },
+    "request_too_large": {
+      "request": {
+        "body": {},
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 413,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        }
+      },
+      "description": "The route and Vertrag transport hook send exactly513 bytes against the configured512-byte cap."
+    },
+    "body_boundary": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "enabled": false,
+          "domain_id": 1
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 201,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "name": "tag-invoices",
+            "description": "Tags mail about invoices",
+            "filter_type": "action",
+            "direction": "inbound",
+            "config": {
+              "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+            },
+            "enabled": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      },
+      "description": "The readable request is padded with JSON whitespace to exactly512 bytes by the route and Vertrag transport tests."
+    },
+    "unknown_field": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "enabled": false,
+          "domain_id": 1,
+          "surprise": true
+        },
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "surprise": "not allowed"
+              }
+            }
+          }
+        }
+      }
+    },
+    "nested_domain": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "enabled": false,
+          "domain_id": 1,
+          "domain": {
+            "name": "injected.test"
+          }
+        },
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "domain": "not allowed"
+              }
+            }
+          }
+        }
+      }
+    },
+    "forged_id": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "enabled": false,
+          "domain_id": 1,
+          "id": 987654
+        },
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "id": "not allowed"
+              }
+            }
+          }
+        }
+      }
+    },
+    "forged_timestamp": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "enabled": false,
+          "domain_id": 1,
+          "created_at": "2000-01-01T00:00:00Z"
+        },
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "created_at": "not allowed"
+              }
+            }
+          }
+        }
+      }
+    },
+    "name_wrong_type": {
+      "request": {
+        "body": {
+          "name": 1,
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "enabled": false,
+          "domain_id": 1
+        },
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "name": "must be a string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "domain_wrong_type": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "enabled": false,
+          "domain_id": "other"
+        },
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "domain_id": "must be a non-negative integer"
+              }
+            }
+          }
+        }
+      }
+    },
+    "required_missing": {
+      "request": {
+        "body": {},
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "name": "required",
+                "filter_type": "required",
+                "direction": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "config_null": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": null,
+          "enabled": false,
+          "domain_id": 1
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "config": "must be an object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "config_array": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": [],
+          "enabled": false,
+          "domain_id": 1
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "config": "must be an object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "config_scalar": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": "script",
+          "enabled": false,
+          "domain_id": 1
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "config": "must be an object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "config_missing": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "enabled": false,
+          "domain_id": 1
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "config": "must be an object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "enabled_default": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "domain_id": 1
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 201,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "name": "tag-invoices",
+            "description": "Tags mail about invoices",
+            "filter_type": "action",
+            "direction": "inbound",
+            "config": {
+              "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+            },
+            "enabled": true,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "enabled_true": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "enabled": true,
+          "domain_id": 1
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 201,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "name": "tag-invoices",
+            "description": "Tags mail about invoices",
+            "filter_type": "action",
+            "direction": "inbound",
+            "config": {
+              "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+            },
+            "enabled": true,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "transform_outbound": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "transform",
+          "direction": "outbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "enabled": false,
+          "domain_id": 1
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 201,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "name": "tag-invoices",
+            "description": "Tags mail about invoices",
+            "filter_type": "transform",
+            "direction": "outbound",
+            "config": {
+              "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+            },
+            "enabled": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "empty_config": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {},
+          "enabled": false,
+          "domain_id": 1
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 201,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "name": "tag-invoices",
+            "description": "Tags mail about invoices",
+            "filter_type": "action",
+            "direction": "inbound",
+            "config": {},
+            "enabled": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "direction_invalid": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "sideways",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "enabled": false,
+          "domain_id": 1
+        },
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "direction": "must be inbound, outbound or both"
+              }
+            }
+          }
+        }
+      }
+    },
+    "nested_config": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) { return email; }",
+            "rules": [
+              {
+                "name": "café",
+                "enabled": false
+              }
+            ],
+            "arbitrary": null
+          },
+          "enabled": false,
+          "domain_id": 1
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 201,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "name": "tag-invoices",
+            "description": "Tags mail about invoices",
+            "filter_type": "action",
+            "direction": "inbound",
+            "config": {
+              "script": "function filter(email) { return email; }",
+              "rules": [
+                {
+                  "name": "café",
+                  "enabled": false
+                }
+              ],
+              "arbitrary": null
+            },
+            "enabled": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "unicode": {
+      "request": {
+        "body": {
+          "name": "Subject café",
+          "description": "商用フィルター",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "enabled": false,
+          "domain_id": 1
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 201,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "name": "Subject café",
+            "description": "商用フィルター",
+            "filter_type": "action",
+            "direction": "inbound",
+            "config": {
+              "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+            },
+            "enabled": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
             }
           }
         }
@@ -22107,7 +23400,10 @@
           "config": [],
           "enabled": true
         },
-        "invalid": true
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        }
       },
       "response": {
         "status": 422,
@@ -22121,7 +23417,8 @@
               }
             }
           }
-        }
+        },
+        "mediaType": "application/json"
       }
     },
     "config_null": {
@@ -22130,7 +23427,10 @@
           "config": null,
           "enabled": true
         },
-        "invalid": true
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        }
       },
       "response": {
         "status": 422,
@@ -22144,7 +23444,8 @@
               }
             }
           }
-        }
+        },
+        "mediaType": "application/json"
       }
     },
     "direction_invalid": {
@@ -22153,7 +23454,11 @@
           "direction": "sideways",
           "enabled": true
         },
-        "invalid": true
+        "invalid": true,
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        }
       },
       "response": {
         "status": 422,
@@ -22167,7 +23472,8 @@
               }
             }
           }
-        }
+        },
+        "mediaType": "application/json"
       }
     },
     "filter_type_invalid": {
@@ -22176,7 +23482,11 @@
           "filter_type": "invalid",
           "enabled": true
         },
-        "invalid": true
+        "invalid": true,
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        }
       },
       "response": {
         "status": 422,
@@ -22190,7 +23500,8 @@
               }
             }
           }
-        }
+        },
+        "mediaType": "application/json"
       }
     },
     "missing": {
@@ -22204,7 +23515,8 @@
             "script": "function filter(email) { return { action: \"continue\" }; }"
           },
           "enabled": true
-        }
+        },
+        "mediaType": "application/json"
       },
       "response": {
         "status": 404,
@@ -22213,7 +23525,8 @@
             "code": "not_found",
             "message": "Custom filter not found"
           }
-        }
+        },
+        "mediaType": "application/json"
       }
     },
     "name_empty": {
@@ -22222,7 +23535,10 @@
           "name": "",
           "enabled": true
         },
-        "invalid": true
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        }
       },
       "response": {
         "status": 422,
@@ -22236,7 +23552,8 @@
               }
             }
           }
-        }
+        },
+        "mediaType": "application/json"
       }
     },
     "updated": {
@@ -22247,6 +23564,10 @@
             "script": "function filter(email) { return { action: \"continue\" }; }"
           },
           "enabled": true
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
         }
       },
       "response": {
@@ -22264,7 +23585,1229 @@
             },
             "enabled": true,
             "created_at": "2026-01-01T00:00:00Z",
-            "updated_at": "2026-01-01T00:00:00Z"
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "write_only": {
+      "request": {
+        "body": {
+          "enabled": false
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "name": "tag-invoices",
+            "description": "Tags mail about invoices",
+            "filter_type": "action",
+            "direction": "inbound",
+            "config": {
+              "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+            },
+            "enabled": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "key_write": {
+      "request": {
+        "body": {
+          "enabled": false
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "name": "tag-invoices",
+            "description": "Tags mail about invoices",
+            "filter_type": "action",
+            "direction": "inbound",
+            "config": {
+              "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+            },
+            "enabled": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "cookie_session": {
+      "request": {
+        "body": {
+          "enabled": false
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "name": "tag-invoices",
+            "description": "Tags mail about invoices",
+            "filter_type": "action",
+            "direction": "inbound",
+            "config": {
+              "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+            },
+            "enabled": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "read_only": {
+      "request": {
+        "body": {
+          "enabled": false
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "domain_scope": {
+      "request": {
+        "body": {
+          "enabled": false
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "mailbox_scope": {
+      "request": {
+        "body": {
+          "enabled": false
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_read": {
+      "request": {
+        "body": {
+          "enabled": false
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_domain": {
+      "request": {
+        "body": {
+          "enabled": false
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_mailbox": {
+      "request": {
+        "body": {
+          "enabled": false
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_holder_missing": {
+      "request": {
+        "body": {
+          "enabled": false
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "body": {
+          "enabled": false
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "session_unavailable": {
+      "request": {
+        "body": {
+          "enabled": false
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        }
+      }
+    },
+    "permission_store_unavailable": {
+      "request": {
+        "body": {
+          "enabled": false
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
+          }
+        }
+      }
+    },
+    "csrf_missing": {
+      "request": {
+        "body": {
+          "enabled": false
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "csrf_mismatch": {
+      "request": {
+        "body": {
+          "enabled": false
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "rate_limited": {
+      "request": {
+        "body": {
+          "enabled": false
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        }
+      }
+    },
+    "write_unavailable": {
+      "request": {
+        "body": {
+          "enabled": false
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 4
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to update custom filter"
+          }
+        }
+      }
+    },
+    "lookup_unavailable": {
+      "request": {
+        "body": {
+          "enabled": false
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to get custom filter"
+          }
+        }
+      }
+    },
+    "body_array": {
+      "request": {
+        "body": [],
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "malformed_json": {
+      "request": {
+        "body": "{",
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      },
+      "description": "The route and Vertrag transport hook send the raw truncated JSON byte { with application/json content type."
+    },
+    "request_too_large": {
+      "request": {
+        "body": {},
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        }
+      },
+      "description": "The route and Vertrag transport hook send exactly513 bytes against the configured512-byte cap."
+    },
+    "body_boundary": {
+      "request": {
+        "body": {
+          "enabled": false
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "name": "tag-invoices",
+            "description": "Tags mail about invoices",
+            "filter_type": "action",
+            "direction": "inbound",
+            "config": {
+              "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+            },
+            "enabled": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      },
+      "description": "The readable request is padded with JSON whitespace to exactly512 bytes by the route and Vertrag transport tests."
+    },
+    "unknown_field": {
+      "request": {
+        "body": {
+          "enabled": false,
+          "surprise": true
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "surprise": "not allowed"
+              }
+            }
+          }
+        }
+      }
+    },
+    "nested_domain": {
+      "request": {
+        "body": {
+          "enabled": false,
+          "domain": {
+            "name": "injected.test"
+          }
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "domain": "not allowed"
+              }
+            }
+          }
+        }
+      }
+    },
+    "forged_id": {
+      "request": {
+        "body": {
+          "enabled": false,
+          "id": 987654
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "not allowed"
+              }
+            }
+          }
+        }
+      }
+    },
+    "forged_timestamp": {
+      "request": {
+        "body": {
+          "enabled": false,
+          "created_at": "2000-01-01T00:00:00Z"
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "created_at": "not allowed"
+              }
+            }
+          }
+        }
+      }
+    },
+    "name_wrong_type": {
+      "request": {
+        "body": {
+          "enabled": false,
+          "name": 1
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "name": "must be a string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "domain_wrong_type": {
+      "request": {
+        "body": {
+          "enabled": false,
+          "domain_id": "other"
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "domain_id": "must be a non-negative integer"
+              }
+            }
+          }
+        }
+      }
+    },
+    "unchanged": {
+      "request": {
+        "body": {},
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "name": "tag-invoices",
+            "description": "Tags mail about invoices",
+            "filter_type": "action",
+            "direction": "inbound",
+            "config": {
+              "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+            },
+            "enabled": true,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "null_fields": {
+      "request": {
+        "body": {
+          "name": null,
+          "description": null,
+          "filter_type": null,
+          "direction": null,
+          "enabled": null,
+          "domain_id": null
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "name": "tag-invoices",
+            "description": "Tags mail about invoices",
+            "filter_type": "action",
+            "direction": "inbound",
+            "config": {
+              "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+            },
+            "enabled": true,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "ignored_domain": {
+      "request": {
+        "body": {
+          "domain_id": 99
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "name": "tag-invoices",
+            "description": "Tags mail about invoices",
+            "filter_type": "action",
+            "direction": "inbound",
+            "config": {
+              "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+            },
+            "enabled": true,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "empty_description": {
+      "request": {
+        "body": {
+          "description": ""
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "name": "tag-invoices",
+            "description": "",
+            "filter_type": "action",
+            "direction": "inbound",
+            "config": {
+              "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+            },
+            "enabled": true,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "empty_config": {
+      "request": {
+        "body": {
+          "config": {}
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "name": "tag-invoices",
+            "description": "Tags mail about invoices",
+            "filter_type": "action",
+            "direction": "inbound",
+            "config": {},
+            "enabled": true,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "enabled_false": {
+      "request": {
+        "body": {
+          "enabled": false
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "name": "tag-invoices",
+            "description": "Tags mail about invoices",
+            "filter_type": "action",
+            "direction": "inbound",
+            "config": {
+              "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+            },
+            "enabled": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "transform_outbound": {
+      "request": {
+        "body": {
+          "name": "Redirect",
+          "description": "Updated",
+          "filter_type": "transform",
+          "direction": "outbound",
+          "config": {
+            "action": "continue"
+          },
+          "enabled": false
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "name": "Redirect",
+            "description": "Updated",
+            "filter_type": "transform",
+            "direction": "outbound",
+            "config": {
+              "action": "continue"
+            },
+            "enabled": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "body": {
+          "enabled": false
+        }
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        }
+      },
+      "description": "The JSON body validates; the malformed path value is refused by the real path binder with 422. The invalid-body marker does not describe path binding."
+    },
+    "invalid_format": {
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "body": {
+          "enabled": false
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      },
+      "description": "The JSON body validates; the malformed path value is refused by the real path binder with 422. The invalid-body marker does not describe path binding."
+    },
+    "invalid_overflow": {
+      "request": {
+        "body": {
+          "enabled": false
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": "4294967296"
+        }
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        }
+      }
+    },
+    "nested_config": {
+      "request": {
+        "body": {
+          "config": {
+            "script": "function filter(email) { return email; }",
+            "rules": [
+              {
+                "name": "café",
+                "enabled": false
+              }
+            ],
+            "arbitrary": null
+          }
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "name": "tag-invoices",
+            "description": "Tags mail about invoices",
+            "filter_type": "action",
+            "direction": "inbound",
+            "config": {
+              "script": "function filter(email) { return email; }",
+              "rules": [
+                {
+                  "name": "café",
+                  "enabled": false
+                }
+              ],
+              "arbitrary": null
+            },
+            "enabled": true,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "unicode": {
+      "request": {
+        "body": {
+          "name": "Subject café",
+          "description": "商用フィルター"
+        },
+        "mediaType": "application/json",
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "name": "Subject café",
+            "description": "商用フィルター",
+            "filter_type": "action",
+            "direction": "inbound",
+            "config": {
+              "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+            },
+            "enabled": true,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
           }
         }
       }
