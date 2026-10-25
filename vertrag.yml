@@ -114,7 +114,8 @@ exclude-matching:
   # Each operation paired next comes off these patterns the same way. A path in
   # a segment none of them names is sent.
   - '> 409( >|$)'
-  # Eleven GET lookups have named missing IDs; test_gate.py pins the enabled set.
+  # Eleven GET lookups and four PATCH updates have named missing IDs.
+  # test_gate.py pins the complete enabled set.
   # All other documented 404s still need a request that provokes them.
   - '^/(api/v1/(auth|accounts|devices|messages|attachments)|restmail|mail|autodiscover|\.well-known)(/| >).* > 404( >|$)'
   # Autoconfig's 400 (no email domain in the address or the host name) needs a
@@ -125,15 +126,15 @@ exclude-matching:
   - '^/api/v1/admin/queue/\{id\}/(retry|bounce) > .* > 404( >|$)'
   - '^/api/v1/admin/dkim/\{id\} > .* > 404( >|$)'
   - '^/api/v1/admin/dkim/\{id\}/rotation > Set .* > 404( >|$)'
-  - '^/api/v1/admin/mailboxes/\{id\} > (Update|Delete) an account > 404( >|$)'
+  - '^/api/v1/admin/mailboxes/\{id\} > Delete an account > 404( >|$)'
   - '^/api/v1/admin/mailboxes/\{id\}/sessions > .* > 404( >|$)'
   - '^/api/v1/admin/custom-filters(/\{id\}/test| >).* > 404( >|$)'
-  - '^/api/v1/admin/custom-filters/\{id\} > (Update|Delete) a custom filter > 404( >|$)'
+  - '^/api/v1/admin/custom-filters/\{id\} > Delete a custom filter > 404( >|$)'
   - '^/api/v1/admin/aliases > .* > 404( >|$)'
-  - '^/api/v1/admin/aliases/\{id\} > (Update an alias|Delete an alias) > 404( >|$)'
+  - '^/api/v1/admin/aliases/\{id\} > Delete an alias > 404( >|$)'
   - '^/api/v1/admin/domains/\{id\}/(allowlist|blocklist|suppressions)(/| >).* > 404( >|$)'
   - '^/api/v1/admin/domains/\{id\}/(mta-sts|relay) > (Create|Set|Delete).* > 404( >|$)'
-  - '^/api/v1/admin/domains/\{id\} > (Update|Delete) a domain > 404( >|$)'
+  - '^/api/v1/admin/domains/\{id\} > Delete a domain > 404( >|$)'
   - '^/api/v1/admin/certificates/\{id\} > Delete a certificate > 404( >|$)'
   - '^/api/v1/auth/(logout|refresh|reset|recover|owner/[a-z]+|2fa/[a-z]+|password) > .* > (400|422)( >|$)'
   - '^/api/v1/devices(/| >).* > (400|422)( >|$)'

@@ -743,6 +743,17 @@ test checks missing and successful lookup, domain association and unchanged
 storage. `test_gate.py` pins the complete enabled 404 set listed above;
 unpaired sibling operations retain their exclusions.
 
+`updateDomain`, `updateMailbox`, `updateAlias` and `updateCustomFilter` each
+pair a `missing` path ID (`2147483647`) and a valid named request body with
+only their exact 404 response. Their successful and invalid-body examples
+continue to use the created resource's link. Vertrag 0.30 preserves the named
+missing ID through sequencing, including when the request has a body; no hook
+rewrites these requests. `TestAdminUpdates_DocumentedMissingExamples` checks
+both descriptions, sends the registered routes' exact requests, and verifies
+that refused updates neither change existing resources nor create the missing
+target. `test_gate.py` pins all fifteen enabled operations; deletes and other
+unpaired refusals retain their exclusions.
+
 ### Browser session gate (#659)
 
 Before examples, `chore contract` runs `tests/contract/browser_sessions` against
