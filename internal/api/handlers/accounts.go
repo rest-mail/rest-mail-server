@@ -129,7 +129,10 @@ func (h *AccountHandler) list(r *http.Request, _ struct{}) (endpoint.List[accoun
 	}
 	var own models.Mailbox
 	if err := h.db.First(&own, claims.AccountID).Error; err != nil {
-		return endpoint.List[accountResponse]{}, errAccountNotFound
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return endpoint.List[accountResponse]{}, errAccountNotFound
+		}
+		return endpoint.List[accountResponse]{}, fmt.Errorf("read the primary account: %w", err)
 	}
 	accounts := []accountResponse{toAccountResponse(&own, own.ID)}
 	if !claims.MailboxOnly() {

@@ -15398,5 +15398,1232 @@
       },
       "description": "The production verifier accepts the scoped key, but the actual grant loader supplies only mail:write for its holder on this account. The old key permission cannot supply the missing mail:read capability."
     }
+  },
+  "listAccounts": {
+    "found": {
+      "request": {},
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 10,
+              "address": "user@example.com",
+              "display_name": "Account café",
+              "is_primary": true
+            },
+            {
+              "id": 2,
+              "address": "empty@example.com",
+              "display_name": "Empty",
+              "is_primary": false
+            },
+            {
+              "id": 1,
+              "address": "linked@example.com",
+              "display_name": "Linked café",
+              "is_primary": false
+            }
+          ]
+        }
+      },
+      "summary": "The primary account is first, followed by linked accounts in address order",
+      "description": "The SQL boundary requires active unexpired mailbox-scoped mail grants, a holder restriction, distinct mailboxes, exclusion of the primary account and address ordering. Controlled rows prove mapping and wiring; PostgreSQL filtering and ordering semantics are not claimed."
+    },
+    "no_grants": {
+      "request": {},
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 10,
+              "address": "user@example.com",
+              "display_name": "Account café",
+              "is_primary": true
+            }
+          ]
+        }
+      },
+      "summary": "A session without linked grants still sees its primary account"
+    },
+    "domain_manager": {
+      "request": {},
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 10,
+              "address": "user@example.com",
+              "display_name": "Account café",
+              "is_primary": true
+            }
+          ]
+        }
+      },
+      "summary": "Domain administration does not list every domain mailbox as a linked account"
+    },
+    "app_password": {
+      "request": {},
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 10,
+              "address": "user@example.com",
+              "display_name": "Account café",
+              "is_primary": true
+            }
+          ]
+        }
+      },
+      "summary": "An actual HTTP Basic app password lists only its own account"
+    },
+    "cookie_session": {
+      "request": {},
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 10,
+              "address": "user@example.com",
+              "display_name": "Account café",
+              "is_primary": true
+            },
+            {
+              "id": 2,
+              "address": "empty@example.com",
+              "display_name": "Empty",
+              "is_primary": false
+            },
+            {
+              "id": 1,
+              "address": "linked@example.com",
+              "display_name": "Linked café",
+              "is_primary": false
+            }
+          ]
+        }
+      },
+      "summary": "The same production route accepts the session cookie",
+      "description": "The SQL boundary requires active unexpired mailbox-scoped mail grants, a holder restriction, distinct mailboxes, exclusion of the primary account and address ordering. Controlled rows prove mapping and wiring; PostgreSQL filtering and ordering semantics are not claimed."
+    },
+    "key_read": {
+      "request": {},
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 1,
+              "address": "linked@example.com",
+              "display_name": "Linked café",
+              "is_primary": false
+            }
+          ]
+        }
+      },
+      "description": "An ephemeral key passes the real parser, secret hash verification and repository verifier. Both the key scope and its holder must permit mail:read; the primary account is omitted when the key does not cover it."
+    },
+    "key_domain": {
+      "request": {},
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 10,
+              "address": "user@example.com",
+              "display_name": "Account café",
+              "is_primary": true
+            },
+            {
+              "id": 2,
+              "address": "empty@example.com",
+              "display_name": "Empty",
+              "is_primary": false
+            },
+            {
+              "id": 1,
+              "address": "linked@example.com",
+              "display_name": "Linked café",
+              "is_primary": false
+            }
+          ]
+        }
+      }
+    },
+    "key_wrong_scope": {
+      "request": {},
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": []
+        }
+      }
+    },
+    "key_write_only": {
+      "request": {},
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": []
+        }
+      }
+    },
+    "key_holder_missing": {
+      "request": {},
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": []
+        }
+      },
+      "summary": "A key cannot restore read permission absent from its holder"
+    },
+    "unauthenticated": {
+      "request": {},
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "setup_required": {
+      "summary": "A session still in setup cannot use account reads",
+      "request": {},
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        }
+      }
+    },
+    "rate_limited": {
+      "summary": "Repeated malformed API-key guesses exhaust the real refusal budget",
+      "request": {},
+      "response": {
+        "status": 429,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        }
+      },
+      "description": "The test primes a one-token per-peer budget with an invalid key, then repeats it without sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After."
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "request": {},
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "primary_missing": {
+      "request": {},
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        }
+      }
+    },
+    "primary_unavailable": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      },
+      "description": "A primary-account query failure must not masquerade as a missing account."
+    },
+    "list_unavailable": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "key_permissions_unavailable": {
+      "request": {},
+      "response": {
+        "status": 503,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
+          }
+        }
+      }
+    }
+  },
+  "listCredentials": {
+    "found": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 102,
+              "name": "Phone café",
+              "kind": "app_password",
+              "public_id": "public-new",
+              "created_at": "2026-10-20T00:00:00Z",
+              "last_used_at": "2026-10-20T01:00:00Z",
+              "expires_at": "2027-10-20T00:00:00Z"
+            },
+            {
+              "id": 101,
+              "name": "Expired",
+              "kind": "app_password",
+              "public_id": "public-old",
+              "created_at": "2026-10-18T00:00:00Z",
+              "last_used_at": null,
+              "expires_at": "2025-10-20T00:00:00Z"
+            }
+          ]
+        }
+      },
+      "summary": "A mailbox manager reads metadata, including expired credentials and nullable last-use times",
+      "description": "The real repository query restricts account, credential kind and revocation and orders newest first. Fixed rows contain private hash/encrypted-secret sentinels, neither of which is returned. SQL semantics and persistence require PostgreSQL; only wiring and exact response mapping are claimed."
+    },
+    "primary": {
+      "request": {
+        "path": {
+          "id": 10
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 102,
+              "name": "Phone café",
+              "kind": "app_password",
+              "public_id": "public-new",
+              "created_at": "2026-10-20T00:00:00Z",
+              "last_used_at": "2026-10-20T01:00:00Z",
+              "expires_at": "2027-10-20T00:00:00Z"
+            },
+            {
+              "id": 101,
+              "name": "Expired",
+              "kind": "app_password",
+              "public_id": "public-old",
+              "created_at": "2026-10-18T00:00:00Z",
+              "last_used_at": null,
+              "expires_at": "2025-10-20T00:00:00Z"
+            }
+          ]
+        }
+      },
+      "summary": "Implicit ownership permits management of the primary account"
+    },
+    "domain_manager": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 102,
+              "name": "Phone café",
+              "kind": "app_password",
+              "public_id": "public-new",
+              "created_at": "2026-10-20T00:00:00Z",
+              "last_used_at": "2026-10-20T01:00:00Z",
+              "expires_at": "2027-10-20T00:00:00Z"
+            },
+            {
+              "id": 101,
+              "name": "Expired",
+              "kind": "app_password",
+              "public_id": "public-old",
+              "created_at": "2026-10-18T00:00:00Z",
+              "last_used_at": null,
+              "expires_at": "2025-10-20T00:00:00Z"
+            }
+          ]
+        }
+      },
+      "summary": "A domain-scoped mailbox manager reaches this account"
+    },
+    "cookie_session": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 102,
+              "name": "Phone café",
+              "kind": "app_password",
+              "public_id": "public-new",
+              "created_at": "2026-10-20T00:00:00Z",
+              "last_used_at": "2026-10-20T01:00:00Z",
+              "expires_at": "2027-10-20T00:00:00Z"
+            },
+            {
+              "id": 101,
+              "name": "Expired",
+              "kind": "app_password",
+              "public_id": "public-old",
+              "created_at": "2026-10-18T00:00:00Z",
+              "last_used_at": null,
+              "expires_at": "2025-10-20T00:00:00Z"
+            }
+          ]
+        }
+      },
+      "summary": "A current cookie session has the same management ceiling"
+    },
+    "empty": {
+      "request": {
+        "path": {
+          "id": 2
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": []
+        }
+      },
+      "summary": "No credentials are returned as an empty array, never null"
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "setup_required": {
+      "summary": "A session still in setup cannot use account reads",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        }
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        }
+      }
+    },
+    "invalid_format": {
+      "summary": "The account ID cannot bind to an integer",
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        }
+      }
+    },
+    "inaccessible": {
+      "request": {
+        "path": {
+          "id": 20
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        }
+      },
+      "description": "Unknown and inaccessible accounts retain the same privacy refusal."
+    },
+    "write_only": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        }
+      },
+      "summary": "Mail-write permission is insufficient to manage credentials"
+    },
+    "target_unavailable": {
+      "request": {
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "content_unavailable": {
+      "request": {
+        "path": {
+          "id": 4
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "grant_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "ownership_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "app_password": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Invalid authorization header format"
+          }
+        }
+      },
+      "summary": "Credential management accepts no HTTP Basic app password"
+    },
+    "key_read": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Invalid or expired token"
+          }
+        }
+      },
+      "summary": "Credential management accepts no API key, even one valid for mail reads"
+    }
+  },
+  "listAPIKeys": {
+    "found": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 102,
+              "name": "Phone café",
+              "kind": "api_key",
+              "public_id": "public-new",
+              "created_at": "2026-10-20T00:00:00Z",
+              "last_used_at": "2026-10-20T01:00:00Z",
+              "expires_at": "2027-10-20T00:00:00Z",
+              "permissions": [
+                {
+                  "capability": "mail:read",
+                  "scope": "mailbox:linked@example.com"
+                },
+                {
+                  "capability": "mail:send",
+                  "scope": "domain:example.com"
+                }
+              ]
+            },
+            {
+              "id": 101,
+              "name": "Expired",
+              "kind": "api_key",
+              "public_id": "public-old",
+              "created_at": "2026-10-18T00:00:00Z",
+              "last_used_at": null,
+              "expires_at": "2025-10-20T00:00:00Z",
+              "permissions": []
+            }
+          ]
+        }
+      },
+      "summary": "A mailbox manager reads metadata, including expired credentials and nullable last-use times",
+      "description": "The real repository query restricts account, credential kind and revocation and orders newest first. Fixed rows contain private hash/encrypted-secret sentinels, neither of which is returned. SQL semantics and persistence require PostgreSQL; only wiring and exact response mapping are claimed."
+    },
+    "primary": {
+      "request": {
+        "path": {
+          "id": 10
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 102,
+              "name": "Phone café",
+              "kind": "api_key",
+              "public_id": "public-new",
+              "created_at": "2026-10-20T00:00:00Z",
+              "last_used_at": "2026-10-20T01:00:00Z",
+              "expires_at": "2027-10-20T00:00:00Z",
+              "permissions": [
+                {
+                  "capability": "mail:read",
+                  "scope": "mailbox:linked@example.com"
+                },
+                {
+                  "capability": "mail:send",
+                  "scope": "domain:example.com"
+                }
+              ]
+            },
+            {
+              "id": 101,
+              "name": "Expired",
+              "kind": "api_key",
+              "public_id": "public-old",
+              "created_at": "2026-10-18T00:00:00Z",
+              "last_used_at": null,
+              "expires_at": "2025-10-20T00:00:00Z",
+              "permissions": []
+            }
+          ]
+        }
+      },
+      "summary": "Implicit ownership permits management of the primary account"
+    },
+    "domain_manager": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 102,
+              "name": "Phone café",
+              "kind": "api_key",
+              "public_id": "public-new",
+              "created_at": "2026-10-20T00:00:00Z",
+              "last_used_at": "2026-10-20T01:00:00Z",
+              "expires_at": "2027-10-20T00:00:00Z",
+              "permissions": [
+                {
+                  "capability": "mail:read",
+                  "scope": "mailbox:linked@example.com"
+                },
+                {
+                  "capability": "mail:send",
+                  "scope": "domain:example.com"
+                }
+              ]
+            },
+            {
+              "id": 101,
+              "name": "Expired",
+              "kind": "api_key",
+              "public_id": "public-old",
+              "created_at": "2026-10-18T00:00:00Z",
+              "last_used_at": null,
+              "expires_at": "2025-10-20T00:00:00Z",
+              "permissions": []
+            }
+          ]
+        }
+      },
+      "summary": "A domain-scoped mailbox manager reaches this account"
+    },
+    "cookie_session": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": [
+            {
+              "id": 102,
+              "name": "Phone café",
+              "kind": "api_key",
+              "public_id": "public-new",
+              "created_at": "2026-10-20T00:00:00Z",
+              "last_used_at": "2026-10-20T01:00:00Z",
+              "expires_at": "2027-10-20T00:00:00Z",
+              "permissions": [
+                {
+                  "capability": "mail:read",
+                  "scope": "mailbox:linked@example.com"
+                },
+                {
+                  "capability": "mail:send",
+                  "scope": "domain:example.com"
+                }
+              ]
+            },
+            {
+              "id": 101,
+              "name": "Expired",
+              "kind": "api_key",
+              "public_id": "public-old",
+              "created_at": "2026-10-18T00:00:00Z",
+              "last_used_at": null,
+              "expires_at": "2025-10-20T00:00:00Z",
+              "permissions": []
+            }
+          ]
+        }
+      },
+      "summary": "A current cookie session has the same management ceiling"
+    },
+    "empty": {
+      "request": {
+        "path": {
+          "id": 2
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": []
+        }
+      },
+      "summary": "No credentials are returned as an empty array, never null"
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "setup_required": {
+      "summary": "A session still in setup cannot use account reads",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        }
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        }
+      }
+    },
+    "invalid_format": {
+      "summary": "The account ID cannot bind to an integer",
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        }
+      }
+    },
+    "inaccessible": {
+      "request": {
+        "path": {
+          "id": 20
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        }
+      },
+      "description": "Unknown and inaccessible accounts retain the same privacy refusal."
+    },
+    "write_only": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        }
+      },
+      "summary": "Mail-write permission is insufficient to manage credentials"
+    },
+    "target_unavailable": {
+      "request": {
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "content_unavailable": {
+      "request": {
+        "path": {
+          "id": 4
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "grant_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "ownership_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "app_password": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Invalid authorization header format"
+          }
+        }
+      },
+      "summary": "Credential management accepts no HTTP Basic app password"
+    },
+    "key_read": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Invalid or expired token"
+          }
+        }
+      },
+      "summary": "Credential management accepts no API key, even one valid for mail reads"
+    }
   }
 }
