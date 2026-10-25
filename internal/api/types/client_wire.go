@@ -268,7 +268,7 @@ type Mailbox struct {
 	LastPasswordChange     *time.Time  `json:"last_password_change,omitempty"`
 	CreatedAt              time.Time   `json:"created_at"`
 	UpdatedAt              time.Time   `json:"updated_at"`
-	Domain                 Domain      `json:"domain,omitempty"`
+	Domain                 *Domain     `json:"domain,omitempty" description:"Present only when loaded and the session may read the parent domain"`
 	QuotaUsage             *QuotaUsage `json:"quota_usage,omitempty"`
 }
 
@@ -292,7 +292,7 @@ type QuotaUsage struct {
 	AttachmentBytes int64     `json:"attachment_bytes"`
 	MessageCount    int       `json:"message_count"`
 	UpdatedAt       time.Time `json:"updated_at"`
-	Mailbox         Mailbox   `json:"mailbox,omitempty"`
+	Mailbox         *Mailbox  `json:"mailbox,omitempty" description:"Present only when the mailbox association is loaded"`
 }
 
 type AddressCheck struct {

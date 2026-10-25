@@ -3146,7 +3146,7 @@ export interface components {
       /** Format: date-time */
       created_at: string;
       display_name: string;
-      domain?: components["schemas"]["Domain"];
+      domain?: components["schemas"]["Domain"] | null;
       domain_id: number;
       id: number;
       /** Format: date-time */
@@ -3434,7 +3434,7 @@ export interface components {
       attachment_bytes: number;
       /** Format: int64 */
       body_bytes: number;
-      mailbox?: components["schemas"]["Mailbox"];
+      mailbox?: components["schemas"]["Mailbox"] | null;
       mailbox_id: number;
       message_count: number;
       /** Format: int64 */
@@ -5131,7 +5131,6 @@ export interface operations {
   checkMailboxAddress: {
     parameters: {
       query: {
-        /** @example admin@restmail.test */
         address: string;
       };
       header?: never;

@@ -11376,6 +11376,9 @@ components:
         An account, as the admin API shows it: a mailbox is the account. Its
         passwords, authenticators and app passwords are its credentials,
         never shown here; what it may do is its grants (/api/v1/admin/grants).
+        The optional domain association is included only when loaded and readable
+        by the session. Optional quota_usage includes persisted usage; its mailbox
+        back-reference is omitted when not loaded. Unloaded associations are absent.
       required: [id, domain_id, local_part, address, display_name, quota_bytes, quota_used_bytes, active, password_change_required, two_factor_required, created_at, updated_at]
       properties:
         id:
