@@ -12,7 +12,7 @@ endpoint: http://10.99.0.20:8080
 
 # Hooks supply fixture credentials and generated keys, and select documented
 # examples where vertrag cannot pair parameters. Resource links come from the spec.
-hookfiles: ./tests/contract/hooks.py
+hookfiles: ./tests/contract/entrypoint.py
 language: python
 # Fixture setup can invoke the cached Go helper (bounded to 20 seconds), or
 # wait up to 60 seconds for the send budget before retrying. Include time for
