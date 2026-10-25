@@ -764,11 +764,11 @@
 - operation: getMailbox
   difference: "response 200 application/json.properties.data.properties.domain: openapi.yaml absent, generated *"
   reason: >-
-    The handlers have always included the preloaded domain (a zero domain after creation or redaction). The API type preserves that JSON without the private DKIM key; the oracle omits the association.
+    The public API includes the loaded domain only when the session may read it. Redacted or unloaded domains are omitted, not serialized as invalid zero records; the oracle still omits this optional association.
 - operation: getMailbox
   difference: "response 200 application/json.properties.data.properties.quota_usage: openapi.yaml absent, generated *"
   reason: >-
-    Mailbox reads and updates preload quota usage, including its zero-valued unloaded mailbox association. The explicit API types retain that JSON; the oracle omits quota_usage.
+    Mailbox reads and updates preload persisted quota usage. Its unloaded mailbox back-reference is omitted; loaded associations retain their public fields. The oracle still omits optional quota_usage.
 - operation: getMailbox
   difference: "response 200 application/json.properties.data.required: openapi.yaml [\"active\",\"address\",\"created_at\",\"display_name\",\"domain_id\",\"id\",\"local_part\",\"password_change_required\",\"quota_bytes\",\"quota_used_bytes\",\"two_factor_required\",\"updated_at\"], generated [\"active\",\"address\",\"created_at\",\"display_name\",\"domain_id\",\"id\",\"last_login_at\",\"local_part\",\"password_change_required\",\"quota_bytes\",\"quota_used_bytes\",\"two_factor_required\",\"updated_at\"]"
   reason: >-
@@ -800,11 +800,11 @@
 - operation: listMailboxes
   difference: "response 200 application/json.properties.data.items.properties.domain: openapi.yaml absent, generated *"
   reason: >-
-    The handlers have always included the preloaded domain (a zero domain after creation or redaction). The API type preserves that JSON without the private DKIM key; the oracle omits the association.
+    The public API includes the loaded domain only when the session may read it. Redacted or unloaded domains are omitted, not serialized as invalid zero records; the oracle still omits this optional association.
 - operation: listMailboxes
   difference: "response 200 application/json.properties.data.items.properties.quota_usage: openapi.yaml absent, generated *"
   reason: >-
-    Mailbox reads and updates preload quota usage, including its zero-valued unloaded mailbox association. The explicit API types retain that JSON; the oracle omits quota_usage.
+    Mailbox reads and updates preload persisted quota usage. Its unloaded mailbox back-reference is omitted; loaded associations retain their public fields. The oracle still omits optional quota_usage.
 - operation: listMailboxes
   difference: "response 200 application/json.properties.data.items.required: openapi.yaml [\"active\",\"address\",\"created_at\",\"display_name\",\"domain_id\",\"id\",\"local_part\",\"password_change_required\",\"quota_bytes\",\"quota_used_bytes\",\"two_factor_required\",\"updated_at\"], generated [\"active\",\"address\",\"created_at\",\"display_name\",\"domain_id\",\"id\",\"last_login_at\",\"local_part\",\"password_change_required\",\"quota_bytes\",\"quota_used_bytes\",\"two_factor_required\",\"updated_at\"]"
   reason: >-
@@ -856,11 +856,11 @@
 - operation: updateMailbox
   difference: "response 200 application/json.properties.data.properties.domain: openapi.yaml absent, generated *"
   reason: >-
-    The handlers have always included the preloaded domain (a zero domain after creation or redaction). The API type preserves that JSON without the private DKIM key; the oracle omits the association.
+    The public API includes the loaded domain only when the session may read it. Redacted or unloaded domains are omitted, not serialized as invalid zero records; the oracle still omits this optional association.
 - operation: updateMailbox
   difference: "response 200 application/json.properties.data.properties.quota_usage: openapi.yaml absent, generated *"
   reason: >-
-    Mailbox reads and updates preload quota usage, including its zero-valued unloaded mailbox association. The explicit API types retain that JSON; the oracle omits quota_usage.
+    Mailbox reads and updates preload persisted quota usage. Its unloaded mailbox back-reference is omitted; loaded associations retain their public fields. The oracle still omits optional quota_usage.
 - operation: updateMailbox
   difference: "response 200 application/json.properties.data.required: openapi.yaml [\"active\",\"address\",\"created_at\",\"display_name\",\"domain_id\",\"id\",\"local_part\",\"password_change_required\",\"quota_bytes\",\"quota_used_bytes\",\"two_factor_required\",\"updated_at\"], generated [\"active\",\"address\",\"created_at\",\"display_name\",\"domain_id\",\"id\",\"last_login_at\",\"local_part\",\"password_change_required\",\"quota_bytes\",\"quota_used_bytes\",\"two_factor_required\",\"updated_at\"]"
   reason: >-

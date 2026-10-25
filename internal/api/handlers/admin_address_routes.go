@@ -16,6 +16,11 @@ import (
 type Mailbox = apitypes.Mailbox
 
 func mailboxOf(m models.Mailbox) Mailbox {
+	var domain *Domain
+	if m.Domain.ID != 0 {
+		loaded := domainOf(m.Domain)
+		domain = &loaded
+	}
 	return Mailbox{
 		ID:                     m.ID,
 		DomainID:               m.DomainID,
@@ -31,7 +36,7 @@ func mailboxOf(m models.Mailbox) Mailbox {
 		LastPasswordChange:     m.LastPasswordChange,
 		CreatedAt:              m.CreatedAt,
 		UpdatedAt:              m.UpdatedAt,
-		Domain:                 domainOf(m.Domain),
+		Domain:                 domain,
 		QuotaUsage:             quotaUsageOf(m.QuotaUsage),
 	}
 }
@@ -64,6 +69,11 @@ func quotaUsageOf(m *models.QuotaUsage) *QuotaUsage {
 	if m == nil {
 		return nil
 	}
+	var mailbox *Mailbox
+	if m.Mailbox.ID != 0 {
+		loaded := mailboxOf(m.Mailbox)
+		mailbox = &loaded
+	}
 	return &QuotaUsage{
 		MailboxID:       m.MailboxID,
 		SubjectBytes:    m.SubjectBytes,
@@ -71,7 +81,7 @@ func quotaUsageOf(m *models.QuotaUsage) *QuotaUsage {
 		AttachmentBytes: m.AttachmentBytes,
 		MessageCount:    m.MessageCount,
 		UpdatedAt:       m.UpdatedAt,
-		Mailbox:         mailboxOf(m.Mailbox),
+		Mailbox:         mailbox,
 	}
 }
 

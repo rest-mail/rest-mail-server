@@ -64,7 +64,10 @@ func (h *MailboxHandler) get(r *http.Request, in adminAddressPath) (Mailbox, err
 
 	var mailbox models.Mailbox
 	if err := h.db.Preload("Domain").Preload("QuotaUsage").First(&mailbox, id).Error; err != nil {
-		return Mailbox{}, endpoint.Refuse(http.StatusNotFound, "mailbox_not_found", "Mailbox not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return Mailbox{}, endpoint.Refuse(http.StatusNotFound, "mailbox_not_found", "Mailbox not found")
+		}
+		return Mailbox{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to get mailbox")
 	}
 
 	redactMailboxDomain(r, &mailbox)
