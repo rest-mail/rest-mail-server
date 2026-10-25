@@ -192,6 +192,12 @@ jobs:
           rm -rf "$tmp"
           vertrag version
 
+      - name: Registered example-pair boundary checks
+        if: inputs.contract-phases == 'gate'
+        env:
+          RESTMAIL_VERTRAG_BINARY: /usr/local/bin/vertrag
+        run: go test ./internal/api -run '^(TestPublicJSONExamplesWithVertrag|TestAuthenticatedReadExamplesWithVertrag|TestAuthenticatedReadBatchWithVertrag)$' -count=1 -v
+
       - name: Prepare stable contract queue state for fuzz
         if: inputs.contract-phases == 'fuzz'
         run: chore test:contract-fixtures

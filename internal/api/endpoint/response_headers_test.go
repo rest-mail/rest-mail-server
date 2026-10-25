@@ -11,11 +11,11 @@ import (
 func TestRouterResponseHeadersDoNotLeakAcrossListeners(t *testing.T) {
 	registry := NewRegistry()
 	shared := oapifly.Middleware{Responses: []oapifly.EndpointResponse{{Status: http.StatusUnauthorized}}}
-	public := Routes{Router: chi.NewRouter(), Registry: registry, Applied: []oapifly.Middleware{shared},
+	public := Routes{Router: chi.NewRouter(), Registry: registry,
 		ResponseHeaders: func(string) map[string]oapifly.ResponseHeader {
 			return map[string]oapifly.ResponseHeader{"X-Frame-Options": {Description: "DENY", Required: true}}
-		}}
-	internal := Routes{Router: chi.NewRouter(), Registry: registry, Applied: []oapifly.Middleware{shared}}
+		}}.Describing(shared)
+	internal := Routes{Router: chi.NewRouter(), Registry: registry}.Describing(shared)
 	handler := func(*http.Request, struct{}) (Empty, error) { return Empty{}, nil }
 	Register(public, Operation{Method: "GET", Path: "/public", OperationID: "public"}, handler)
 	Register(internal, Operation{Method: "GET", Path: "/internal", OperationID: "internal"}, handler)

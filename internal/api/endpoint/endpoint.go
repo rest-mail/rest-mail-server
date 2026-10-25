@@ -89,9 +89,9 @@ type Middleware struct {
 // the middleware the router already applies to every route (its Use) adds, which chi runs but
 // cannot describe.
 type Routes struct {
-	Router   chi.Router
-	Registry *Registry
-	Applied  []oapifly.Middleware
+	Router       chi.Router
+	Registry     *Registry
+	descriptions []routeDescription
 
 	// ResponseHeaders describes headers added by the router middleware to every status.
 	ResponseHeaders func(path string) map[string]oapifly.ResponseHeader
@@ -100,8 +100,32 @@ type Routes struct {
 // Describing returns rs with the descriptions of middleware applied to rs.Router since, for
 // a group that adds its own Use.
 func (rs Routes) Describing(applied ...oapifly.Middleware) Routes {
-	rs.Applied = append(append([]oapifly.Middleware(nil), rs.Applied...), applied...)
+	return rs.DescribingWhen(nil, applied...)
+}
+
+// DescribingWhen records middleware only for methods it actually protects. The
+// predicate and descriptions are evaluated at registration, without changing
+// the router's executable middleware. nil describes every method.
+func (rs Routes) DescribingWhen(applies func(method string) bool, applied ...oapifly.Middleware) Routes {
+	rs.descriptions = append(append([]routeDescription(nil), rs.descriptions...), routeDescription{
+		applies: applies, middleware: append([]oapifly.Middleware(nil), applied...),
+	})
 	return rs
+}
+
+type routeDescription struct {
+	applies    func(string) bool
+	middleware []oapifly.Middleware
+}
+
+func (rs Routes) appliedTo(method string) []oapifly.Middleware {
+	var applied []oapifly.Middleware
+	for _, description := range rs.descriptions {
+		if description.applies == nil || description.applies(strings.ToUpper(method)) {
+			applied = append(applied, description.middleware...)
+		}
+	}
+	return applied
 }
 
 // Error is a handler's refusal: the status, the API's error code and message, and, for a
@@ -237,7 +261,7 @@ func Register[Req, Resp any](rs Routes, op Operation, handler func(*http.Request
 	reqType := reflect.TypeOf((*Req)(nil)).Elem()
 	shape := requestShape(reqType)
 
-	rs.Registry.record(rs.Applied, op, reqType, respType, reflect.TypeOf((*Data[Resp])(nil)).Elem(), shape)
+	rs.Registry.record(rs.appliedTo(op.Method), op, reqType, respType, reflect.TypeOf((*Data[Resp])(nil)).Elem(), shape)
 	if rs.ResponseHeaders != nil {
 		rs.Registry.addResponseHeaders(rs.ResponseHeaders(op.Path))
 	}
