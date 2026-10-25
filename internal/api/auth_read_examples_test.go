@@ -87,7 +87,7 @@ func TestAuthenticatedReadExamplesMatchRegisteredRefusals(t *testing.T) {
 					t.Fatal("the named refusal pair is missing")
 				}
 				req := httptest.NewRequest(http.MethodGet, path, nil)
-				var router http.Handler = production
+				router := production
 				if name != "unauthenticated" {
 					req.Header.Set("Authorization", "Bearer "+token)
 				}

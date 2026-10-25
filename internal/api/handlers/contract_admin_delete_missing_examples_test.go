@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -51,8 +52,9 @@ func TestAdminDeletes_DocumentedMissingExamples(t *testing.T) {
 	}
 	var generated map[string]map[string]struct {
 		Request struct {
-			Path map[string]uint `json:"path"`
-			Body interface{}     `json:"body"`
+			// Raw, because other operations' examples use non-integer IDs on purpose.
+			Path map[string]json.RawMessage `json:"path"`
+			Body interface{}                `json:"body"`
 		} `json:"request"`
 		Response struct {
 			Status int         `json:"status"`
@@ -90,7 +92,7 @@ func TestAdminDeletes_DocumentedMissingExamples(t *testing.T) {
 				t.Fatalf("unexpected 404 examples: %+v", refusals)
 			}
 			pair := generated[tc.operation]["missing"]
-			if pair.Request.Path["id"] != missing || pair.Request.Body != nil || pair.Response.Status != 404 || !reflect.DeepEqual(pair.Response.Body, want) {
+			if string(pair.Request.Path["id"]) != strconv.FormatUint(uint64(missing), 10) || pair.Request.Body != nil || pair.Response.Status != 404 || !reflect.DeepEqual(pair.Response.Body, want) {
 				t.Fatalf("generated-description pair differs: %+v", pair)
 			}
 

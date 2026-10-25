@@ -40,6 +40,14 @@ func TestPipelineAreaDescribesCapabilitiesAndPreviewLimits(t *testing.T) {
 				t.Fatalf("security = %s, want %s", security, expected)
 			}
 			for _, status := range []string{"401", "403", "413", "422", "500", "503"} {
+				// Analytics binds a malformed since or window and answers it in
+				// the handler, so a 422 is not reachable there (#967).
+				if status == "422" && id == "getPipelineAnalytics" {
+					if _, ok := op.Responses[status]; ok {
+						t.Errorf("describes an unreachable 422")
+					}
+					continue
+				}
 				if _, ok := op.Responses[status]; !ok {
 					t.Errorf("missing response %s", status)
 				}
