@@ -4442,6 +4442,18 @@ paths:
                         fields:
                           dmarc_policy: must be 'none', 'quarantine' or 'reject'
     delete:
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          examples:
+            found:
+              value: 1
+            missing:
+              value: 2147483647
       operationId: deleteDomain
       tags: ["Admin: Domains"]
       security:
@@ -4456,7 +4468,17 @@ paths:
         "204":
           description: Domain deleted
         "404":
-          $ref: "#/components/responses/NotFound"
+          description: Domain not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missing:
+                  value:
+                    error:
+                      code: domain_not_found
+                      message: Domain not found
         "409":
           description: The domain still has accounts or aliases (`domain_not_empty`)
           content:
@@ -4657,6 +4679,19 @@ paths:
                         fields:
                           password: must be at least 12 characters
     delete:
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          description: Resource ID
+          examples:
+            found:
+              value: 1
+            missing:
+              value: 2147483647
       operationId: deleteMailbox
       tags: ["Admin: Mailboxes"]
       security:
@@ -4676,7 +4711,17 @@ paths:
         "403":
           description: It holds grants and the session has no 2FA (`two_factor_required`), or holds less than they give (`grant_exceeds_held`)
         "404":
-          $ref: "#/components/responses/NotFound"
+          description: Mailbox not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missing:
+                  value:
+                    error:
+                      code: mailbox_not_found
+                      message: Mailbox not found
         "409":
           description: It holds the last superadmin (`last_superadmin`)
 
@@ -4992,6 +5037,19 @@ paths:
                         fields:
                           destination_address: must be a valid email address
     delete:
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          description: Resource ID
+          examples:
+            found:
+              value: 1
+            missing:
+              value: 2147483647
       x-restmail-scope: source-domain
       operationId: deleteAlias
       tags: ["Admin: Aliases"]
@@ -5004,7 +5062,17 @@ paths:
         "204":
           description: Alias deleted
         "404":
-          $ref: "#/components/responses/NotFound"
+          description: Alias not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missing:
+                  value:
+                    error:
+                      code: not_found
+                      message: Alias not found
 
   # ═══════════════════════════════════════════════════════════════
   # Admin: Pipelines
@@ -5998,6 +6066,19 @@ paths:
                       details:
                         fields: {config: must be an object}
     delete:
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          description: Resource ID
+          examples:
+            found:
+              value: 1
+            missing:
+              value: 2147483647
       operationId: deleteCustomFilter
       tags: ["Admin: Custom Filters"]
       security:
@@ -6022,7 +6103,17 @@ paths:
                         type: string
                         example: deleted
         "404":
-          $ref: "#/components/responses/NotFound"
+          description: Custom filter not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missing:
+                  value:
+                    error:
+                      code: not_found
+                      message: Custom filter not found
 
   /api/v1/admin/custom-filters/{id}/test:
     parameters:

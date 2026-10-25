@@ -1362,6 +1362,78 @@
       }
     }
   },
+  "deleteAlias": {
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Alias not found"
+          }
+        }
+      }
+    }
+  },
+  "deleteCustomFilter": {
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Custom filter not found"
+          }
+        }
+      }
+    }
+  },
+  "deleteDomain": {
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "domain_not_found",
+            "message": "Domain not found"
+          }
+        }
+      }
+    }
+  },
+  "deleteMailbox": {
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "mailbox_not_found",
+            "message": "Mailbox not found"
+          }
+        }
+      }
+    }
+  },
   "domainDNSCheck": {
     "found": {
       "request": {
