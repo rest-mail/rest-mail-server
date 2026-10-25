@@ -7,8 +7,10 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -270,24 +272,43 @@ func TestBulkQueueCompleteExamples(t *testing.T) {
 }
 
 // Isolate the published pair while preserving the registered request and
-// response schemas. A standard hook supplies only the transport-cap violation.
-func checkBulkQueuePairWithVertrag(t *testing.T, binary string, s bulkQueueExampleScenario, method, path, name string, pair oapifly.ExamplePair) {
+// response schemas. A standard hook sends the canonical URI (including invalid
+// path bindings) and the transport-cap violation; expected answers stay intact.
+func checkQueueMutationPairWithVertrag(t *testing.T, binary string, s bulkQueueExampleScenario, method, path, name string, pair oapifly.ExamplePair) {
 	t.Helper()
 	doc := contractDocument(t, describedRouters(t).generator("bulk queue boundary"))
 	verb := strings.ToLower(method)
 	op := doc["paths"].(map[string]interface{})[path].(map[string]interface{})[verb].(map[string]interface{})
 	doc["paths"] = map[string]interface{}{path: map[string]interface{}{verb: op}}
-	media := op["requestBody"].(map[string]interface{})["content"].(map[string]interface{})["application/json"].(map[string]interface{})
-	examples := media["examples"].(map[string]interface{})
-	selected, ok := examples[name]
-	if !ok {
-		t.Fatalf("missing published request %s", name)
+	if body, ok := op["requestBody"].(map[string]interface{}); ok {
+		media := body["content"].(map[string]interface{})["application/json"].(map[string]interface{})
+		examples := media["examples"].(map[string]interface{})
+		selected, ok := examples[name]
+		if !ok {
+			t.Fatalf("missing published request %s", name)
+		}
+		media["examples"] = map[string]interface{}{name: selected}
 	}
-	media["examples"] = map[string]interface{}{name: selected}
+	uri := path
+	for key, value := range pair.Request.Path {
+		text := fmt.Sprint(value)
+		if numeric, ok := value.(float64); ok {
+			text = strconv.FormatFloat(numeric, 'f', -1, 64)
+		}
+		uri = strings.ReplaceAll(uri, "{"+key+"}", url.PathEscape(text))
+	}
+	if parameters, ok := op["parameters"].([]interface{}); ok {
+		for _, value := range parameters {
+			parameter := value.(map[string]interface{})
+			delete(parameter, "examples")
+			parameter["example"] = 1
+		}
+	}
 	status := strconv.Itoa(pair.Response.Status)
 	response := op["responses"].(map[string]interface{})[status].(map[string]interface{})
 	op["responses"] = map[string]interface{}{status: response}
-	for _, v := range response["content"].(map[string]interface{}) {
+	content, _ := response["content"].(map[string]interface{})
+	for _, v := range content {
 		m := v.(map[string]interface{})
 		e := m["examples"].(map[string]interface{})
 		chosen, ok := e[name]
@@ -304,8 +325,11 @@ func checkBulkQueuePairWithVertrag(t *testing.T, binary string, s bulkQueueExamp
 	if err = os.WriteFile(filepath.Join(dir, "openapi.json"), data, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if name == "request_too_large" {
-		hook := "import vertrag_hooks as hooks\n@hooks.before_each\ndef oversized(transaction):\n    transaction['request']['body'] = 'oversized'\n"
+	{
+		hook := "import vertrag_hooks as hooks\n@hooks.before_each\ndef published_request(transaction):\n    transaction['fullPath'] = " + strconv.Quote(uri) + "\n"
+		if name == "request_too_large" {
+			hook += "    transaction['request']['body'] = 'oversized'\n"
+		}
 		if err = os.WriteFile(filepath.Join(dir, "pair.py"), []byte(hook), 0600); err != nil {
 			t.Fatal(err)
 		}
@@ -359,7 +383,7 @@ func TestBulkQueueCompleteExamplesWithVertrag(t *testing.T) {
 	for operation, route := range bulkQueueExamples {
 		for name, pair := range pairs[operation] {
 			t.Run(operation+"/"+name, func(t *testing.T) {
-				checkBulkQueuePairWithVertrag(t, binary, scenarios[name], route.method, route.path, name, pair)
+				checkQueueMutationPairWithVertrag(t, binary, scenarios[name], route.method, route.path, name, pair)
 			})
 		}
 	}
