@@ -27,10 +27,10 @@ func TestPublicJSONExamplesWithVertrag(t *testing.T) {
 	routers := describedRouters(t)
 	doc := contractDocument(t, routers.generator("public examples"))
 	paths := doc["paths"].(map[string]interface{})
-	// Select two actual JSON operations without changing their response schemas
+	// Select the actual public JSON operations without changing their response schemas
 	// or examples. Fault responses are proved by the separate adapter test.
 	selected := map[string]interface{}{}
-	for _, path := range []string{"/api/docs/openapi.json", "/restmail/capabilities"} {
+	for _, path := range []string{"/api/docs/openapi.json", "/restmail/capabilities", "/api", "/api/v1/server"} {
 		selected[path] = paths[path]
 	}
 	doc["paths"] = selected
@@ -89,11 +89,11 @@ func TestPublicJSONExamplesWithVertrag(t *testing.T) {
 			if err := json.Unmarshal(data, &report); err != nil {
 				t.Fatal(err)
 			}
-			passing := 2
+			passing := 4
 			if fault != "none" {
-				passing = 1
+				passing = 3
 			}
-			if report.Summary.Total != 2 || report.Summary.Passing != passing || report.Summary.Failing != 2-passing || report.Summary.Errors != 0 || report.Summary.Skipped != 0 {
+			if report.Summary.Total != 4 || report.Summary.Passing != passing || report.Summary.Failing != 4-passing || report.Summary.Errors != 0 || report.Summary.Skipped != 0 {
 				t.Fatalf("the selected public transactions were not all exercised: %s", data)
 			}
 		})
