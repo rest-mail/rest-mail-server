@@ -111,6 +111,13 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dns
 func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dnsProvider dns.Provider, acmeClient ...*acmeclient.Client) *Routers {
 	r := chi.NewRouter()
 	registry := endpoint.NewRegistry()
+	publicRoutes := func(router chi.Router) endpoint.Routes {
+		rs := endpoint.Routes{Router: router, Registry: registry}
+		if cfg.SecurityHeadersEnabled {
+			rs.ResponseHeaders = describedSecurityHeaders(middleware.SecurityHeadersConfig{HSTSMaxAgeSeconds: cfg.HSTSMaxAgeSeconds})
+		}
+		return rs
+	}
 
 	// Global middleware
 	//
@@ -333,14 +340,14 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// ═══════════════════════════════════════════════════════════════
 	// API Documentation (no auth)
 	// ═══════════════════════════════════════════════════════════════
-	registerDocs(endpoint.Routes{Router: r, Registry: registry})
+	registerDocs(publicRoutes(r))
 
 	// ═══════════════════════════════════════════════════════════════
 	// Health — public liveness probe (no auth, always 200 when up). The handler
 	// additionally surfaces the certificate inventory/expiry, but ONLY to a valid
 	// admin token; unauthenticated callers receive the liveness response only.
 	// ═══════════════════════════════════════════════════════════════
-	healthH.Register(endpoint.Routes{Router: r, Registry: registry})
+	healthH.Register(publicRoutes(r))
 
 	// ═══════════════════════════════════════════════════════════════
 	// Prometheus metrics (no auth)
@@ -349,7 +356,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// A router-local registry avoids retaining DB handles in the global registry.
 	dkimRegistry := prometheus.NewRegistry()
 	dkimRegistry.MustRegister(metrics.NewDKIMKeyAgeCollector(db))
-	registerMetrics(endpoint.Routes{Router: r, Registry: registry}, promhttp.InstrumentMetricHandler(prometheus.DefaultRegisterer,
+	registerMetrics(publicRoutes(r), promhttp.InstrumentMetricHandler(prometheus.DefaultRegisterer,
 		promhttp.HandlerFor(prometheus.Gatherers{
 			prometheus.DefaultGatherer, dkimRegistry,
 		}, promhttp.HandlerOpts{})))
@@ -358,14 +365,14 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// Email client auto-configuration (no auth)
 	// ═══════════════════════════════════════════════════════════════
 	autoconfigH := handlers.NewAutoconfigHandler(db, cfg.GatewayHostname)
-	autoconfigH.Register(endpoint.Routes{Router: r, Registry: registry}, handlers.AutoconfigRouteChecks{
+	autoconfigH.Register(publicRoutes(r), handlers.AutoconfigRouteChecks{
 		AutodiscoverBody: endpoint.Middleware{Wrap: middleware.MaxBodyBytes(handlers.AutodiscoverMaxBody), Describes: describedBodyCap},
 	})
 
 	// ═══════════════════════════════════════════════════════════════
 	// MTA-STS policy (no auth — served to external MTAs per RFC 8461)
 	// ═══════════════════════════════════════════════════════════════
-	mtastsH.RegisterPolicyFile(endpoint.Routes{Router: r, Registry: registry})
+	mtastsH.RegisterPolicyFile(publicRoutes(r))
 
 	// ═══════════════════════════════════════════════════════════════
 	// TLS-RPT report ingestion (no auth — receives reports from external MTAs per RFC 8460)
@@ -382,13 +389,13 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 			Burst: cfg.TLSRPTRateLimitBurst,
 		})
 	}
-	tlsrptH.RegisterReceive(endpoint.Routes{Router: r, Registry: registry}, describedTLSRPTThrottle(tlsrptThrottle))
+	tlsrptH.RegisterReceive(publicRoutes(r), describedTLSRPTThrottle(tlsrptThrottle))
 
 	// ═══════════════════════════════════════════════════════════════
 	// ACME HTTP-01 challenge (no auth — served to ACME CA for domain validation)
 	// ═══════════════════════════════════════════════════════════════
 	if len(acmeClient) > 0 && acmeClient[0] != nil {
-		registerACME(endpoint.Routes{Router: r, Registry: registry}, acmeClient[0].ChallengeHandler())
+		registerACME(publicRoutes(r), acmeClient[0].ChallengeHandler())
 	}
 
 	// ═══════════════════════════════════════════════════════════════
@@ -423,7 +430,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 			TTL:   2 * time.Hour,
 		}))
 	}
-	authH.RegisterSignIn(endpoint.Routes{Router: r, Registry: registry}, signInChecks)
+	authH.RegisterSignIn(publicRoutes(r), signInChecks)
 	// Owners prove themselves with a key registered in PostgreSQL: sign a
 	// challenge, get a reset-admin token to redeem above. Throttled at
 	// login's rate, but in a bucket of its own: the CLI's requests must not use
@@ -441,12 +448,12 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// The same challenge, signed for "status" with a key in
 	// RESTMAIL_STATUS_KEYS (or an owner key), reads the version, commit, build
 	// and start time: a deploy confirmed from outside. Same bucket.
-	ownerH.Register(endpoint.Routes{Router: r, Registry: registry}, describedOwnerThrottle(ownerThrottle), describedAudit(auditLog))
+	ownerH.Register(publicRoutes(r), describedOwnerThrottle(ownerThrottle), describedAudit(auditLog))
 
 	// What this server is, for anyone who can reach it: how `restmail status`
 	// and the app confirm what is running. Shares the owner endpoints' bucket,
 	// so a script polling it cannot use up the budget anyone needs to sign in.
-	handlers.RegisterSystem(endpoint.Routes{Router: r, Registry: registry}, describedOwnerThrottle(ownerThrottle))
+	handlers.RegisterSystem(publicRoutes(r), describedOwnerThrottle(ownerThrottle))
 
 	// M-14 (CWE-770): the admin pipeline/filter test endpoints each run a message
 	// through the pipeline engine. They are capability-gated but were otherwise
@@ -480,6 +487,9 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// Registered once, on whichever router serves them, so the description holds them either way.
 	registerInternal := func(rt chi.Router) {
 		internal := endpoint.Routes{Router: rt, Registry: registry}
+		if !cfg.InternalMTLSEnabled {
+			internal = publicRoutes(rt)
+		}
 		mailboxH.RegisterAddressCheck(internal)
 		messageH.RegisterDelivery(internal, endpoint.Middleware{Wrap: deliverBodyLimit})
 	}
@@ -493,10 +503,10 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// or DKIM alignment, refusing spoofed local-domain injection.
 	// ═══════════════════════════════════════════════════════════════
 	restmailDiscoveryH := handlers.NewRestmailDiscoveryHandler(db, cfg.GatewayHostname)
-	restmailDiscoveryH.Register(endpoint.Routes{Router: r, Registry: registry})
+	restmailDiscoveryH.Register(publicRoutes(r))
 	// OSI-7: same delivery-body bound as the machine deliver route — the RESTMAIL
 	// hop must accept up to a full max-size message but not buffer without limit.
-	restmailH.Register(endpoint.Routes{Router: r, Registry: registry}, endpoint.Middleware{Wrap: deliverBodyLimit})
+	restmailH.Register(publicRoutes(r), endpoint.Middleware{Wrap: deliverBodyLimit})
 
 	// ═══════════════════════════════════════════════════════════════
 	// SSE — a session from the restmail_access cookie (native EventSource) or an
@@ -507,7 +517,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.Use(middleware.JWTMiddleware(jwtService))
 		r.Use(middleware.RejectStaleSessions(sessionCurrent))
 		r.Use(middleware.SetupDone)
-		eventH.Register(endpoint.Routes{Router: r, Registry: registry}.
+		eventH.Register(publicRoutes(r).
 			Describing(describedPersonSession, describedSetupDone))
 	})
 
@@ -515,10 +525,10 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// explicitly scoped API keys. Other identity and credential changes below
 	// still require a password-authenticated session.
 	audited := describedAudit(auditLog)
-	accountH.RegisterCreate(endpoint.Routes{Registry: registry, Router: r.With(
+	accountH.RegisterCreate(publicRoutes(r.With(
 		apiKeys.Authenticate(middleware.JWTMiddleware(jwtService)),
 		middleware.RejectStaleSessions(sessionCurrent), middleware.SetupDone,
-		middleware.CSRF(), middleware.MaxBodyBytes(cfg.APIMaxBodyBytes))}.
+		middleware.CSRF(), middleware.MaxBodyBytes(cfg.APIMaxBodyBytes))).
 		Describing(describedAdminSession, describedSetupDone, describedCSRF, describedBodyCap),
 		audited(handlers.ActionAccountsCreate, middleware.AuditBodyFields("address"), middleware.AuditFailuresOnly()))
 
@@ -552,7 +562,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		// status read carries no secret to guess and is left unthrottled so the SPA
 		// can poll it freely.
 		personChecks := handlers.SessionRouteChecks{Throttle: describedThrottle(authThrottle), Audit: audited}
-		inSetup := endpoint.Routes{Router: r, Registry: registry}.
+		inSetup := publicRoutes(r).
 			Describing(describedPersonSession, describedCSRF, describedBodyCap)
 		twofaH.RegisterOwn(inSetup, personChecks)
 		// An account replaces its own password; with 2FA enrollment, all a
@@ -561,7 +571,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.SetupDone)
-			person := endpoint.Routes{Router: r, Registry: registry}.
+			person := publicRoutes(r).
 				Describing(describedPersonSession, describedCSRF, describedBodyCap, describedSetupDone)
 
 			// Accounts (#347). Creating one needs mailboxes:write covering its
@@ -613,14 +623,14 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		// password, sent with HTTP Basic. Throttled like login; a refused
 		// credential is recorded by basicCredentials, a successful sign-in
 		// here.
-		credentialH.RegisterProtocolSignIn(endpoint.Routes{Router: r, Registry: registry}.
+		credentialH.RegisterProtocolSignIn(publicRoutes(r).
 			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap), signInChecks)
 
-		accountH.RegisterReads(endpoint.Routes{Router: r, Registry: registry}.
+		accountH.RegisterReads(publicRoutes(r).
 			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap))
 
 		// Folders and quota
-		mail := endpoint.Routes{Router: r, Registry: registry}.
+		mail := publicRoutes(r).
 			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap)
 		messageH.RegisterFolders(mail)
 		messageH.RegisterMessages(mail)
@@ -629,17 +639,17 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		messageH.RegisterCompose(mail)
 
 		// Contacts
-		contactH.RegisterContacts(endpoint.Routes{Router: r, Registry: registry}.
+		contactH.RegisterContacts(publicRoutes(r).
 			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap))
 
 		// Mail rules: the vacation reply and the Sieve script
-		mailRules := endpoint.Routes{Router: r, Registry: registry}.
+		mailRules := publicRoutes(r).
 			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap)
 		vacationH.Register(mailRules)
 		sieveH.Register(mailRules)
 
 		// Quarantine
-		pipelineH.RegisterQuarantine(endpoint.Routes{Router: r, Registry: registry}.
+		pipelineH.RegisterQuarantine(publicRoutes(r).
 			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap))
 	})
 
@@ -691,7 +701,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 
 		// The routes registered with their types, and what this group's middleware
 		// adds to each of them (#669).
-		admin := endpoint.Routes{Router: r, Registry: registry}.
+		admin := publicRoutes(r).
 			Describing(describedAdminSession, describedSetupDone, describedCSRF, describedBodyCap)
 
 		// Roles, capabilities, grants and escalation (#644).

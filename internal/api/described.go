@@ -220,3 +220,14 @@ var describedAuthThrottle = oapifly.Middleware{Responses: []oapifly.EndpointResp
 func describedAuditRead(wrap func(http.Handler) http.Handler) endpoint.Middleware {
 	return endpoint.Middleware{Wrap: wrap}
 }
+
+// describedSecurityHeaders is attached only to the listener that installs the middleware.
+func describedSecurityHeaders(cfg middleware.SecurityHeadersConfig) func(string) map[string]oapifly.ResponseHeader {
+	return func(path string) map[string]oapifly.ResponseHeader {
+		headers := map[string]oapifly.ResponseHeader{}
+		for name, values := range middleware.SecurityHeaderValues(cfg, path) {
+			headers[name] = oapifly.ResponseHeader{Description: values[0], Required: true}
+		}
+		return headers
+	}
+}
