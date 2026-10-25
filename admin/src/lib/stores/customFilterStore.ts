@@ -1,52 +1,38 @@
-import { create } from 'zustand'
-import { apiV1 } from '../api'
+import { create } from "zustand";
+import { apiV1 } from "../api";
+import { expectSuccess } from "../api-contract";
+import type { JsonResponse, RequestBody } from "../api-contract";
+import { customFilterView } from "../pipeline-views";
+import type { CustomFilter } from "../pipeline-views";
 
-interface CustomFilter {
-  id: number
-  domain_id: number
-  name: string
-  description: string
-  filter_type: 'action' | 'transform'
-  direction: 'inbound' | 'outbound' | 'both'
-  config: {
-    script: string
-  }
-  enabled: boolean
-  created_at: string
-  updated_at: string
-}
+type ValidationResult = JsonResponse<"validateCustomFilter", 200>;
 
-interface ValidationResult {
-  valid: boolean
-  errors?: string[]
-  warnings?: string[]
-}
-
-interface FilterTestResult {
-  action: 'continue' | 'reject' | 'quarantine' | 'discard'
-  result: string
-  detail?: string
-  duration_ms?: number
-  message?: unknown
-  errors?: string[]
-}
+type FilterTestResult = JsonResponse<"testCustomFilter", 200>;
 
 interface CustomFilterState {
-  filters: CustomFilter[]
-  currentFilter: CustomFilter | null
-  isLoading: boolean
-  error: string | null
+  filters: CustomFilter[];
+  currentFilter: CustomFilter | null;
+  isLoading: boolean;
+  error: string | null;
 
   // Actions
-  fetchFilters: (domainId?: number) => Promise<void>
-  fetchFilter: (id: number) => Promise<CustomFilter>
-  createFilter: (data: Partial<CustomFilter>) => Promise<CustomFilter>
-  updateFilter: (id: number, data: Partial<CustomFilter>) => Promise<CustomFilter>
-  deleteFilter: (id: number) => Promise<void>
-  validateScript: (script: string, email?: unknown) => Promise<ValidationResult>
-  testFilter: (id: number, email?: unknown) => Promise<FilterTestResult>
-  clearError: () => void
-  clearCurrentFilter: () => void
+  fetchFilters: (domainId?: number) => Promise<void>;
+  fetchFilter: (id: number) => Promise<CustomFilter>;
+  createFilter: (
+    data: RequestBody<"createCustomFilter">,
+  ) => Promise<CustomFilter>;
+  updateFilter: (
+    id: number,
+    data: RequestBody<"updateCustomFilter">,
+  ) => Promise<CustomFilter>;
+  deleteFilter: (id: number) => Promise<void>;
+  validateScript: (
+    script: string,
+    email?: unknown,
+  ) => Promise<ValidationResult>;
+  testFilter: (id: number, email?: unknown) => Promise<FilterTestResult>;
+  clearError: () => void;
+  clearCurrentFilter: () => void;
 }
 
 export const useCustomFilterStore = create<CustomFilterState>((set, get) => ({
@@ -56,228 +42,225 @@ export const useCustomFilterStore = create<CustomFilterState>((set, get) => ({
   error: null,
 
   fetchFilters: async (domainId?: number) => {
-    set({ isLoading: true, error: null })
+    set({ isLoading: true, error: null });
 
     try {
       const url = domainId
         ? `/admin/custom-filters?domain_id=${domainId}`
-        : '/admin/custom-filters'
+        : "/admin/custom-filters";
 
-      const response = await apiV1.request(url, { method: 'GET' })
+      const response = await apiV1.request(url, { method: "GET" });
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to fetch custom filters')
-      }
+      await expectSuccess(response, "Failed to fetch custom filters");
 
-      const response_data = await response.json()
-      const data = response_data.data || response_data
+      const response_data: JsonResponse<"listCustomFilters", 200> =
+        await response.json();
+      const data = response_data.data;
       set({
-        filters: Array.isArray(data) ? data : data.filters || [],
+        filters: data.map(customFilterView),
         isLoading: false,
         error: null,
-      })
+      });
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to fetch custom filters',
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to fetch custom filters",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
   fetchFilter: async (id: number) => {
-    set({ isLoading: true, error: null })
+    set({ isLoading: true, error: null });
 
     try {
-      const response = await apiV1.request(
-        `/admin/custom-filters/${id}`,
-        { method: 'GET' }
-      )
+      const response = await apiV1.request(`/admin/custom-filters/${id}`, {
+        method: "GET",
+      });
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to fetch custom filter')
-      }
+      await expectSuccess(response, "Failed to fetch custom filter");
 
-      const response_data = await response.json()
-      const data = response_data.data || response_data
+      const response_data: JsonResponse<"getCustomFilter", 200> =
+        await response.json();
+      const data = customFilterView(response_data.data);
       set({
         currentFilter: data,
         isLoading: false,
         error: null,
-      })
-      return data
+      });
+      return data;
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to fetch custom filter',
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to fetch custom filter",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
-  createFilter: async (data: Partial<CustomFilter>) => {
-    set({ isLoading: true, error: null })
+  createFilter: async (data: RequestBody<"createCustomFilter">) => {
+    set({ isLoading: true, error: null });
 
     try {
-      const response = await apiV1.request(
-        '/admin/custom-filters',
-        {
-          method: 'POST',
-          body: JSON.stringify(data),
-        }
-      )
+      const response = await apiV1.request("/admin/custom-filters", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to create custom filter')
-      }
+      await expectSuccess(response, "Failed to create custom filter");
 
-      const filter = await response.json()
+      const response_data: JsonResponse<"createCustomFilter", 201> =
+        await response.json();
+      const filter = customFilterView(response_data.data);
       set({
         filters: [...get().filters, filter],
         isLoading: false,
         error: null,
-      })
-      return filter
+      });
+      return filter;
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to create custom filter',
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to create custom filter",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
-  updateFilter: async (id: number, data: Partial<CustomFilter>) => {
-    set({ isLoading: true, error: null })
+  updateFilter: async (id: number, data: RequestBody<"updateCustomFilter">) => {
+    set({ isLoading: true, error: null });
 
     try {
-      const response = await apiV1.request(
-        `/admin/custom-filters/${id}`,
-        {
-          method: 'PATCH',
-          body: JSON.stringify(data),
-        }
-      )
+      const response = await apiV1.request(`/admin/custom-filters/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      });
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to update custom filter')
-      }
+      await expectSuccess(response, "Failed to update custom filter");
 
-      const filter = await response.json()
+      const response_data: JsonResponse<"updateCustomFilter", 200> =
+        await response.json();
+      const filter = customFilterView(response_data.data);
       set({
         filters: get().filters.map((f) => (f.id === id ? filter : f)),
         currentFilter: filter,
         isLoading: false,
         error: null,
-      })
-      return filter
+      });
+      return filter;
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to update custom filter',
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to update custom filter",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
   deleteFilter: async (id: number) => {
-    set({ isLoading: true, error: null })
+    set({ isLoading: true, error: null });
 
     try {
-      const response = await apiV1.request(
-        `/admin/custom-filters/${id}`,
-        { method: 'DELETE' }
-      )
+      const response = await apiV1.request(`/admin/custom-filters/${id}`, {
+        method: "DELETE",
+      });
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to delete custom filter')
-      }
+      await expectSuccess(response, "Failed to delete custom filter");
 
       set({
         filters: get().filters.filter((f) => f.id !== id),
         isLoading: false,
         error: null,
-      })
+      });
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to delete custom filter',
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to delete custom filter",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
   validateScript: async (script: string, email?: unknown) => {
-    set({ isLoading: true, error: null })
+    set({ isLoading: true, error: null });
 
     try {
-      const response = await apiV1.request(
-        '/admin/custom-filters/validate',
-        {
-          method: 'POST',
-          body: JSON.stringify({ script, email }),
-        }
-      )
+      const response = await apiV1.request("/admin/custom-filters/validate", {
+        method: "POST",
+        body: JSON.stringify({
+          script,
+          email,
+        } satisfies RequestBody<"validateCustomFilter">),
+      });
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to validate script')
-      }
+      await expectSuccess(response, "Failed to validate script");
 
-      const result = await response.json()
-      set({ isLoading: false, error: null })
-      return result
+      const result: JsonResponse<"validateCustomFilter", 200> =
+        await response.json();
+      set({ isLoading: false, error: null });
+      return result;
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to validate script',
+        error:
+          error instanceof Error ? error.message : "Failed to validate script",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
   testFilter: async (id: number, email?: unknown) => {
-    set({ isLoading: true, error: null })
+    set({ isLoading: true, error: null });
 
     try {
-      const response = await apiV1.request(
-        `/admin/custom-filters/${id}/test`,
-        {
-          method: 'POST',
-          body: JSON.stringify({ email }),
-        }
-      )
+      const response = await apiV1.request(`/admin/custom-filters/${id}/test`, {
+        method: "POST",
+        body: JSON.stringify({
+          email,
+        } satisfies RequestBody<"testCustomFilter">),
+      });
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to test custom filter')
-      }
+      await expectSuccess(response, "Failed to test custom filter");
 
-      const result = await response.json()
-      set({ isLoading: false, error: null })
-      return result
+      const result: JsonResponse<"testCustomFilter", 200> =
+        await response.json();
+      set({ isLoading: false, error: null });
+      return result;
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to test custom filter',
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to test custom filter",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
   clearError: () => {
-    set({ error: null })
+    set({ error: null });
   },
 
   clearCurrentFilter: () => {
-    set({ currentFilter: null })
+    set({ currentFilter: null });
   },
-}))
+}));
 
 // Export types for use in components
-export type { CustomFilter, ValidationResult, FilterTestResult }
+export type { CustomFilter, ValidationResult, FilterTestResult };

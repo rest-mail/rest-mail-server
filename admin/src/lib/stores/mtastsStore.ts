@@ -1,37 +1,25 @@
-import { create } from 'zustand'
-import { apiV1 } from '../api'
+import { create } from "zustand";
+import { apiV1 } from "../api";
+import type { JsonResponse, RequestBody } from "../api-contract";
+import { expectSuccess } from "../api-contract";
 
-interface MTASTSPolicy {
-  id: number
-  domain_id: number
-  mode: 'none' | 'testing' | 'enforce'
-  mx_hosts: string
-  max_age: number
-  active: boolean
-  created_at: string
-  updated_at: string
-}
+type MTASTSPolicy = JsonResponse<"getMtaStsPolicy", 200>["data"];
 
 interface MTASTSState {
-  policies: Map<number, MTASTSPolicy>
-  currentPolicy: MTASTSPolicy | null
-  isLoading: boolean
-  error: string | null
+  policies: Map<number, MTASTSPolicy>;
+  currentPolicy: MTASTSPolicy | null;
+  isLoading: boolean;
+  error: string | null;
 
   // Actions
-  fetchPolicy: (domainId: number) => Promise<void>
+  fetchPolicy: (domainId: number) => Promise<void>;
   setPolicy: (
     domainId: number,
-    data: {
-      mode: string
-      mx_hosts: string
-      max_age?: number
-      active?: boolean
-    }
-  ) => Promise<void>
-  deletePolicy: (domainId: number) => Promise<void>
-  clearCurrentPolicy: () => void
-  clearError: () => void
+    data: RequestBody<"setMtaStsPolicy">,
+  ) => Promise<void>;
+  deletePolicy: (domainId: number) => Promise<void>;
+  clearCurrentPolicy: () => void;
+  clearError: () => void;
 }
 
 export const useMTASTSStore = create<MTASTSState>((set, get) => ({
@@ -41,86 +29,90 @@ export const useMTASTSStore = create<MTASTSState>((set, get) => ({
   error: null,
 
   fetchPolicy: async (domainId: number) => {
-    set({ isLoading: true, error: null })
+    set({ isLoading: true, error: null });
     try {
       const response = await apiV1.request(
         `/admin/domains/${domainId}/mta-sts`,
-        { method: 'GET' }
-      )
+        { method: "GET" },
+      );
       if (!response.ok) {
         if (response.status === 404) {
           // No policy exists for this domain
-          set({ currentPolicy: null, isLoading: false })
-          return
+          set({ currentPolicy: null, isLoading: false });
+          return;
         }
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to fetch MTA-STS policy')
+        await expectSuccess(response, "Failed to fetch MTA-STS policy");
       }
-      const response_data = await response.json()
-      const data = response_data.data || response_data
-      const policies = new Map(get().policies)
-      policies.set(domainId, data)
-      set({ policies, currentPolicy: data, isLoading: false })
+      const response_data: JsonResponse<"getMtaStsPolicy", 200> =
+        await response.json();
+      const data = response_data.data;
+      const policies = new Map(get().policies);
+      policies.set(domainId, data);
+      set({ policies, currentPolicy: data, isLoading: false });
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to fetch MTA-STS policy',
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to fetch MTA-STS policy",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
   setPolicy: async (domainId: number, data) => {
-    set({ isLoading: true, error: null })
+    set({ isLoading: true, error: null });
     try {
       const response = await apiV1.request(
         `/admin/domains/${domainId}/mta-sts`,
         {
-          method: 'PUT',
+          method: "PUT",
           body: JSON.stringify(data),
-          headers: { 'Content-Type': 'application/json' },
-        }
-      )
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to set MTA-STS policy')
-      }
-      const result = await response.json()
-      const policies = new Map(get().policies)
-      policies.set(domainId, result)
-      set({ policies, currentPolicy: result, isLoading: false })
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+      await expectSuccess(response, "Failed to set MTA-STS policy");
+      const { data: result }: JsonResponse<"setMtaStsPolicy", 200> =
+        await response.json();
+      const policies = new Map(get().policies);
+      policies.set(domainId, result);
+      set({ policies, currentPolicy: result, isLoading: false });
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to set MTA-STS policy',
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to set MTA-STS policy",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
   deletePolicy: async (domainId: number) => {
-    set({ isLoading: true, error: null })
+    set({ isLoading: true, error: null });
     try {
       const response = await apiV1.request(
         `/admin/domains/${domainId}/mta-sts`,
-        { method: 'DELETE' }
-      )
-      if (!response.ok && response.status !== 204) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to delete MTA-STS policy')
-      }
-      const policies = new Map(get().policies)
-      policies.delete(domainId)
-      set({ policies, currentPolicy: null, isLoading: false })
+        { method: "DELETE" },
+      );
+      await expectSuccess(response, "Failed to delete MTA-STS policy");
+      const policies = new Map(get().policies);
+      policies.delete(domainId);
+      set({ policies, currentPolicy: null, isLoading: false });
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to delete MTA-STS policy',
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to delete MTA-STS policy",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
   clearCurrentPolicy: () => set({ currentPolicy: null }),
   clearError: () => set({ error: null }),
-}))
+}));

@@ -1,27 +1,24 @@
-import { create } from 'zustand'
-import { apiV1 } from '../api'
+import { create } from "zustand";
+import { apiV1 } from "../api";
+import type { JsonResponse, RequestBody } from "../api-contract";
+import { expectSuccess } from "../api-contract";
 
-interface DkimEntry {
-  domain_id: number
-  domain: string
-  selector: string
-  has_key: boolean
-}
+type DkimEntry = JsonResponse<"listDKIMKeys", 200>["data"][number];
 
 interface DkimState {
-  entries: DkimEntry[]
-  currentEntry: DkimEntry | null
-  isLoading: boolean
-  error: string | null
+  entries: DkimEntry[];
+  currentEntry: DkimEntry | null;
+  isLoading: boolean;
+  error: string | null;
 
   // Actions
-  fetchDkimKeys: () => Promise<void>
+  fetchDkimKeys: () => Promise<void>;
   setDkimKey: (
     domainId: number,
-    data: { selector: string; private_key: string }
-  ) => Promise<void>
-  deleteDkimKey: (domainId: number) => Promise<void>
-  clearError: () => void
+    data: RequestBody<"setDKIMKey">,
+  ) => Promise<void>;
+  deleteDkimKey: (domainId: number) => Promise<void>;
+  clearError: () => void;
 }
 
 export const useDkimStore = create<DkimState>((set) => ({
@@ -31,73 +28,61 @@ export const useDkimStore = create<DkimState>((set) => ({
   error: null,
 
   fetchDkimKeys: async () => {
-    set({ isLoading: true, error: null })
+    set({ isLoading: true, error: null });
     try {
-      const response = await apiV1.request('/admin/dkim', { method: 'GET' })
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to fetch DKIM keys')
-      }
-      const response_data = await response.json()
-      const data = response_data.data || response_data
-      set({ entries: data.items || data, isLoading: false })
+      const response = await apiV1.request("/admin/dkim", { method: "GET" });
+      await expectSuccess(response, "Failed to fetch DKIM keys");
+      const response_data: JsonResponse<"listDKIMKeys", 200> =
+        await response.json();
+      const data = response_data.data;
+      set({ entries: data, isLoading: false });
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to fetch DKIM keys',
+        error:
+          error instanceof Error ? error.message : "Failed to fetch DKIM keys",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
-  setDkimKey: async (
-    domainId: number,
-    data: { selector: string; private_key: string }
-  ) => {
-    set({ isLoading: true, error: null })
+  setDkimKey: async (domainId: number, data: RequestBody<"setDKIMKey">) => {
+    set({ isLoading: true, error: null });
     try {
-      const response = await apiV1.request(
-        `/admin/dkim/${domainId}`,
-        {
-          method: 'PUT',
-          body: JSON.stringify(data),
-          headers: { 'Content-Type': 'application/json' },
-        }
-      )
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to set DKIM key')
-      }
-      set({ isLoading: false })
+      const response = await apiV1.request(`/admin/dkim/${domainId}`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+        headers: { "Content-Type": "application/json" },
+      });
+      await expectSuccess(response, "Failed to set DKIM key");
+      set({ isLoading: false });
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to set DKIM key',
+        error:
+          error instanceof Error ? error.message : "Failed to set DKIM key",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
   deleteDkimKey: async (domainId: number) => {
-    set({ isLoading: true, error: null })
+    set({ isLoading: true, error: null });
     try {
-      const response = await apiV1.request(
-        `/admin/dkim/${domainId}`,
-        { method: 'DELETE' }
-      )
-      if (!response.ok && response.status !== 204) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to delete DKIM key')
-      }
-      set({ isLoading: false })
+      const response = await apiV1.request(`/admin/dkim/${domainId}`, {
+        method: "DELETE",
+      });
+      await expectSuccess(response, "Failed to delete DKIM key");
+      set({ isLoading: false });
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to delete DKIM key',
+        error:
+          error instanceof Error ? error.message : "Failed to delete DKIM key",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
   clearError: () => set({ error: null }),
-}))
+}));

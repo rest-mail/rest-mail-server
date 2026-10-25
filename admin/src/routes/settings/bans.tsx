@@ -1,52 +1,74 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
-import { useBanStore } from '../../lib/stores/banStore'
-import { useAuthStore } from '../../lib/stores/authStore'
-import { AppShell } from '../../components/layout/AppShell'
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { useBanStore } from "../../lib/stores/banStore";
+import type { QueryParameters } from "../../lib/api-contract";
+import { useAuthStore } from "../../lib/stores/authStore";
+import { AppShell } from "../../components/layout/AppShell";
 
-export const Route = createFileRoute('/settings/bans')({
+export const Route = createFileRoute("/settings/bans")({
   component: BansPage,
-})
+});
 
 function BansPage() {
-  const navigate = useNavigate()
-  const { bans, fetchBans, deleteBan, isExpired, isLoading, error, clearError } = useBanStore()
-  const { accessToken, isAuthenticated, user } = useAuthStore()
-  const [showCreateModal, setShowCreateModal] = useState(false)
-  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null)
-  const [filterProtocol, setFilterProtocol] = useState<string>('')
-  const [filterActive, setFilterActive] = useState(true)
+  const navigate = useNavigate();
+  const {
+    bans,
+    fetchBans,
+    deleteBan,
+    isExpired,
+    isLoading,
+    error,
+    clearError,
+  } = useBanStore();
+  const { accessToken, isAuthenticated, user } = useAuthStore();
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
+  const [filterProtocol, setFilterProtocol] = useState<
+    NonNullable<QueryParameters<"listBans">["protocol"]> | ""
+  >("");
+  const [filterActive, setFilterActive] = useState(true);
 
   useEffect(() => {
     if (!isAuthenticated) {
-      navigate({ to: '/login' })
-      return
+      navigate({ to: "/login" });
+      return;
     }
 
     if (accessToken) {
-      fetchBans({ active: filterActive, protocol: filterProtocol || undefined }).catch(
-        console.error
-      )
+      fetchBans({
+        active: filterActive,
+        protocol: filterProtocol || undefined,
+      }).catch(console.error);
     }
-  }, [isAuthenticated, accessToken, filterProtocol, filterActive])
+  }, [
+    isAuthenticated,
+    accessToken,
+    filterProtocol,
+    filterActive,
+    fetchBans,
+    navigate,
+  ]);
 
   const handleDelete = async (id: number) => {
-    if (!accessToken) return
+    if (!accessToken) return;
 
     try {
-      await deleteBan(id)
-      setDeleteConfirm(null)
-      await fetchBans({ active: filterActive, protocol: filterProtocol || undefined })
+      await deleteBan(id);
+      setDeleteConfirm(null);
+      await fetchBans({
+        active: filterActive,
+        protocol: filterProtocol || undefined,
+      });
     } catch (err) {
-      console.error('Failed to delete ban:', err)
+      console.error("Failed to delete ban:", err);
     }
-  }
+  };
 
   return (
     <AppShell title="IP Ban Management" backLink="/settings">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <p className="text-sm" style={{ color: 'var(--gray-secondary)' }}>
+          <p className="text-sm" style={{ color: "var(--gray-secondary)" }}>
             Manage IP address bans for SMTP, IMAP, and POP3 protocols
           </p>
         </div>
@@ -54,8 +76,8 @@ function BansPage() {
           onClick={() => setShowCreateModal(true)}
           className="h-10 px-6 flex items-center justify-center text-white text-sm font-medium rounded"
           style={{
-            backgroundColor: 'var(--red-primary)',
-            fontFamily: 'Space Grotesk',
+            backgroundColor: "var(--red-primary)",
+            fontFamily: "Space Grotesk",
           }}
         >
           Add Ban
@@ -68,13 +90,17 @@ function BansPage() {
           <div
             className="p-4 border flex items-center justify-between rounded"
             style={{
-              borderColor: '#EF4444',
-              backgroundColor: '#FEF2F2',
-              color: '#DC2626',
+              borderColor: "#EF4444",
+              backgroundColor: "#FEF2F2",
+              color: "#DC2626",
             }}
           >
             <span className="text-sm">{error}</span>
-            <button onClick={clearError} className="text-sm font-medium" style={{ color: '#DC2626' }}>
+            <button
+              onClick={clearError}
+              className="text-sm font-medium"
+              style={{ color: "#DC2626" }}
+            >
               Dismiss
             </button>
           </div>
@@ -86,9 +112,15 @@ function BansPage() {
         <div>
           <select
             value={filterProtocol}
-            onChange={(e) => setFilterProtocol(e.target.value)}
+            onChange={(e) =>
+              setFilterProtocol(
+                e.target.value as
+                  | NonNullable<QueryParameters<"listBans">["protocol"]>
+                  | "",
+              )
+            }
             className="h-11 px-4 border rounded"
-            style={{ borderColor: 'var(--gray-border)' }}
+            style={{ borderColor: "var(--gray-border)" }}
           >
             <option value="">All Protocols</option>
             <option value="all">All</option>
@@ -99,10 +131,10 @@ function BansPage() {
         </div>
         <div>
           <select
-            value={filterActive ? 'active' : 'all'}
-            onChange={(e) => setFilterActive(e.target.value === 'active')}
+            value={filterActive ? "active" : "all"}
+            onChange={(e) => setFilterActive(e.target.value === "active")}
             className="h-11 px-4 border rounded"
-            style={{ borderColor: 'var(--gray-border)' }}
+            style={{ borderColor: "var(--gray-border)" }}
           >
             <option value="active">Active Only</option>
             <option value="all">Include Expired</option>
@@ -112,16 +144,19 @@ function BansPage() {
 
       {/* Loading State */}
       {isLoading && (
-        <div className="text-center py-8" style={{ color: 'var(--gray-secondary)' }}>
+        <div
+          className="text-center py-8"
+          style={{ color: "var(--gray-secondary)" }}
+        >
           Loading bans...
         </div>
       )}
 
       {/* Bans Table */}
       {!isLoading && bans.length > 0 && (
-        <div className="border" style={{ borderColor: 'var(--gray-border)' }}>
+        <div className="border" style={{ borderColor: "var(--gray-border)" }}>
           <table className="w-full">
-            <thead style={{ backgroundColor: 'var(--bg-surface)' }}>
+            <thead style={{ backgroundColor: "var(--bg-surface)" }}>
               <tr>
                 <th className="text-left px-6 py-3 text-xs font-medium uppercase tracking-wider">
                   IP Address
@@ -142,21 +177,25 @@ function BansPage() {
             </thead>
             <tbody>
               {bans.map((ban) => {
-                const expired = isExpired(ban)
+                const expired = isExpired(ban);
 
                 return (
                   <tr
                     key={ban.id}
                     className="border-t"
                     style={{
-                      borderColor: 'var(--gray-border)',
+                      borderColor: "var(--gray-border)",
                       opacity: expired ? 0.6 : 1,
                     }}
                   >
                     <td className="px-6 py-4">
                       <span
                         className="text-sm font-mono"
-                        style={{ color: expired ? 'var(--gray-muted)' : 'var(--black-soft)' }}
+                        style={{
+                          color: expired
+                            ? "var(--gray-muted)"
+                            : "var(--black-soft)",
+                        }}
                       >
                         {ban.ip}
                       </span>
@@ -164,7 +203,11 @@ function BansPage() {
                     <td className="px-6 py-4">
                       <span
                         className="text-sm"
-                        style={{ color: expired ? 'var(--gray-muted)' : 'var(--gray-secondary)' }}
+                        style={{
+                          color: expired
+                            ? "var(--gray-muted)"
+                            : "var(--gray-secondary)",
+                        }}
                       >
                         {ban.reason}
                       </span>
@@ -173,8 +216,10 @@ function BansPage() {
                       <span
                         className="inline-block px-2 py-1 text-xs font-medium rounded uppercase"
                         style={{
-                          backgroundColor: expired ? 'var(--bg-surface)' : '#DBEAFE',
-                          color: expired ? 'var(--gray-muted)' : '#1E40AF',
+                          backgroundColor: expired
+                            ? "var(--bg-surface)"
+                            : "#DBEAFE",
+                          color: expired ? "var(--gray-muted)" : "#1E40AF",
                         }}
                       >
                         {ban.protocol}
@@ -185,18 +230,28 @@ function BansPage() {
                         <div>
                           <span
                             className="text-sm"
-                            style={{ color: expired ? 'var(--gray-muted)' : 'var(--gray-secondary)' }}
+                            style={{
+                              color: expired
+                                ? "var(--gray-muted)"
+                                : "var(--gray-secondary)",
+                            }}
                           >
                             {new Date(ban.expires_at).toLocaleDateString()}
                           </span>
                           {expired && (
-                            <div className="text-xs mt-1" style={{ color: '#DC2626' }}>
+                            <div
+                              className="text-xs mt-1"
+                              style={{ color: "#DC2626" }}
+                            >
                               Expired
                             </div>
                           )}
                         </div>
                       ) : (
-                        <span className="text-sm font-medium" style={{ color: 'var(--black-soft)' }}>
+                        <span
+                          className="text-sm font-medium"
+                          style={{ color: "var(--black-soft)" }}
+                        >
                           Permanent
                         </span>
                       )}
@@ -207,14 +262,14 @@ function BansPage() {
                           <button
                             onClick={() => handleDelete(ban.id)}
                             className="text-sm font-medium"
-                            style={{ color: '#DC2626' }}
+                            style={{ color: "#DC2626" }}
                           >
                             Confirm
                           </button>
                           <button
                             onClick={() => setDeleteConfirm(null)}
                             className="text-sm font-medium"
-                            style={{ color: 'var(--gray-secondary)' }}
+                            style={{ color: "var(--gray-secondary)" }}
                           >
                             Cancel
                           </button>
@@ -223,14 +278,14 @@ function BansPage() {
                         <button
                           onClick={() => setDeleteConfirm(ban.id)}
                           className="text-sm font-medium"
-                          style={{ color: '#DC2626' }}
+                          style={{ color: "#DC2626" }}
                         >
                           Remove
                         </button>
                       )}
                     </td>
                   </tr>
-                )
+                );
               })}
             </tbody>
           </table>
@@ -239,16 +294,22 @@ function BansPage() {
 
       {/* Empty State */}
       {!isLoading && bans.length === 0 && (
-        <div className="border p-12 text-center" style={{ borderColor: 'var(--gray-border)' }}>
-          <p className="text-sm mb-4" style={{ color: 'var(--gray-secondary)' }}>
+        <div
+          className="border p-12 text-center"
+          style={{ borderColor: "var(--gray-border)" }}
+        >
+          <p
+            className="text-sm mb-4"
+            style={{ color: "var(--gray-secondary)" }}
+          >
             No banned IPs found
           </p>
           <button
             onClick={() => setShowCreateModal(true)}
             className="h-10 px-6 inline-flex items-center justify-center text-white text-sm font-medium rounded"
             style={{
-              backgroundColor: 'var(--red-primary)',
-              fontFamily: 'Space Grotesk',
+              backgroundColor: "var(--red-primary)",
+              fontFamily: "Space Grotesk",
             }}
           >
             Add First Ban
@@ -261,61 +322,66 @@ function BansPage() {
         <BanCreateModal
           onClose={() => setShowCreateModal(false)}
           onSuccess={async () => {
-            setShowCreateModal(false)
+            setShowCreateModal(false);
             if (accessToken) {
-              await fetchBans(
-                { active: filterActive, protocol: filterProtocol || undefined }
-              )
+              await fetchBans({
+                active: filterActive,
+                protocol: filterProtocol || undefined,
+              });
             }
           }}
-          currentUser={user?.email || ''}
+          currentUser={user?.email || ""}
         />
       )}
     </AppShell>
-  )
+  );
 }
 
 interface BanCreateModalProps {
-  onClose: () => void
-  onSuccess: () => void
-  currentUser: string
+  onClose: () => void;
+  onSuccess: () => void;
+  currentUser: string;
 }
 
-function BanCreateModal({ onClose, onSuccess, currentUser }: BanCreateModalProps) {
-  const { createBan, isLoading, error } = useBanStore()
-  const { accessToken } = useAuthStore()
-  const [ip, setIp] = useState('')
-  const [reason, setReason] = useState('')
-  const [protocol, setProtocol] = useState<string>('all')
-  const [isPermanent, setIsPermanent] = useState(false)
-  const [duration, setDuration] = useState('24')
-  const [durationUnit, setDurationUnit] = useState<'hours' | 'days'>('hours')
+function BanCreateModal({
+  onClose,
+  onSuccess,
+  currentUser,
+}: BanCreateModalProps) {
+  const { createBan, isLoading, error } = useBanStore();
+  const { accessToken } = useAuthStore();
+  const [ip, setIp] = useState("");
+  const [reason, setReason] = useState("");
+  const [protocol, setProtocol] = useState<"smtp" | "imap" | "pop3" | "all">(
+    "all",
+  );
+  const [isPermanent, setIsPermanent] = useState(false);
+  const [duration, setDuration] = useState("24");
+  const [durationUnit, setDurationUnit] = useState<"hours" | "days">("hours");
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!accessToken) return
+    e.preventDefault();
+    if (!accessToken) return;
 
     const durationValue = isPermanent
       ? undefined
-      : durationUnit === 'hours'
+      : durationUnit === "hours"
         ? `${duration}h`
-        : `${parseInt(duration) * 24}h`
+        : `${parseInt(duration) * 24}h`;
 
     try {
-      await createBan(
-        {
-          ip,
-          reason,
-          protocol,
-          duration: durationValue,
-          created_by: currentUser,
-        }
-      )
-      onSuccess()
+      await createBan({
+        ip,
+        reason,
+        protocol,
+        duration: durationValue,
+        created_by: currentUser,
+      });
+      onSuccess();
     } catch (err) {
-      console.error('Failed to create ban:', err)
+      console.error("Failed to create ban:", err);
     }
-  }
+  };
 
   return (
     <div
@@ -329,11 +395,15 @@ function BanCreateModal({ onClose, onSuccess, currentUser }: BanCreateModalProps
         <div className="flex items-center justify-between mb-6">
           <h2
             className="text-xl font-semibold"
-            style={{ fontFamily: 'Space Grotesk', color: 'var(--black-soft)' }}
+            style={{ fontFamily: "Space Grotesk", color: "var(--black-soft)" }}
           >
             Add IP Ban
           </h2>
-          <button onClick={onClose} className="text-xl" style={{ color: 'var(--gray-secondary)' }}>
+          <button
+            onClick={onClose}
+            className="text-xl"
+            style={{ color: "var(--gray-secondary)" }}
+          >
             ×
           </button>
         </div>
@@ -343,9 +413,9 @@ function BanCreateModal({ onClose, onSuccess, currentUser }: BanCreateModalProps
             <div
               className="p-4 border rounded"
               style={{
-                borderColor: '#EF4444',
-                backgroundColor: '#FEF2F2',
-                color: '#DC2626',
+                borderColor: "#EF4444",
+                backgroundColor: "#FEF2F2",
+                color: "#DC2626",
               }}
             >
               <span className="text-sm">{error}</span>
@@ -358,7 +428,7 @@ function BanCreateModal({ onClose, onSuccess, currentUser }: BanCreateModalProps
             <div>
               <label
                 className="block text-sm font-medium mb-2"
-                style={{ color: 'var(--black-soft)' }}
+                style={{ color: "var(--black-soft)" }}
               >
                 IP Address
               </label>
@@ -370,14 +440,14 @@ function BanCreateModal({ onClose, onSuccess, currentUser }: BanCreateModalProps
                 placeholder="192.168.1.100"
                 pattern="^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$"
                 className="w-full h-11 px-4 border rounded font-mono"
-                style={{ borderColor: 'var(--gray-border)' }}
+                style={{ borderColor: "var(--gray-border)" }}
               />
             </div>
 
             <div>
               <label
                 className="block text-sm font-medium mb-2"
-                style={{ color: 'var(--black-soft)' }}
+                style={{ color: "var(--black-soft)" }}
               >
                 Reason
               </label>
@@ -388,23 +458,27 @@ function BanCreateModal({ onClose, onSuccess, currentUser }: BanCreateModalProps
                 rows={3}
                 placeholder="e.g., Repeated spam attempts, Brute force attack"
                 className="w-full px-4 py-3 border rounded"
-                style={{ borderColor: 'var(--gray-border)' }}
+                style={{ borderColor: "var(--gray-border)" }}
               />
             </div>
 
             <div>
               <label
                 className="block text-sm font-medium mb-2"
-                style={{ color: 'var(--black-soft)' }}
+                style={{ color: "var(--black-soft)" }}
               >
                 Protocol
               </label>
               <select
                 value={protocol}
-                onChange={(e) => setProtocol(e.target.value)}
+                onChange={(e) =>
+                  setProtocol(
+                    e.target.value as "smtp" | "imap" | "pop3" | "all",
+                  )
+                }
                 required
                 className="w-full h-11 px-4 border rounded"
-                style={{ borderColor: 'var(--gray-border)' }}
+                style={{ borderColor: "var(--gray-border)" }}
               >
                 <option value="all">All Protocols</option>
                 <option value="smtp">SMTP Only</option>
@@ -416,7 +490,7 @@ function BanCreateModal({ onClose, onSuccess, currentUser }: BanCreateModalProps
             <div>
               <label
                 className="block text-sm font-medium mb-2"
-                style={{ color: 'var(--black-soft)' }}
+                style={{ color: "var(--black-soft)" }}
               >
                 Duration
               </label>
@@ -428,7 +502,11 @@ function BanCreateModal({ onClose, onSuccess, currentUser }: BanCreateModalProps
                   onChange={(e) => setIsPermanent(e.target.checked)}
                   className="h-4 w-4"
                 />
-                <label htmlFor="permanent" className="text-sm" style={{ color: 'var(--black-soft)' }}>
+                <label
+                  htmlFor="permanent"
+                  className="text-sm"
+                  style={{ color: "var(--black-soft)" }}
+                >
                   Permanent ban
                 </label>
               </div>
@@ -441,13 +519,15 @@ function BanCreateModal({ onClose, onSuccess, currentUser }: BanCreateModalProps
                     min="1"
                     required
                     className="w-32 h-11 px-4 border rounded"
-                    style={{ borderColor: 'var(--gray-border)' }}
+                    style={{ borderColor: "var(--gray-border)" }}
                   />
                   <select
                     value={durationUnit}
-                    onChange={(e) => setDurationUnit(e.target.value as 'hours' | 'days')}
+                    onChange={(e) =>
+                      setDurationUnit(e.target.value as "hours" | "days")
+                    }
                     className="h-11 px-4 border rounded"
-                    style={{ borderColor: 'var(--gray-border)' }}
+                    style={{ borderColor: "var(--gray-border)" }}
                   >
                     <option value="hours">Hours</option>
                     <option value="days">Days</option>
@@ -463,19 +543,21 @@ function BanCreateModal({ onClose, onSuccess, currentUser }: BanCreateModalProps
               disabled={isLoading}
               className="h-10 px-6 flex items-center justify-center text-white text-sm font-medium rounded"
               style={{
-                backgroundColor: isLoading ? 'var(--gray-muted)' : 'var(--red-primary)',
-                fontFamily: 'Space Grotesk',
+                backgroundColor: isLoading
+                  ? "var(--gray-muted)"
+                  : "var(--red-primary)",
+                fontFamily: "Space Grotesk",
               }}
             >
-              {isLoading ? 'Adding...' : 'Add Ban'}
+              {isLoading ? "Adding..." : "Add Ban"}
             </button>
             <button
               type="button"
               onClick={onClose}
               className="h-10 px-6 flex items-center justify-center text-sm font-medium border rounded"
               style={{
-                borderColor: 'var(--gray-border)',
-                color: 'var(--gray-secondary)',
+                borderColor: "var(--gray-border)",
+                color: "var(--gray-secondary)",
               }}
             >
               Cancel
@@ -484,5 +566,5 @@ function BanCreateModal({ onClose, onSuccess, currentUser }: BanCreateModalProps
         </form>
       </div>
     </div>
-  )
+  );
 }

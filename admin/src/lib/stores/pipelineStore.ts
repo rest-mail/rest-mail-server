@@ -1,121 +1,59 @@
-import { create } from 'zustand'
-import { apiV1 } from '../api'
+import { create } from "zustand";
+import { apiV1 } from "../api";
+import { expectSuccess } from "../api-contract";
+import type {
+  JsonResponse,
+  RequestBody,
+  QueryParameters,
+} from "../api-contract";
+import type { components } from "../api-types";
+import { pipelineView, traceView } from "../pipeline-views";
+import type {
+  Pipeline,
+  FilterConfig,
+  TraceStage,
+  MessageTrace,
+} from "../pipeline-views";
 
-interface FilterConfig {
-  name: string
-  type: 'action' | 'transform'
-  enabled: boolean
-  unskippable?: boolean
-  config?: Record<string, unknown>
-}
+type FilterLogStep = components["schemas"]["FilterLog"];
 
-interface Pipeline {
-  id: number
-  domain_id: number
-  direction: 'inbound' | 'outbound'
-  filters: FilterConfig[]
-  active: boolean
-  created_at: string
-  updated_at: string
-  domain?: {
-    id: number
-    name: string
-  }
-}
+type PipelineTestResult = JsonResponse<"testPipeline", 200>["data"];
 
-interface FilterLogStep {
-  filter: string
-  result: string
-  detail?: string
-  duration_ms?: number
-}
+type FilterTestResult = JsonResponse<"testFilter", 200>["data"];
 
-// TraceStage is one ordered pipeline step in a message's trace (the backend
-// pipeline.StepResult): the filter that ran, its resolved action/verdict, the
-// structured filter log (result + detail), and how long it took.
-interface TraceStage {
-  filter_name: string
-  filter_type?: string
-  action: string
-  skipped?: boolean
-  skip_reason?: string
-  log?: FilterLogStep
-  duration_ms?: number
-  error?: string
-}
-
-// MessageTrace is the per-message observability record returned by
-// GET /admin/pipelines/logs (list) and GET /admin/messages/{id}/trace (single):
-// outcome, reason_code, transport, correlation ids and the ordered stage
-// timeline.
-interface MessageTrace {
-  id: number
-  message_id?: number | null
-  rfc_message_id: string
-  direction: 'inbound' | 'outbound'
-  transport: string
-  mail_from: string
-  rcpt_to: string
-  client_ip: string
-  pipeline_id: number
-  final_action: string
-  outcome: string
-  reason_code: string
-  spam_score?: number
-  duration_ms: number
-  stages: TraceStage[]
-  sampled: boolean
-  created_at: string
-  expires_at?: string | null
-}
-
-interface PipelineTestResult {
-  action: 'continue' | 'reject' | 'quarantine' | 'discard'
-  steps: FilterLogStep[]
-  duration_ms: number
-  message?: unknown
-}
-
-interface FilterTestResult {
-  action: 'continue' | 'reject' | 'quarantine' | 'discard'
-  result: string
-  detail?: string
-  duration_ms?: number
-  message?: unknown
-}
-
-interface TraceQueryParams {
-  pipeline_id?: number
-  direction?: 'inbound' | 'outbound'
-  action?: string
-  outcome?: string
-  reason_code?: string
-  rfc_message_id?: string
-  limit?: number
-  offset?: number
-}
+type TraceQueryParams = QueryParameters<"listPipelineLogs">;
 
 interface PipelineState {
-  pipelines: Pipeline[]
-  currentPipeline: Pipeline | null
-  traces: MessageTrace[]
-  currentTrace: MessageTrace | null
-  isLoading: boolean
-  error: string | null
+  pipelines: Pipeline[];
+  currentPipeline: Pipeline | null;
+  traces: MessageTrace[];
+  currentTrace: MessageTrace | null;
+  isLoading: boolean;
+  error: string | null;
 
   // Actions
-  fetchPipelines: (domainId?: number) => Promise<void>
-  fetchPipeline: (id: number) => Promise<Pipeline>
-  createPipeline: (data: Partial<Pipeline>) => Promise<Pipeline>
-  updatePipeline: (id: number, data: Partial<Pipeline>) => Promise<Pipeline>
-  deletePipeline: (id: number) => Promise<void>
-  testPipeline: (pipelineId: number, email: unknown) => Promise<PipelineTestResult>
-  testFilter: (filterName: string, config: unknown, email: unknown) => Promise<FilterTestResult>
-  fetchTraces: (params: TraceQueryParams) => Promise<void>
-  fetchMessageTrace: (id: number) => Promise<MessageTrace>
-  clearError: () => void
-  clearCurrentPipeline: () => void
-  clearCurrentTrace: () => void
+  fetchPipelines: (domainId?: number) => Promise<void>;
+  fetchPipeline: (id: number) => Promise<Pipeline>;
+  createPipeline: (data: RequestBody<"createPipeline">) => Promise<Pipeline>;
+  updatePipeline: (
+    id: number,
+    data: RequestBody<"updatePipeline">,
+  ) => Promise<Pipeline>;
+  deletePipeline: (id: number) => Promise<void>;
+  testPipeline: (
+    pipelineId: number,
+    email: RequestBody<"testPipeline">["email"],
+  ) => Promise<PipelineTestResult>;
+  testFilter: (
+    filterName: string,
+    config: unknown,
+    email: RequestBody<"testPipeline">["email"],
+  ) => Promise<FilterTestResult>;
+  fetchTraces: (params: TraceQueryParams) => Promise<void>;
+  fetchMessageTrace: (id: number) => Promise<MessageTrace>;
+  clearError: () => void;
+  clearCurrentPipeline: () => void;
+  clearCurrentTrace: () => void;
 }
 
 export const usePipelineStore = create<PipelineState>((set, get) => ({
@@ -127,217 +65,221 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   error: null,
 
   fetchPipelines: async (domainId?: number) => {
-    set({ isLoading: true, error: null })
+    set({ isLoading: true, error: null });
 
     try {
       const url = domainId
         ? `/admin/pipelines?domain_id=${domainId}`
-        : '/admin/pipelines'
+        : "/admin/pipelines";
 
-      const response = await apiV1.request(url, { method: 'GET' })
+      const response = await apiV1.request(url, { method: "GET" });
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to fetch pipelines')
-      }
+      await expectSuccess(response, "Failed to fetch pipelines");
 
-      const response_data = await response.json()
-      const data = response_data.data || response_data
+      const response_data: JsonResponse<"listPipelines", 200> =
+        await response.json();
+      const data = response_data.data;
       set({
-        pipelines: Array.isArray(data) ? data : data.pipelines || [],
+        pipelines: data.map(pipelineView),
         isLoading: false,
         error: null,
-      })
+      });
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to fetch pipelines',
+        error:
+          error instanceof Error ? error.message : "Failed to fetch pipelines",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
   fetchPipeline: async (id: number) => {
-    set({ isLoading: true, error: null })
+    set({ isLoading: true, error: null });
 
     try {
-      const response = await apiV1.request(
-        `/admin/pipelines/${id}`,
-        { method: 'GET' }
-      )
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to fetch pipeline')
+      let offset = 0;
+      let data: Pipeline | undefined;
+      while (data === undefined) {
+        const response = await apiV1.request(
+          `/admin/pipelines?limit=200&offset=${offset}`,
+          { method: "GET" },
+        );
+        await expectSuccess(response, "Failed to fetch pipeline");
+        const page: JsonResponse<"listPipelines", 200> = await response.json();
+        const found = page.data.find((pipeline) => pipeline.id === id);
+        if (found) {
+          data = pipelineView(found);
+          break;
+        }
+        if (!page.pagination?.has_more) throw new Error("Pipeline not found");
+        const nextOffset = offset + page.data.length;
+        if (nextOffset <= offset)
+          throw new Error("The pipeline list did not advance");
+        offset = nextOffset;
       }
-
-      const response_data = await response.json()
-      const data = response_data.data || response_data
       set({
         currentPipeline: data,
         isLoading: false,
         error: null,
-      })
-      return data
+      });
+      return data;
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to fetch pipeline',
+        error:
+          error instanceof Error ? error.message : "Failed to fetch pipeline",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
-  createPipeline: async (data: Partial<Pipeline>) => {
-    set({ isLoading: true, error: null })
+  createPipeline: async (data: RequestBody<"createPipeline">) => {
+    set({ isLoading: true, error: null });
 
     try {
-      const response = await apiV1.request(
-        '/admin/pipelines',
-        {
-          method: 'POST',
-          body: JSON.stringify(data),
-        }
-      )
+      const response = await apiV1.request("/admin/pipelines", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to create pipeline')
-      }
+      await expectSuccess(response, "Failed to create pipeline");
 
-      const pipeline = await response.json()
+      const response_data: JsonResponse<"createPipeline", 201> =
+        await response.json();
+      const pipeline = pipelineView(response_data.data);
       set({
         pipelines: [...get().pipelines, pipeline],
         isLoading: false,
         error: null,
-      })
-      return pipeline
+      });
+      return pipeline;
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to create pipeline',
+        error:
+          error instanceof Error ? error.message : "Failed to create pipeline",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
-  updatePipeline: async (id: number, data: Partial<Pipeline>) => {
-    set({ isLoading: true, error: null })
+  updatePipeline: async (id: number, data: RequestBody<"updatePipeline">) => {
+    set({ isLoading: true, error: null });
 
     try {
-      const response = await apiV1.request(
-        `/admin/pipelines/${id}`,
-        {
-          method: 'PATCH',
-          body: JSON.stringify(data),
-        }
-      )
+      const response = await apiV1.request(`/admin/pipelines/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      });
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to update pipeline')
-      }
+      await expectSuccess(response, "Failed to update pipeline");
 
-      const pipeline = await response.json()
+      const response_data: JsonResponse<"updatePipeline", 200> =
+        await response.json();
+      const pipeline = pipelineView(response_data.data);
       set({
         pipelines: get().pipelines.map((p) => (p.id === id ? pipeline : p)),
         currentPipeline: pipeline,
         isLoading: false,
         error: null,
-      })
-      return pipeline
+      });
+      return pipeline;
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to update pipeline',
+        error:
+          error instanceof Error ? error.message : "Failed to update pipeline",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
   deletePipeline: async (id: number) => {
-    set({ isLoading: true, error: null })
+    set({ isLoading: true, error: null });
 
     try {
-      const response = await apiV1.request(
-        `/admin/pipelines/${id}`,
-        { method: 'DELETE' }
-      )
+      const response = await apiV1.request(`/admin/pipelines/${id}`, {
+        method: "DELETE",
+      });
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to delete pipeline')
-      }
+      await expectSuccess(response, "Failed to delete pipeline");
 
       set({
         pipelines: get().pipelines.filter((p) => p.id !== id),
         isLoading: false,
         error: null,
-      })
+      });
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to delete pipeline',
+        error:
+          error instanceof Error ? error.message : "Failed to delete pipeline",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
-  testPipeline: async (pipelineId: number, email: unknown) => {
-    set({ isLoading: true, error: null })
+  testPipeline: async (
+    pipelineId: number,
+    email: RequestBody<"testPipeline">["email"],
+  ) => {
+    set({ isLoading: true, error: null });
 
     try {
-      const response = await apiV1.request(
-        '/admin/pipelines/test',
-        {
-          method: 'POST',
-          body: JSON.stringify({ pipeline_id: pipelineId, email }),
-        }
-      )
+      const response = await apiV1.request("/admin/pipelines/test", {
+        method: "POST",
+        body: JSON.stringify({
+          pipeline_id: pipelineId,
+          email,
+        } satisfies RequestBody<"testPipeline">),
+      });
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to test pipeline')
-      }
+      await expectSuccess(response, "Failed to test pipeline");
 
-      const result = await response.json()
-      set({ isLoading: false, error: null })
-      return result
+      const { data: result }: JsonResponse<"testPipeline", 200> =
+        await response.json();
+      set({ isLoading: false, error: null });
+      return result;
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to test pipeline',
+        error:
+          error instanceof Error ? error.message : "Failed to test pipeline",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
-  testFilter: async (filterName: string, config: unknown, email: unknown) => {
-    set({ isLoading: true, error: null })
+  testFilter: async (
+    filterName: string,
+    config: unknown,
+    email: RequestBody<"testPipeline">["email"],
+  ) => {
+    set({ isLoading: true, error: null });
 
     try {
-      const response = await apiV1.request(
-        '/admin/pipelines/test-filter',
-        {
-          method: 'POST',
-          body: JSON.stringify({ filter_name: filterName, config, email }),
-        }
-      )
+      const response = await apiV1.request("/admin/pipelines/test-filter", {
+        method: "POST",
+        body: JSON.stringify({
+          filter_name: filterName,
+          config,
+          email,
+        } satisfies RequestBody<"testFilter">),
+      });
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to test filter')
-      }
+      await expectSuccess(response, "Failed to test filter");
 
-      const result = await response.json()
-      set({ isLoading: false, error: null })
-      return result
+      const { data: result }: JsonResponse<"testFilter", 200> =
+        await response.json();
+      set({ isLoading: false, error: null });
+      return result;
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to test filter',
+        error: error instanceof Error ? error.message : "Failed to test filter",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
@@ -345,81 +287,86 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   // endpoint (now backed by message_traces), newest first, with the richer
   // outcome/reason_code/rfc_message_id filters.
   fetchTraces: async (params: TraceQueryParams) => {
-    set({ isLoading: true, error: null })
+    set({ isLoading: true, error: null });
 
     try {
-      const queryParams = new URLSearchParams()
-      if (params.pipeline_id) queryParams.set('pipeline_id', params.pipeline_id.toString())
-      if (params.direction) queryParams.set('direction', params.direction)
-      if (params.action) queryParams.set('action', params.action)
-      if (params.outcome) queryParams.set('outcome', params.outcome)
-      if (params.reason_code) queryParams.set('reason_code', params.reason_code)
-      if (params.rfc_message_id) queryParams.set('rfc_message_id', params.rfc_message_id)
-      if (params.limit) queryParams.set('limit', params.limit.toString())
-      if (params.offset) queryParams.set('offset', params.offset.toString())
+      const queryParams = new URLSearchParams();
+      if (params.pipeline_id)
+        queryParams.set("pipeline_id", params.pipeline_id.toString());
+      if (params.direction) queryParams.set("direction", params.direction);
+      if (params.action) queryParams.set("action", params.action);
+      if (params.outcome) queryParams.set("outcome", params.outcome);
+      if (params.reason_code)
+        queryParams.set("reason_code", params.reason_code);
+      if (params.rfc_message_id)
+        queryParams.set("rfc_message_id", params.rfc_message_id);
+      if (params.limit) queryParams.set("limit", params.limit.toString());
+      if (params.offset) queryParams.set("offset", params.offset.toString());
 
-      const url = `/admin/pipelines/logs${queryParams.toString() ? '?' + queryParams.toString() : ''}`
-      const response = await apiV1.request(url, { method: 'GET' })
+      const url = `/admin/pipelines/logs${queryParams.toString() ? "?" + queryParams.toString() : ""}`;
+      const response = await apiV1.request(url, { method: "GET" });
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to fetch traces')
-      }
+      await expectSuccess(response, "Failed to fetch traces");
 
-      const response_data = await response.json()
-      const data = response_data.data || response_data
+      const response_data: JsonResponse<"listPipelineLogs", 200> =
+        await response.json();
+      const data = response_data.data;
       set({
-        traces: Array.isArray(data) ? data : data.traces || [],
+        traces: data.map(traceView),
         isLoading: false,
         error: null,
-      })
+      });
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to fetch traces',
+        error:
+          error instanceof Error ? error.message : "Failed to fetch traces",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
   // fetchMessageTrace loads the single delivered-message trace timeline from
   // GET /admin/messages/{id}/trace (keyed on the delivered messages row id).
   fetchMessageTrace: async (id: number) => {
-    set({ isLoading: true, error: null })
+    set({ isLoading: true, error: null });
 
     try {
-      const response = await apiV1.request(`/admin/messages/${id}/trace`, { method: 'GET' })
+      const response = await apiV1.request(`/admin/messages/${id}/trace`, {
+        method: "GET",
+      });
 
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}))
-        throw new Error(error?.error?.message || error?.error || 'Failed to fetch message trace')
-      }
+      await expectSuccess(response, "Failed to fetch message trace");
 
-      const response_data = await response.json()
-      const data: MessageTrace = response_data.data ?? response_data
-      set({ currentTrace: data, isLoading: false, error: null })
-      return data
+      const response_data: JsonResponse<"getMessageTrace", 200> =
+        await response.json();
+      const data = traceView(response_data.data);
+      set({ currentTrace: data, isLoading: false, error: null });
+      return data;
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to fetch message trace',
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to fetch message trace",
         isLoading: false,
-      })
-      throw error
+      });
+      throw error;
     }
   },
 
   clearError: () => {
-    set({ error: null })
+    set({ error: null });
   },
 
   clearCurrentPipeline: () => {
-    set({ currentPipeline: null })
+    set({ currentPipeline: null });
   },
 
   clearCurrentTrace: () => {
-    set({ currentTrace: null })
+    set({ currentTrace: null });
   },
-}))
+}));
 
 // Export types for use in components
 export type {
@@ -431,4 +378,4 @@ export type {
   PipelineTestResult,
   FilterTestResult,
   TraceQueryParams,
-}
+};
