@@ -34,13 +34,24 @@ type fakeResolver struct {
 
 func startFake(t *testing.T, replyFor func(q dnsmessage.Question) reply) *fakeResolver {
 	t.Helper()
-	udp, err := net.ListenPacket("udp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	tcp, err := net.Listen("tcp", udp.LocalAddr().String())
-	if err != nil {
-		t.Fatal(err)
+	// UDP and TCP share one port, as a resolver's do. The kernel picks the UDP port; the
+	// same TCP port can be taken by another process, so try a fresh pair until both bind.
+	var udp net.PacketConn
+	var tcp net.Listener
+	for attempt := 0; ; attempt++ {
+		u, err := net.ListenPacket("udp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		l, err := net.Listen("tcp", u.LocalAddr().String())
+		if err == nil {
+			udp, tcp = u, l
+			break
+		}
+		_ = u.Close()
+		if attempt == 20 {
+			t.Fatalf("no port free for both UDP and TCP: %v", err)
+		}
 	}
 	f := &fakeResolver{addr: udp.LocalAddr().String(), replyFor: replyFor}
 	t.Cleanup(func() { _ = udp.Close(); _ = tcp.Close() })
