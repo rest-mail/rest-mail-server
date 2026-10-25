@@ -10,10 +10,10 @@
   },
   "layout": {
     "mode": "grid",
-    "cols": 5,
-    "gapX": 120,
+    "cols": 4,
+    "gapX": 66,
     "gapY": 70,
-    "cellW": 170,
+    "cellW": 160,
     "cellH": 64
   },
   "components": [
@@ -72,7 +72,7 @@
       "label": "Pipeline",
       "sublabel": "SPF, DKIM, DMARC, filters",
       "row": 2,
-      "col": 3
+      "col": 2
     },
     {
       "id": "db",
@@ -87,7 +87,7 @@
       "type": "messagebus",
       "label": "Outbound queue",
       "sublabel": "signs, retries, bounces",
-      "row": 0,
+      "row": 2,
       "col": 3
     },
     {
@@ -95,8 +95,8 @@
       "type": "external",
       "label": "Recipients' servers",
       "sublabel": "SMTP, or RESTMAIL",
-      "row": 0,
-      "col": 4
+      "row": 3,
+      "col": 3
     }
   ],
   "boundaries": [
@@ -163,7 +163,7 @@
       "label": "every message",
       "variant": "security",
       "fromSide": "bottom",
-      "toSide": "left"
+      "toSide": "top"
     },
     {
       "id": "store",
@@ -176,14 +176,18 @@
       "from": "db",
       "to": "queue",
       "label": "queued mail",
-      "variant": "dashed"
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
     },
     {
       "id": "deliver",
       "from": "queue",
       "to": "remote",
       "label": "deliver",
-      "variant": "emphasis"
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top"
     }
   ],
   "cards": [

@@ -19,7 +19,7 @@
       }
     }
   },
-  "mainPath": ["queued", "attempt", "reply", "delivered"],
+  "mainPath": ["queued", "attempt"],
   "states": [
     { "id": "queued", "type": "start", "label": "Queued", "sublabel": "250 to the sender's app", "step": "01" },
     { "id": "attempt", "type": "active", "label": "Delivery attempt", "sublabel": "MX lookup, connect, SMTP", "step": "02" },
