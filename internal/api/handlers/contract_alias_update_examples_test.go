@@ -19,7 +19,8 @@ func TestAliasUpdate_ExamplePairs(t *testing.T) {
 		got[status] = names(examples)
 	}
 	want := map[string][]string{
-		"request": {"destination_invalid", "updated"},
+		"request": {"destination_invalid", "missing", "updated"},
+		"404":     {"missing"},
 		"200":     {"updated"},
 		"422":     {"destination_invalid"},
 	}
