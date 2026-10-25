@@ -2243,6 +2243,58 @@
       }
     }
   },
+  "openapiDocument": {
+    "available": {
+      "summary": "The public operation answers without credentials",
+      "description": "The response body is validated by its schema and the registered-route tests. Document contents and metrics values are not frozen into an example.",
+      "request": {},
+      "response": {
+        "status": 200,
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "An unexpected handler failure uses the shared error envelope",
+      "description": "This fault response is exercised through the endpoint error adapter; a healthy GET does not provoke it. Metrics additionally exercises a failing scrape.",
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "openapiSpec": {
+    "available": {
+      "summary": "The public operation answers without credentials",
+      "description": "The response body is validated by its schema and the registered-route tests. Document contents and metrics values are not frozen into an example.",
+      "request": {},
+      "response": {
+        "status": 200,
+        "mediaType": "application/yaml"
+      }
+    },
+    "internal_error": {
+      "summary": "An unexpected handler failure uses the shared error envelope",
+      "description": "This fault response is exercised through the endpoint error adapter; a healthy GET does not provoke it. Metrics additionally exercises a failing scrape.",
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "probeServices": {
     "probed": {
       "request": {
@@ -2286,6 +2338,32 @@
             }
           }
         }
+      }
+    }
+  },
+  "prometheusMetrics": {
+    "available": {
+      "summary": "The public operation answers without credentials",
+      "description": "The response body is validated by its schema and the registered-route tests. Document contents and metrics values are not frozen into an example.",
+      "request": {},
+      "response": {
+        "status": 200,
+        "mediaType": "text/plain"
+      }
+    },
+    "internal_error": {
+      "summary": "An unexpected handler failure uses the shared error envelope",
+      "description": "This fault response is exercised through the endpoint error adapter; a healthy GET does not provoke it. Metrics additionally exercises a failing scrape.",
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },
@@ -2742,6 +2820,41 @@
       },
       "response": {
         "status": 200
+      }
+    }
+  },
+  "restmailCapabilities": {
+    "available": {
+      "summary": "The public operation answers without credentials",
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "features": [
+              "delivery",
+              "recipient-check"
+            ],
+            "protocol": "RESTMAIL",
+            "version": "1.0"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "An unexpected handler failure uses the shared error envelope",
+      "description": "This fault response is exercised through the endpoint error adapter; a healthy GET does not provoke it. Metrics additionally exercises a failing scrape.",
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },
@@ -3822,6 +3935,32 @@
             }
           }
         }
+      }
+    }
+  },
+  "swaggerUI": {
+    "available": {
+      "summary": "The public operation answers without credentials",
+      "description": "The response body is validated by its schema and the registered-route tests. Document contents and metrics values are not frozen into an example.",
+      "request": {},
+      "response": {
+        "status": 200,
+        "mediaType": "text/html"
+      }
+    },
+    "internal_error": {
+      "summary": "An unexpected handler failure uses the shared error envelope",
+      "description": "This fault response is exercised through the endpoint error adapter; a healthy GET does not provoke it. Metrics additionally exercises a failing scrape.",
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },

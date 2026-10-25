@@ -8018,8 +8018,10 @@ paths:
                     type: string
                   info:
                     type: object
+                    additionalProperties: {}
                   paths:
                     type: object
+                    additionalProperties: {}
 
   /metrics:
     get:

@@ -103,3 +103,6 @@
 '#/paths/~1api~1v1~1admin~1custom-filters~1{id}~1test/post/responses/500/content/application~1json/schema': 'The
   API envelope or the sidecar bare error can be forwarded for this status; their union
   is tracked in #649 and #677.'
+'#/components/schemas/openAPIDescription': OpenAPI 3.1 documents use the external OpenAPI vocabulary and extension fields; this is a document, not a REST Mail resource object.
+'#/components/schemas/openAPIDescription/properties/info': OpenAPI 3.1 documents use the external OpenAPI vocabulary and extension fields; this is a document, not a REST Mail resource object.
+'#/components/schemas/openAPIDescription/properties/paths': OpenAPI 3.1 documents use the external OpenAPI vocabulary and extension fields; this is a document, not a REST Mail resource object.
