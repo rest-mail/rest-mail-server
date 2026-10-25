@@ -7,11 +7,11 @@ import (
 	"net"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
+	apitypes "github.com/restmail/restmail/internal/api/types"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/dns"
 	rmail "github.com/restmail/restmail/internal/mail"
@@ -74,18 +74,7 @@ func NewDomainHandler(db *gorm.DB, dnsProvider dns.Provider) *DomainHandler {
 }
 
 // Domain is a domain as the API answers with it.
-type Domain struct {
-	ID                uint      `json:"id"`
-	Name              string    `json:"name"`
-	ServerType        string    `json:"server_type" enums:"traditional,restmail"`
-	Active            bool      `json:"active"`
-	DefaultQuotaBytes int64     `json:"default_quota_bytes"`
-	DKIMSelector      string    `json:"dkim_selector"`
-	SendingPolicy     string    `json:"sending_policy" enums:",transactional,bulk"`
-	DMARCPolicy       string    `json:"dmarc_policy" enums:"none,quarantine,reject"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
-}
+type Domain = apitypes.Domain
 
 func domainOf(d models.Domain) Domain {
 	return Domain{
@@ -188,15 +177,7 @@ func (h *DomainHandler) list(r *http.Request, in listDomainsRequest) (endpoint.L
 
 // createDomainRequest creates a domain. Its sending policy is transactional, bulk, or empty
 // for none (#144). Its DMARC policy is none unless the request asks for another (#729).
-type createDomainRequest struct {
-	Name string `json:"name" minLength:"1" message:"required"`
-	// ServerType is restmail (the server keeps the mail) or traditional, the default when it
-	// is left out, empty or null.
-	ServerType        *string `json:"server_type,omitempty" enums:",traditional,restmail" message:"must be 'traditional' or 'restmail'"`
-	DefaultQuotaBytes *int64  `json:"default_quota_bytes,omitempty"`
-	SendingPolicy     string  `json:"sending_policy,omitempty" enums:",transactional,bulk" message:"must be 'transactional', 'bulk' or empty"`
-	DMARCPolicy       *string `json:"dmarc_policy,omitempty" enums:"none,quarantine,reject" message:"must be 'none', 'quarantine' or 'reject'"`
-}
+type createDomainRequest = apitypes.CreateDomainRequest
 
 func (h *DomainHandler) create(_ *http.Request, req createDomainRequest) (Domain, error) {
 	// Reject non-hostname input before it is inserted and normalize to the

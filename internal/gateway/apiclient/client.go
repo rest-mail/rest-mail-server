@@ -14,6 +14,9 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/restmail/restmail/internal/api/endpoint"
+	apitypes "github.com/restmail/restmail/internal/api/types"
 )
 
 const (
@@ -138,29 +141,15 @@ func New(baseURL string, opts ...Option) *Client {
 
 // ── Auth ──────────────────────────────────────────────────────────────
 
-type LoginResponse struct {
-	Data struct {
-		// AccessToken is what the calls that follow pass as their token: the
-		// session's JWT after Login, or after SignIn the HTTP Basic
-		// credentials the client gave.
-		AccessToken string `json:"access_token"`
-		ExpiresIn   int    `json:"expires_in"`
-		User        struct {
-			// ID is the account's: the {id} of /api/v1/accounts/{id}/….
-			ID          uint   `json:"id"`
-			Email       string `json:"email"`
-			DisplayName string `json:"display_name"`
-		} `json:"user"`
-		// Capabilities is what the account holds at "*", for showing; the
-		// token carries none.
-		Capabilities []string `json:"capabilities"`
-		// SetupRequired lists what an account in setup must still do.
-		SetupRequired []string `json:"setup_required"`
-		// CredentialID and CredentialKind are the credential SignIn signed in
-		// with: the account's password, or an app password. Zero after Login.
-		CredentialID   uint   `json:"credential_id"`
-		CredentialKind string `json:"credential_kind"`
-	} `json:"data"`
+type LoginResponse = endpoint.Data[apitypes.LoginResponse]
+
+type protocolSignInEnvelope = endpoint.Data[apitypes.ProtocolSignedIn]
+
+// SignInResponse combines the protocol response with the local Authorization header.
+// The credential stays out of JSON; it is transport state, not an API response field.
+type SignInResponse struct {
+	protocolSignInEnvelope
+	AccessToken string `json:"-"`
 }
 
 // SignIn signs a mail client in over protocol ("imap", "pop3" or "smtp") with
@@ -171,8 +160,8 @@ type LoginResponse struct {
 // against the account's credentials each time, so a revoked app password or a
 // changed password stops working at the next call. An account with
 // two-factor authentication signs in only with an app password.
-func (c *Client) SignIn(email, password, protocol string) (*LoginResponse, error) {
-	jsonBody, err := json.Marshal(map[string]string{"protocol": protocol})
+func (c *Client) SignIn(email, password, protocol string) (*SignInResponse, error) {
+	jsonBody, err := json.Marshal(apitypes.ProtocolSignInRequest{Protocol: protocol})
 	if err != nil {
 		return nil, err
 	}
@@ -188,11 +177,11 @@ func (c *Client) SignIn(email, password, protocol string) (*LoginResponse, error
 	}
 	defer httpResp.Body.Close()
 
-	var resp LoginResponse
+	var resp SignInResponse
 	if err := c.decodeResponse(httpResp, &resp); err != nil {
 		return nil, err
 	}
-	resp.Data.AccessToken = req.Header.Get("Authorization")
+	resp.AccessToken = req.Header.Get("Authorization")
 	return &resp, nil
 }
 
@@ -217,10 +206,7 @@ func authorize(req *http.Request, token string) {
 // cookie jar), so those requests carry no cookie and are transparently exempt
 // from the API's CSRF guard.
 func (c *Client) Login(email, password, totpCode string) (*LoginResponse, error) {
-	body := map[string]string{"email": email, "password": password}
-	if totpCode != "" {
-		body["totp_code"] = totpCode
-	}
+	body := apitypes.LoginRequest{Email: email, Password: password, TOTPCode: totpCode}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
@@ -246,13 +232,7 @@ func (c *Client) Login(email, password, totpCode string) (*LoginResponse, error)
 
 // ── Mailbox Check ─────────────────────────────────────────────────────
 
-type MailboxCheckResponse struct {
-	Data struct {
-		Exists    bool   `json:"exists"`
-		MailboxID uint   `json:"mailbox_id"`
-		Address   string `json:"address"`
-	} `json:"data"`
-}
+type MailboxCheckResponse = endpoint.Data[apitypes.AddressCheck]
 
 // CheckMailbox verifies a recipient address exists. This is a tokenless
 // machine-to-machine call, so it goes to the internal (mTLS, when configured)
@@ -273,75 +253,15 @@ func (c *Client) CheckMailbox(address string) (*MailboxCheckResponse, error) {
 
 // ── Message Delivery ──────────────────────────────────────────────────
 
-type DeliverRequest struct {
-	Address      string          `json:"address"`
-	MailboxID    uint            `json:"mailbox_id,omitempty"`
-	Sender       string          `json:"sender"`
-	SenderName   string          `json:"sender_name,omitempty"`
-	RecipientsTo json.RawMessage `json:"recipients_to,omitempty"`
-	RecipientsCc json.RawMessage `json:"recipients_cc,omitempty"`
-	Subject      string          `json:"subject"`
-	BodyText     string          `json:"body_text"`
-	BodyHTML     string          `json:"body_html,omitempty"`
-	MessageID    string          `json:"message_id,omitempty"`
-	InReplyTo    string          `json:"in_reply_to,omitempty"`
-	References   string          `json:"references,omitempty"`
-	// RawMessage carries the pristine RFC 2822 wire bytes. It MUST be []byte, not
-	// string: encoding/json base64-encodes a []byte field, so arbitrary octets
-	// (8bit/binary content-transfer-encoding bodies, undeclared-charset high
-	// bytes) round-trip verbatim. A JSON string field would silently replace
-	// every invalid-UTF-8 byte with U+FFFD on marshal, corrupting the stored
-	// message and breaking DKIM body hashes and BODY[] byte fidelity.
-	RawMessage []byte `json:"raw_message,omitempty"`
-	ClientIP   string `json:"client_ip,omitempty"`
-	HeloName   string `json:"helo_name,omitempty"`
+type DeliverRequest = apitypes.DeliverMessageBody
 
-	// Folder is the destination folder the message must be created in. Empty
-	// means INBOX. The IMAP gateway sets it on COPY/APPEND so the message is
-	// created directly in its destination in a single atomic delivery, instead
-	// of being delivered to INBOX and then moved — a non-atomic two-call flow
-	// that could strand the message in INBOX (visible to IDLE/SSE) or, on a
-	// swallowed move error, leave it there permanently despite an OK response.
-	Folder string `json:"folder,omitempty"`
+type deliveredMessageEnvelope = endpoint.Data[apitypes.Message]
 
-	// IMAP flags to apply to the newly created message. COPY sets them from the
-	// source message so its flags are preserved (RFC 3501 §6.4.7); APPEND sets
-	// them from the client-supplied flag list. A nil pointer means "leave at the
-	// delivery default" (unread / unflagged / not a draft), so ordinary inbound
-	// mail that never sets them is unaffected. \Flagged is mirrored onto both
-	// IsFlagged and IsStarred to match the gateway's symmetric flag mapping.
-	IsRead    *bool `json:"is_read,omitempty"`
-	IsFlagged *bool `json:"is_flagged,omitempty"`
-	IsStarred *bool `json:"is_starred,omitempty"`
-	IsDraft   *bool `json:"is_draft,omitempty"`
-
-	// ReceivedAt carries the message's INTERNALDATE. COPY sets it to the source
-	// message's internal date so the copy preserves it (RFC 3501 §6.4.7); a nil
-	// (or zero) value means "use delivery time", which is correct for ordinary
-	// inbound mail and for APPEND without an explicit date-time.
-	ReceivedAt *time.Time `json:"received_at,omitempty"`
-
-	// Inbound transport-security metrics, populated only by the inbound-MX
-	// (port 25) SMTP path so the operator can always see how much mail arrives
-	// encrypted vs plaintext. Pointer/empty so they are additive and omitted by
-	// callers that never set them (IMAP APPEND, local webmail send, authenticated
-	// submission): a nil ReceivedTLS means "not an inbound-MX delivery — not
-	// applicable", which the API persists as NULL (distinct from plaintext).
-	ReceivedTLS *bool  `json:"received_tls,omitempty"`
-	TLSVersion  string `json:"tls_version,omitempty"`
-	TLSCipher   string `json:"tls_cipher,omitempty"`
-
-	// RequireTLS is the REQUIRETLS tag the message arrived with (RFC 8689 §4.1): a copy
-	// REST Mail sends on goes with TLS required too.
-	RequireTLS bool `json:"require_tls,omitempty"`
-}
-
+// DeliverResponse contains either a delivered message or a processed receipt.
+// Processed is local result metadata, decoded from the registered alternative body.
 type DeliverResponse struct {
-	Data struct {
-		ID        uint   `json:"id"`
-		MailboxID uint   `json:"mailbox_id"`
-		Subject   string `json:"subject"`
-	} `json:"data"`
+	deliveredMessageEnvelope
+	Processed *apitypes.DeliveryProcessed `json:"-"`
 }
 
 // DeliverMessage delivers a message to a local mailbox. This is a tokenless
@@ -354,9 +274,22 @@ func (c *Client) DeliverMessage(req *DeliverRequest) (*DeliverResponse, error) {
 	// so slowloris on this internal hop stays capped.
 	ctx, cancel := context.WithTimeout(context.Background(), c.msgDeadline)
 	defer cancel()
-	var resp DeliverResponse
-	if err := c.postInternal(ctx, "/api/v1/messages/deliver", req, &resp); err != nil {
+	var wire endpoint.Data[json.RawMessage]
+	if err := c.postInternal(ctx, "/api/v1/messages/deliver", req, &wire); err != nil {
 		return nil, err
+	}
+	var processed apitypes.DeliveryProcessed
+	if err := json.Unmarshal(wire.Data, &processed); err != nil {
+		return nil, fmt.Errorf("decode delivery response: %w", err)
+	}
+	var resp DeliverResponse
+	if processed.Status != "" {
+		if processed.Status != "processed" {
+			return nil, fmt.Errorf("unexpected delivery status %q", processed.Status)
+		}
+		resp.Processed = &processed
+	} else if err := json.Unmarshal(wire.Data, &resp.Data); err != nil {
+		return nil, fmt.Errorf("decode delivered message: %w", err)
 	}
 	return &resp, nil
 }
@@ -364,15 +297,7 @@ func (c *Client) DeliverMessage(req *DeliverRequest) (*DeliverResponse, error) {
 // ── Message Send ──────────────────────────────────────────────────────
 
 // SendRequest represents a message to be sent via the webmail API.
-type SendRequest struct {
-	From     string   `json:"from"`
-	To       []string `json:"to"`
-	Cc       []string `json:"cc,omitempty"`
-	Bcc      []string `json:"bcc,omitempty"`
-	Subject  string   `json:"subject"`
-	BodyText string   `json:"body_text"`
-	BodyHTML string   `json:"body_html,omitempty"`
-}
+type SendRequest = apitypes.SendMessageRequest
 
 // SendMessage sends a message via the webmail send API.
 func (c *Client) SendMessage(token string, req *SendRequest) error {
@@ -381,15 +306,9 @@ func (c *Client) SendMessage(token string, req *SendRequest) error {
 
 // ── Folders ───────────────────────────────────────────────────────────
 
-type Folder struct {
-	Name   string `json:"name"`
-	Total  int64  `json:"total"`
-	Unread int64  `json:"unread"`
-}
+type Folder = apitypes.FolderSummary
 
-type FolderListResponse struct {
-	Data []Folder `json:"data"`
-}
+type FolderListResponse = endpoint.List[apitypes.FolderSummary]
 
 // ListFolders returns all folders for an account.
 func (c *Client) ListFolders(token string, accountID uint) (*FolderListResponse, error) {
@@ -402,59 +321,13 @@ func (c *Client) ListFolders(token string, accountID uint) (*FolderListResponse,
 
 // ── Messages ──────────────────────────────────────────────────────────
 
-type MessageSummary struct {
-	ID             uint            `json:"id"`
-	MailboxID      uint            `json:"mailbox_id"`
-	Folder         string          `json:"folder"`
-	MessageID      string          `json:"message_id"`
-	Sender         string          `json:"sender"`
-	SenderName     string          `json:"sender_name"`
-	RecipientsTo   json.RawMessage `json:"recipients_to"`
-	Subject        string          `json:"subject"`
-	SizeBytes      int             `json:"size_bytes"`
-	RawSize        int             `json:"raw_size"`
-	HasAttachments bool            `json:"has_attachments"`
-	IsRead         bool            `json:"is_read"`
-	IsFlagged      bool            `json:"is_flagged"`
-	IsStarred      bool            `json:"is_starred"`
-	IsDraft        bool            `json:"is_draft"`
-	ReceivedAt     time.Time       `json:"received_at"`
-}
+type MessageSummary = apitypes.Message
 
-// WireSize returns the octet count a protocol gateway must report for this
-// message (IMAP RFC822.SIZE, POP3 STAT/LIST): the exact size of the stored
-// raw message when the server recorded one (raw_size > 0), else the size_bytes
-// approximation for messages stored without a raw form (sent mail, drafts),
-// which are served rebuilt.
-func (m MessageSummary) WireSize() int {
-	if m.RawSize > 0 {
-		return m.RawSize
-	}
-	return m.SizeBytes
-}
+type MessageDetail = apitypes.Message
 
-type MessageDetail struct {
-	MessageSummary
-	BodyText   string          `json:"body_text"`
-	BodyHTML   string          `json:"body_html"`
-	Headers    json.RawMessage `json:"headers"`
-	InReplyTo  string          `json:"in_reply_to"`
-	References string          `json:"references"`
-	ThreadID   string          `json:"thread_id"`
-}
+type MessageListResponse = endpoint.List[apitypes.Message]
 
-type MessageListResponse struct {
-	Data       []MessageSummary `json:"data"`
-	Pagination *struct {
-		Cursor  string `json:"cursor"`
-		HasMore bool   `json:"has_more"`
-		Total   int64  `json:"total"`
-	} `json:"pagination"`
-}
-
-type MessageDetailResponse struct {
-	Data MessageDetail `json:"data"`
-}
+type MessageDetailResponse = endpoint.Data[apitypes.Message]
 
 // ListMessages returns messages in a folder.
 // maxGatewayMessages caps how many messages the IMAP/POP3 gateways load per
@@ -544,8 +417,11 @@ func (c *Client) GetRawMessage(token string, msgID uint) (string, error) {
 	return string(body), nil
 }
 
+// MessageUpdate is the request registered by the API for message flag and folder changes.
+type MessageUpdate = apitypes.UpdateMessageBody
+
 // UpdateMessage updates message flags.
-func (c *Client) UpdateMessage(token string, msgID uint, updates map[string]interface{}) error {
+func (c *Client) UpdateMessage(token string, msgID uint, updates MessageUpdate) error {
 	return c.patchAuth(fmt.Sprintf("/api/v1/messages/%d", msgID), token, updates, nil)
 }
 
@@ -559,14 +435,7 @@ func (c *Client) DeleteMessage(token string, msgID uint) error {
 
 // ── Quota ─────────────────────────────────────────────────────────────
 
-type QuotaResponse struct {
-	Data struct {
-		QuotaBytes     int64   `json:"quota_bytes"`
-		QuotaUsedBytes int64   `json:"quota_used_bytes"`
-		MessageCount   int64   `json:"message_count"`
-		PercentUsed    float64 `json:"percent_used"`
-	} `json:"data"`
-}
+type QuotaResponse = endpoint.Data[apitypes.Quota]
 
 // GetQuota returns quota usage for an account.
 func (c *Client) GetQuota(token string, accountID uint) (*QuotaResponse, error) {
@@ -594,16 +463,9 @@ func (c *Client) Search(token string, accountID uint, query string, folder strin
 
 // ── Admin Domains ─────────────────────────────────────────────────────
 
-type DomainItem struct {
-	ID         uint   `json:"id"`
-	Name       string `json:"name"`
-	ServerType string `json:"server_type"`
-	Active     bool   `json:"active"`
-}
+type DomainItem = apitypes.Domain
 
-type DomainListResponse struct {
-	Data []DomainItem `json:"data"`
-}
+type DomainListResponse = endpoint.List[apitypes.Domain]
 
 // ListDomains returns all domains (admin only).
 func (c *Client) ListDomains(token string) (*DomainListResponse, error) {
@@ -616,10 +478,7 @@ func (c *Client) ListDomains(token string) (*DomainListResponse, error) {
 
 // CreateDomain creates a new domain (admin only).
 func (c *Client) CreateDomain(token string, name, serverType string) error {
-	body := map[string]interface{}{
-		"name":        name,
-		"server_type": serverType,
-	}
+	body := apitypes.CreateDomainRequest{Name: name, ServerType: &serverType}
 	return c.postAuth("/api/v1/admin/domains", token, body, nil)
 }
 
@@ -630,17 +489,9 @@ func (c *Client) DeleteDomain(token string, id uint) error {
 
 // ── Admin Mailboxes ──────────────────────────────────────────────────
 
-type MailboxItem struct {
-	ID          uint   `json:"id"`
-	Address     string `json:"address"`
-	DisplayName string `json:"display_name"`
-	DomainID    uint   `json:"domain_id"`
-	Active      bool   `json:"active"`
-}
+type MailboxItem = apitypes.Mailbox
 
-type MailboxListResponse struct {
-	Data []MailboxItem `json:"data"`
-}
+type MailboxListResponse = endpoint.List[apitypes.Mailbox]
 
 // ListMailboxes returns all mailboxes (admin only).
 func (c *Client) ListMailboxes(token string) (*MailboxListResponse, error) {
@@ -655,13 +506,7 @@ func (c *Client) ListMailboxes(token string) (*MailboxListResponse, error) {
 // /api/v1/accounts, which needs mailboxes:write on its domain. An empty
 // password makes one with no password, reached only through its owner.
 func (c *Client) CreateMailbox(token string, address, displayName, password string) error {
-	body := map[string]interface{}{
-		"address":      address,
-		"display_name": displayName,
-	}
-	if password != "" {
-		body["password"] = password
-	}
+	body := apitypes.CreateAccountRequest{Address: address, DisplayName: displayName, Password: password}
 	return c.postAuth("/api/v1/accounts", token, body, nil)
 }
 
@@ -672,23 +517,15 @@ func (c *Client) DeleteMailbox(token string, id uint) error {
 
 // ResetPassword resets a mailbox password (admin only).
 func (c *Client) ResetPassword(token string, id uint, newPassword string) error {
-	body := map[string]interface{}{"password": newPassword}
+	body := apitypes.UpdateMailboxRequest{Password: &newPassword}
 	return c.patchAuth(fmt.Sprintf("/api/v1/admin/mailboxes/%d", id), token, body, nil)
 }
 
 // ── Pipelines ────────────────────────────────────────────────────────
 
-type PipelineItem struct {
-	ID        uint            `json:"id"`
-	DomainID  uint            `json:"domain_id"`
-	Direction string          `json:"direction"`
-	Filters   json.RawMessage `json:"filters"`
-	Active    bool            `json:"active"`
-}
+type PipelineItem = apitypes.Pipeline
 
-type PipelineListResponse struct {
-	Data []PipelineItem `json:"data"`
-}
+type PipelineListResponse = endpoint.List[apitypes.Pipeline]
 
 // ListPipelines returns pipelines, optionally filtered by domain_id.
 func (c *Client) ListPipelines(token string, domainID uint) (*PipelineListResponse, error) {
@@ -705,19 +542,13 @@ func (c *Client) ListPipelines(token string, domainID uint) (*PipelineListRespon
 
 // TogglePipeline toggles a pipeline's active status.
 func (c *Client) TogglePipeline(token string, id uint, active bool) error {
-	body := map[string]interface{}{"active": active}
+	body := apitypes.UpdatePipelineRequestBody{Active: &active}
 	return c.patchAuth(fmt.Sprintf("/api/v1/admin/pipelines/%d", id), token, body, nil)
 }
 
 // ── Queue Stats ──────────────────────────────────────────────────────
 
-type QueueStatsResponse struct {
-	Data struct {
-		Total   int64 `json:"total"`
-		Pending int64 `json:"pending"`
-		Failed  int64 `json:"failed"`
-	} `json:"data"`
-}
+type QueueStatsResponse = endpoint.Data[apitypes.QueueStatistics]
 
 // QueueStats returns queue statistics (admin only).
 func (c *Client) QueueStats(token string) (*QueueStatsResponse, error) {
@@ -730,16 +561,7 @@ func (c *Client) QueueStats(token string) (*QueueStatsResponse, error) {
 
 // ── Bans ──────────────────────────────────────────────────────────────
 
-type BanListResponse struct {
-	Data []struct {
-		ID       uint   `json:"id"`
-		IP       string `json:"ip"`
-		Protocol string `json:"protocol"`
-	} `json:"data"`
-	Pagination *struct {
-		Total int64 `json:"total"`
-	} `json:"pagination"`
-}
+type BanListResponse = endpoint.List[apitypes.Ban]
 
 // ListBans returns active bans (admin only).
 func (c *Client) ListBans(token string) (*BanListResponse, error) {

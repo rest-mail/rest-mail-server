@@ -9,6 +9,7 @@ import (
 
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
+	apitypes "github.com/restmail/restmail/internal/api/types"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
 )
@@ -336,15 +337,7 @@ func queueEntryOf(q models.OutboundQueue) QueueEntry {
 
 // QueueStatistics always includes the four original counters and total. Delivering
 // and expired appear only when present, preserving the production JSON shape.
-type QueueStatistics struct {
-	Pending    int64 `json:"pending"`
-	Deferred   int64 `json:"deferred"`
-	Delivered  int64 `json:"delivered"`
-	Bounced    int64 `json:"bounced"`
-	Total      int64 `json:"total"`
-	Delivering int64 `json:"delivering,omitempty"`
-	Expired    int64 `json:"expired,omitempty"`
-}
+type QueueStatistics = apitypes.QueueStatistics
 
 type BulkQueueResult struct {
 	Affected int64 `json:"affected"`

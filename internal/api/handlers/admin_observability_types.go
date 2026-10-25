@@ -3,19 +3,12 @@ package handlers
 import (
 	"time"
 
+	apitypes "github.com/restmail/restmail/internal/api/types"
 	"github.com/restmail/restmail/internal/db/models"
 )
 
 // Ban is the API representation, independent of database persistence.
-type Ban struct {
-	ID        uint       `json:"id"`
-	IP        string     `json:"ip"`
-	Reason    string     `json:"reason"`
-	Protocol  string     `json:"protocol" enums:"smtp,imap,pop3,all"`
-	CreatedBy string     `json:"created_by"`
-	ExpiresAt *time.Time `json:"expires_at,omitempty"`
-	CreatedAt time.Time  `json:"created_at"`
-}
+type Ban = apitypes.Ban
 
 func banOf(row models.Ban) Ban {
 	return Ban{

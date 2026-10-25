@@ -24,6 +24,8 @@ import (
 	"time"
 
 	"github.com/rest-mail/go-dkim"
+	"github.com/restmail/restmail/internal/api/endpoint"
+	apitypes "github.com/restmail/restmail/internal/api/types"
 	"github.com/restmail/restmail/internal/fleet"
 	"github.com/restmail/restmail/internal/instance"
 	"github.com/restmail/restmail/internal/outbound"
@@ -504,13 +506,7 @@ func dkimCheckCmd(args []string) {
 // included (GET /api/v1/admin/dkim already filters to those), so a served domain
 // absent from the map has no provisioned key.
 func apiDKIMSelectors(api, token string) (map[string]string, error) {
-	var res struct {
-		Data []struct {
-			Domain   string `json:"domain"`
-			Selector string `json:"selector"`
-			HasKey   bool   `json:"has_key"`
-		} `json:"data"`
-	}
+	var res endpoint.List[apitypes.DKIMEntry]
 	if err := apiJSON(http.MethodGet, api+"/api/v1/admin/dkim", token, nil, &res); err != nil {
 		return nil, err
 	}
@@ -558,7 +554,7 @@ func apiJSON(method, url, token string, body any, out any) error {
 func apiLogin(api, address, pass string) (string, error) {
 	// The API delivers the access token as the httpOnly restmail_access cookie
 	// (not in the JSON body), so read it from the Set-Cookie header.
-	b, err := json.Marshal(map[string]string{"email": address, "password": pass})
+	b, err := json.Marshal(apitypes.LoginRequest{Email: address, Password: pass})
 	if err != nil {
 		return "", err
 	}
@@ -581,24 +577,11 @@ func apiLogin(api, address, pass string) (string, error) {
 			return ck.Value, nil
 		}
 	}
-	var res struct {
-		Data struct {
-			AccessToken string `json:"access_token"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(data, &res); err == nil && res.Data.AccessToken != "" {
-		return res.Data.AccessToken, nil
-	}
 	return "", fmt.Errorf("no access token in login response")
 }
 
 func apiDomainID(api, token, domain string) (uint, error) {
-	var res struct {
-		Data []struct {
-			ID   uint   `json:"id"`
-			Name string `json:"name"`
-		} `json:"data"`
-	}
+	var res endpoint.List[apitypes.Domain]
 	if err := apiJSON(http.MethodGet, api+"/api/v1/admin/domains", token, nil, &res); err != nil {
 		return 0, err
 	}
@@ -613,7 +596,7 @@ func apiDomainID(api, token, domain string) (uint, error) {
 func apiInstallDKIM(api, token string, id uint, selector, privateKeyPEM string) error {
 	url := fmt.Sprintf("%s/api/v1/admin/dkim/%d", api, id)
 	return apiJSON(http.MethodPut, url, token,
-		map[string]string{"selector": selector, "private_key": privateKeyPEM}, nil)
+		apitypes.SetDKIMKeyBody{Selector: selector, PrivateKey: privateKeyPEM}, nil)
 }
 
 func fatal(format string, args ...any) {

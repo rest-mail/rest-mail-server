@@ -55,14 +55,14 @@ func newRawTestMailbox(t *testing.T, raw string) *mailbox {
 
 func sampleDetail(id uint) apiclient.MessageDetail {
 	return apiclient.MessageDetail{
-		MessageSummary: apiclient.MessageSummary{
-			ID:         id,
-			Sender:     "alice@example.com",
-			SenderName: "Alice",
-			Subject:    "Report",
-			ReceivedAt: time.Date(2025, 3, 15, 10, 30, 0, 0, time.UTC),
-			MessageID:  "abc@example.com",
-		},
+
+		ID:         id,
+		Sender:     "alice@example.com",
+		SenderName: "Alice",
+		Subject:    "Report",
+		ReceivedAt: time.Date(2025, 3, 15, 10, 30, 0, 0, time.UTC),
+		MsgID:      "abc@example.com",
+
 		BodyText: "See attached.",
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
+	apitypes "github.com/restmail/restmail/internal/api/types"
 	"github.com/restmail/restmail/internal/audit"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
@@ -309,17 +310,11 @@ func revokeAppPasswordsForNewPassword(tx *gorm.DB, r *http.Request, accountID ui
 // signInProtocols are the protocols a gateway signs a mail client in over.
 var signInProtocols = map[string]bool{"imap": true, "pop3": true, "smtp": true}
 
-type protocolSignInRequest struct {
-	Protocol string `json:"protocol,omitempty"`
-}
+type protocolSignInRequest = apitypes.ProtocolSignInRequest
 
 // ProtocolSignedIn is the account a mail client signed in to, and the credential it used.
 // Its fields are in the order the map it replaced was written in.
-type ProtocolSignedIn struct {
-	CredentialID   uint     `json:"credential_id"`
-	CredentialKind string   `json:"credential_kind" enums:"password,app_password"`
-	User           userInfo `json:"user"`
-}
+type ProtocolSignedIn = apitypes.ProtocolSignedIn
 
 // RegisterProtocolSignIn registers the protocol gateways' sign-in, in the mail routes' group:
 // it takes HTTP Basic only (a session is 400 basic_required), is throttled like login, and is

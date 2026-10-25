@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/restmail/restmail/internal/api/endpoint"
+	apitypes "github.com/restmail/restmail/internal/api/types"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/outbound"
 	"gorm.io/gorm"
@@ -23,14 +24,7 @@ func NewDKIMHandler(db *gorm.DB, masterKey string) *DKIMHandler {
 
 // dkimEntry contains only public monitoring metadata. Unknown legacy key ages
 // are null; the domain's CreatedAt/UpdatedAt are not key timestamps.
-type dkimEntry struct {
-	DomainID   uint       `json:"domain_id"`
-	Domain     string     `json:"domain"`
-	Selector   string     `json:"selector"`
-	HasKey     bool       `json:"has_key"`
-	CreatedAt  *time.Time `json:"created_at"`
-	AgeSeconds *float64   `json:"age_seconds" minimum:"0"`
-}
+type dkimEntry = apitypes.DKIMEntry
 
 func newDKIMEntry(domain models.Domain, now time.Time) dkimEntry {
 	entry := dkimEntry{
@@ -60,10 +54,7 @@ func (h *DKIMHandler) listKeys(r *http.Request, _ struct{}) (endpoint.List[dkimE
 	return endpoint.List[dkimEntry]{Data: entries}, nil
 }
 
-type setDKIMKeyBody struct {
-	Selector   string `json:"selector" minLength:"1" maxLength:"63" pattern:"^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*$" message:"Must be a DNS label (letters, digits, hyphens), at most 63 characters"`
-	PrivateKey string `json:"private_key" minLength:"1" message:"required"`
-}
+type setDKIMKeyBody = apitypes.SetDKIMKeyBody
 type setDKIMKeyRequest struct {
 	ID   uint32         `path:"id" minimum:"1" example:"1"`
 	Body setDKIMKeyBody `body:""`

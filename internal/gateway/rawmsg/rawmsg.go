@@ -46,8 +46,8 @@ func Build(msg apiclient.MessageDetail) string {
 	fmt.Fprintf(&b, "From: %s\r\n", from)
 	fmt.Fprintf(&b, "Subject: %s\r\n", headerEncoder.Encode("utf-8", msg.Subject))
 	fmt.Fprintf(&b, "Date: %s\r\n", msg.ReceivedAt.Format(dateLayout))
-	if msg.MessageID != "" {
-		fmt.Fprintf(&b, "Message-ID: <%s>\r\n", msg.MessageID)
+	if msg.MsgID != "" {
+		fmt.Fprintf(&b, "Message-ID: <%s>\r\n", msg.MsgID)
 	}
 	if msg.InReplyTo != "" {
 		fmt.Fprintf(&b, "In-Reply-To: <%s>\r\n", msg.InReplyTo)

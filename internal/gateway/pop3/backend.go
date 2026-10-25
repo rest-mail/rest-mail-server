@@ -89,7 +89,7 @@ func (b *Backend) AuthenticateUTF8(user, pass string, utf8 bool) (pop3srv.Mailbo
 	}
 	return &mailbox{
 		api:       b.api,
-		token:     resp.Data.AccessToken,
+		token:     resp.AccessToken,
 		accountID: resp.Data.User.ID,
 		utf8:      utf8,
 	}, nil
@@ -164,7 +164,8 @@ func (m *mailbox) MarkSeen(uid string) error {
 	if err != nil {
 		return err
 	}
-	return m.api.UpdateMessage(m.token, id, map[string]interface{}{"is_read": true})
+	seen := true
+	return m.api.UpdateMessage(m.token, id, apiclient.MessageUpdate{IsRead: &seen})
 }
 
 // Delete permanently removes a message (called by the library on QUIT).

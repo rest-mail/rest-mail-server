@@ -35,7 +35,7 @@ func TestFolderResponseJSONParity(t *testing.T) {
 		name         string
 		old, current interface{}
 	}{
-		{"folder", folderInfo{"INBOX", 3, 1}, FolderSummary{"INBOX", 3, 1}},
+		{"folder", folderInfo{"INBOX", 3, 1}, FolderSummary{Folder: "INBOX", Total: 3, Unread: 1}},
 		{"name", map[string]string{"name": "Receipts"}, FolderName{Name: "Receipts"}},
 		{"quota", map[string]interface{}{"quota_bytes": int64(100), "quota_used_bytes": int64(25), "message_count": int64(4), "percent_used": 25.0},
 			Quota{MessageCount: 4, PercentUsed: 25, QuotaBytes: 100, QuotaUsedBytes: 25}},

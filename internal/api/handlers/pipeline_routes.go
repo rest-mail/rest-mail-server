@@ -6,39 +6,19 @@ import (
 	"time"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
-
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
+	apitypes "github.com/restmail/restmail/internal/api/types"
+
 	"github.com/restmail/restmail/internal/db/models"
 )
 
 // PipelineDomain preserves the unloaded domain association the old model serialized.
 // Its server_type may be empty because these queries do not preload a domain.
-type PipelineDomain struct {
-	ID                uint      `json:"id"`
-	Name              string    `json:"name"`
-	ServerType        string    `json:"server_type" enums:",traditional,restmail"`
-	Active            bool      `json:"active"`
-	DefaultQuotaBytes int64     `json:"default_quota_bytes"`
-	DKIMSelector      string    `json:"dkim_selector"`
-	SendingPolicy     string    `json:"sending_policy" enums:",transactional,bulk"`
-	DMARCPolicy       string    `json:"dmarc_policy" enums:",none,quarantine,reject"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
-}
+type PipelineDomain = apitypes.PipelineDomain
 
 // Pipeline and CustomFilter are API values, independent of persistence models.
-type Pipeline struct {
-	ID        uint            `json:"id"`
-	DomainID  uint            `json:"domain_id"`
-	Direction string          `json:"direction" enums:"inbound,outbound"`
-	Filters   json.RawMessage `json:"filters"`
-	Active    bool            `json:"active"`
-	CreatedAt time.Time       `json:"created_at"`
-	UpdatedAt time.Time       `json:"updated_at"`
-
-	Domain PipelineDomain `json:"domain,omitempty"`
-}
+type Pipeline = apitypes.Pipeline
 type CustomFilter struct {
 	ID          uint            `json:"id"`
 	DomainID    uint            `json:"domain_id"`

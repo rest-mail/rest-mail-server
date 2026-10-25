@@ -19,13 +19,13 @@ import (
 func TestBuildRawMessage_TextOnly(t *testing.T) {
 	fixedTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
 	msg := apiclient.MessageDetail{
-		MessageSummary: apiclient.MessageSummary{
-			Sender:     "alice@example.com",
-			SenderName: "Alice",
-			Subject:    "Test",
-			ReceivedAt: fixedTime,
-			MessageID:  "abc123@example.com",
-		},
+
+		Sender:     "alice@example.com",
+		SenderName: "Alice",
+		Subject:    "Test",
+		ReceivedAt: fixedTime,
+		MsgID:      "abc123@example.com",
+
 		BodyText: "Hello, world!",
 	}
 	result := buildRawMessage(msg)
@@ -57,12 +57,12 @@ func TestBuildRawMessage_TextOnly(t *testing.T) {
 func TestBuildRawMessage_HTMLOnly(t *testing.T) {
 	fixedTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
 	msg := apiclient.MessageDetail{
-		MessageSummary: apiclient.MessageSummary{
-			Sender:     "alice@example.com",
-			SenderName: "Alice",
-			Subject:    "HTML Test",
-			ReceivedAt: fixedTime,
-		},
+
+		Sender:     "alice@example.com",
+		SenderName: "Alice",
+		Subject:    "HTML Test",
+		ReceivedAt: fixedTime,
+
 		BodyHTML: "<p>Hello</p>",
 	}
 	result := buildRawMessage(msg)
@@ -81,12 +81,12 @@ func TestBuildRawMessage_HTMLOnly(t *testing.T) {
 func TestBuildRawMessage_Multipart(t *testing.T) {
 	fixedTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
 	msg := apiclient.MessageDetail{
-		MessageSummary: apiclient.MessageSummary{
-			Sender:     "alice@example.com",
-			SenderName: "Alice",
-			Subject:    "Multi",
-			ReceivedAt: fixedTime,
-		},
+
+		Sender:     "alice@example.com",
+		SenderName: "Alice",
+		Subject:    "Multi",
+		ReceivedAt: fixedTime,
+
 		BodyText: "Hello text",
 		BodyHTML: "<p>Hello HTML</p>",
 	}
@@ -110,12 +110,12 @@ func TestBuildRawMessage_Multipart(t *testing.T) {
 func TestBuildRawMessage_NoMessageID(t *testing.T) {
 	fixedTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
 	msg := apiclient.MessageDetail{
-		MessageSummary: apiclient.MessageSummary{
-			Sender:     "alice@example.com",
-			SenderName: "Alice",
-			Subject:    "No MID",
-			ReceivedAt: fixedTime,
-		},
+
+		Sender:     "alice@example.com",
+		SenderName: "Alice",
+		Subject:    "No MID",
+		ReceivedAt: fixedTime,
+
 		BodyText: "body",
 	}
 	result := buildRawMessage(msg)
@@ -128,12 +128,12 @@ func TestBuildRawMessage_NoMessageID(t *testing.T) {
 func TestBuildRawMessage_InReplyTo(t *testing.T) {
 	fixedTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
 	msg := apiclient.MessageDetail{
-		MessageSummary: apiclient.MessageSummary{
-			Sender:     "alice@example.com",
-			SenderName: "Alice",
-			Subject:    "Re: Test",
-			ReceivedAt: fixedTime,
-		},
+
+		Sender:     "alice@example.com",
+		SenderName: "Alice",
+		Subject:    "Re: Test",
+		ReceivedAt: fixedTime,
+
 		BodyText:  "reply",
 		InReplyTo: "orig@example.com",
 	}
@@ -147,12 +147,12 @@ func TestBuildRawMessage_InReplyTo(t *testing.T) {
 func TestBuildRawMessage_MIMEVersion(t *testing.T) {
 	fixedTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
 	msg := apiclient.MessageDetail{
-		MessageSummary: apiclient.MessageSummary{
-			Sender:     "alice@example.com",
-			SenderName: "Alice",
-			Subject:    "Mime",
-			ReceivedAt: fixedTime,
-		},
+
+		Sender:     "alice@example.com",
+		SenderName: "Alice",
+		Subject:    "Mime",
+		ReceivedAt: fixedTime,
+
 		BodyText: "body",
 	}
 	result := buildRawMessage(msg)
@@ -166,12 +166,12 @@ func TestBuildRawMessage_MIMEVersion(t *testing.T) {
 // subject the sender typed (issue #299).
 func TestBuildRawMessage_NonASCIISubjectIsEncoded(t *testing.T) {
 	msg := apiclient.MessageDetail{
-		MessageSummary: apiclient.MessageSummary{
-			Sender:     "alice@example.com",
-			SenderName: "Alice",
-			Subject:    "Überweisung für Kaffee",
-			ReceivedAt: time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC),
-		},
+
+		Sender:     "alice@example.com",
+		SenderName: "Alice",
+		Subject:    "Überweisung für Kaffee",
+		ReceivedAt: time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC),
+
 		BodyText: "body",
 	}
 	result := buildRawMessage(msg)
@@ -192,12 +192,12 @@ func TestBuildRawMessage_BodyCannotForgeTheBoundary(t *testing.T) {
 	ts := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
 	forged := fmt.Sprintf("--=_restmail_%d", ts.UnixNano())
 	msg := apiclient.MessageDetail{
-		MessageSummary: apiclient.MessageSummary{
-			Sender:     "alice@example.com",
-			SenderName: "Alice",
-			Subject:    "Forged",
-			ReceivedAt: ts,
-		},
+
+		Sender:     "alice@example.com",
+		SenderName: "Alice",
+		Subject:    "Forged",
+		ReceivedAt: ts,
+
 		BodyText: "before\r\n" + forged + "--\r\nafter",
 		BodyHTML: "<p>html</p>",
 	}
@@ -240,11 +240,11 @@ func TestBuildRawMessage_BodyCannotForgeTheBoundary(t *testing.T) {
 // display name left as a gap before the angle bracket.
 func TestBuildRawMessage_EmptySenderName(t *testing.T) {
 	msg := apiclient.MessageDetail{
-		MessageSummary: apiclient.MessageSummary{
-			Sender:     "alice@example.com",
-			ReceivedAt: time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC),
-			Subject:    "No name",
-		},
+
+		Sender:     "alice@example.com",
+		ReceivedAt: time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC),
+		Subject:    "No name",
+
 		BodyText: "body",
 	}
 	result := buildRawMessage(msg)

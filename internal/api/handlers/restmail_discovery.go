@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	apitypes "github.com/restmail/restmail/internal/api/types"
 	"net/http"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
@@ -29,9 +30,7 @@ func NewRestmailDiscoveryHandler(db *gorm.DB, hostname string) *RestmailDiscover
 
 // RestmailDiscovery is the protocol document a sender reads: the HTTPS base URL it delivers
 // to, appending /messages. It is written as it is, without the API's data envelope.
-type RestmailDiscovery struct {
-	Endpoint string `json:"endpoint" format:"uri" pattern:"^https://"`
-}
+type RestmailDiscovery = apitypes.RestmailDiscovery
 
 // restmailDiscoverQuery names the recipient domain, once.
 type restmailDiscoverQuery struct {

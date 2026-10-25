@@ -10,9 +10,10 @@ import (
 	"time"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
-
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
+	apitypes "github.com/restmail/restmail/internal/api/types"
+
 	"github.com/restmail/restmail/internal/audit"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
@@ -104,12 +105,7 @@ var errAuthenticationRequired = endpoint.Refuse(http.StatusUnauthorized, "unauth
 // accountResponse is an account as GET /api/v1/accounts lists it. ID is the
 // mailbox's id, the {id} of every /accounts/{id}/… route. IsPrimary marks the
 // session's own account.
-type accountResponse struct {
-	ID          uint   `json:"id"`
-	Address     string `json:"address"`
-	DisplayName string `json:"display_name"`
-	IsPrimary   bool   `json:"is_primary"`
-}
+type accountResponse = apitypes.AccountResponse
 
 func toAccountResponse(mb *models.Mailbox, ownID uint) accountResponse {
 	return accountResponse{ID: mb.ID, Address: mb.Address, DisplayName: mb.DisplayName, IsPrimary: mb.ID == ownID}
@@ -194,17 +190,7 @@ func (h *AccountHandler) get(r *http.Request, in accountPath) (accountResponse, 
 // createAccountRequest is what the mobile app and the admin webmail send: an address, and
 // optionally a display name and a password. Each is checked in the handler, as before:
 // a blank or empty password means none.
-type createAccountRequest struct {
-	Address     string `json:"address"`
-	DisplayName string `json:"display_name,omitempty"`
-	// Password, when given, becomes the account's password credential, so it
-	// can be signed in to. Without one the account has no credentials, and is
-	// reached only through its owners.
-	Password string `json:"password,omitempty"`
-	// PasswordHash imports an existing crypt(3) or Argon2 password without resetting it.
-	// Mutually exclusive with Password; never returned or written to audit.
-	PasswordHash string `json:"password_hash,omitempty" maxLength:"256" pattern:"^((\\{BLF-CRYPT\\})?\\$2[aby]\\$(0[4-9]|1[0-4])\\$[./A-Za-z0-9]{53}|(\\{SHA256-CRYPT\\})?\\$5\\$(rounds=([1-9][0-9]{3,5}|1000000)\\$)?[./A-Za-z0-9]{1,16}\\$[./A-Za-z0-9]{43}|(\\{SHA512-CRYPT\\})?\\$6\\$(rounds=([1-9][0-9]{3,5}|1000000)\\$)?[./A-Za-z0-9]{1,16}\\$[./A-Za-z0-9]{86}|(\\{ARGON2ID\\})?\\$argon2id\\$v=19\\$m=([89]|[1-9][0-9]{1,4}|1[0-9]{5}|2[0-5][0-9]{4}|26[01][0-9]{3}|2620[0-9]{2}|2621[0-3][0-9]|26214[0-4]),t=([1-9]|10),p=[1-8]\\$[A-Za-z0-9+/]{11,86}\\$[A-Za-z0-9+/]{22,86}|(\\{ARGON2I\\})?\\$argon2i\\$v=19\\$m=([89]|[1-9][0-9]{1,4}|1[0-9]{5}|2[0-5][0-9]{4}|26[01][0-9]{3}|2620[0-9]{2}|2621[0-3][0-9]|26214[0-4]),t=([1-9]|10),p=[1-8]\\$[A-Za-z0-9+/]{11,86}\\$[A-Za-z0-9+/]{22,86}|)$"`
-}
+type createAccountRequest = apitypes.CreateAccountRequest
 
 // ActionAccountsCreate is the audit action of a created account.
 const ActionAccountsCreate = "accounts.create"

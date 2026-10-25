@@ -99,22 +99,11 @@ func wholeSecondUTC(t time.Time) time.Time { return t.UTC().Truncate(time.Second
 
 // ownerTokenRequest is the body of POST /api/v1/auth/owner/token. Every field is checked in
 // the handler or as the signed message, with the refusals it always gave.
-type ownerTokenRequest struct {
-	Challenge       string `json:"challenge,omitempty"`
-	PublicKey       string `json:"public_key,omitempty"`
-	Signature       string `json:"signature,omitempty"` // base64 of the ssh wire-format signature
-	Purpose         string `json:"purpose,omitempty"`   // reset-admin, the only one
-	Address         string `json:"address,omitempty"`
-	LifetimeSeconds int    `json:"lifetime_seconds,omitempty"`
-}
+type ownerTokenRequest = apitypes.OwnerTokenRequest
 
 // OwnerToken is a single-use token for an owner's purpose, reset-admin, and when it expires.
 // Its fields are in the order the map it replaced was written in, so the bytes are unchanged.
-type OwnerToken struct {
-	ExpiresAt time.Time `json:"expires_at"`
-	Purpose   string    `json:"purpose"`
-	Token     string    `json:"token"`
-}
+type OwnerToken = apitypes.OwnerToken
 
 // token checks a signed challenge and answers with a single-use reset-admin token: redeem it
 // at /api/v1/auth/reset.

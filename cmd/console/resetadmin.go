@@ -18,6 +18,9 @@ import (
 	"time"
 
 	"github.com/mdp/qrterminal/v4"
+	"github.com/restmail/restmail/internal/api/endpoint"
+	"github.com/restmail/restmail/internal/api/respond"
+	apitypes "github.com/restmail/restmail/internal/api/types"
 	"github.com/restmail/restmail/internal/setuplink"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
@@ -130,9 +133,7 @@ func runResetAdmin(ctx context.Context, args []string, client *http.Client, keys
 	var lastNotOwner string
 	for _, s := range signers {
 		// A fresh challenge per key: each is spent once it is answered.
-		var ch struct {
-			Challenge string `json:"challenge"`
-		}
+		var ch apitypes.OwnerChallenge
 		if code, msg, err := api.post(ctx, "/api/v1/auth/owner/challenge", nil, &ch); err != nil {
 			return o.fail(exitUnreachable, "unreachable", err.Error())
 		} else if code != "" {
@@ -142,17 +143,12 @@ func runResetAdmin(ctx context.Context, args []string, client *http.Client, keys
 		if err != nil {
 			return o.fail(exitFailed, "sign_failed", err.Error())
 		}
-		var minted struct {
-			Token     string `json:"token"`
-			ExpiresAt string `json:"expires_at"`
-		}
-		code, msg, err := api.post(ctx, "/api/v1/auth/owner/token", map[string]any{
-			"challenge":        ch.Challenge,
-			"public_key":       strings.TrimSpace(string(ssh.MarshalAuthorizedKey(s.pub))),
-			"signature":        base64.StdEncoding.EncodeToString(ssh.Marshal(sig)),
-			"purpose":          purpose,
-			"address":          *address,
-			"lifetime_seconds": int(lifetime.Seconds()),
+		var minted apitypes.OwnerToken
+		code, msg, err := api.post(ctx, "/api/v1/auth/owner/token", apitypes.OwnerTokenRequest{
+			Challenge: ch.Challenge,
+			PublicKey: strings.TrimSpace(string(ssh.MarshalAuthorizedKey(s.pub))),
+			Signature: base64.StdEncoding.EncodeToString(ssh.Marshal(sig)),
+			Purpose:   purpose, Address: *address, LifetimeSeconds: int(lifetime.Seconds()),
 		}, &minted)
 		if err != nil {
 			return o.fail(exitUnreachable, "unreachable", err.Error())
@@ -164,7 +160,7 @@ func runResetAdmin(ctx context.Context, args []string, client *http.Client, keys
 		if code != "" {
 			return o.fail(statusFor(code), code, msg)
 		}
-		token, expires = minted.Token, minted.ExpiresAt
+		token, expires = minted.Token, minted.ExpiresAt.Format(time.RFC3339)
 		break
 	}
 	if token == "" {
@@ -276,16 +272,12 @@ func (c apiClient) do(ctx context.Context, method, path string, body any, into a
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	var env struct {
-		Data  json.RawMessage `json:"data"`
-		Error *struct {
-			Code    string `json:"code"`
-			Message string `json:"message"`
-		} `json:"error"`
+	var refusal respond.ErrorResponse
+	if json.Unmarshal(raw, &refusal) == nil && refusal.Error.Code != "" {
+		return refusal.Error.Code, refusal.Error.Message, nil
 	}
-	if json.Unmarshal(raw, &env) == nil && env.Error != nil {
-		return env.Error.Code, env.Error.Message, nil
-	}
+	var env endpoint.Data[json.RawMessage]
+	_ = json.Unmarshal(raw, &env)
 	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed {
 		return "", "", fmt.Errorf("%s does not offer %s: not a rest-mail server, or one older than this CLI", c.base.Host, path)
 	}

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
+	apitypes "github.com/restmail/restmail/internal/api/types"
 	"github.com/restmail/restmail/internal/db/models"
 )
 
@@ -13,40 +14,7 @@ import (
 // bytes written are unchanged: the IMAP and POP3 gateways, webmail and the mobile app read
 // them. The recipients, headers and calendar events are the stored JSON, as stored: what a
 // gateway delivered is kept, so the API does not narrow it.
-type Message struct {
-	ID                uint            `json:"id"`
-	MailboxID         uint            `json:"mailbox_id"`
-	Folder            string          `json:"folder"`
-	MsgID             string          `json:"message_id" description:"The RFC 5322 Message-ID"`
-	InReplyTo         string          `json:"in_reply_to"`
-	References        string          `json:"references"`
-	ThreadID          string          `json:"thread_id"`
-	Sender            string          `json:"sender"`
-	SenderName        string          `json:"sender_name"`
-	RecipientsTo      json.RawMessage `json:"recipients_to"`
-	RecipientsCc      json.RawMessage `json:"recipients_cc"`
-	Subject           string          `json:"subject"`
-	BodyText          string          `json:"body_text,omitempty"`
-	BodyHTML          string          `json:"body_html,omitempty"`
-	Headers           json.RawMessage `json:"headers,omitempty"`
-	CalendarEventsRaw json.RawMessage `json:"calendar_events,omitempty"`
-	SizeBytes         int             `json:"size_bytes"`
-	RawSize           int             `json:"raw_size" description:"The exact octet count of the stored raw message; 0 when none is stored"`
-	ReceivedTLS       *bool           `json:"received_tls,omitempty" description:"For an inbound-MX delivery, whether it arrived encrypted"`
-	TLSVersion        string          `json:"tls_version,omitempty"`
-	HasAttachments    bool            `json:"has_attachments"`
-	IsRead            bool            `json:"is_read"`
-	IsDSN             bool            `json:"is_dsn" description:"A delivery status notification this server generated"`
-	IsFlagged         bool            `json:"is_flagged"`
-	IsStarred         bool            `json:"is_starred"`
-	IsDraft           bool            `json:"is_draft"`
-	IsDeleted         bool            `json:"is_deleted"`
-	ReceivedAt        time.Time       `json:"received_at"`
-	DateHeader        *time.Time      `json:"date_header"`
-	CreatedAt         time.Time       `json:"created_at"`
-	UpdatedAt         time.Time       `json:"updated_at"`
-	Mailbox           Mailbox         `json:"mailbox,omitempty" description:"Always the empty mailbox: the association is never loaded on these routes"`
-}
+type Message = apitypes.Message
 
 func messageOf(m models.Message) Message {
 	return Message{

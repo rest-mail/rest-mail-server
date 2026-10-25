@@ -3,6 +3,7 @@ package console
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/restmail/restmail/internal/pipeline"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -68,9 +69,7 @@ func (m PipelinesModel) loadPipelines() tea.Msg {
 }
 
 func parseFilterNames(raw json.RawMessage) []string {
-	var configs []struct {
-		Name string `json:"name"`
-	}
+	var configs []pipeline.FilterConfig
 	if err := json.Unmarshal(raw, &configs); err != nil {
 		return nil
 	}

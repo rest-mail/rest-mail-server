@@ -80,7 +80,7 @@ func (b *Backend) Authenticate(user, pass string) (imapsrv.Mailbox, error) {
 	return &mailbox{
 		api:       b.api,
 		email:     user,
-		token:     resp.Data.AccessToken,
+		token:     resp.AccessToken,
 		accountID: resp.Data.User.ID,
 	}, nil
 }
@@ -124,7 +124,7 @@ func (m *mailbox) Folders() ([]imapsrv.Folder, error) {
 	}
 	out := make([]imapsrv.Folder, 0, len(resp.Data))
 	for _, f := range resp.Data {
-		out = append(out, imapsrv.Folder{Name: f.Name, SpecialUse: specialUse[f.Name]})
+		out = append(out, imapsrv.Folder{Name: f.Folder, SpecialUse: specialUse[f.Folder]})
 	}
 	return out, nil
 }
@@ -216,18 +216,8 @@ func (m *mailbox) rawMessage(detail apiclient.MessageDetail) string {
 // SELECT; mirroring the flag onto both columns means what you STORE is what
 // you FETCH back.
 func (m *mailbox) Store(uid uint32, f imapsrv.FlagUpdate) error {
-	updates := map[string]interface{}{}
-	if f.Seen != nil {
-		updates["is_read"] = *f.Seen
-	}
-	if f.Flagged != nil {
-		updates["is_flagged"] = *f.Flagged
-		updates["is_starred"] = *f.Flagged
-	}
-	if f.Draft != nil {
-		updates["is_draft"] = *f.Draft
-	}
-	if len(updates) == 0 {
+	updates := apiclient.MessageUpdate{IsRead: f.Seen, IsFlagged: f.Flagged, IsStarred: f.Flagged, IsDraft: f.Draft}
+	if f.Seen == nil && f.Flagged == nil && f.Draft == nil {
 		return nil
 	}
 	return m.api.UpdateMessage(m.token, uint(uid), updates)
@@ -312,7 +302,7 @@ func (m *mailbox) CopyUID(uid uint32, dest string) (uint32, error) {
 		Subject:      src.Subject,
 		BodyText:     src.BodyText,
 		BodyHTML:     src.BodyHTML,
-		MessageID:    src.MessageID,
+		MessageID:    src.MsgID,
 		InReplyTo:    src.InReplyTo,
 		References:   src.References,
 		RawMessage:   []byte(m.rawMessage(src)),

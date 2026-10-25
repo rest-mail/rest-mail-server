@@ -12,6 +12,7 @@ import (
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
+	apitypes "github.com/restmail/restmail/internal/api/types"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/pipeline"
 	"github.com/restmail/restmail/internal/pipeline/filters"
@@ -731,13 +732,7 @@ type createPipelineRequestBody struct {
 	Filters   json.RawMessage `json:"filters,omitempty"`
 	Active    *bool           `json:"active,omitempty"`
 }
-type updatePipelineRequestBody struct {
-	Filters json.RawMessage `json:"filters,omitempty"`
-	Active  *bool           `json:"active,omitempty"`
-	// Webmail sends these on PATCH; historically they are accepted and ignored.
-	DomainID  *uint   `json:"domain_id,omitempty"`
-	Direction *string `json:"direction,omitempty"`
-}
+type updatePipelineRequestBody = apitypes.UpdatePipelineRequestBody
 type updatePipelineRequest struct {
 	ID   uint32                    `path:"id" minimum:"1" example:"1"`
 	Body updatePipelineRequestBody `body:""`

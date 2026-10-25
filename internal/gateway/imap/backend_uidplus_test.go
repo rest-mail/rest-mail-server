@@ -143,7 +143,7 @@ func pathID(r *http.Request) uint {
 }
 
 func (f *fakeAPI) login(w http.ResponseWriter, _ *http.Request) {
-	var lr apiclient.LoginResponse
+	var lr apiclient.SignInResponse
 	lr.Data.User.ID = 7
 	lr.Data.CredentialID, lr.Data.CredentialKind = 1, "password"
 	lr.Data.User.Email = "alice@example.com"
@@ -261,7 +261,7 @@ func (f *fakeAPI) getMessage(w http.ResponseWriter, r *http.Request) {
 		received = fakeReceivedAt
 	}
 	var dr apiclient.MessageDetailResponse
-	dr.Data.MessageSummary = apiclient.MessageSummary{
+	dr.Data = apiclient.MessageSummary{
 		ID:         m.id,
 		Folder:     m.folder,
 		Subject:    m.subject,
