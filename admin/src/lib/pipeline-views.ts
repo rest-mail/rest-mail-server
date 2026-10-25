@@ -1,7 +1,7 @@
 import type { components } from "./api-types";
 
-// The server currently describes these JSON columns as unknown (#658). Keep the
-// wire types intact and validate the shapes the editor/timeline needs to render.
+// Pipeline/filter configuration remains opaque (#658); trace stages are typed.
+// Keep generated wire types intact and validate JSON before rendering a view.
 export interface FilterConfig {
   name: string;
   type: "action" | "transform";

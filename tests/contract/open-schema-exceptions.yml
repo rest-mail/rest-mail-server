@@ -21,8 +21,6 @@
   stored mail data; more precise shapes are tracked in #637 and #652.'
 '#/components/schemas/Message/properties/recipients_to': 'Message JSON fields preserve
   stored mail data; more precise shapes are tracked in #637 and #652.'
-'#/components/schemas/MessageTrace/properties/stages': 'Trace stages contain filter
-  specific result data; more precise shapes are tracked in #649.'
 '#/components/schemas/Pipeline/properties/filters': 'Pipeline definitions hold plugin
   specific filter configurations; their shapes are tracked in #649 and #652.'
 '#/components/schemas/RestoreSnapshotMessage/properties/calendar_events': 'Message
