@@ -2393,6 +2393,276 @@
       }
     }
   },
+  "importContacts": {
+    "body_array": {
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "contacts_empty": {
+      "request": {
+        "body": {
+          "contacts": []
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "contacts": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "contacts_missing": {
+      "request": {
+        "body": {},
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "contacts": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "email_invalid": {
+      "request": {
+        "body": {
+          "contacts": [
+            {
+              "email": "not-an-email"
+            }
+          ]
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "contacts[0].email": "must be an email address"
+              }
+            }
+          }
+        }
+      }
+    },
+    "email_missing": {
+      "request": {
+        "body": {
+          "contacts": [
+            {}
+          ]
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "contacts[0].email": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "imported": {
+      "request": {
+        "body": {
+          "contacts": [
+            {
+              "email": "carol@example.org",
+              "name": "Carol"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "imported": 1
+          }
+        }
+      }
+    },
+    "mixed_batch": {
+      "request": {
+        "body": {
+          "contacts": [
+            {
+              "email": "valid-import@example.org",
+              "name": "Must not be imported"
+            },
+            {
+              "email": "not-an-email"
+            }
+          ]
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "contacts[1].email": "must be an email address"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "linkAccount": {
+    "address_blank": {
+      "request": {
+        "body": {
+          "address": "   ",
+          "password": "supplied-by-contract-hook"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "address": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "address_missing": {
+      "request": {
+        "body": {
+          "password": "supplied-by-contract-hook"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "address": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "linked": {
+      "request": {
+        "body": {
+          "address": "eve@restmail.test",
+          "password": "supplied-by-contract-hook"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 2,
+            "address": "eve@restmail.test",
+            "display_name": "Eve",
+            "is_primary": false
+          }
+        }
+      }
+    },
+    "password_empty": {
+      "request": {
+        "body": {
+          "address": "eve@restmail.test",
+          "password": ""
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "password": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "password_missing": {
+      "request": {
+        "body": {
+          "address": "eve@restmail.test"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "password": "required"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
   "listAliases": {
     "available": {
       "summary": "The permitted list is empty",
@@ -2804,6 +3074,102 @@
           "limit": 20
         }
       },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "listCapabilities": {
+    "available": {
+      "summary": "A permitted session reads the capability catalogue",
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "id": 1,
+              "name": "users:read",
+              "description": "Read accounts and grants",
+              "resource": "users",
+              "action": "read"
+            }
+          ]
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "insufficient_permissions": {
+      "summary": "The session lacks users:read at the server scope",
+      "description": "Precondition: the session is current and setup is complete, but its live grants do not cover users:read at *. The real capability middleware proves this refusal.",
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "The capability store read fails",
+      "description": "Fault precondition: session and permission checks pass, but the capability table cannot be read. The real registration proves this refusal.",
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to fetch capabilities"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the configured transport body cap",
+      "description": "Precondition: a current session sends Content-Length above APIMaxBodyBytes, even on this GET. The registered-route test sets the transport size directly; there is no typed request body.",
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "Fault precondition: the database-backed current-session check fails. The real production router with a failing database proves this response.",
+      "request": {},
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No session credential was sent",
+      "description": "No Authorization header or access cookie. The real production router proves this refusal.",
+      "request": {},
       "response": {
         "status": 401,
         "body": {
@@ -4294,372 +4660,6 @@
     "unauthenticated": {
       "summary": "No session credential was sent",
       "description": "No Authorization header or access cookie is sent. The production JWT middleware refuses the request.",
-      "request": {},
-      "response": {
-        "status": 401,
-        "body": {
-          "error": {
-            "code": "unauthorized",
-            "message": "Missing authorization header"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    }
-  },
-  "importContacts": {
-    "body_array": {
-      "request": {
-        "body": [],
-        "invalid": true
-      },
-      "response": {
-        "status": 400,
-        "body": {
-          "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
-          }
-        }
-      }
-    },
-    "contacts_empty": {
-      "request": {
-        "body": {
-          "contacts": []
-        },
-        "invalid": true
-      },
-      "response": {
-        "status": 422,
-        "body": {
-          "error": {
-            "code": "validation_failed",
-            "message": "Request body failed validation",
-            "details": {
-              "fields": {
-                "contacts": "required"
-              }
-            }
-          }
-        }
-      }
-    },
-    "contacts_missing": {
-      "request": {
-        "body": {},
-        "invalid": true
-      },
-      "response": {
-        "status": 422,
-        "body": {
-          "error": {
-            "code": "validation_failed",
-            "message": "Request body failed validation",
-            "details": {
-              "fields": {
-                "contacts": "required"
-              }
-            }
-          }
-        }
-      }
-    },
-    "email_invalid": {
-      "request": {
-        "body": {
-          "contacts": [
-            {
-              "email": "not-an-email"
-            }
-          ]
-        },
-        "invalid": true
-      },
-      "response": {
-        "status": 422,
-        "body": {
-          "error": {
-            "code": "validation_failed",
-            "message": "Request body failed validation",
-            "details": {
-              "fields": {
-                "contacts[0].email": "must be an email address"
-              }
-            }
-          }
-        }
-      }
-    },
-    "email_missing": {
-      "request": {
-        "body": {
-          "contacts": [
-            {}
-          ]
-        },
-        "invalid": true
-      },
-      "response": {
-        "status": 422,
-        "body": {
-          "error": {
-            "code": "validation_failed",
-            "message": "Request body failed validation",
-            "details": {
-              "fields": {
-                "contacts[0].email": "required"
-              }
-            }
-          }
-        }
-      }
-    },
-    "imported": {
-      "request": {
-        "body": {
-          "contacts": [
-            {
-              "email": "carol@example.org",
-              "name": "Carol"
-            }
-          ]
-        }
-      },
-      "response": {
-        "status": 200,
-        "body": {
-          "data": {
-            "imported": 1
-          }
-        }
-      }
-    },
-    "mixed_batch": {
-      "request": {
-        "body": {
-          "contacts": [
-            {
-              "email": "valid-import@example.org",
-              "name": "Must not be imported"
-            },
-            {
-              "email": "not-an-email"
-            }
-          ]
-        },
-        "invalid": true
-      },
-      "response": {
-        "status": 422,
-        "body": {
-          "error": {
-            "code": "validation_failed",
-            "message": "Request body failed validation",
-            "details": {
-              "fields": {
-                "contacts[1].email": "must be an email address"
-              }
-            }
-          }
-        }
-      }
-    }
-  },
-  "linkAccount": {
-    "address_blank": {
-      "request": {
-        "body": {
-          "address": "   ",
-          "password": "supplied-by-contract-hook"
-        },
-        "invalid": true
-      },
-      "response": {
-        "status": 422,
-        "body": {
-          "error": {
-            "code": "validation_failed",
-            "message": "Request body failed validation",
-            "details": {
-              "fields": {
-                "address": "required"
-              }
-            }
-          }
-        }
-      }
-    },
-    "address_missing": {
-      "request": {
-        "body": {
-          "password": "supplied-by-contract-hook"
-        },
-        "invalid": true
-      },
-      "response": {
-        "status": 422,
-        "body": {
-          "error": {
-            "code": "validation_failed",
-            "message": "Request body failed validation",
-            "details": {
-              "fields": {
-                "address": "required"
-              }
-            }
-          }
-        }
-      }
-    },
-    "linked": {
-      "request": {
-        "body": {
-          "address": "eve@restmail.test",
-          "password": "supplied-by-contract-hook"
-        }
-      },
-      "response": {
-        "status": 201,
-        "body": {
-          "data": {
-            "id": 2,
-            "address": "eve@restmail.test",
-            "display_name": "Eve",
-            "is_primary": false
-          }
-        }
-      }
-    },
-    "password_empty": {
-      "request": {
-        "body": {
-          "address": "eve@restmail.test",
-          "password": ""
-        },
-        "invalid": true
-      },
-      "response": {
-        "status": 422,
-        "body": {
-          "error": {
-            "code": "validation_failed",
-            "message": "Request body failed validation",
-            "details": {
-              "fields": {
-                "password": "required"
-              }
-            }
-          }
-        }
-      }
-    },
-    "password_missing": {
-      "request": {
-        "body": {
-          "address": "eve@restmail.test"
-        },
-        "invalid": true
-      },
-      "response": {
-        "status": 422,
-        "body": {
-          "error": {
-            "code": "validation_failed",
-            "message": "Request body failed validation",
-            "details": {
-              "fields": {
-                "password": "required"
-              }
-            }
-          }
-        }
-      }
-    }
-  },
-  "listCapabilities": {
-    "available": {
-      "summary": "A permitted session reads the capability catalogue",
-      "request": {},
-      "response": {
-        "status": 200,
-        "body": {
-          "data": [
-            {
-              "id": 1,
-              "name": "users:read",
-              "description": "Read accounts and grants",
-              "resource": "users",
-              "action": "read"
-            }
-          ]
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "insufficient_permissions": {
-      "summary": "The session lacks users:read at the server scope",
-      "description": "Precondition: the session is current and setup is complete, but its live grants do not cover users:read at *. The real capability middleware proves this refusal.",
-      "request": {},
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "internal_error": {
-      "summary": "The capability store read fails",
-      "description": "Fault precondition: session and permission checks pass, but the capability table cannot be read. The real registration proves this refusal.",
-      "request": {},
-      "response": {
-        "status": 500,
-        "body": {
-          "error": {
-            "code": "internal_error",
-            "message": "Failed to fetch capabilities"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "request_too_large": {
-      "summary": "The request exceeds the configured transport body cap",
-      "description": "Precondition: a current session sends Content-Length above APIMaxBodyBytes, even on this GET. The registered-route test sets the transport size directly; there is no typed request body.",
-      "request": {},
-      "response": {
-        "status": 413,
-        "body": {
-          "error": {
-            "code": "request_too_large",
-            "message": "Request body too large"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "session_unavailable": {
-      "summary": "The current-session lookup fails",
-      "description": "Fault precondition: the database-backed current-session check fails. The real production router with a failing database proves this response.",
-      "request": {},
-      "response": {
-        "status": 503,
-        "body": {
-          "error": {
-            "code": "unavailable",
-            "message": "Could not verify the session"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "unauthenticated": {
-      "summary": "No session credential was sent",
-      "description": "No Authorization header or access cookie. The real production router proves this refusal.",
       "request": {},
       "response": {
         "status": 401,
