@@ -18,9 +18,12 @@ import (
 
 	"github.com/restmail/restmail"
 	"github.com/restmail/restmail/internal/api/endpoint"
+	"github.com/restmail/restmail/internal/version"
 )
 
 var publicExamplePaths = map[string]string{
+	"apiRoot":              "/api",
+	"describeServer":       "/api/v1/server",
 	"openapiDocument":      "/api/docs/openapi.json",
 	"openapiSpec":          "/api/docs/openapi.yaml",
 	"prometheusMetrics":    "/metrics",
@@ -83,6 +86,21 @@ func TestPublicReadExamplesMatchRegisteredResponses(t *testing.T) {
 				if !strings.Contains(rr.Body.String(), "restmail_example_ready 1\n") {
 					t.Fatalf("not the collector's exposition: %s", rr.Body.String())
 				}
+			case "apiRoot", "describeServer":
+				var expected map[string]map[string]interface{}
+				if err := json.Unmarshal(pair.Response.Body, &expected); err != nil {
+					t.Fatal(err)
+				}
+				expected["data"]["version"] = version.Version
+				if id == "apiRoot" {
+					expected["data"]["commit"] = version.Commit
+					expected["data"]["build_date"] = version.BuildDate
+				}
+				body, err := json.Marshal(expected)
+				if err != nil {
+					t.Fatal(err)
+				}
+				assertPublicExampleBody(t, body, rr.Body.Bytes())
 			case "restmailCapabilities":
 				assertPublicExampleBody(t, pair.Response.Body, rr.Body.Bytes())
 			}
