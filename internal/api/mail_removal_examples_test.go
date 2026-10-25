@@ -125,7 +125,7 @@ type mailRemovalScenarios struct {
 	store     *bulkQueueExampleStore
 }
 
-func newMailRemovalScenarios(t *testing.T) mailRemovalScenarios {
+func newMailRemovalScenarios(t *testing.T, connections ...func(mailResourceReadConnection, *bulkQueueExampleStore) driver.Connector) mailRemovalScenarios {
 	t.Helper()
 	extra := map[string]accountListKey{}
 	tokens := map[string]string{}
@@ -152,7 +152,11 @@ func newMailRemovalScenarios(t *testing.T) mailRemovalScenarios {
 		for public, key := range extra {
 			keys[public] = key
 		}
-		return mailRemovalConnection{mailResourceReadConnection{personalDataReadConnection{accountCredentialListConnection{mode: mode, keys: keys}}}, store}
+		base := mailResourceReadConnection{personalDataReadConnection{accountCredentialListConnection{mode: mode, keys: keys}}}
+		if len(connections) != 0 {
+			return connections[0](base, store)
+		}
+		return mailRemovalConnection{base, store}
 	})
 	for _, name := range []string{"lookup_unavailable", "write_unavailable", "concurrent", "foreign_owner", "sending", "sent", "cancelled", "wrong_mailbox", "invalid_mid", "invalid_mid_format", "missing_account"} {
 		out[name] = out["found"]
