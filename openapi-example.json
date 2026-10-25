@@ -13741,5 +13741,1662 @@
         }
       }
     }
+  },
+  "getAccount": {
+    "found": {
+      "summary": "A linked account is readable through its mailbox grant",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "address": "linked@example.com",
+            "display_name": "Account café",
+            "is_primary": false
+          }
+        }
+      },
+      "description": "The real account resolver loads mail:read from the grant tables and maps the full public result. No credential hash or secret is returned."
+    },
+    "primary": {
+      "summary": "The active primary account has implicit owner capabilities",
+      "request": {
+        "path": {
+          "id": 10
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 10,
+            "address": "user@example.com",
+            "display_name": "Account café",
+            "is_primary": true
+          }
+        }
+      }
+    },
+    "domain_grant": {
+      "summary": "A mail-read grant covering the domain reaches this account",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "address": "linked@example.com",
+            "display_name": "Account café",
+            "is_primary": false
+          }
+        }
+      }
+    },
+    "write_only": {
+      "summary": "A mail-write grant alone does not permit a read",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        }
+      },
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller."
+    },
+    "key_read": {
+      "summary": "A scoped API key reads the permitted account",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "address": "linked@example.com",
+            "display_name": "Account café",
+            "is_primary": false
+          }
+        }
+      },
+      "description": "A temporary key passes the production key parser, hash comparison and repository verifier. Both its mail:read mailbox scope and its holder ceiling permit this account."
+    },
+    "key_wrong_scope": {
+      "summary": "A valid API key scoped to another mailbox is refused",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        }
+      },
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller."
+    },
+    "key_write_only": {
+      "summary": "A valid API key with only mail-write permission cannot read",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        }
+      },
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller."
+    },
+    "missing": {
+      "summary": "A missing account retains the existing privacy refusal",
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        }
+      },
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller."
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "setup_required": {
+      "summary": "A session still in setup cannot use account reads",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        }
+      }
+    },
+    "rate_limited": {
+      "summary": "Repeated malformed API-key guesses exhaust the real refusal budget",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        }
+      },
+      "description": "The test primes a one-token per-peer budget with an invalid key, then repeats it without sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After."
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        }
+      }
+    },
+    "invalid_format": {
+      "summary": "The domain ID cannot bind to an integer",
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "An account lookup fault is not an authorization decision",
+      "request": {
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "grant_unavailable": {
+      "summary": "The account exists but its grant lookup fails",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "ownership_unavailable": {
+      "summary": "Implicit ownership cannot be loaded",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_holder_missing": {
+      "summary": "A valid key cannot exceed its holder's current grants",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        }
+      },
+      "description": "The production verifier accepts the scoped key, but the actual grant loader supplies only mail:write for its holder on this account. The old key permission cannot supply the missing mail:read capability."
+    }
+  },
+  "getQuota": {
+    "found": {
+      "summary": "A linked account is readable through its mailbox grant",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "message_count": 3,
+            "percent_used": 25,
+            "quota_bytes": 1024,
+            "quota_used_bytes": 256
+          }
+        }
+      },
+      "description": "The real account resolver loads mail:read from the grant tables and maps the full public result. No credential hash or secret is returned."
+    },
+    "primary": {
+      "summary": "The active primary account has implicit owner capabilities",
+      "request": {
+        "path": {
+          "id": 10
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "message_count": 3,
+            "percent_used": 25,
+            "quota_bytes": 1024,
+            "quota_used_bytes": 256
+          }
+        }
+      }
+    },
+    "domain_grant": {
+      "summary": "A mail-read grant covering the domain reaches this account",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "message_count": 3,
+            "percent_used": 25,
+            "quota_bytes": 1024,
+            "quota_used_bytes": 256
+          }
+        }
+      }
+    },
+    "write_only": {
+      "summary": "A mail-write grant alone does not permit a read",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      },
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller."
+    },
+    "key_read": {
+      "summary": "A scoped API key reads the permitted account",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "message_count": 3,
+            "percent_used": 25,
+            "quota_bytes": 1024,
+            "quota_used_bytes": 256
+          }
+        }
+      },
+      "description": "A temporary key passes the production key parser, hash comparison and repository verifier. Both its mail:read mailbox scope and its holder ceiling permit this account."
+    },
+    "key_wrong_scope": {
+      "summary": "A valid API key scoped to another mailbox is refused",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      },
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller."
+    },
+    "key_write_only": {
+      "summary": "A valid API key with only mail-write permission cannot read",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      },
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller."
+    },
+    "missing": {
+      "summary": "A missing account retains the existing privacy refusal",
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      },
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller."
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "setup_required": {
+      "summary": "A session still in setup cannot use account reads",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        }
+      }
+    },
+    "rate_limited": {
+      "summary": "Repeated malformed API-key guesses exhaust the real refusal budget",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        }
+      },
+      "description": "The test primes a one-token per-peer budget with an invalid key, then repeats it without sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After."
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        }
+      }
+    },
+    "invalid_format": {
+      "summary": "The domain ID cannot bind to an integer",
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "An account lookup fault is not an authorization decision",
+      "request": {
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "grant_unavailable": {
+      "summary": "The account exists but its grant lookup fails",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "ownership_unavailable": {
+      "summary": "Implicit ownership cannot be loaded",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unlimited": {
+      "summary": "An unlimited quota retains finite JSON and actual usage",
+      "request": {
+        "path": {
+          "id": 6
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "message_count": 3,
+            "percent_used": 0,
+            "quota_bytes": 0,
+            "quota_used_bytes": 256
+          }
+        }
+      },
+      "description": "A zero byte ceiling means unlimited storage. Its percentage is zero instead of NaN or infinity; message count and used bytes remain accurate."
+    },
+    "disappeared": {
+      "summary": "An authorized mailbox disappears before the quota reload",
+      "request": {
+        "path": {
+          "id": 7
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Mailbox not found"
+          }
+        }
+      }
+    },
+    "mailbox_unavailable": {
+      "summary": "A failed quota reload is not a missing mailbox",
+      "request": {
+        "path": {
+          "id": 8
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "count_unavailable": {
+      "summary": "A failed message count cannot silently become zero",
+      "request": {
+        "path": {
+          "id": 5
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "key_holder_missing": {
+      "summary": "A valid key cannot exceed its holder's current grants",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      },
+      "description": "The production verifier accepts the scoped key, but the actual grant loader supplies only mail:write for its holder on this account. The old key permission cannot supply the missing mail:read capability."
+    }
+  },
+  "getSieveScript": {
+    "found": {
+      "summary": "A linked account is readable through its mailbox grant",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 101,
+            "mailbox_id": 1,
+            "script": "require [\"fileinto\"];\nfileinto \"Archive\";\n",
+            "script_hash": "be7a2f84b9288b159538f3bd8632a5a7bd34d0a14432a4ba686005867350c9bf",
+            "validated_at": "2026-10-20T00:00:00Z",
+            "active": true,
+            "created_at": "2026-10-20T00:00:00Z",
+            "updated_at": "2026-10-20T00:00:00Z"
+          }
+        }
+      },
+      "description": "The real account resolver loads mail:read from the grant tables and maps the full public result. No credential hash or secret is returned."
+    },
+    "primary": {
+      "summary": "The active primary account has implicit owner capabilities",
+      "request": {
+        "path": {
+          "id": 10
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 110,
+            "mailbox_id": 10,
+            "script": "require [\"fileinto\"];\nfileinto \"Archive\";\n",
+            "script_hash": "be7a2f84b9288b159538f3bd8632a5a7bd34d0a14432a4ba686005867350c9bf",
+            "validated_at": "2026-10-20T00:00:00Z",
+            "active": true,
+            "created_at": "2026-10-20T00:00:00Z",
+            "updated_at": "2026-10-20T00:00:00Z"
+          }
+        }
+      }
+    },
+    "domain_grant": {
+      "summary": "A mail-read grant covering the domain reaches this account",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 101,
+            "mailbox_id": 1,
+            "script": "require [\"fileinto\"];\nfileinto \"Archive\";\n",
+            "script_hash": "be7a2f84b9288b159538f3bd8632a5a7bd34d0a14432a4ba686005867350c9bf",
+            "validated_at": "2026-10-20T00:00:00Z",
+            "active": true,
+            "created_at": "2026-10-20T00:00:00Z",
+            "updated_at": "2026-10-20T00:00:00Z"
+          }
+        }
+      }
+    },
+    "write_only": {
+      "summary": "A mail-write grant alone does not permit a read",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      },
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller."
+    },
+    "key_read": {
+      "summary": "A scoped API key reads the permitted account",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 101,
+            "mailbox_id": 1,
+            "script": "require [\"fileinto\"];\nfileinto \"Archive\";\n",
+            "script_hash": "be7a2f84b9288b159538f3bd8632a5a7bd34d0a14432a4ba686005867350c9bf",
+            "validated_at": "2026-10-20T00:00:00Z",
+            "active": true,
+            "created_at": "2026-10-20T00:00:00Z",
+            "updated_at": "2026-10-20T00:00:00Z"
+          }
+        }
+      },
+      "description": "A temporary key passes the production key parser, hash comparison and repository verifier. Both its mail:read mailbox scope and its holder ceiling permit this account."
+    },
+    "key_wrong_scope": {
+      "summary": "A valid API key scoped to another mailbox is refused",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      },
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller."
+    },
+    "key_write_only": {
+      "summary": "A valid API key with only mail-write permission cannot read",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      },
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller."
+    },
+    "missing": {
+      "summary": "A missing account retains the existing privacy refusal",
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      },
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller."
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "setup_required": {
+      "summary": "A session still in setup cannot use account reads",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        }
+      }
+    },
+    "rate_limited": {
+      "summary": "Repeated malformed API-key guesses exhaust the real refusal budget",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        }
+      },
+      "description": "The test primes a one-token per-peer budget with an invalid key, then repeats it without sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After."
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        }
+      }
+    },
+    "invalid_format": {
+      "summary": "The domain ID cannot bind to an integer",
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "An account lookup fault is not an authorization decision",
+      "request": {
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "grant_unavailable": {
+      "summary": "The account exists but its grant lookup fails",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "ownership_unavailable": {
+      "summary": "Implicit ownership cannot be loaded",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "defaults": {
+      "summary": "A genuinely absent configuration returns its documented defaults",
+      "request": {
+        "path": {
+          "id": 2
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "mailbox_id": 2,
+            "script": "",
+            "active": false
+          }
+        }
+      }
+    },
+    "content_unavailable": {
+      "summary": "A failed configuration query cannot silently become defaults",
+      "request": {
+        "path": {
+          "id": 4
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "key_holder_missing": {
+      "summary": "A valid key cannot exceed its holder's current grants",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      },
+      "description": "The production verifier accepts the scoped key, but the actual grant loader supplies only mail:write for its holder on this account. The old key permission cannot supply the missing mail:read capability."
+    }
+  },
+  "getVacation": {
+    "found": {
+      "summary": "A linked account is readable through its mailbox grant",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "enabled": true,
+            "subject": "Away",
+            "body": "Back on Monday.",
+            "start_date": "2026-10-20T00:00:00Z",
+            "end_date": "2026-10-27T00:00:00Z"
+          }
+        }
+      },
+      "description": "The real account resolver loads mail:read from the grant tables and maps the full public result. No credential hash or secret is returned."
+    },
+    "primary": {
+      "summary": "The active primary account has implicit owner capabilities",
+      "request": {
+        "path": {
+          "id": 10
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "enabled": true,
+            "subject": "Away",
+            "body": "Back on Monday.",
+            "start_date": "2026-10-20T00:00:00Z",
+            "end_date": "2026-10-27T00:00:00Z"
+          }
+        }
+      }
+    },
+    "domain_grant": {
+      "summary": "A mail-read grant covering the domain reaches this account",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "enabled": true,
+            "subject": "Away",
+            "body": "Back on Monday.",
+            "start_date": "2026-10-20T00:00:00Z",
+            "end_date": "2026-10-27T00:00:00Z"
+          }
+        }
+      }
+    },
+    "write_only": {
+      "summary": "A mail-write grant alone does not permit a read",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      },
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller."
+    },
+    "key_read": {
+      "summary": "A scoped API key reads the permitted account",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "enabled": true,
+            "subject": "Away",
+            "body": "Back on Monday.",
+            "start_date": "2026-10-20T00:00:00Z",
+            "end_date": "2026-10-27T00:00:00Z"
+          }
+        }
+      },
+      "description": "A temporary key passes the production key parser, hash comparison and repository verifier. Both its mail:read mailbox scope and its holder ceiling permit this account."
+    },
+    "key_wrong_scope": {
+      "summary": "A valid API key scoped to another mailbox is refused",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      },
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller."
+    },
+    "key_write_only": {
+      "summary": "A valid API key with only mail-write permission cannot read",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      },
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller."
+    },
+    "missing": {
+      "summary": "A missing account retains the existing privacy refusal",
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      },
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller."
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "setup_required": {
+      "summary": "A session still in setup cannot use account reads",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        }
+      }
+    },
+    "rate_limited": {
+      "summary": "Repeated malformed API-key guesses exhaust the real refusal budget",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        }
+      },
+      "description": "The test primes a one-token per-peer budget with an invalid key, then repeats it without sleeping. The actual API-key authentication middleware returns 429 and a positive Retry-After."
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        }
+      }
+    },
+    "invalid_format": {
+      "summary": "The domain ID cannot bind to an integer",
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "An account lookup fault is not an authorization decision",
+      "request": {
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "grant_unavailable": {
+      "summary": "The account exists but its grant lookup fails",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "ownership_unavailable": {
+      "summary": "Implicit ownership cannot be loaded",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "defaults": {
+      "summary": "A genuinely absent configuration returns its documented defaults",
+      "request": {
+        "path": {
+          "id": 2
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "enabled": false,
+            "subject": "",
+            "body": ""
+          }
+        }
+      }
+    },
+    "content_unavailable": {
+      "summary": "A failed configuration query cannot silently become defaults",
+      "request": {
+        "path": {
+          "id": 4
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "key_holder_missing": {
+      "summary": "A valid key cannot exceed its holder's current grants",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      },
+      "description": "The production verifier accepts the scoped key, but the actual grant loader supplies only mail:write for its holder on this account. The old key permission cannot supply the missing mail:read capability."
+    }
   }
 }
