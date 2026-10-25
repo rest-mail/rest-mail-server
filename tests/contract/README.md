@@ -761,8 +761,20 @@ was checked with a linked create/delete fixture: it sends both the absent ID
 and the created ID, with no hook rewriting either request.
 `TestAdminDeletes_DocumentedMissingExamples` checks both descriptions and
 verifies that each registered route leaves existing rows and counts intact
-when it refuses a missing target. `test_gate.py` pins all nineteen enabled
+when it refuses a missing target. `test_gate.py` pins the complete enabled
 operations; other unpaired refusals retain their exclusions.
+
+`updatePipeline`, `deletePipeline` and `testPipeline` also send a named
+`missing` request and the exact `not_found` / `Pipeline not found` 404. The
+PATCH and DELETE use the absent positive path ID `2147483647`; the preview
+places it in `pipeline_id` alongside a valid empty email. The configured
+preview hook substitutes only the successful request's ID placeholder `1`,
+leaving missing IDs, invalid targets, credentials and expected responses
+intact. The create link continues to supply successful update and delete IDs.
+`TestPipelineOperations_DocumentedMissingExamples` checks both descriptions
+and unchanged stored pipeline state for all three registered routes. The
+configured-entrypoint hook regressions and `test_gate.py` keep all twenty-two
+missing-resource operations in the required examples gate.
 
 ### Browser session gate (#659)
 
