@@ -2252,367 +2252,6 @@
       }
     }
   },
-  "listDKIMKeys": {
-    "available": {
-      "summary": "The permitted read succeeds",
-      "description": "A current, setup-complete session reads the controlled database snapshot through the production registration. Lists are empty; statistics include two delivered queue entries. Push routes are configured for APNs, without sending a notification.",
-      "request": {},
-      "response": {
-        "status": 200,
-        "body": {
-          "data": []
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "internal_error": {
-      "summary": "The read dependency fails",
-      "description": "Session and permission checks pass, but the database read fails. The production handler and error writer produce this refusal without exposing dependency details.",
-      "request": {},
-      "response": {
-        "status": 500,
-        "body": {
-          "error": {
-            "code": "internal_error",
-            "message": "Internal server error"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "request_too_large": {
-      "summary": "The request exceeds the transport body cap",
-      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
-      "request": {},
-      "response": {
-        "status": 413,
-        "body": {
-          "error": {
-            "code": "request_too_large",
-            "message": "Request body too large"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "session_unavailable": {
-      "summary": "The current-session lookup fails",
-      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
-      "request": {},
-      "response": {
-        "status": 503,
-        "body": {
-          "error": {
-            "code": "unavailable",
-            "message": "Could not verify the session"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "setup_required": {
-      "summary": "The account has not completed setup",
-      "description": "The signed session is current but still requires initial account setup. The production SetupDone middleware refuses the request before reading data.",
-      "request": {},
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "setup_required",
-            "message": "Finish setting up this account first: a new password and two-factor authentication"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "unauthenticated": {
-      "summary": "No session credential was sent",
-      "description": "No Authorization header or access cookie is sent. The production JWT middleware refuses the request.",
-      "request": {},
-      "response": {
-        "status": 401,
-        "body": {
-          "error": {
-            "code": "unauthorized",
-            "message": "Missing authorization header"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    }
-  },
-  "listMyGrants": {
-    "available": {
-      "summary": "The permitted read succeeds",
-      "description": "A current, setup-complete session reads the controlled database snapshot through the production registration. Lists are empty; statistics include two delivered queue entries. Push routes are configured for APNs, without sending a notification.",
-      "request": {},
-      "response": {
-        "status": 200,
-        "body": {
-          "data": []
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "internal_error": {
-      "summary": "The read dependency fails",
-      "description": "Session and permission checks pass, but the database read fails. The production handler and error writer produce this refusal without exposing dependency details.",
-      "request": {},
-      "response": {
-        "status": 500,
-        "body": {
-          "error": {
-            "code": "internal_error",
-            "message": "Failed to fetch grants"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "request_too_large": {
-      "summary": "The request exceeds the transport body cap",
-      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
-      "request": {},
-      "response": {
-        "status": 413,
-        "body": {
-          "error": {
-            "code": "request_too_large",
-            "message": "Request body too large"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "session_unavailable": {
-      "summary": "The current-session lookup fails",
-      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
-      "request": {},
-      "response": {
-        "status": 503,
-        "body": {
-          "error": {
-            "code": "unavailable",
-            "message": "Could not verify the session"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "setup_required": {
-      "summary": "The account has not completed setup",
-      "description": "The signed session is current but still requires initial account setup. The production SetupDone middleware refuses the request before reading data.",
-      "request": {},
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "setup_required",
-            "message": "Finish setting up this account first: a new password and two-factor authentication"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "unauthenticated": {
-      "summary": "No session credential was sent",
-      "description": "No Authorization header or access cookie is sent. The production JWT middleware refuses the request.",
-      "request": {},
-      "response": {
-        "status": 401,
-        "body": {
-          "error": {
-            "code": "unauthorized",
-            "message": "Missing authorization header"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    }
-  },
-  "listPushDevices": {
-    "available": {
-      "summary": "The permitted read succeeds",
-      "description": "A current, setup-complete session reads the controlled database snapshot through the production registration. Lists are empty; statistics include two delivered queue entries. Push routes are configured for APNs, without sending a notification.",
-      "request": {},
-      "response": {
-        "status": 200,
-        "body": {
-          "data": {
-            "platforms": [
-              "apns"
-            ],
-            "devices": []
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "internal_error": {
-      "summary": "The read dependency fails",
-      "description": "Session and permission checks pass, but the database read fails. The production handler and error writer produce this refusal without exposing dependency details.",
-      "request": {},
-      "response": {
-        "status": 500,
-        "body": {
-          "error": {
-            "code": "internal_error",
-            "message": "Failed to list devices"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "request_too_large": {
-      "summary": "The request exceeds the transport body cap",
-      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
-      "request": {},
-      "response": {
-        "status": 413,
-        "body": {
-          "error": {
-            "code": "request_too_large",
-            "message": "Request body too large"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "session_unavailable": {
-      "summary": "The current-session lookup fails",
-      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
-      "request": {},
-      "response": {
-        "status": 503,
-        "body": {
-          "error": {
-            "code": "unavailable",
-            "message": "Could not verify the session"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "setup_required": {
-      "summary": "The account has not completed setup",
-      "description": "The signed session is current but still requires initial account setup. The production SetupDone middleware refuses the request before reading data.",
-      "request": {},
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "setup_required",
-            "message": "Finish setting up this account first: a new password and two-factor authentication"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "unauthenticated": {
-      "summary": "No session credential was sent",
-      "description": "No Authorization header or access cookie is sent. The production JWT middleware refuses the request.",
-      "request": {},
-      "response": {
-        "status": 401,
-        "body": {
-          "error": {
-            "code": "unauthorized",
-            "message": "Missing authorization header"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    }
-  },
-  "listRoles": {
-    "available": {
-      "summary": "The permitted read succeeds",
-      "description": "A current, setup-complete session reads the controlled database snapshot through the production registration. Lists are empty; statistics include two delivered queue entries. Push routes are configured for APNs, without sending a notification.",
-      "request": {},
-      "response": {
-        "status": 200,
-        "body": {
-          "data": []
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "internal_error": {
-      "summary": "The read dependency fails",
-      "description": "Session and permission checks pass, but the database read fails. The production handler and error writer produce this refusal without exposing dependency details.",
-      "request": {},
-      "response": {
-        "status": 500,
-        "body": {
-          "error": {
-            "code": "internal_error",
-            "message": "Failed to fetch roles"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "request_too_large": {
-      "summary": "The request exceeds the transport body cap",
-      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
-      "request": {},
-      "response": {
-        "status": 413,
-        "body": {
-          "error": {
-            "code": "request_too_large",
-            "message": "Request body too large"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "session_unavailable": {
-      "summary": "The current-session lookup fails",
-      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
-      "request": {},
-      "response": {
-        "status": 503,
-        "body": {
-          "error": {
-            "code": "unavailable",
-            "message": "Could not verify the session"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "setup_required": {
-      "summary": "The account has not completed setup",
-      "description": "The signed session is current but still requires initial account setup. The production SetupDone middleware refuses the request before reading data.",
-      "request": {},
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "setup_required",
-            "message": "Finish setting up this account first: a new password and two-factor authentication"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "unauthenticated": {
-      "summary": "No session credential was sent",
-      "description": "No Authorization header or access cookie is sent. The production JWT middleware refuses the request.",
-      "request": {},
-      "response": {
-        "status": 401,
-        "body": {
-          "error": {
-            "code": "unauthorized",
-            "message": "Missing authorization header"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    }
-  },
   "importContacts": {
     "body_array": {
       "request": {
@@ -2966,6 +2605,367 @@
     "unauthenticated": {
       "summary": "No session credential was sent",
       "description": "No Authorization header or access cookie. The real production router proves this refusal.",
+      "request": {},
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "listDKIMKeys": {
+    "available": {
+      "summary": "The permitted read succeeds",
+      "description": "A current, setup-complete session reads the controlled database snapshot through the production registration. Lists are empty; statistics include two delivered queue entries. Push routes are configured for APNs, without sending a notification.",
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": []
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "The read dependency fails",
+      "description": "Session and permission checks pass, but the database read fails. The production handler and error writer produce this refusal without exposing dependency details.",
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "request": {},
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "setup_required": {
+      "summary": "The account has not completed setup",
+      "description": "The signed session is current but still requires initial account setup. The production SetupDone middleware refuses the request before reading data.",
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No session credential was sent",
+      "description": "No Authorization header or access cookie is sent. The production JWT middleware refuses the request.",
+      "request": {},
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "listMyGrants": {
+    "available": {
+      "summary": "The permitted read succeeds",
+      "description": "A current, setup-complete session reads the controlled database snapshot through the production registration. Lists are empty; statistics include two delivered queue entries. Push routes are configured for APNs, without sending a notification.",
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": []
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "The read dependency fails",
+      "description": "Session and permission checks pass, but the database read fails. The production handler and error writer produce this refusal without exposing dependency details.",
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to fetch grants"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "request": {},
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "setup_required": {
+      "summary": "The account has not completed setup",
+      "description": "The signed session is current but still requires initial account setup. The production SetupDone middleware refuses the request before reading data.",
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No session credential was sent",
+      "description": "No Authorization header or access cookie is sent. The production JWT middleware refuses the request.",
+      "request": {},
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "listPushDevices": {
+    "available": {
+      "summary": "The permitted read succeeds",
+      "description": "A current, setup-complete session reads the controlled database snapshot through the production registration. Lists are empty; statistics include two delivered queue entries. Push routes are configured for APNs, without sending a notification.",
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "platforms": [
+              "apns"
+            ],
+            "devices": []
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "The read dependency fails",
+      "description": "Session and permission checks pass, but the database read fails. The production handler and error writer produce this refusal without exposing dependency details.",
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to list devices"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "request": {},
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "setup_required": {
+      "summary": "The account has not completed setup",
+      "description": "The signed session is current but still requires initial account setup. The production SetupDone middleware refuses the request before reading data.",
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No session credential was sent",
+      "description": "No Authorization header or access cookie is sent. The production JWT middleware refuses the request.",
+      "request": {},
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "listRoles": {
+    "available": {
+      "summary": "The permitted read succeeds",
+      "description": "A current, setup-complete session reads the controlled database snapshot through the production registration. Lists are empty; statistics include two delivered queue entries. Push routes are configured for APNs, without sending a notification.",
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": []
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "The read dependency fails",
+      "description": "Session and permission checks pass, but the database read fails. The production handler and error writer produce this refusal without exposing dependency details.",
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to fetch roles"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "request": {},
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "setup_required": {
+      "summary": "The account has not completed setup",
+      "description": "The signed session is current but still requires initial account setup. The production SetupDone middleware refuses the request before reading data.",
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No session credential was sent",
+      "description": "No Authorization header or access cookie is sent. The production JWT middleware refuses the request.",
       "request": {},
       "response": {
         "status": 401,
