@@ -763,10 +763,19 @@ def list_the_sent_messages_queue_entry(transaction):
     # runs. The disposable topology prepares a separate deferred entry, held
     # until tomorrow, for the linked queue examples. Only the pending example
     # is redirected; invalid boundary queries and caller credentials stay intact.
-    if transaction.get("fullPath", "").endswith("/api/v1/admin/queue?status=pending"):
-        transaction["fullPath"] = "/api/v1/admin/queue?" + urllib.parse.urlencode(
-            {"recipient": FIXTURE_PLAN["queue"]["retry"]["recipient"]}
-        )
+    # Vertrag 0.31.1 also sends the declared defaults (limit=50, offset=0), so
+    # the pending example is recognised by its query, not by its exact text.
+    path, _, query = transaction.get("fullPath", "").partition("?")
+    if not path.endswith("/api/v1/admin/queue"):
+        return
+    params = urllib.parse.parse_qs(query, keep_blank_values=True)
+    defaults = {"limit": ["50"], "offset": ["0"]}
+    if params.get("status") != ["pending"] or any(
+            name != "status" and defaults.get(name) != value for name, value in params.items()):
+        return
+    transaction["fullPath"] = path + "?" + urllib.parse.urlencode(
+        {"recipient": FIXTURE_PLAN["queue"]["retry"]["recipient"]}
+    )
 
 
 @hooks.before("getMessageTrace")
