@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg viewBox="1 3 1076 496" data-reader-fit="intrinsic-height" data-lifecycle-layout="main-path-v3" role="img" lang="en" aria-labelledby="archify-diagram-title archify-diagram-description" data-animation="trace" data-preset="editorial" data-quality-profile="showcase" data-motion-choreography="walk" width="1076" height="496" xmlns="http://www.w3.org/2000/svg" data-source-sha256="25dec9b94ea7265e8a0946cd0f3fd18bf52af9c963ba4c95414d69fa040ed919" data-archify="3.2.0 208acba8d412335185b2056fedf54b3405df43fb" data-look-sha256="2bf1255e6e2f6538664e439cee3a906d6a62723d1727ef2456d51fc2d715d615"><style>
+<svg viewBox="1 4 669 674" data-reader-fit="intrinsic-height" data-lifecycle-layout="main-path-v3" role="img" lang="en" aria-labelledby="archify-diagram-title archify-diagram-description" data-animation="trace" data-preset="editorial" data-quality-profile="showcase" data-motion-choreography="walk" width="669" height="674" xmlns="http://www.w3.org/2000/svg" data-source-sha256="14866fd8f6a414d84beb06cc938639042ca7707a3c40c883d34d9a1aaed46786" data-archify="3.2.0 208acba8d412335185b2056fedf54b3405df43fb" data-look-sha256="2bf1255e6e2f6538664e439cee3a906d6a62723d1727ef2456d51fc2d715d615"><style>
 /*
 JetBrains Mono variable WOFF2 subsets from Google Fonts service revision v24.
 These fixed bytes are shared by the viewer and its SVG/raster exports.
@@ -386,71 +386,71 @@ svg[data-preset="editorial"] { --flow-halo-peak: 0.07; --flow-glow-peak: 0.28; -
 [data-preset="editorial"][data-theme="dark"] { --bg: #15110d; --text: #e8e3d6; --arrow-emphasis: #1840ff; }
 @keyframes archify-relay-ripple { 
   0% { r: 2px; opacity: var(--flow-peak, 0.6); }
-  14.235%, 100% { r: 20px; opacity: 0; }
+  14.395%, 100% { r: 20px; opacity: 0; }
 }
 @keyframes archify-relay-comet-0 { 
   0% { stroke-dashoffset: calc(var(--flow-len, 0px) + var(--flow-shift, 0px)); opacity: 0; animation-timing-function: cubic-bezier(0.45, 0.05, 0.35, 1); }
-  1.594% { opacity: var(--flow-peak, 0.9); }
-  7.972% { stroke-dashoffset: var(--flow-shift, 0px); opacity: var(--flow-peak, 0.9); }
-  11.009%, 100% { stroke-dashoffset: var(--flow-shift, 0px); opacity: 0; }
+  1.612% { opacity: var(--flow-peak, 0.9); }
+  8.061% { stroke-dashoffset: var(--flow-shift, 0px); opacity: var(--flow-peak, 0.9); }
+  11.132%, 100% { stroke-dashoffset: var(--flow-shift, 0px); opacity: 0; }
 }
 @keyframes archify-relay-wake-0 { 
   0% { stroke-dashoffset: var(--flow-len, 0px); opacity: var(--flow-peak, 0.3); animation-timing-function: cubic-bezier(0.45, 0.05, 0.35, 1); }
-  7.972% { stroke-dashoffset: 0px; opacity: var(--flow-peak, 0.3); }
-  25.054%, 100% { stroke-dashoffset: 0px; opacity: 0; }
+  8.061% { stroke-dashoffset: 0px; opacity: var(--flow-peak, 0.3); }
+  25.336%, 100% { stroke-dashoffset: 0px; opacity: 0; }
 }
 @keyframes archify-relay-comet-1 { 
   0% { stroke-dashoffset: calc(var(--flow-len, 0px) + var(--flow-shift, 0px)); opacity: 0; animation-timing-function: cubic-bezier(0.45, 0.05, 0.35, 1); }
-  1.817% { opacity: var(--flow-peak, 0.9); }
-  9.084% { stroke-dashoffset: var(--flow-shift, 0px); opacity: var(--flow-peak, 0.9); }
-  12.12%, 100% { stroke-dashoffset: var(--flow-shift, 0px); opacity: 0; }
+  1.612% { opacity: var(--flow-peak, 0.9); }
+  8.061% { stroke-dashoffset: var(--flow-shift, 0px); opacity: var(--flow-peak, 0.9); }
+  11.132%, 100% { stroke-dashoffset: var(--flow-shift, 0px); opacity: 0; }
 }
 @keyframes archify-relay-wake-1 { 
   0% { stroke-dashoffset: var(--flow-len, 0px); opacity: var(--flow-peak, 0.3); animation-timing-function: cubic-bezier(0.45, 0.05, 0.35, 1); }
-  9.084% { stroke-dashoffset: 0px; opacity: var(--flow-peak, 0.3); }
-  26.166%, 100% { stroke-dashoffset: 0px; opacity: 0; }
+  8.061% { stroke-dashoffset: 0px; opacity: var(--flow-peak, 0.3); }
+  25.336%, 100% { stroke-dashoffset: 0px; opacity: 0; }
 }
 @keyframes archify-relay-comet-2 { 
   0% { stroke-dashoffset: calc(var(--flow-len, 0px) + var(--flow-shift, 0px)); opacity: 0; animation-timing-function: cubic-bezier(0.45, 0.05, 0.35, 1); }
-  1.594% { opacity: var(--flow-peak, 0.9); }
-  7.972% { stroke-dashoffset: var(--flow-shift, 0px); opacity: var(--flow-peak, 0.9); }
-  11.009%, 100% { stroke-dashoffset: var(--flow-shift, 0px); opacity: 0; }
+  1.612% { opacity: var(--flow-peak, 0.9); }
+  8.061% { stroke-dashoffset: var(--flow-shift, 0px); opacity: var(--flow-peak, 0.9); }
+  11.132%, 100% { stroke-dashoffset: var(--flow-shift, 0px); opacity: 0; }
 }
 @keyframes archify-relay-wake-2 { 
   0% { stroke-dashoffset: var(--flow-len, 0px); opacity: var(--flow-peak, 0.3); animation-timing-function: cubic-bezier(0.45, 0.05, 0.35, 1); }
-  7.972% { stroke-dashoffset: 0px; opacity: var(--flow-peak, 0.3); }
-  25.054%, 100% { stroke-dashoffset: 0px; opacity: 0; }
+  8.061% { stroke-dashoffset: 0px; opacity: var(--flow-peak, 0.3); }
+  25.336%, 100% { stroke-dashoffset: 0px; opacity: 0; }
 }
 @keyframes archify-relay-node-0 { 
   0%, 100% { filter: var(--ambient-node-base-filter, none); }
   0% { filter: var(--ambient-node-base-filter, none); }
-  2.278%, 10.439% { filter: var(--ambient-node-base-filter,) drop-shadow(0 0 14px var(--arrow-emphasis)); }
-  25.244% { filter: var(--ambient-node-base-filter, none); }
+  2.303%, 10.557% { filter: var(--ambient-node-base-filter,) drop-shadow(0 0 14px var(--arrow-emphasis)); }
+  25.528% { filter: var(--ambient-node-base-filter, none); }
 }
 @keyframes archify-relay-node-1 { 
   0%, 100% { filter: var(--ambient-node-base-filter, none); }
-  18.411% { filter: var(--ambient-node-base-filter, none); }
-  20.689%, 28.85% { filter: var(--ambient-node-base-filter,) drop-shadow(0 0 14px var(--arrow-emphasis)); }
-  43.655% { filter: var(--ambient-node-base-filter, none); }
+  18.618% { filter: var(--ambient-node-base-filter, none); }
+  20.921%, 29.175% { filter: var(--ambient-node-base-filter,) drop-shadow(0 0 14px var(--arrow-emphasis)); }
+  44.146% { filter: var(--ambient-node-base-filter, none); }
 }
 @keyframes archify-relay-node-2 { 
   0%, 100% { filter: var(--ambient-node-base-filter, none); }
-  37.934% { filter: var(--ambient-node-base-filter, none); }
-  40.211%, 48.373% { filter: var(--ambient-node-base-filter,) drop-shadow(0 0 14px var(--arrow-emphasis)); }
-  63.178% { filter: var(--ambient-node-base-filter, none); }
+  37.236% { filter: var(--ambient-node-base-filter, none); }
+  39.539%, 47.793% { filter: var(--ambient-node-base-filter,) drop-shadow(0 0 14px var(--arrow-emphasis)); }
+  62.764% { filter: var(--ambient-node-base-filter, none); }
 }
 @keyframes archify-relay-node-3 { 
   0%, 100% { filter: var(--ambient-node-base-filter, none); }
-  56.345% { filter: var(--ambient-node-base-filter, none); }
-  58.623%, 79.121% { filter: var(--ambient-node-base-filter,) drop-shadow(0 0 14px var(--arrow-emphasis)); }
-  93.926% { filter: var(--ambient-node-base-filter, none); }
+  55.854% { filter: var(--ambient-node-base-filter, none); }
+  58.157%, 78.887% { filter: var(--ambient-node-base-filter,) drop-shadow(0 0 14px var(--arrow-emphasis)); }
+  93.858% { filter: var(--ambient-node-base-filter, none); }
 }
 :root, svg { --bg: #15110d; --grid: #39342a; --canvas-dot: rgba(148, 163, 184, 0.16); --text: #e8e3d6; --text-muted: #b9ae9b; --text-dim: #776e60; --text-faint: #9d917e; --panel: rgba(35, 31, 24, 0.96); --panel-border: #625a4a; --lane-fill: rgba(52, 46, 35, 0.46); --lane-stroke: #726957; --arrow: #948978; --arrow-emphasis: #1840ff; --mask: #231f18; --frontend-fill: rgba(43, 133, 142, 0.16); --frontend-stroke: #7fc6c7; --backend-fill: rgba(63, 132, 92, 0.16); --backend-stroke: #8fc29e; --database-fill: rgba(117, 91, 141, 0.17); --database-stroke: #c0a4d0; --cloud-fill: rgba(170, 119, 49, 0.16); --cloud-stroke: #d8ad68; --security-fill: rgba(157, 69, 65, 0.17); --security-stroke: #df9085; --messagebus-fill: rgba(174, 79, 42, 0.16); --messagebus-stroke: #df946f; --external-fill: rgba(126, 115, 96, 0.18); --external-stroke: #b8ad99; --toolbar-bg: rgba(35, 31, 24, 0.92); --toolbar-border: #625a4a; --toolbar-text: #eee5d5; --toolbar-hover: #302a20; --toolbar-menu-bg: #231f18; --flow-cycle: ; --flow-halo-peak: ; --flow-glow-peak: ; --flow-tail-peak: ; --flow-head-peak: ; --flow-wake-peak: ; --flow-ripple-peak: ; --flow-peak: ; }
 @media (prefers-color-scheme: light) { :root, svg { --bg: #f4f1ea; --grid: #d8d0c2; --canvas-dot: #e2e7ec; --text: #15110d; --text-muted: #5a5247; --text-dim: #8a8175; --text-faint: #5a5247; --panel: rgba(251, 248, 241, 0.97); --panel-border: #c4b9a6; --lane-fill: rgba(229, 221, 207, 0.42); --lane-stroke: #b8aa94; --arrow: #8a806f; --arrow-emphasis: #1840ff; --mask: #fbf8f1; --frontend-fill: rgba(31, 117, 126, 0.09); --frontend-stroke: #287e84; --backend-fill: rgba(42, 119, 75, 0.09); --backend-stroke: #397b53; --database-fill: rgba(105, 75, 130, 0.09); --database-stroke: #765d86; --cloud-fill: rgba(157, 103, 31, 0.1); --cloud-stroke: #9a671f; --security-fill: rgba(153, 58, 52, 0.09); --security-stroke: #9e463f; --messagebus-fill: rgba(182, 70, 27, 0.09); --messagebus-stroke: #ad4b25; --external-fill: rgba(101, 91, 75, 0.09); --external-stroke: #746b5e; --toolbar-bg: rgba(251, 248, 241, 0.94); --toolbar-border: #c4b9a6; --toolbar-text: #40392f; --toolbar-hover: #fffdf8; --toolbar-menu-bg: #fbf8f1; --flow-cycle: ; --flow-halo-peak: ; --flow-glow-peak: ; --flow-tail-peak: ; --flow-head-peak: ; --flow-wake-peak: ; --flow-ripple-peak: ; --flow-peak: ; } }
 svg[data-theme="light"] { --bg: #f4f1ea; --grid: #d8d0c2; --canvas-dot: #e2e7ec; --text: #15110d; --text-muted: #5a5247; --text-dim: #8a8175; --text-faint: #5a5247; --panel: rgba(251, 248, 241, 0.97); --panel-border: #c4b9a6; --lane-fill: rgba(229, 221, 207, 0.42); --lane-stroke: #b8aa94; --arrow: #8a806f; --arrow-emphasis: #1840ff; --mask: #fbf8f1; --frontend-fill: rgba(31, 117, 126, 0.09); --frontend-stroke: #287e84; --backend-fill: rgba(42, 119, 75, 0.09); --backend-stroke: #397b53; --database-fill: rgba(105, 75, 130, 0.09); --database-stroke: #765d86; --cloud-fill: rgba(157, 103, 31, 0.1); --cloud-stroke: #9a671f; --security-fill: rgba(153, 58, 52, 0.09); --security-stroke: #9e463f; --messagebus-fill: rgba(182, 70, 27, 0.09); --messagebus-stroke: #ad4b25; --external-fill: rgba(101, 91, 75, 0.09); --external-stroke: #746b5e; --toolbar-bg: rgba(251, 248, 241, 0.94); --toolbar-border: #c4b9a6; --toolbar-text: #40392f; --toolbar-hover: #fffdf8; --toolbar-menu-bg: #fbf8f1; --flow-cycle: ; --flow-halo-peak: ; --flow-glow-peak: ; --flow-tail-peak: ; --flow-head-peak: ; --flow-wake-peak: ; --flow-ripple-peak: ; --flow-peak: ; }
 svg[data-theme="dark"] { --bg: #15110d; --grid: #39342a; --canvas-dot: rgba(148, 163, 184, 0.16); --text: #e8e3d6; --text-muted: #b9ae9b; --text-dim: #776e60; --text-faint: #9d917e; --panel: rgba(35, 31, 24, 0.96); --panel-border: #625a4a; --lane-fill: rgba(52, 46, 35, 0.46); --lane-stroke: #726957; --arrow: #948978; --arrow-emphasis: #1840ff; --mask: #231f18; --frontend-fill: rgba(43, 133, 142, 0.16); --frontend-stroke: #7fc6c7; --backend-fill: rgba(63, 132, 92, 0.16); --backend-stroke: #8fc29e; --database-fill: rgba(117, 91, 141, 0.17); --database-stroke: #c0a4d0; --cloud-fill: rgba(170, 119, 49, 0.16); --cloud-stroke: #d8ad68; --security-fill: rgba(157, 69, 65, 0.17); --security-stroke: #df9085; --messagebus-fill: rgba(174, 79, 42, 0.16); --messagebus-stroke: #df946f; --external-fill: rgba(126, 115, 96, 0.18); --external-stroke: #b8ad99; --toolbar-bg: rgba(35, 31, 24, 0.92); --toolbar-border: #625a4a; --toolbar-text: #eee5d5; --toolbar-hover: #302a20; --toolbar-menu-bg: #231f18; --flow-cycle: ; --flow-halo-peak: ; --flow-glow-peak: ; --flow-tail-peak: ; --flow-head-peak: ; --flow-wake-peak: ; --flow-ripple-peak: ; --flow-peak: ; }
 rect.c-bg-rect { fill: var(--bg); }
-</style><rect x="0" y="0" width="1108" height="504" class="c-bg-rect"/>
+</style><rect x="0" y="0" width="702" height="682" class="c-bg-rect"/>
         <title id="archify-diagram-title">A queued message: delivered, retried, or bounced</title>
         <desc id="archify-diagram-description">A lifecycle diagram generated by Archify.</desc>
         <!-- Definitions -->
@@ -484,32 +484,32 @@ rect.c-bg-rect { fill: var(--bg); }
           <path data-edge-from="queued" data-edge-to="attempt" data-edge-label="send" data-edge-key="0" data-edge-id="try" data-composition-points="225,60;297,60" data-composition-crossover="halo" data-composition-independent="true" d="M 225 60 L 297 60" class="a-emphasis" data-animate="edge" style="--step: 0;" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:1">
-          <path data-graph-role="automatic-crossover-underlay" d="M 471 60 L 605 60" fill="none" stroke="var(--mask)" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="attempt" data-edge-to="reply" data-edge-label="reply or timeout" data-edge-key="1" data-edge-id="answer" data-composition-points="471,60;605,60" data-composition-crossover="halo" data-composition-independent="true" d="M 471 60 L 605 60" class="a-emphasis" data-animate="edge" style="--step: 1;" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 319 92 L 319 184" fill="none" stroke="var(--mask)" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="attempt" data-edge-to="reply" data-edge-label="reply or timeout" data-edge-key="1" data-edge-id="answer" data-composition-points="319,92;319,184" data-composition-crossover="halo" data-composition-independent="true" d="M 319 92 L 319 184" class="a-default" data-animate="edge" style="--step: 1;" stroke-width="1.2" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:2">
-          <path data-graph-role="automatic-crossover-underlay" d="M 779 60 L 851 60" fill="none" stroke="var(--mask)" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="reply" data-edge-to="delivered" data-edge-label="2xx" data-edge-key="2" data-edge-id="ok" data-composition-points="779,60;851,60" data-composition-crossover="halo" data-composition-independent="true" d="M 779 60 L 851 60" class="a-emphasis" data-animate="edge" style="--step: 2;" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 234.4 248 L 234.4 340" fill="none" stroke="var(--mask)" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="reply" data-edge-to="delivered" data-edge-label="2xx" data-edge-key="2" data-edge-id="ok" data-composition-points="234.4,248;234.4,340" data-composition-crossover="halo" data-composition-independent="true" d="M 234.4 248 L 234.4 340" class="a-emphasis" data-animate="edge" style="--step: 2;" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:3">
-          <path data-graph-role="automatic-crossover-underlay" d="M 627 92 L 627 114 Q 627 126 615 126 L 566 126 Q 554 126 554 138 L 554 184" fill="none" stroke="var(--mask)" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="reply" data-edge-to="deferred" data-edge-label="4xx, no answer" data-edge-key="3" data-edge-id="later" data-composition-points="627,92;627,126;554,126;554,184" data-composition-crossover="halo" data-composition-independent="true" d="M 627 92 L 627 114 Q 627 126 615 126 L 566 126 Q 554 126 554 138 L 554 184" class="a-dashed" data-animate="edge" style="--step: 3;" stroke-width="1.2" marker-end="url(#arrowhead-dashed)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 354.75 216 L 482.75 216" fill="none" stroke="var(--mask)" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="reply" data-edge-to="deferred" data-edge-label="4xx, no answer" data-edge-key="3" data-edge-id="later" data-composition-points="354.75,216;482.75,216" data-composition-crossover="halo" data-composition-independent="true" d="M 354.75 216 L 482.75 216" class="a-dashed" data-animate="edge" style="--step: 3;" stroke-width="1.2" marker-end="url(#arrowhead-dashed)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:4">
-          <path data-graph-role="automatic-crossover-underlay" d="M 449 184 L 449 92" fill="none" stroke="var(--mask)" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="deferred" data-edge-to="attempt" data-edge-label="retry" data-edge-key="4" data-edge-id="retry" data-composition-points="449,184;449,92" data-composition-crossover="halo" data-composition-independent="true" d="M 449 184 L 449 92" class="a-default" data-animate="edge" style="--step: 4;" stroke-width="1.2" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 504.8 184 L 504.8 138 Q 504.8 126 492.8 126 L 461 126 Q 449 126 449 114 L 449 92" fill="none" stroke="var(--mask)" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="deferred" data-edge-to="attempt" data-edge-label="retry" data-edge-key="4" data-edge-id="retry" data-composition-points="504.8,184;504.8,126;449,126;449,92" data-composition-crossover="halo" data-composition-independent="true" d="M 504.8 184 L 504.8 138 Q 504.8 126 492.8 126 L 461 126 Q 449 126 449 114 L 449 92" class="a-default" data-animate="edge" style="--step: 4;" stroke-width="1.2" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:5">
-          <path data-graph-role="automatic-crossover-underlay" d="M 576 216 L 710 216" fill="none" stroke="var(--mask)" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="deferred" data-edge-to="failed" data-edge-label="4–5 days passed" data-edge-key="5" data-edge-id="expire" data-composition-points="576,216;710,216" data-composition-crossover="halo" data-composition-independent="true" d="M 576 216 L 710 216" class="a-security" data-animate="edge" style="--step: 5;" stroke-width="1.2" marker-end="url(#arrowhead-security)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 504.8 248 L 504.8 340" fill="none" stroke="var(--mask)" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="deferred" data-edge-to="failed" data-edge-label="4–5 days passed" data-edge-key="5" data-edge-id="expire" data-composition-points="504.8,248;504.8,340" data-composition-crossover="halo" data-composition-independent="true" d="M 504.8 248 L 504.8 340" class="a-security" data-animate="edge" style="--step: 5;" stroke-width="1.2" marker-end="url(#arrowhead-security)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:6">
-          <path data-graph-role="automatic-crossover-underlay" d="M 757 92 L 757 184" fill="none" stroke="var(--mask)" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="reply" data-edge-to="failed" data-edge-label="5xx" data-edge-key="6" data-edge-id="never" data-composition-points="757,92;757,184" data-composition-crossover="halo" data-composition-independent="true" d="M 757 92 L 757 184" class="a-security" data-animate="edge" style="--step: 6;" stroke-width="1.2" marker-end="url(#arrowhead-security)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 332.8 248 L 332.8 270 Q 332.8 282 344.8 282 L 388.9 282 Q 400.9 282 400.9 294 L 400.9 340" fill="none" stroke="var(--mask)" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="reply" data-edge-to="failed" data-edge-label="5xx" data-edge-key="6" data-edge-id="never" data-composition-points="332.8,248;332.8,282;400.9,282;400.9,340" data-composition-crossover="halo" data-composition-independent="true" d="M 332.8 248 L 332.8 270 Q 332.8 282 344.8 282 L 388.9 282 Q 400.9 282 400.9 294 L 400.9 340" class="a-security" data-animate="edge" style="--step: 6;" stroke-width="1.2" marker-end="url(#arrowhead-security)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:7">
-          <path data-graph-role="automatic-crossover-underlay" d="M 802.5 248 L 802.5 340" fill="none" stroke="var(--mask)" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="failed" data-edge-to="bounced" data-edge-label="tell the sender" data-edge-key="7" data-edge-id="notify" data-composition-points="802.5,248;802.5,340" data-composition-crossover="halo" data-composition-independent="true" d="M 802.5 248 L 802.5 340" class="a-default" data-animate="edge" style="--step: 7;" stroke-width="1.2" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 471.4 404 L 471.4 496" fill="none" stroke="var(--mask)" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="failed" data-edge-to="bounced" data-edge-label="tell the sender" data-edge-key="7" data-edge-id="notify" data-composition-points="471.4,404;471.4,496" data-composition-crossover="halo" data-composition-independent="true" d="M 471.4 404 L 471.4 496" class="a-default" data-animate="edge" style="--step: 7;" stroke-width="1.2" marker-end="url(#arrowhead)"/>
         </g>
 
 
@@ -537,64 +537,64 @@ rect.c-bg-rect { fill: var(--bg); }
 
         <g id="node-reply" data-node-id="reply" data-node-label="What did it say?" tabindex="0" role="button" aria-label="Focus What did it say?, first digit of the reply, Lifecycle state" aria-pressed="false" data-node-kind="decision" data-node-sublabel="first digit of the reply" data-node-context="Lifecycle state">
           <title>What did it say? · first digit of the reply · Lifecycle state</title>
-          <rect x="605" y="28" width="174" height="64" rx="8" class="c-mask"/>
-          <rect x="605" y="28" width="174" height="64" rx="8" class="c-database" data-animate="node" style="--step: 2; --flow-node-name: archify-relay-node-2;" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="decision" class="semantic-sigil s-database" transform="translate(611 34) scale(0.6875)">
+          <rect x="180.75" y="184" width="174" height="64" rx="8" class="c-mask"/>
+          <rect x="180.75" y="184" width="174" height="64" rx="8" class="c-database" data-animate="node" style="--step: 2; --flow-node-name: archify-relay-node-2;" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="decision" class="semantic-sigil s-database" transform="translate(186.75 190) scale(0.6875)">
             <path d="M8 2.2 13.8 8 8 13.8 2.2 8Z"/>
           </g>
-          <text x="628" y="42" class="t-database" font-size="8" font-weight="700">03</text>
-          <text data-node-label="" x="698.2" y="55" class="t-primary" font-size="12" font-weight="600" text-anchor="middle">What did it say?</text>
-          <text x="692" y="73" class="t-muted" font-size="9" text-anchor="middle">first digit of the reply</text>
+          <text x="203.75" y="198" class="t-database" font-size="8" font-weight="700">03</text>
+          <text data-node-label="" x="273.95" y="211" class="t-primary" font-size="12" font-weight="600" text-anchor="middle">What did it say?</text>
+          <text x="267.75" y="229" class="t-muted" font-size="9" text-anchor="middle">first digit of the reply</text>
         </g>
 
         <g id="node-delivered" data-node-id="delivered" data-node-label="Delivered" tabindex="0" role="button" aria-label="Focus Delivered, 2xx: receiver responsible now, Lifecycle state" aria-pressed="false" data-node-kind="success" data-node-sublabel="2xx: receiver responsible now" data-node-context="Lifecycle state">
           <title>Delivered · 2xx: receiver responsible now · Lifecycle state</title>
-          <rect x="851" y="28" width="201" height="64" rx="8" class="c-mask"/>
-          <rect x="851" y="28" width="201" height="64" rx="8" class="c-backend" data-animate="node" style="--step: 3; --flow-node-name: archify-relay-node-3;" stroke-width="1.5"/>
-          <rect x="854" y="31" width="195" height="58" rx="5" class="c-backend" style="fill: none" stroke-width="1"/>
-          <g aria-hidden="true" data-semantic-sigil="success" class="semantic-sigil s-backend" transform="translate(857 34) scale(0.6875)">
+          <rect x="133.875" y="340" width="201" height="64" rx="8" class="c-mask"/>
+          <rect x="133.875" y="340" width="201" height="64" rx="8" class="c-backend" data-animate="node" style="--step: 3; --flow-node-name: archify-relay-node-3;" stroke-width="1.5"/>
+          <rect x="136.875" y="343" width="195" height="58" rx="5" class="c-backend" style="fill: none" stroke-width="1"/>
+          <g aria-hidden="true" data-semantic-sigil="success" class="semantic-sigil s-backend" transform="translate(139.875 346) scale(0.6875)">
             <circle cx="8" cy="8" r="5.3"/>
             <path d="m5.2 8 1.8 1.8 3.8-4"/>
           </g>
-          <text x="874" y="42" class="t-backend" font-size="8" font-weight="700">04</text>
-          <text data-node-label="" x="951.5" y="55" class="t-primary" font-size="12" font-weight="600" text-anchor="middle">Delivered</text>
-          <text x="951.5" y="73" class="t-muted" font-size="9" text-anchor="middle">2xx: receiver responsible now</text>
+          <text x="156.875" y="354" class="t-backend" font-size="8" font-weight="700">04</text>
+          <text data-node-label="" x="234.375" y="367" class="t-primary" font-size="12" font-weight="600" text-anchor="middle">Delivered</text>
+          <text x="234.375" y="385" class="t-muted" font-size="9" text-anchor="middle">2xx: receiver responsible now</text>
         </g>
 
         <g id="node-deferred" data-node-id="deferred" data-node-label="Deferred" tabindex="0" role="button" aria-label="Focus Deferred, wait, longer each time, Lifecycle state" aria-pressed="false" data-node-kind="waiting" data-node-sublabel="wait, longer each time" data-node-context="Lifecycle state">
           <title>Deferred · wait, longer each time · Lifecycle state</title>
-          <rect x="413" y="184" width="163" height="64" rx="8" class="c-mask"/>
-          <rect x="413" y="184" width="163" height="64" rx="8" class="c-cloud" data-animate="node" style="--step: 4;" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="waiting" class="semantic-sigil s-cloud" transform="translate(419 190) scale(0.6875)">
+          <rect x="482.75" y="184" width="163" height="64" rx="8" class="c-mask"/>
+          <rect x="482.75" y="184" width="163" height="64" rx="8" class="c-cloud" data-animate="node" style="--step: 4;" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="waiting" class="semantic-sigil s-cloud" transform="translate(488.75 190) scale(0.6875)">
             <path d="M4 2.5h8M4 13.5h8M5 3c0 2.8 2 3.2 3 5-1 1.8-3 2.2-3 5M11 3c0 2.8-2 3.2-3 5 1 1.8 3 2.2 3 5"/>
           </g>
-          <text data-node-label="" x="494.5" y="211" class="t-primary" font-size="12" font-weight="600" text-anchor="middle">Deferred</text>
-          <text x="494.5" y="229" class="t-muted" font-size="9" text-anchor="middle">wait, longer each time</text>
+          <text data-node-label="" x="564.25" y="211" class="t-primary" font-size="12" font-weight="600" text-anchor="middle">Deferred</text>
+          <text x="564.25" y="229" class="t-muted" font-size="9" text-anchor="middle">wait, longer each time</text>
         </g>
 
         <g id="node-failed" data-node-id="failed" data-node-label="Undeliverable" tabindex="0" role="button" aria-label="Focus Undeliverable, 5xx, or gave up after days, Lifecycle state" aria-pressed="false" data-node-kind="failure" data-node-sublabel="5xx, or gave up after days" data-node-context="Lifecycle state">
           <title>Undeliverable · 5xx, or gave up after days · Lifecycle state</title>
-          <rect x="710" y="184" width="185" height="64" rx="8" class="c-mask"/>
-          <rect x="710" y="184" width="185" height="64" rx="8" class="c-security" data-animate="node" style="--step: 6;" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="failure" class="semantic-sigil s-security" transform="translate(716 190) scale(0.6875)">
+          <rect x="378.875" y="340" width="185" height="64" rx="8" class="c-mask"/>
+          <rect x="378.875" y="340" width="185" height="64" rx="8" class="c-security" data-animate="node" style="--step: 6;" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="failure" class="semantic-sigil s-security" transform="translate(384.875 346) scale(0.6875)">
             <circle cx="8" cy="8" r="5.3"/>
             <path d="m5.7 5.7 4.6 4.6m0-4.6-4.6 4.6"/>
           </g>
-          <text data-node-label="" x="802.5" y="211" class="t-primary" font-size="12" font-weight="600" text-anchor="middle">Undeliverable</text>
-          <text x="802.5" y="229" class="t-muted" font-size="9" text-anchor="middle">5xx, or gave up after days</text>
+          <text data-node-label="" x="471.375" y="367" class="t-primary" font-size="12" font-weight="600" text-anchor="middle">Undeliverable</text>
+          <text x="471.375" y="385" class="t-muted" font-size="9" text-anchor="middle">5xx, or gave up after days</text>
         </g>
 
         <g id="node-bounced" data-node-id="bounced" data-node-label="Bounce sent" tabindex="0" role="button" aria-label="Focus Bounce sent, DSN to MAIL FROM, sent from &lt;&gt;, Lifecycle state" aria-pressed="false" data-node-kind="neutral" data-node-sublabel="DSN to MAIL FROM, sent from &lt;&gt;" data-node-context="Lifecycle state">
           <title>Bounce sent · DSN to MAIL FROM, sent from &lt;&gt; · Lifecycle state</title>
-          <rect x="699.5" y="340" width="206" height="64" rx="8" class="c-mask"/>
-          <rect x="699.5" y="340" width="206" height="64" rx="8" class="c-external" data-animate="node" style="--step: 8;" stroke-width="1.5"/>
-          <rect x="702.5" y="343" width="200" height="58" rx="5" class="c-external" style="fill: none" stroke-width="1"/>
-          <g aria-hidden="true" data-semantic-sigil="stop" class="semantic-sigil s-external" transform="translate(705.5 346) scale(0.6875)">
+          <rect x="368.375" y="496" width="206" height="64" rx="8" class="c-mask"/>
+          <rect x="368.375" y="496" width="206" height="64" rx="8" class="c-external" data-animate="node" style="--step: 8;" stroke-width="1.5"/>
+          <rect x="371.375" y="499" width="200" height="58" rx="5" class="c-external" style="fill: none" stroke-width="1"/>
+          <g aria-hidden="true" data-semantic-sigil="stop" class="semantic-sigil s-external" transform="translate(374.375 502) scale(0.6875)">
             <circle cx="8" cy="8" r="5.3"/>
             <rect x="6.1" y="6.1" width="3.8" height="3.8" rx=".5" class="sigil-fill"/>
           </g>
-          <text data-node-label="" x="802.5" y="367" class="t-primary" font-size="12" font-weight="600" text-anchor="middle">Bounce sent</text>
-          <text x="802.5" y="385" class="t-muted" font-size="9" text-anchor="middle">DSN to MAIL FROM, sent from &lt;&gt;</text>
+          <text data-node-label="" x="471.375" y="523" class="t-primary" font-size="12" font-weight="600" text-anchor="middle">Bounce sent</text>
+          <text x="471.375" y="541" class="t-muted" font-size="9" text-anchor="middle">DSN to MAIL FROM, sent from &lt;&gt;</text>
         </g>
 
         <!-- Transition labels -->
@@ -603,68 +603,68 @@ rect.c-bg-rect { fill: var(--bg); }
           <text x="261" y="49.5" class="t-edge-emphasis" font-size="10" text-anchor="middle">send</text>
         </g>
         <g data-edge-from="attempt" data-edge-to="reply" data-edge-label="reply or timeout" data-edge-key="1" data-edge-id="answer">
-          <rect x="484" y="38" width="108" height="16" rx="4" class="c-mask"/>
-          <text x="538" y="49.5" class="t-edge-emphasis" font-size="10" text-anchor="middle">reply or timeout</text>
+          <rect x="325" y="130" width="108" height="16" rx="4" class="c-mask"/>
+          <text x="379" y="141.5" class="t-muted" font-size="10" text-anchor="middle">reply or timeout</text>
         </g>
         <g data-edge-from="reply" data-edge-to="delivered" data-edge-label="2xx" data-edge-key="2" data-edge-id="ok">
-          <rect x="800" y="38" width="30" height="16" rx="4" class="c-mask"/>
-          <text x="815" y="49.5" class="t-edge-emphasis" font-size="10" text-anchor="middle">2xx</text>
+          <rect x="240.4" y="286" width="30" height="16" rx="4" class="c-mask"/>
+          <text x="255.4" y="297.5" class="t-edge-emphasis" font-size="10" text-anchor="middle">2xx</text>
         </g>
         <g data-edge-from="reply" data-edge-to="deferred" data-edge-label="4xx, no answer" data-edge-key="3" data-edge-id="later">
-          <rect x="560" y="147" width="96" height="16" rx="4" class="c-mask"/>
-          <text x="608" y="158.5" class="t-edge-dashed" font-size="10" text-anchor="middle">4xx, no answer</text>
+          <rect x="370.75" y="194" width="96" height="16" rx="4" class="c-mask"/>
+          <text x="418.75" y="205.5" class="t-edge-dashed" font-size="10" text-anchor="middle">4xx, no answer</text>
         </g>
         <g data-edge-from="deferred" data-edge-to="attempt" data-edge-label="retry" data-edge-key="4" data-edge-id="retry">
-          <rect x="401" y="130" width="42" height="16" rx="4" class="c-mask"/>
-          <text x="422" y="141.5" class="t-muted" font-size="10" text-anchor="middle">retry</text>
+          <rect x="456.8" y="147" width="42" height="16" rx="4" class="c-mask"/>
+          <text x="477.8" y="158.5" class="t-muted" font-size="10" text-anchor="middle">retry</text>
         </g>
         <g data-edge-from="deferred" data-edge-to="failed" data-edge-label="4–5 days passed" data-edge-key="5" data-edge-id="expire">
-          <rect x="592" y="194" width="102" height="16" rx="4" class="c-mask"/>
-          <text x="643" y="205.5" class="t-edge-security" font-size="10" text-anchor="middle">4–5 days passed</text>
+          <rect x="510.79999999999995" y="286" width="102" height="16" rx="4" class="c-mask"/>
+          <text x="561.8" y="297.5" class="t-edge-security" font-size="10" text-anchor="middle">4–5 days passed</text>
         </g>
         <g data-edge-from="reply" data-edge-to="failed" data-edge-label="5xx" data-edge-key="6" data-edge-id="never">
-          <rect x="721" y="130" width="30" height="16" rx="4" class="c-mask"/>
-          <text x="736" y="141.5" class="t-edge-security" font-size="10" text-anchor="middle">5xx</text>
+          <rect x="364.9" y="303" width="30" height="16" rx="4" class="c-mask"/>
+          <text x="379.9" y="314.5" class="t-edge-security" font-size="10" text-anchor="middle">5xx</text>
         </g>
         <g data-edge-from="failed" data-edge-to="bounced" data-edge-label="tell the sender" data-edge-key="7" data-edge-id="notify">
-          <rect x="694.5" y="286" width="102" height="16" rx="4" class="c-mask"/>
-          <text x="745.5" y="297.5" class="t-muted" font-size="10" text-anchor="middle">tell the sender</text>
+          <rect x="477.4" y="442" width="102" height="16" rx="4" class="c-mask"/>
+          <text x="528.4" y="453.5" class="t-muted" font-size="10" text-anchor="middle">tell the sender</text>
         </g>
 
         <!-- Legend -->
         <g data-legend="">
-          <text x="40" y="430" class="t-primary" font-size="12" font-weight="650">Legend</text>
-          <g data-legend-semantic-kind="start" data-legend-x="40" data-legend-baseline="450" data-legend-width="204">
-            <circle cx="44.5" cy="446.5" r="4.5" style="fill: var(--arrow-emphasis)"/><path d="M 49 446.5 L 58 446.5" class="a-emphasis" stroke-width="1.4"/><path d="M 57 443 L 64 446.5 L 57 450 Z" style="fill: var(--arrow-emphasis)"/>
-            <text x="74" y="450" class="t-muted" font-size="10" font-weight="500">Accepted from the sender</text>
+          <text x="40" y="586" class="t-primary" font-size="12" font-weight="650">Legend</text>
+          <g data-legend-semantic-kind="start" data-legend-x="40" data-legend-baseline="606" data-legend-width="204">
+            <circle cx="44.5" cy="602.5" r="4.5" style="fill: var(--arrow-emphasis)"/><path d="M 49 602.5 L 58 602.5" class="a-emphasis" stroke-width="1.4"/><path d="M 57 599 L 64 602.5 L 57 606 Z" style="fill: var(--arrow-emphasis)"/>
+            <text x="74" y="606" class="t-muted" font-size="10" font-weight="500">Accepted from the sender</text>
           </g>
-          <g data-legend-semantic-kind="active" data-legend-x="266" data-legend-baseline="450" data-legend-width="149">
-            <rect x="266" y="442" width="14" height="9" rx="2" class="c-frontend" stroke-width="1"/>
-            <text x="288" y="450" class="t-muted" font-size="10" font-weight="500">Trying to deliver</text>
+          <g data-legend-semantic-kind="active" data-legend-x="266" data-legend-baseline="606" data-legend-width="149">
+            <rect x="266" y="598" width="14" height="9" rx="2" class="c-frontend" stroke-width="1"/>
+            <text x="288" y="606" class="t-muted" font-size="10" font-weight="500">Trying to deliver</text>
           </g>
-          <g data-legend-semantic-kind="waiting" data-legend-x="437" data-legend-baseline="450" data-legend-width="143">
-            <rect x="437" y="442" width="14" height="9" rx="2" class="c-cloud" stroke-width="1"/>
-            <text x="459" y="450" class="t-muted" font-size="10" font-weight="500">Waiting to retry</text>
+          <g data-legend-semantic-kind="waiting" data-legend-x="437" data-legend-baseline="606" data-legend-width="143">
+            <rect x="437" y="598" width="14" height="9" rx="2" class="c-cloud" stroke-width="1"/>
+            <text x="459" y="606" class="t-muted" font-size="10" font-weight="500">Waiting to retry</text>
           </g>
-          <g data-legend-semantic-kind="decision" data-legend-x="602" data-legend-baseline="450" data-legend-width="149">
-            <rect x="602" y="442" width="14" height="9" rx="2" class="c-database" stroke-width="1"/>
-            <text x="624" y="450" class="t-muted" font-size="10" font-weight="500">Reading the reply</text>
+          <g data-legend-semantic-kind="decision" data-legend-x="40" data-legend-baseline="628" data-legend-width="149">
+            <rect x="40" y="620" width="14" height="9" rx="2" class="c-database" stroke-width="1"/>
+            <text x="62" y="628" class="t-muted" font-size="10" font-weight="500">Reading the reply</text>
           </g>
-          <g data-legend-semantic-kind="success" data-legend-x="773" data-legend-baseline="450" data-legend-width="99">
-            <rect x="773" y="442" width="14" height="9" rx="2" class="c-backend" stroke-width="1"/>
-            <text x="795" y="450" class="t-muted" font-size="10" font-weight="500">Delivered</text>
+          <g data-legend-semantic-kind="success" data-legend-x="211" data-legend-baseline="628" data-legend-width="99">
+            <rect x="211" y="620" width="14" height="9" rx="2" class="c-backend" stroke-width="1"/>
+            <text x="233" y="628" class="t-muted" font-size="10" font-weight="500">Delivered</text>
           </g>
-          <g data-legend-semantic-kind="failure" data-legend-x="894" data-legend-baseline="450" data-legend-width="124">
-            <rect x="894" y="442" width="14" height="9" rx="2" class="c-security" stroke-width="1"/>
-            <text x="916" y="450" class="t-muted" font-size="10" font-weight="500">Undeliverable</text>
+          <g data-legend-semantic-kind="failure" data-legend-x="332" data-legend-baseline="628" data-legend-width="124">
+            <rect x="332" y="620" width="14" height="9" rx="2" class="c-security" stroke-width="1"/>
+            <text x="354" y="628" class="t-muted" font-size="10" font-weight="500">Undeliverable</text>
           </g>
-          <g data-legend-semantic-kind="neutral" data-legend-x="40" data-legend-baseline="472" data-legend-width="136">
-            <rect x="40" y="464" width="14" height="9" rx="2" class="c-external" stroke-width="1"/>
-            <text x="62" y="472" class="t-muted" font-size="10" font-weight="500">Sender notified</text>
+          <g data-legend-semantic-kind="neutral" data-legend-x="478" data-legend-baseline="628" data-legend-width="136">
+            <rect x="478" y="620" width="14" height="9" rx="2" class="c-external" stroke-width="1"/>
+            <text x="500" y="628" class="t-muted" font-size="10" font-weight="500">Sender notified</text>
           </g>
-          <g data-legend-semantic-kind="final" data-legend-x="198" data-legend-baseline="472" data-legend-width="93">
-            <rect x="198" y="464" width="14" height="9" rx="2" class="c-external" stroke-width="1"/><rect x="200.5" y="466.5" width="9" height="4" rx="1" class="c-external" style="fill: none" stroke-width="0.8"/>
-            <text x="222" y="472" class="t-muted" font-size="10" font-weight="500">final state</text>
+          <g data-legend-semantic-kind="final" data-legend-x="40" data-legend-baseline="650" data-legend-width="93">
+            <rect x="40" y="642" width="14" height="9" rx="2" class="c-external" stroke-width="1"/><rect x="42.5" y="644.5" width="9" height="4" rx="1" class="c-external" style="fill: none" stroke-width="0.8"/>
+            <text x="64" y="650" class="t-muted" font-size="10" font-weight="500">final state</text>
           </g>
         </g>
       </svg>

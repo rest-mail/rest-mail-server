@@ -1,0 +1,181 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "visual_preset": "editorial",
+    "title": "What a relaying server costs you: from spam at volume to your own mail bouncing",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/email-explained/diagrams/open-relay-cost.html",
+    "legend": {
+      "entries": {
+        "backend": {
+          "label": "Postfix stages"
+        },
+        "messagebus": {
+          "label": "Mail queue"
+        },
+        "security": {
+          "label": "The mistake that lets it run"
+        },
+        "cloud": {
+          "label": "Big mailbox providers"
+        },
+        "external": {
+          "label": "What follows"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "server",
+      "label": "Your Postfix server"
+    },
+    {
+      "id": "mistakes",
+      "label": "Copied from tutorials",
+      "variant": "exception"
+    },
+    {
+      "id": "internet",
+      "label": "The rest of the internet"
+    }
+  ],
+  "phases": [
+    {
+      "id": "abuse",
+      "label": "Abuse at scale",
+      "fromCol": 0,
+      "toCol": 2,
+      "variant": "dashed"
+    }
+  ],
+  "mainPath": [
+    "accepted",
+    "queue",
+    "outbound",
+    "providers"
+  ],
+  "nodes": [
+    {
+      "id": "accepted",
+      "lane": "server",
+      "col": 0,
+      "type": "backend",
+      "label": "250 OK, accepted",
+      "sublabel": "for a domain not yours",
+      "icon": "failure"
+    },
+    {
+      "id": "queue",
+      "lane": "server",
+      "col": 1,
+      "type": "messagebus",
+      "label": "Mail queue",
+      "sublabel": "spam and bounces pile up"
+    },
+    {
+      "id": "outbound",
+      "lane": "server",
+      "col": 2,
+      "type": "backend",
+      "label": "Delivered from your IP",
+      "sublabel": "sent from your IP"
+    },
+    {
+      "id": "nolimit",
+      "lane": "mistakes",
+      "col": 1,
+      "type": "security",
+      "label": "No sending limits",
+      "sublabel": "one login sends millions"
+    },
+    {
+      "id": "providers",
+      "lane": "internet",
+      "col": 2,
+      "type": "cloud",
+      "label": "Gmail, Microsoft, Yahoo",
+      "sublabel": "traps and user reports"
+    },
+    {
+      "id": "blocklists",
+      "lane": "internet",
+      "col": 1,
+      "type": "external",
+      "label": "DNS blocklists",
+      "sublabel": "Spamhaus lists your IP"
+    },
+    {
+      "id": "bounced",
+      "lane": "internet",
+      "col": 0,
+      "type": "external",
+      "label": "Your real mail bounces",
+      "sublabel": "550 5.7.1: IP listed",
+      "icon": "failure"
+    }
+  ],
+  "edges": [
+    {
+      "id": "enqueue",
+      "from": "accepted",
+      "to": "queue",
+      "label": "queued",
+      "role": "main",
+      "variant": "default"
+    },
+    {
+      "id": "unlimited",
+      "from": "nolimit",
+      "to": "queue",
+      "label": "nothing slows it",
+      "role": "branch",
+      "variant": "security"
+    },
+    {
+      "id": "deliver",
+      "from": "queue",
+      "to": "outbound",
+      "role": "main",
+      "variant": "default"
+    },
+    {
+      "id": "flood",
+      "from": "outbound",
+      "to": "providers",
+      "label": "spam at volume",
+      "role": "main",
+      "variant": "security"
+    },
+    {
+      "id": "report",
+      "from": "providers",
+      "to": "blocklists",
+      "label": "reported",
+      "role": "branch",
+      "variant": "default"
+    },
+    {
+      "id": "listed",
+      "from": "blocklists",
+      "to": "bounced",
+      "label": "listed",
+      "role": "branch",
+      "variant": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "amber",
+      "title": "What it costs",
+      "items": [
+        "Blocklisted, and delisted only after the server is cleaned up",
+        "Your users' real mail is rejected for days or weeks",
+        "Hosts block port 25 or suspend the server",
+        "Bounces of forged mail hit innocent addresses (backscatter)"
+      ]
+    }
+  ]
+}

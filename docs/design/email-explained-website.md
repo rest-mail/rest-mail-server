@@ -71,15 +71,17 @@ one set of files becomes both, without the two ever drifting apart.
   the design rest-mail.com runs (Safe), and the SVG GitHub shows is exported
   the same way, so the site and GitHub never show different pictures. The
   diagrams don't change with `?design=`.
-- **No diagram is wider than about 900px, and phones scroll diagrams sideways**
-  (2026-10-25, owner, #824; provisional, may change once seen). Every diagram
-  is as wide as the text (793px in a 1440px window). A wider canvas shrinks to
-  fit, which took the widest's node titles down to 6.4px on a laptop and 3.7px
-  on a phone. So the widest (`rest-mail`, `open-relay`, `queue`, `spf`) are
-  redrawn narrower, by stacking lanes, putting fewer boxes in a row or
-  splitting one in two, keeping titles at 9.5px or more on a laptop. On a
-  phone a diagram keeps a readable size in a box that scrolls sideways, with a
-  hint that it does.
+- **The widest diagrams are redrawn narrower, and phones scroll diagrams
+  sideways** (2026-10-25, owner, #824; provisional, may change once seen).
+  Every diagram is as wide as the text (793px in a 1440px window). A wider
+  canvas shrinks to fit, which took the widest's node titles down to 6.4px on a
+  laptop and 3.7px on a phone. The four widest were redrawn to keep titles at
+  9.5px or more on a laptop, a canvas of at most 918px: `spf` in four columns
+  (918px), `rest-mail` in four (908px), `queue` with a shorter main row (702px),
+  and `open-relay` split in two, the relay decision and what it costs (898px
+  each). The others are 920–1003px wide, with titles at 8.7–9.5px. On a phone
+  a diagram keeps titles at 9.5px in a box that scrolls sideways, with a hint
+  that it does (the website's `Diagram.tsx`).
 - **This repository builds the bundle; the website takes it by itself**
   (2026-10-24, owner, who asked that a merged chapter go live with nobody
   running the steps by hand). On every change to the guide on `main`,

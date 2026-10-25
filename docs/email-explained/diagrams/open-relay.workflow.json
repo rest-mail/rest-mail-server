@@ -3,7 +3,7 @@
   "diagram_type": "workflow",
   "meta": {
     "visual_preset": "editorial",
-    "title": "From tutorial to spam machine: how a Postfix server relays for strangers",
+    "title": "From tutorial to open relay: how a Postfix server relays for strangers",
     "locale": "en",
     "quality_profile": "showcase",
     "output": "docs/email-explained/diagrams/open-relay.html",
@@ -14,12 +14,6 @@
         },
         "security": {
           "label": "Relay checks and the mistakes that defeat them"
-        },
-        "messagebus": {
-          "label": "Mail queue"
-        },
-        "cloud": {
-          "label": "Big mailbox providers"
         },
         "external": {
           "label": "Outside actors and consequences"
@@ -40,10 +34,6 @@
       "id": "mistakes",
       "label": "Copied from tutorials",
       "variant": "exception"
-    },
-    {
-      "id": "internet",
-      "label": "The rest of the internet"
     }
   ],
   "phases": [
@@ -59,23 +49,13 @@
       "fromCol": 2,
       "toCol": 3,
       "variant": "security"
-    },
-    {
-      "id": "abuse",
-      "label": "Abuse at scale",
-      "fromCol": 4,
-      "toCol": 5,
-      "variant": "dashed"
     }
   ],
   "mainPath": [
     "bot",
     "session",
     "relay",
-    "accepted",
-    "queue",
-    "outbound",
-    "providers"
+    "accepted"
   ],
   "nodes": [
     {
@@ -132,22 +112,6 @@
       "icon": "failure"
     },
     {
-      "id": "queue",
-      "lane": "server",
-      "col": 4,
-      "type": "messagebus",
-      "label": "Mail queue",
-      "sublabel": "spam and bounces pile up"
-    },
-    {
-      "id": "outbound",
-      "lane": "server",
-      "col": 5,
-      "type": "backend",
-      "label": "Delivered from your IP",
-      "sublabel": "sent from your IP"
-    },
-    {
       "id": "widenet",
       "lane": "mistakes",
       "col": 2,
@@ -170,39 +134,6 @@
       "type": "security",
       "label": "permit before reject",
       "sublabel": "unauth check never runs"
-    },
-    {
-      "id": "nolimit",
-      "lane": "mistakes",
-      "col": 4,
-      "type": "security",
-      "label": "No sending limits",
-      "sublabel": "one login sends millions"
-    },
-    {
-      "id": "providers",
-      "lane": "internet",
-      "col": 5,
-      "type": "cloud",
-      "label": "Gmail, Microsoft, Yahoo",
-      "sublabel": "traps and user reports"
-    },
-    {
-      "id": "blocklists",
-      "lane": "internet",
-      "col": 4,
-      "type": "external",
-      "label": "DNS blocklists",
-      "sublabel": "Spamhaus lists your IP"
-    },
-    {
-      "id": "bounced",
-      "lane": "internet",
-      "col": 3,
-      "type": "external",
-      "label": "Your real mail bounces",
-      "sublabel": "550 5.7.1: IP listed",
-      "icon": "failure"
     }
   ],
   "edges": [
@@ -244,7 +175,7 @@
       "id": "permit",
       "from": "relay",
       "to": "accepted",
-      "label": "a permit matched",
+      "label": "permitted",
       "role": "main",
       "variant": "security"
     },
@@ -277,53 +208,6 @@
       "variant": "security",
       "fromSide": "top",
       "toSide": "bottom"
-    },
-    {
-      "id": "enqueue",
-      "from": "accepted",
-      "to": "queue",
-      "label": "queued",
-      "role": "main",
-      "variant": "default"
-    },
-    {
-      "id": "unlimited",
-      "from": "nolimit",
-      "to": "queue",
-      "label": "nothing slows it",
-      "role": "branch",
-      "variant": "security"
-    },
-    {
-      "id": "deliver",
-      "from": "queue",
-      "to": "outbound",
-      "role": "main",
-      "variant": "default"
-    },
-    {
-      "id": "flood",
-      "from": "outbound",
-      "to": "providers",
-      "label": "spam at volume",
-      "role": "main",
-      "variant": "security"
-    },
-    {
-      "id": "report",
-      "from": "providers",
-      "to": "blocklists",
-      "label": "reported",
-      "role": "branch",
-      "variant": "default"
-    },
-    {
-      "id": "listed",
-      "from": "blocklists",
-      "to": "bounced",
-      "label": "your IP is listed",
-      "role": "branch",
-      "variant": "security"
     }
   ],
   "cards": [
@@ -345,16 +229,6 @@
         "Postfix 3.0+ trusts only the machine itself (mynetworks_style = host), but only at compatibility_level 2 or higher; upgraded servers often keep the old subnet default",
         "Test from outside: RCPT TO a Gmail address must be refused with 454 or 554",
         "Rate-limit senders: Postfix limits per client IP; per-account limits need a policy service"
-      ]
-    },
-    {
-      "dot": "amber",
-      "title": "What it costs",
-      "items": [
-        "Blocklisted, and delisted only after the server is cleaned up",
-        "Your users' real mail is rejected for days or weeks",
-        "Hosts block port 25 or suspend the server",
-        "Bounces of forged mail hit innocent addresses (backscatter)"
       ]
     }
   ]
