@@ -1,0 +1,223 @@
+{
+  "630": [
+    "apiRoot",
+    "describeServer",
+    "getHealth",
+    "openapiDocument",
+    "openapiSpec",
+    "prometheusMetrics",
+    "swaggerUI"
+  ],
+  "631": [
+    "microsoftAutodiscover",
+    "mozillaAutoconfig",
+    "mozillaAutoconfigWellKnown",
+    "mtaStsPolicyFile",
+    "receiveTlsReport"
+  ],
+  "632": [
+    "login",
+    "logout",
+    "protocolSignIn",
+    "recoverAccount",
+    "refreshToken"
+  ],
+  "633": [
+    "ownerChallenge",
+    "ownerStatus",
+    "ownerToken",
+    "resetAdmin"
+  ],
+  "634": [
+    "changeOwnPassword",
+    "confirmTwoFactor",
+    "disableTwoFactor",
+    "enrollTwoFactor",
+    "getTwoFactorStatus"
+  ],
+  "635": [
+    "createAPIKey",
+    "createAccount",
+    "createAppPassword",
+    "getAccount",
+    "linkAccount",
+    "listAPIKeys",
+    "listAccounts",
+    "listCredentials",
+    "revokeAPIKey",
+    "revokeCredential",
+    "unlinkAccount"
+  ],
+  "636": [
+    "accountEvents",
+    "listPushDevices",
+    "registerPushDevice",
+    "removePushDevice"
+  ],
+  "637": [
+    "createFolder",
+    "deleteFolder",
+    "deleteMessage",
+    "getAttachment",
+    "getMessage",
+    "getQuota",
+    "getRawMessage",
+    "getThread",
+    "listAttachments",
+    "listFolders",
+    "listMessages",
+    "renameFolder",
+    "searchMessages",
+    "updateMessage"
+  ],
+  "638": [
+    "cancelScheduledMessage",
+    "forwardMessage",
+    "listCalendarEvents",
+    "listScheduledMessages",
+    "respondToCalendar",
+    "saveDraft",
+    "sendDraft",
+    "sendMessage",
+    "updateDraft"
+  ],
+  "639": [
+    "blockSender",
+    "createContact",
+    "deleteContact",
+    "importContacts",
+    "listContacts",
+    "suggestContacts",
+    "updateContact"
+  ],
+  "640": [
+    "deleteSieveScript",
+    "disableVacation",
+    "getSieveScript",
+    "getVacation",
+    "putSieveScript",
+    "setVacation",
+    "validateSieveScript"
+  ],
+  "641": [
+    "deleteQuarantine",
+    "listQuarantine",
+    "releaseQuarantine"
+  ],
+  "642": [
+    "checkMailboxAddress",
+    "deliverMessage"
+  ],
+  "643": [
+    "restmailCapabilities",
+    "restmailCheckMailbox",
+    "restmailDeliver",
+    "restmailDiscover"
+  ],
+  "644": [
+    "activateGrant",
+    "createGrant",
+    "deactivateGrant",
+    "deleteGrant",
+    "listCapabilities",
+    "listGrants",
+    "listMyGrants",
+    "listRoles",
+    "makeGrantEligible"
+  ],
+  "645": [
+    "createDomain",
+    "deleteDomain",
+    "domainDNSCheck",
+    "getDomain",
+    "listDomains",
+    "updateDomain"
+  ],
+  "646": [
+    "addToAllowlist",
+    "addToBlocklist",
+    "clearSuppression",
+    "deleteMtaStsPolicy",
+    "getDomainRelay",
+    "getMtaStsPolicy",
+    "listAllowlist",
+    "listBlocklist",
+    "listSuppressions",
+    "listTlsReports",
+    "removeFromAllowlist",
+    "removeFromBlocklist",
+    "setDomainRelay",
+    "setMtaStsPolicy"
+  ],
+  "647": [
+    "createCertificate",
+    "deleteCertificate",
+    "deleteDKIMKey",
+    "getCertificate",
+    "getDKIMRotation",
+    "listCertificates",
+    "listDKIMKeys",
+    "setDKIMKey",
+    "setDKIMRotation"
+  ],
+  "648": [
+    "createAlias",
+    "deleteAlias",
+    "deleteMailbox",
+    "endMailboxSessions",
+    "getAlias",
+    "getMailbox",
+    "listAliases",
+    "listMailboxes",
+    "updateAlias",
+    "updateMailbox"
+  ],
+  "649": [
+    "createCustomFilter",
+    "createPipeline",
+    "deleteCustomFilter",
+    "deletePipeline",
+    "getCustomFilter",
+    "getMessageTrace",
+    "getPipelineAnalytics",
+    "listCustomFilters",
+    "listPipelineLogs",
+    "listPipelines",
+    "testCustomFilter",
+    "testFilter",
+    "testPipeline",
+    "updateCustomFilter",
+    "updatePipeline",
+    "validateCustomFilter"
+  ],
+  "650": [
+    "bounceQueueEntry",
+    "bulkBounceQueue",
+    "bulkDeleteQueue",
+    "bulkRetryQueue",
+    "deleteQueueEntry",
+    "getQueueEntry",
+    "getQueueStats",
+    "listQueue",
+    "retryQueueEntry"
+  ],
+  "651": [
+    "createBan",
+    "deleteBan",
+    "getDashboardStats",
+    "getDeliveryLogs",
+    "listAuditEntries",
+    "listBans",
+    "unbanIP",
+    "verifyAuditLog"
+  ],
+  "652": [
+    "probeServices",
+    "resetTestData",
+    "restoreTestSnapshot",
+    "seedTestData",
+    "sendTestEmail",
+    "snapshotTestData",
+    "verifyDelivery"
+  ]
+}

@@ -174,6 +174,7 @@ func describe(registry *endpoint.Registry, version string) *oapifly.Generator {
 		Security:        defaultSecurity,
 		Examples:        restmail.Examples,
 		ExamplesFile:    "openapi-example.json",
+		Strict:          strictAreaScope(),
 	})
 	g.Register(registry.Endpoints()...)
 	return g
