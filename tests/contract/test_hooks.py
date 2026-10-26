@@ -37,8 +37,20 @@ class SharedFixturePlan(unittest.TestCase):
         self.assertEqual(urllib.parse.parse_qs(parsed.query), {"recipient": ["alternate@retry.invalid"]})
         self.assertEqual(transaction["request"]["headers"], {"Authorization": "Bearer original"})
 
+    def test_queue_hook_recognises_the_pending_example_with_its_defaults(self):
+        # Vertrag 0.31.1 sends the declared limit and offset defaults too.
+        transaction = {"fullPath": "/api/v1/admin/queue?status=pending&limit=50&offset=0",
+                       "request": {"headers": {}}}
+        hooks.list_the_sent_messages_queue_entry(transaction)
+        parsed = urllib.parse.urlparse(transaction["fullPath"])
+        self.assertEqual(parsed.path, "/api/v1/admin/queue")
+        self.assertEqual(urllib.parse.parse_qs(parsed.query),
+                         {"recipient": [hooks.FIXTURE_PLAN["queue"]["retry"]["recipient"]]})
+
     def test_invalid_and_unrelated_queue_probes_remain_unchanged(self):
-        for path in ("/api/v1/admin/queue?status=invalid", "/api/v1/admin/queue?status=deferred", "/api/v1/admin/queue"):
+        for path in ("/api/v1/admin/queue?status=invalid", "/api/v1/admin/queue?status=deferred", "/api/v1/admin/queue",
+                     "/api/v1/admin/queue?status=pending&limit=0", "/api/v1/admin/queue?status=pending&limit=50&offset=-1",
+                     "/api/v1/admin/queue?status=pending&domain=x"):
             transaction = {"fullPath": path}
             hooks.list_the_sent_messages_queue_entry(transaction)
             self.assertEqual(transaction, {"fullPath": path})

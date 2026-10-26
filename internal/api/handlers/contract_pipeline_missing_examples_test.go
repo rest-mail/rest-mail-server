@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -57,8 +58,9 @@ func TestPipelineOperations_DocumentedMissingExamples(t *testing.T) {
 	}
 	var generated map[string]map[string]struct {
 		Request struct {
-			Path map[string]uint `json:"path"`
-			Body interface{}     `json:"body"`
+			// Raw, because other operations' examples use non-integer IDs on purpose.
+			Path map[string]json.RawMessage `json:"path"`
+			Body interface{}                `json:"body"`
 		} `json:"request"`
 		Response struct {
 			Status int         `json:"status"`
@@ -93,7 +95,7 @@ func TestPipelineOperations_DocumentedMissingExamples(t *testing.T) {
 					t.Fatalf("expected one named ID parameter: %+v", op.Parameters)
 				}
 				p := op.Parameters[0]
-				if p.Name != "id" || p.In != "path" || !p.Required || p.Examples["found"].Value != 1 || p.Examples["missing"].Value != missing || pair.Request.Path["id"] != missing {
+				if p.Name != "id" || p.In != "path" || !p.Required || p.Examples["found"].Value != 1 || p.Examples["missing"].Value != missing || string(pair.Request.Path["id"]) != strconv.FormatUint(uint64(missing), 10) {
 					t.Fatalf("missing path differs: parameter %+v, generated %+v", p, pair.Request.Path)
 				}
 			}

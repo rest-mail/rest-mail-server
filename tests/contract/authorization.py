@@ -58,8 +58,11 @@ def roles(spec_path):
 
 def sign_in(principal):
     return {
+        # Vertrag 0.31 refuses a login body field that is in neither list: the
+        # password is redacted, the address and client are shown (vertrag#87).
         "login": {"path": LOGIN, "body": {
-            "email": principal["address"], "password": principal["password"], "client": "native"}},
+            "email": principal["address"], "password": principal["password"], "client": "native"},
+            "secrets": ["password"], "public": ["email", "client"]},
         "header": BEARER,
     }
 
