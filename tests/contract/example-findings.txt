@@ -19,7 +19,6 @@ example-invalid sendMessage/from_missing
 example-invalid sendMessage/unsubscribe_not_allowed
 example-invalid sendMessage/unsubscribe_not_allowed 422
 example-invalid sendMessage/valid 201
-example-invalid setDKIMKey/private_key_invalid
 example-invalid testFilter/filter_name_missing
 example-invalid updateMailbox/password_short
 example-invalid updatePipeline/filters_null

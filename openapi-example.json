@@ -23077,7 +23077,10 @@
     "body_array": {
       "request": {
         "body": [],
-        "invalid": true
+        "invalid": true,
+        "path": {
+          "id": 1
+        }
       },
       "response": {
         "status": 400,
@@ -23094,6 +23097,9 @@
         "body": {
           "selector": "contract",
           "private_key": "fixture-signing-key"
+        },
+        "path": {
+          "id": 1
         }
       },
       "response": {
@@ -23116,7 +23122,10 @@
           "selector": "contract",
           "private_key": ""
         },
-        "invalid": true
+        "invalid": true,
+        "path": {
+          "id": 1
+        }
       },
       "response": {
         "status": 422,
@@ -23139,7 +23148,9 @@
           "selector": "contract",
           "private_key": "not a key"
         },
-        "invalid": true
+        "path": {
+          "id": 1
+        }
       },
       "response": {
         "status": 422,
@@ -23161,7 +23172,10 @@
         "body": {
           "selector": "contract"
         },
-        "invalid": true
+        "invalid": true,
+        "path": {
+          "id": 1
+        }
       },
       "response": {
         "status": 422,
@@ -23184,7 +23198,10 @@
           "selector": "contract",
           "private_key": 42
         },
-        "invalid": true
+        "invalid": true,
+        "path": {
+          "id": 1
+        }
       },
       "response": {
         "status": 422,
@@ -23207,7 +23224,10 @@
           "selector": "",
           "private_key": "fixture-signing-key"
         },
-        "invalid": true
+        "invalid": true,
+        "path": {
+          "id": 1
+        }
       },
       "response": {
         "status": 422,
@@ -23230,7 +23250,10 @@
           "selector": "invalid_selector",
           "private_key": "fixture-signing-key"
         },
-        "invalid": true
+        "invalid": true,
+        "path": {
+          "id": 1
+        }
       },
       "response": {
         "status": 422,
@@ -23252,7 +23275,10 @@
         "body": {
           "private_key": "fixture-signing-key"
         },
-        "invalid": true
+        "invalid": true,
+        "path": {
+          "id": 1
+        }
       },
       "response": {
         "status": 422,
@@ -23275,7 +23301,10 @@
           "selector": 42,
           "private_key": "fixture-signing-key"
         },
-        "invalid": true
+        "invalid": true,
+        "path": {
+          "id": 1
+        }
       },
       "response": {
         "status": 422,
@@ -23291,13 +23320,778 @@
           }
         }
       }
+    },
+    "write_only": {
+      "request": {
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 1,
+            "domain": "example.com",
+            "selector": "contract",
+            "has_key": true,
+            "created_at": "2026-10-01T12:00:00Z",
+            "age_seconds": 0
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_scope": {
+      "request": {
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 1,
+            "domain": "example.com",
+            "selector": "contract",
+            "has_key": true,
+            "created_at": "2026-10-01T12:00:00Z",
+            "age_seconds": 0
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_write": {
+      "request": {
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 1,
+            "domain": "example.com",
+            "selector": "contract",
+            "has_key": true,
+            "created_at": "2026-10-01T12:00:00Z",
+            "age_seconds": 0
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_domain": {
+      "request": {
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 1,
+            "domain": "example.com",
+            "selector": "contract",
+            "has_key": true,
+            "created_at": "2026-10-01T12:00:00Z",
+            "age_seconds": 0
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "cookie_session": {
+      "request": {
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 1,
+            "domain": "example.com",
+            "selector": "contract",
+            "has_key": true,
+            "created_at": "2026-10-01T12:00:00Z",
+            "age_seconds": 0
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "body_boundary": {
+      "request": {
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 1,
+            "domain": "example.com",
+            "selector": "contract",
+            "has_key": true,
+            "created_at": "2026-10-01T12:00:00Z",
+            "age_seconds": 0
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unchanged": {
+      "request": {
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 1,
+            "domain": "example.com",
+            "selector": "contract",
+            "has_key": true,
+            "created_at": "2026-10-01T12:00:00Z",
+            "age_seconds": 0
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "read_only": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "mailbox_scope": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "wrong_domain": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_read": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_mailbox": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_wrong_domain": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_holder_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        }
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "session_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        }
+      },
+      "response": {
+        "status": 503,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        }
+      }
+    },
+    "permission_store_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        }
+      },
+      "response": {
+        "status": 503,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
+          }
+        }
+      }
+    },
+    "csrf_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "csrf_mismatch": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "rate_limited": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        }
+      },
+      "response": {
+        "status": 429,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        }
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        }
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        }
+      }
+    },
+    "invalid_format": {
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        }
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        }
+      }
+    },
+    "request_too_large": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        }
+      },
+      "response": {
+        "status": 413,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        }
+      },
+      "description": "The route and Vertrag transport hook send exactly513 bytes against the configured512-byte cap."
+    },
+    "scope_lookup_unavailable": {
+      "request": {
+        "path": {
+          "id": 8
+        },
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        }
+      },
+      "response": {
+        "status": 503,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
+          }
+        }
+      }
+    },
+    "scoped_missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        },
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "missing": {
+      "request": {
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        },
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Domain not found"
+          }
+        }
+      }
+    },
+    "lookup_unavailable": {
+      "request": {
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        },
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "update_unavailable": {
+      "request": {
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        },
+        "path": {
+          "id": 4
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "concurrent": {
+      "request": {
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        },
+        "path": {
+          "id": 6
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Domain not found"
+          }
+        }
+      }
+    },
+    "cancelled_after_lookup": {
+      "request": {
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "malformed_json": {
+      "request": {
+        "body": [],
+        "invalid": true,
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "replaced": {
+      "request": {
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        },
+        "path": {
+          "id": 2
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 2,
+            "domain": "example.com",
+            "selector": "contract",
+            "has_key": true,
+            "created_at": "2026-10-01T12:00:00Z",
+            "age_seconds": 0
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "legacy_age_unknown": {
+      "request": {
+        "body": {
+          "selector": "contract",
+          "private_key": "fixture-signing-key"
+        },
+        "path": {
+          "id": 10
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 10,
+            "domain": "example.com",
+            "selector": "contract",
+            "has_key": true,
+            "created_at": null,
+            "age_seconds": null
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "selector_changed": {
+      "request": {
+        "body": {
+          "selector": "other",
+          "private_key": "fixture-signing-key"
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 1,
+            "domain": "example.com",
+            "selector": "other",
+            "has_key": true,
+            "created_at": "2026-10-01T12:00:00Z",
+            "age_seconds": 0
+          }
+        },
+        "mediaType": "application/json"
+      }
     }
   },
   "setDKIMRotation": {
     "body_array": {
       "request": {
         "body": [],
-        "invalid": true
+        "invalid": true,
+        "path": {
+          "id": 1
+        }
       },
       "response": {
         "status": 400,
@@ -23313,6 +24107,9 @@
       "request": {
         "body": {
           "rotation_interval_days": 90
+        },
+        "path": {
+          "id": 1
         }
       },
       "response": {
@@ -23334,7 +24131,10 @@
           "rotation_interval_days": 90,
           "private_key": "injected"
         },
-        "invalid": true
+        "invalid": true,
+        "path": {
+          "id": 1
+        }
       },
       "response": {
         "status": 422,
@@ -23354,7 +24154,10 @@
     "interval_missing": {
       "request": {
         "body": {},
-        "invalid": true
+        "invalid": true,
+        "path": {
+          "id": 1
+        }
       },
       "response": {
         "status": 422,
@@ -23376,7 +24179,10 @@
         "body": {
           "rotation_interval_days": -1
         },
-        "invalid": true
+        "invalid": true,
+        "path": {
+          "id": 1
+        }
       },
       "response": {
         "status": 422,
@@ -23398,7 +24204,10 @@
         "body": {
           "rotation_interval_days": null
         },
-        "invalid": true
+        "invalid": true,
+        "path": {
+          "id": 1
+        }
       },
       "response": {
         "status": 422,
@@ -23420,7 +24229,10 @@
         "body": {
           "rotation_interval_days": 3651
         },
-        "invalid": true
+        "invalid": true,
+        "path": {
+          "id": 1
+        }
       },
       "response": {
         "status": 422,
@@ -23442,7 +24254,10 @@
         "body": {
           "rotation_interval_days": "90"
         },
-        "invalid": true
+        "invalid": true,
+        "path": {
+          "id": 1
+        }
       },
       "response": {
         "status": 422,
@@ -23455,6 +24270,722 @@
                 "rotation_interval_days": "must be an integer"
               }
             }
+          }
+        }
+      }
+    },
+    "write_only": {
+      "request": {
+        "body": {
+          "rotation_interval_days": 90
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 1,
+            "rotation_interval_days": 90,
+            "state": "stable",
+            "staged": null,
+            "previous": null
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_scope": {
+      "request": {
+        "body": {
+          "rotation_interval_days": 90
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 1,
+            "rotation_interval_days": 90,
+            "state": "stable",
+            "staged": null,
+            "previous": null
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_write": {
+      "request": {
+        "body": {
+          "rotation_interval_days": 90
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 1,
+            "rotation_interval_days": 90,
+            "state": "stable",
+            "staged": null,
+            "previous": null
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_domain": {
+      "request": {
+        "body": {
+          "rotation_interval_days": 90
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 1,
+            "rotation_interval_days": 90,
+            "state": "stable",
+            "staged": null,
+            "previous": null
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "cookie_session": {
+      "request": {
+        "body": {
+          "rotation_interval_days": 90
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 1,
+            "rotation_interval_days": 90,
+            "state": "stable",
+            "staged": null,
+            "previous": null
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "body_boundary": {
+      "request": {
+        "body": {
+          "rotation_interval_days": 90
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 1,
+            "rotation_interval_days": 90,
+            "state": "stable",
+            "staged": null,
+            "previous": null
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unchanged": {
+      "request": {
+        "body": {
+          "rotation_interval_days": 90
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 1,
+            "rotation_interval_days": 90,
+            "state": "stable",
+            "staged": null,
+            "previous": null
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "read_only": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "rotation_interval_days": 90
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "mailbox_scope": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "rotation_interval_days": 90
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "wrong_domain": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "rotation_interval_days": 90
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_read": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "rotation_interval_days": 90
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_mailbox": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "rotation_interval_days": 90
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_wrong_domain": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "rotation_interval_days": 90
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_holder_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "rotation_interval_days": 90
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "rotation_interval_days": 90
+        }
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "session_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "rotation_interval_days": 90
+        }
+      },
+      "response": {
+        "status": 503,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        }
+      }
+    },
+    "permission_store_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "rotation_interval_days": 90
+        }
+      },
+      "response": {
+        "status": 503,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
+          }
+        }
+      }
+    },
+    "csrf_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "rotation_interval_days": 90
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "csrf_mismatch": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "rotation_interval_days": 90
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "rate_limited": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "rotation_interval_days": 90
+        }
+      },
+      "response": {
+        "status": 429,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        }
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "body": {
+          "rotation_interval_days": 90
+        }
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        }
+      }
+    },
+    "invalid_format": {
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "body": {
+          "rotation_interval_days": 90
+        }
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        }
+      }
+    },
+    "request_too_large": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "rotation_interval_days": 90
+        }
+      },
+      "response": {
+        "status": 413,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        }
+      },
+      "description": "The route and Vertrag transport hook send exactly513 bytes against the configured512-byte cap."
+    },
+    "scope_lookup_unavailable": {
+      "request": {
+        "path": {
+          "id": 8
+        },
+        "body": {
+          "rotation_interval_days": 90
+        }
+      },
+      "response": {
+        "status": 503,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
+          }
+        }
+      }
+    },
+    "scoped_missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        },
+        "body": {
+          "rotation_interval_days": 90
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "missing": {
+      "request": {
+        "body": {
+          "rotation_interval_days": 90
+        },
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Domain not found"
+          }
+        }
+      }
+    },
+    "lookup_unavailable": {
+      "request": {
+        "body": {
+          "rotation_interval_days": 90
+        },
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "update_unavailable": {
+      "request": {
+        "body": {
+          "rotation_interval_days": 90
+        },
+        "path": {
+          "id": 4
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "concurrent": {
+      "request": {
+        "body": {
+          "rotation_interval_days": 90
+        },
+        "path": {
+          "id": 6
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Domain not found"
+          }
+        }
+      }
+    },
+    "cancelled_after_lookup": {
+      "request": {
+        "body": {
+          "rotation_interval_days": 90
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "malformed_json": {
+      "request": {
+        "body": [],
+        "invalid": true,
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "disabled": {
+      "request": {
+        "body": {
+          "rotation_interval_days": 0
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 1,
+            "rotation_interval_days": 0,
+            "state": "stable",
+            "staged": null,
+            "previous": null
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "maximum": {
+      "request": {
+        "body": {
+          "rotation_interval_days": 3650
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 1,
+            "rotation_interval_days": 3650,
+            "state": "stable",
+            "staged": null,
+            "previous": null
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "status_unavailable": {
+      "request": {
+        "body": {
+          "rotation_interval_days": 90
+        },
+        "path": {
+          "id": 7
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
           }
         }
       }

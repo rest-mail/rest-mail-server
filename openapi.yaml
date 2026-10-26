@@ -7187,6 +7187,12 @@ paths:
               interval_too_large:
                 value: {rotation_interval_days: 3651}
       responses:
+        "429":
+          description: Too many authentication attempts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "200":
           description: DKIM rotation settings saved
           content:
@@ -7321,6 +7327,12 @@ paths:
               private_key_invalid:
                 value: {selector: contract, private_key: not a key}
       responses:
+        "429":
+          description: Too many authentication attempts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "200":
           description: DKIM key set
           content:
