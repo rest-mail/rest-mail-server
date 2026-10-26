@@ -33,7 +33,7 @@ func TestDomainCleanupExamplesWithVertrag(t *testing.T) {
 	}
 	for _, tc := range domainCleanupScenarios {
 		t.Run(tc.name, func(t *testing.T) {
-			pair, ok := pairs["deleteDomain"][tc.name]
+			pair, ok := pairs["deleteDomain"][tc.example]
 			if !ok {
 				t.Fatal("canonical domain cleanup pair missing")
 			}
@@ -54,11 +54,11 @@ func TestDomainCleanupExamplesWithVertrag(t *testing.T) {
 			content, _ := response["content"].(map[string]any)
 			for _, value := range content {
 				media := value.(map[string]any)
-				selected := media["examples"].(map[string]any)[tc.name]
+				selected := media["examples"].(map[string]any)[tc.example]
 				if selected == nil {
 					t.Fatal("response example missing")
 				}
-				media["examples"] = map[string]any{tc.name: selected}
+				media["examples"] = map[string]any{tc.example: selected}
 			}
 			op["responses"] = map[string]any{status: response}
 			for _, value := range op["parameters"].([]any) {
