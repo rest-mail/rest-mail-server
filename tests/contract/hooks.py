@@ -63,6 +63,15 @@ def pace_auth_requests(transaction):
     time.sleep(1.1)
 
 
+@hooks.before("testPipeline")
+@hooks.before("testFilter")
+@hooks.before("testCustomFilter")
+def pace_pipeline_previews(transaction):
+    # Pipeline previews share a 2 requests/second bucket in the E2E topology.
+    # Pace every probe without changing its body, credential or expected reply.
+    time.sleep(0.55)
+
+
 def admin_token(origin):
     """Sign in for fixture setup without changing the transaction's principal.
 
@@ -771,10 +780,16 @@ def list_the_sent_messages_queue_entry(transaction):
     params = urllib.parse.parse_qs(query, keep_blank_values=True)
     defaults = {"limit": ["50"], "offset": ["0"]}
     if params.get("status") != ["pending"] or any(
-            name != "status" and defaults.get(name) != value for name, value in params.items()):
+        name != "status" and defaults.get(name) != value
+        for name, value in params.items()
+    ):
         return
-    transaction["fullPath"] = path + "?" + urllib.parse.urlencode(
-        {"recipient": FIXTURE_PLAN["queue"]["retry"]["recipient"]}
+    transaction["fullPath"] = (
+        path
+        + "?"
+        + urllib.parse.urlencode(
+            {"recipient": FIXTURE_PLAN["queue"]["retry"]["recipient"]}
+        )
     )
 
 
