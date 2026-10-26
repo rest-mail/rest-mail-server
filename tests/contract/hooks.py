@@ -1637,9 +1637,16 @@ def invite_an_account_without_credentials(transaction):
 @hooks.before("acceptInvitation")
 def redeem_a_fresh_invitation(transaction):
     body = hooks.get_json(transaction)
-    # Replace only the accepted example's placeholder. Unknown tokens, wrong
-    # types and coverage mutations must reach the handler unchanged.
-    if not isinstance(body, dict) or body.get("token") != "supplied-by-contract-hook":
+    # The accepted example and every coverage probe of its 200 need an unspent
+    # invitation: coverage runs no after hooks, and a schema-valid body with an
+    # unknown token is a 401. The named refusals (invalid_token, invalid_field,
+    # body_array) and probes whose token is not a string reach the handler
+    # unchanged.
+    if (
+        " > 200 > " not in transaction.get("name", "")
+        or not isinstance(body, dict)
+        or not isinstance(body.get("token"), str)
+    ):
         return
     origin = "{}//{}:{}".format(
         transaction["protocol"],
