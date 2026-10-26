@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
@@ -18,8 +19,11 @@ import (
 // with a 500. An empty domain is deleted with 204. Needs the unit-test
 // Postgres; skips when none is reachable.
 func TestDomainDelete_RefusesADomainWithAddresses(t *testing.T) {
+	if os.Getenv("DB_HOST") == "" {
+		t.Skip("PostgreSQL address-refusal proof runs in CI with DB_HOST; no local database is started")
+	}
 	gdb := openAuthzTestDB(t)
-	if err := gdb.AutoMigrate(&models.Alias{}); err != nil {
+	if err := gdb.AutoMigrate(&models.Alias{}, &models.Pipeline{}, &models.CustomFilter{}, &models.DomainSenderRule{}, &models.Certificate{}, &models.DKIMRotationKey{}, &models.MTASTSPolicy{}, &models.DomainRelay{}, &models.Suppression{}); err != nil {
 		t.Skipf("domain delete test skipped: migrate failed (%v)", err)
 	}
 	tx := gdb.Begin()

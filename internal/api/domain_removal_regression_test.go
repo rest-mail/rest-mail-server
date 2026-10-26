@@ -19,9 +19,14 @@ import (
 	"gorm.io/gorm"
 )
 
-// Controlled SQL proves address guards and exact domain selection, not cleanup
-// of dependent configuration. That separate lifecycle defect is tracked in1141.
+// Controlled SQL proves the address guards and exact domain selection. Removal
+// also takes the grant lock, reads the grants held on the domain (none here) and
+// clears the configuration the domain owns (#1141); those statements are
+// accepted, and the domain's own DELETE stays the one judged.
 type domainRemovalConnection struct{ domainMutationConnection }
+
+// The configuration tables removal clears by domain_id, in deletion order.
+var domainOwnedTables = []string{"pipelines", "custom_filters", "domain_sender_rules", "certificates", "dkim_rotation_keys", "mtasts_policies", "domain_relays", "suppressions"}
 
 func (c *domainRemovalConnection) Connect(context.Context) (driver.Conn, error) { return c, nil }
 
@@ -47,10 +52,27 @@ func (c *domainRemovalConnection) QueryContext(ctx context.Context, q string, ar
 			return &authReadSnapshotRows{columns: []string{"count"}, rows: [][]driver.Value{{n}}}, nil
 		}
 	}
+	if strings.HasPrefix(q, `SELECT * FROM "grants" WHERE`) {
+		c.record(q, args)
+		return &authReadSnapshotRows{columns: []string{"id"}}, nil
+	}
 	return c.domainMutationConnection.QueryContext(ctx, q, args)
 }
 
 func (c *domainRemovalConnection) ExecContext(_ context.Context, q string, args []driver.NamedValue) (driver.Result, error) {
+	if strings.HasPrefix(q, "SELECT pg_advisory_xact_lock(") {
+		c.record(q, args)
+		return driver.RowsAffected(0), nil
+	}
+	for _, table := range domainOwnedTables {
+		if strings.HasPrefix(q, `DELETE FROM "`+table+`" WHERE`) {
+			if len(args) != 1 || !strings.Contains(q, "domain_id =") {
+				return nil, errors.New("domain cleanup lost domain selector")
+			}
+			c.mutation(q, args)
+			return driver.RowsAffected(0), nil
+		}
+	}
 	if q != `DELETE FROM "domains" WHERE "domains"."id" = $1` || len(args) != 1 {
 		return nil, errors.New("domain removal lost exact selector")
 	}
