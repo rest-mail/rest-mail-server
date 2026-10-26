@@ -39,6 +39,9 @@ func TestMessageResponseJSONParity(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// An unloaded mailbox's domain is a zero-filled record in the model's JSON;
+			// the answer omits it rather than send an invalid record (#912, #963).
+			old = withoutUnloadedMailboxDomain(t, old)
 			if string(old) != string(current) {
 				t.Fatalf("response JSON changed:\nold %s\nnew %s", old, current)
 			}
@@ -47,6 +50,36 @@ func TestMessageResponseJSONParity(t *testing.T) {
 			}
 		})
 	}
+}
+
+// withoutUnloadedMailboxDomain drops mailbox.domain from a model's JSON when the domain was
+// never loaded (its id is 0), keeping key order for the comparison.
+func withoutUnloadedMailboxDomain(t *testing.T, data []byte) []byte {
+	t.Helper()
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatal(err)
+	}
+	mailbox, ok := raw["mailbox"]
+	if !ok {
+		return data
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(mailbox, &fields); err != nil {
+		t.Fatal(err)
+	}
+	var domain struct {
+		ID uint `json:"id"`
+	}
+	if d, ok := fields["domain"]; !ok || json.Unmarshal(d, &domain) != nil || domain.ID != 0 {
+		return data
+	}
+	i := strings.Index(string(data), `,"domain":{"id":0,`)
+	if i < 0 {
+		t.Fatalf("unloaded mailbox domain not found in %s", data)
+	}
+	end := i + strings.Index(string(data[i:]), "}") + 1
+	return append(append([]byte{}, data[:i]...), data[end:]...)
 }
 
 // An attachment's answer says what it is, never where it is stored (#658): no path on the
