@@ -12,7 +12,7 @@ on:
       - scripts/tests/test_api_gaps.py
       - tests/contract/api-areas.json
 
-# Reconciliation must finish, including close/reopen and parent linking. A newer
+# Reconciliation must finish, including topic updates and legacy closures. A newer
 # push queues behind it and checks out current main, rather than cancelling it.
 concurrency:
   group: api-gap-issues-${{ github.event.pull_request.number || 'main' }}
@@ -41,14 +41,14 @@ jobs:
           cache: true
 
       - name: Verify the issue synchronization without forge writes
-        run: python3 -B -m unittest discover -s scripts/tests -p test_api_gaps.py -v
+        run: python3 -B -m unittest discover -s scripts/tests -p 'test_api_*.py' -v
 
       - name: Report all registered operations, including push and test routes
         env:
           RESTMAIL_API_GAP_REPORT: ${{ runner.temp }}/api-gap-report.json
         run: go test -mod=readonly ./internal/api/ -run '^TestAPIGapReport$' -count=1
 
-      - name: Keep operation issues and clean-area proposals in step
+      - name: Keep topic issues and grouped strict activation in step
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ secrets.PIPELINE_RESTMAIL_TOKEN || github.token }}
