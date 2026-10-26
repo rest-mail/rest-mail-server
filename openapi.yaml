@@ -9129,7 +9129,7 @@ paths:
         - CookieAuth: [domains:read]
         - BearerAuth: [domains:read]
         - APIKeyAuth: [domains:read]
-      summary: Live DNS record check (MX, SPF, DMARC, DKIM, MTA-STS) for a domain
+      summary: Live DNS record check (MX, SPF, DMARC, DKIM, MTA-STS, TLS-RPT) for a domain
       # Links fill the successful lookup; this named ID stays absent.
       parameters:
         - name: id
@@ -9166,6 +9166,42 @@ paths:
                     error:
                       code: domain_not_found
                       message: Domain not found
+        "401":
+          description: Missing or invalid session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Session lacks domains:read for this domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Request exceeds the configured body cap
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Path parameters failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+        "500":
+          description: Domain lookup failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Session, grants or domain scope cannot be verified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   # ═══════════════════════════════════════════════════════════════
   # Admin: Suppressions

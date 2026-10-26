@@ -65,13 +65,13 @@ type DomainHandler struct {
 	db  *gorm.DB
 	dns dns.Provider
 
-	// The DNS check's lookups; tests replace them.
-	lookupMX  func(string) ([]*net.MX, error)
-	lookupTXT func(string) ([]string, error)
+	// Capture the configured resolver and carry each HTTP request context into DNS.
+	lookupMX  func(context.Context, string) ([]*net.MX, error)
+	lookupTXT func(context.Context, string) ([]string, error)
 }
 
 func NewDomainHandler(db *gorm.DB, dnsProvider dns.Provider) *DomainHandler {
-	return &DomainHandler{db: db, dns: dnsProvider, lookupMX: net.LookupMX, lookupTXT: net.LookupTXT}
+	return &DomainHandler{db: db, dns: dnsProvider, lookupMX: net.DefaultResolver.LookupMX, lookupTXT: net.DefaultResolver.LookupTXT}
 }
 
 // Domain is a domain as the API answers with it.
@@ -126,7 +126,7 @@ func (h *DomainHandler) Register(rs endpoint.Routes, checks DomainRouteChecks) {
 		Status: http.StatusNoContent, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusTooManyRequests},
 		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsDelete)}}, h.delete)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/domains/{id}/dns",
-		OperationID: "domainDNSCheck", Summary: "Live DNS record check (MX, SPF, DMARC, DKIM, MTA-STS) for a domain",
+		OperationID: "domainDNSCheck", Summary: "Live DNS record check (MX, SPF, DMARC, DKIM, MTA-STS, TLS-RPT) for a domain",
 		Tags: tags, Errors: missing,
 		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsRead)}}, h.dnsCheck)
 }
@@ -384,7 +384,7 @@ func (h *DomainHandler) dnsCheck(r *http.Request, in domainPath) (DomainDNSCheck
 	}
 
 	// MX records
-	mxs, err := h.lookupMX(name)
+	mxs, err := h.lookupMX(r.Context(), name)
 	if err != nil {
 		checks = append(checks, recordCheck{
 			Type: "MX", Name: name, Status: "missing",
@@ -408,7 +408,7 @@ func (h *DomainHandler) dnsCheck(r *http.Request, in domainPath) (DomainDNSCheck
 
 	// SPF (TXT record)
 	spfFound := false
-	txts, err := h.lookupTXT(name)
+	txts, err := h.lookupTXT(r.Context(), name)
 	if err == nil {
 		for _, txt := range txts {
 			if strings.HasPrefix(txt, "v=spf1") {
@@ -430,7 +430,7 @@ func (h *DomainHandler) dnsCheck(r *http.Request, in domainPath) (DomainDNSCheck
 
 	// DMARC
 	dmarcFound := false
-	dmarcTxts, err := h.lookupTXT("_dmarc." + name)
+	dmarcTxts, err := h.lookupTXT(r.Context(), "_dmarc."+name)
 	if err == nil {
 		for _, txt := range dmarcTxts {
 			if strings.HasPrefix(txt, "v=DMARC1") {
@@ -458,7 +458,7 @@ func (h *DomainHandler) dnsCheck(r *http.Request, in domainPath) (DomainDNSCheck
 		})
 	} else {
 		dkimName := domain.DKIMSelector + "._domainkey." + name
-		dkimTxts, err := h.lookupTXT(dkimName)
+		dkimTxts, err := h.lookupTXT(r.Context(), dkimName)
 		if err != nil || len(dkimTxts) == 0 {
 			checks = append(checks, recordCheck{
 				Type: "DKIM", Name: dkimName, Status: "missing",
@@ -474,7 +474,7 @@ func (h *DomainHandler) dnsCheck(r *http.Request, in domainPath) (DomainDNSCheck
 
 	// MTA-STS
 	mtaSTSName := "_mta-sts." + name
-	mtaSTSTxts, err := h.lookupTXT(mtaSTSName)
+	mtaSTSTxts, err := h.lookupTXT(r.Context(), mtaSTSName)
 	if err != nil || len(mtaSTSTxts) == 0 {
 		checks = append(checks, recordCheck{
 			Type: "MTA-STS", Name: mtaSTSName, Status: "missing",
@@ -502,7 +502,7 @@ func (h *DomainHandler) dnsCheck(r *http.Request, in domainPath) (DomainDNSCheck
 
 	// TLS-RPT
 	tlsRPTName := "_smtp._tls." + name
-	tlsRPTTxts, err := h.lookupTXT(tlsRPTName)
+	tlsRPTTxts, err := h.lookupTXT(r.Context(), tlsRPTName)
 	if err != nil || len(tlsRPTTxts) == 0 {
 		checks = append(checks, recordCheck{
 			Type: "TLS-RPT", Name: tlsRPTName, Status: "missing",
