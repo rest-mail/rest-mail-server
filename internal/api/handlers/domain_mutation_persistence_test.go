@@ -156,6 +156,10 @@ func TestDomainMutationActivationAndReloadFailure(t *testing.T) {
 	if err := json.Unmarshal(rr.Body.Bytes(), &answer); err != nil {
 		t.Fatal(err)
 	}
+	var persistedAtCreation models.Domain
+	if err := db.First(&persistedAtCreation, answer.Data.ID).Error; err != nil {
+		t.Fatal(err)
+	}
 	path := fmt.Sprintf("/api/v1/admin/domains/%d", answer.Data.ID)
 	patch := func(body string) *httptest.ResponseRecorder {
 		return domainMutationRequest(t, h, http.MethodPatch, path, body)
@@ -189,7 +193,7 @@ func TestDomainMutationActivationAndReloadFailure(t *testing.T) {
 	if err := db.First(&stored, answer.Data.ID).Error; err != nil {
 		t.Fatal(err)
 	}
-	if stored.Active || stored.DefaultQuotaBytes != 0 || stored.SendingPolicy != "" || stored.DMARCPolicy != "quarantine" || stored.Name != answer.Data.Name || !stored.CreatedAt.Equal(answer.Data.CreatedAt) {
+	if stored.Active || stored.DefaultQuotaBytes != 0 || stored.SendingPolicy != "" || stored.DMARCPolicy != "quarantine" || stored.Name != answer.Data.Name || !stored.CreatedAt.Equal(persistedAtCreation.CreatedAt) {
 		t.Fatalf("partial update changed wrong fields:%+v", stored)
 	}
 	reads := 0
