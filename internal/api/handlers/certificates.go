@@ -27,14 +27,17 @@ func NewCertificateHandler(db *gorm.DB, masterKey string) *CertificateHandler {
 
 // listCertificates returns public certificate metadata.
 // GET /api/v1/admin/certificates
-func (h *CertificateHandler) listCertificates(_ *http.Request, in listDomainsRequest) (endpoint.List[Certificate], error) {
+func (h *CertificateHandler) listCertificates(r *http.Request, in listDomainsRequest) (endpoint.List[Certificate], error) {
 	limit, offset := pagination(in.Limit, in.Offset, defaultListLimit, maxListLimit)
+	db := h.db.WithContext(r.Context())
 
 	var total int64
-	h.db.Model(&models.Certificate{}).Count(&total)
+	if err := db.Model(&models.Certificate{}).Count(&total).Error; err != nil {
+		return endpoint.List[Certificate]{}, fmt.Errorf("count certificates: %w", err)
+	}
 
 	var certs []models.Certificate
-	if err := h.db.Preload("Domain").Limit(limit).Offset(offset).Find(&certs).Error; err != nil {
+	if err := db.Preload("Domain").Limit(limit).Offset(offset).Find(&certs).Error; err != nil {
 		return endpoint.List[Certificate]{}, err
 	}
 	rows := make([]Certificate, len(certs))
@@ -46,9 +49,9 @@ func (h *CertificateHandler) listCertificates(_ *http.Request, in listDomainsReq
 
 // getCertificate returns a single certificate, including CertPEM in the response.
 // GET /api/v1/admin/certificates/{id}
-func (h *CertificateHandler) getCertificate(_ *http.Request, in certificatePath) (CertificateDetails, error) {
+func (h *CertificateHandler) getCertificate(r *http.Request, in certificatePath) (CertificateDetails, error) {
 	var cert models.Certificate
-	if err := h.db.Preload("Domain").First(&cert, in.ID).Error; err != nil {
+	if err := h.db.WithContext(r.Context()).Preload("Domain").First(&cert, in.ID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return CertificateDetails{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Certificate not found")
 		}
@@ -139,16 +142,17 @@ func (h *CertificateHandler) createCertificate(r *http.Request, req createCertif
 
 // deleteCertificate removes a certificate.
 // DELETE /api/v1/admin/certificates/{id}
-func (h *CertificateHandler) deleteCertificate(_ *http.Request, in certificatePath) (endpoint.Empty, error) {
+func (h *CertificateHandler) deleteCertificate(r *http.Request, in certificatePath) (endpoint.Empty, error) {
+	db := h.db.WithContext(r.Context())
 	var cert models.Certificate
-	if err := h.db.First(&cert, in.ID).Error; err != nil {
+	if err := db.First(&cert, in.ID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Certificate not found")
 		}
 		return endpoint.Empty{}, fmt.Errorf("load certificate for deletion: %w", err)
 	}
 
-	if err := h.db.Delete(&cert).Error; err != nil {
+	if err := db.Delete(&cert).Error; err != nil {
 		return endpoint.Empty{}, err
 	}
 
