@@ -7476,6 +7476,9 @@
   "setDomainRelay": {
     "body_array": {
       "request": {
+        "path": {
+          "id": 1
+        },
         "body": [],
         "invalid": true
       },
@@ -7490,28 +7493,60 @@
       }
     },
     "credentials_mismatch": {
+      "description": "The body satisfies its field schema. The handler refuses the credential relationship or bare-host rule with422.",
       "request": {
+        "path": {
+          "id": 1
+        },
         "body": {
-          "transport": "relay",
           "host": "smtp.example.net",
+          "password": "",
           "port": 587,
           "tls_mode": "starttls",
-          "username": "apikey",
-          "password": ""
-        },
-        "invalid": true
+          "transport": "relay",
+          "username": "apikey"
+        }
       },
       "response": {
         "status": 422,
         "body": {
           "error": {
             "code": "validation_failed",
-            "message": "Request body failed validation",
             "details": {
               "fields": {
                 "password": "A username and a password are set together, or neither"
               }
-            }
+            },
+            "message": "Request body failed validation"
+          }
+        }
+      }
+    },
+    "credentials_retained": {
+      "summary": "Omitting the password preserves the stored credential",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "host": "smtp.example.net",
+          "port": 587,
+          "tls_mode": "starttls",
+          "transport": "relay",
+          "username": "apikey"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 1,
+            "host": "smtp.example.net",
+            "password_set": true,
+            "port": 587,
+            "tls_mode": "starttls",
+            "transport": "relay",
+            "username": "apikey"
           }
         }
       }
@@ -7519,6 +7554,9 @@
     "direct": {
       "summary": "Deliver straight to each recipient's MX",
       "request": {
+        "path": {
+          "id": 1
+        },
         "body": {
           "transport": "direct"
         }
@@ -7528,48 +7566,143 @@
         "body": {
           "data": {
             "domain_id": 1,
-            "transport": "direct",
-            "password_set": false
+            "password_set": false,
+            "transport": "direct"
           }
         }
       }
     },
     "host_invalid": {
+      "description": "The body satisfies its field schema. The handler refuses the credential relationship or bare-host rule with422.",
       "request": {
+        "path": {
+          "id": 1
+        },
         "body": {
-          "transport": "relay",
           "host": "smtp://smtp.example.net",
+          "password": "relay-password",
           "port": 587,
           "tls_mode": "starttls",
-          "username": "apikey",
-          "password": "relay-password"
-        },
-        "invalid": true
+          "transport": "relay",
+          "username": "apikey"
+        }
       },
       "response": {
         "status": 422,
         "body": {
           "error": {
             "code": "validation_failed",
-            "message": "Request body failed validation",
             "details": {
               "fields": {
                 "host": "Must be a bare host name or IP address, with no scheme, port or path"
               }
-            }
+            },
+            "message": "Request body failed validation"
           }
         }
       }
     },
+    "internal_error": {
+      "summary": "The domain-policy query fails",
+      "request": {
+        "path": {
+          "id": 4
+        },
+        "body": {
+          "transport": "direct"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "master_key_required": {
+      "summary": "A new relay credential requires the server master key",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "host": "smtp.example.net",
+          "password": "relay-password",
+          "port": 587,
+          "tls_mode": "starttls",
+          "transport": "relay",
+          "username": "apikey"
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "master_key_required",
+            "message": "A relay password can only be stored when the server has a MASTER_KEY"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        },
+        "body": {
+          "transport": "direct"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Domain not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "outside_domain": {
+      "summary": "A grant on another domain is refused",
+      "description": "A current session holding domains:write only for other.test is refused by production permission middleware.",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "transport": "direct"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "port_invalid": {
       "request": {
+        "path": {
+          "id": 1
+        },
         "body": {
-          "transport": "relay",
           "host": "smtp.example.net",
+          "password": "relay-password",
           "port": 65536,
           "tls_mode": "starttls",
-          "username": "apikey",
-          "password": "relay-password"
+          "transport": "relay",
+          "username": "apikey"
         },
         "invalid": true
       },
@@ -7578,25 +7711,28 @@
         "body": {
           "error": {
             "code": "validation_failed",
-            "message": "Request body failed validation",
             "details": {
               "fields": {
                 "port": "Must be between 1 and 65535"
               }
-            }
+            },
+            "message": "Request body failed validation"
           }
         }
       }
     },
     "port_wrong_type": {
       "request": {
+        "path": {
+          "id": 1
+        },
         "body": {
-          "transport": "relay",
           "host": "smtp.example.net",
+          "password": "relay-password",
           "port": "587",
           "tls_mode": "starttls",
-          "username": "apikey",
-          "password": "relay-password"
+          "transport": "relay",
+          "username": "apikey"
         },
         "invalid": true
       },
@@ -7605,12 +7741,12 @@
         "body": {
           "error": {
             "code": "validation_failed",
-            "message": "Request body failed validation",
             "details": {
               "fields": {
                 "port": "must be an integer"
               }
-            }
+            },
+            "message": "Request body failed validation"
           }
         }
       }
@@ -7618,13 +7754,16 @@
     "relay": {
       "summary": "Send through an authenticated relay",
       "request": {
+        "path": {
+          "id": 1
+        },
         "body": {
-          "transport": "relay",
           "host": "smtp.example.net",
+          "password": "relay-password",
           "port": 587,
           "tls_mode": "starttls",
-          "username": "apikey",
-          "password": "relay-password"
+          "transport": "relay",
+          "username": "apikey"
         }
       },
       "response": {
@@ -7632,25 +7771,111 @@
         "body": {
           "data": {
             "domain_id": 1,
-            "transport": "relay",
             "host": "smtp.example.net",
+            "password_set": true,
             "port": 587,
             "tls_mode": "starttls",
-            "username": "apikey",
-            "password_set": true
+            "transport": "relay",
+            "username": "apikey"
           }
         }
       }
     },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "The published JSON body exceeds the eight-byte test cap. The production body limiter refuses it before policy writes.",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "transport": "direct"
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "save_unavailable": {
+      "request": {
+        "path": {
+          "id": 5
+        },
+        "body": {
+          "transport": "direct"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to save the relay settings"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "transport": "direct"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "settings_unavailable": {
+      "request": {
+        "path": {
+          "id": 3
+        },
+        "body": {
+          "transport": "direct"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to load the relay settings"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "tls_mode_invalid": {
       "request": {
+        "path": {
+          "id": 1
+        },
         "body": {
-          "transport": "relay",
           "host": "smtp.example.net",
+          "password": "relay-password",
           "port": 587,
           "tls_mode": "none",
-          "username": "apikey",
-          "password": "relay-password"
+          "transport": "relay",
+          "username": "apikey"
         },
         "invalid": true
       },
@@ -7659,18 +7884,21 @@
         "body": {
           "error": {
             "code": "validation_failed",
-            "message": "Request body failed validation",
             "details": {
               "fields": {
                 "tls_mode": "Must be one of: starttls, implicit"
               }
-            }
+            },
+            "message": "Request body failed validation"
           }
         }
       }
     },
     "transport_invalid": {
       "request": {
+        "path": {
+          "id": 1
+        },
         "body": {
           "transport": "smtp"
         },
@@ -7681,18 +7909,21 @@
         "body": {
           "error": {
             "code": "validation_failed",
-            "message": "Request body failed validation",
             "details": {
               "fields": {
                 "transport": "Must be one of: direct, relay"
               }
-            }
+            },
+            "message": "Request body failed validation"
           }
         }
       }
     },
     "transport_missing": {
       "request": {
+        "path": {
+          "id": 1
+        },
         "body": {},
         "invalid": true
       },
@@ -7701,25 +7932,167 @@
         "body": {
           "error": {
             "code": "validation_failed",
-            "message": "Request body failed validation",
             "details": {
               "fields": {
                 "transport": "Must be one of: direct, relay"
               }
-            }
+            },
+            "message": "Request body failed validation"
           }
         }
+      }
+    },
+    "unauthenticated": {
+      "summary": "No session credential was sent",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "transport": "direct"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },
   "setMtaStsPolicy": {
+    "body_array": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "created": {
+      "summary": "Create preserving explicit zero/false",
+      "request": {
+        "path": {
+          "id": 2
+        },
+        "body": {
+          "active": false,
+          "max_age": 0,
+          "mode": "enforce",
+          "mx_hosts": "mail.direct.test"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "active": false,
+            "created_at": "2026-10-25T00:00:00Z",
+            "domain": {
+              "active": true,
+              "created_at": "2026-10-20T00:00:00Z",
+              "default_quota_bytes": 1073741824,
+              "dkim_selector": "restmail",
+              "dmarc_policy": "none",
+              "id": 2,
+              "name": "direct.test",
+              "sending_policy": "",
+              "server_type": "traditional",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            "domain_id": 2,
+            "id": 8,
+            "max_age": 0,
+            "mode": "enforce",
+            "mx_hosts": "mail.direct.test",
+            "updated_at": "2026-10-25T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "created_defaults": {
+      "summary": "Omitted fields use policy defaults",
+      "request": {
+        "path": {
+          "id": 2
+        },
+        "body": {}
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "active": true,
+            "created_at": "2026-10-25T00:00:00Z",
+            "domain": {
+              "active": true,
+              "created_at": "2026-10-20T00:00:00Z",
+              "default_quota_bytes": 1073741824,
+              "dkim_selector": "restmail",
+              "dmarc_policy": "none",
+              "id": 2,
+              "name": "direct.test",
+              "sending_policy": "",
+              "server_type": "traditional",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            "domain_id": 2,
+            "id": 8,
+            "max_age": 604800,
+            "mode": "testing",
+            "mx_hosts": "",
+            "updated_at": "2026-10-25T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "The domain-policy query fails",
+      "request": {
+        "path": {
+          "id": 4
+        },
+        "body": {
+          "mode": "testing"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "max_age_negative": {
       "request": {
+        "path": {
+          "id": 1
+        },
         "body": {
-          "mode": "testing",
-          "mx_hosts": "mail.example.org",
+          "active": true,
           "max_age": -1,
-          "active": true
+          "mode": "testing",
+          "mx_hosts": "mail.example.org"
         },
         "invalid": true
       },
@@ -7728,23 +8101,46 @@
         "body": {
           "error": {
             "code": "validation_failed",
-            "message": "Request body failed validation",
             "details": {
               "fields": {
                 "max_age": "Must be a non-negative integer (seconds)"
               }
-            }
+            },
+            "message": "Request body failed validation"
           }
         }
       }
     },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        },
+        "body": {
+          "mode": "testing"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Domain not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "mode_invalid": {
       "request": {
+        "path": {
+          "id": 1
+        },
         "body": {
-          "mode": "strict",
-          "mx_hosts": "mail.example.org",
+          "active": true,
           "max_age": 86400,
-          "active": true
+          "mode": "strict",
+          "mx_hosts": "mail.example.org"
         },
         "invalid": true
       },
@@ -7753,39 +8149,180 @@
         "body": {
           "error": {
             "code": "validation_failed",
-            "message": "Request body failed validation",
             "details": {
               "fields": {
                 "mode": "Must be one of: none, testing, enforce"
               }
-            }
+            },
+            "message": "Request body failed validation"
           }
         }
       }
     },
+    "outside_domain": {
+      "summary": "A grant on another domain is refused",
+      "description": "A current session holding domains:write only for other.test is refused by production permission middleware.",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "mode": "testing"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "policy": {
       "request": {
+        "path": {
+          "id": 1
+        },
         "body": {
-          "mode": "testing",
-          "mx_hosts": "mail.example.org",
+          "active": true,
           "max_age": 86400,
-          "active": true
+          "mode": "testing",
+          "mx_hosts": "mail.example.org"
         }
       },
       "response": {
         "status": 200,
         "body": {
           "data": {
-            "id": 1,
+            "active": true,
+            "created_at": "2026-10-20T00:00:00Z",
+            "domain": {
+              "active": true,
+              "created_at": "2026-10-20T00:00:00Z",
+              "default_quota_bytes": 1073741824,
+              "dkim_selector": "restmail",
+              "dmarc_policy": "none",
+              "id": 1,
+              "name": "example.com",
+              "sending_policy": "",
+              "server_type": "traditional",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
             "domain_id": 1,
+            "id": 7,
+            "max_age": 86400,
             "mode": "testing",
             "mx_hosts": "mail.example.org",
-            "max_age": 86400,
-            "active": true,
-            "created_at": "2026-01-01T00:00:00Z",
-            "updated_at": "2026-01-01T00:00:00Z"
+            "updated_at": "2026-10-25T00:00:00Z"
           }
         }
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "The published JSON body exceeds the eight-byte test cap. The production body limiter refuses it before policy writes.",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "mode": "testing"
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "save_unavailable": {
+      "request": {
+        "path": {
+          "id": 5
+        },
+        "body": {
+          "mode": "testing"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to save MTA-STS policy"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "mode": "testing"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "settings_unavailable": {
+      "request": {
+        "path": {
+          "id": 3
+        },
+        "body": {
+          "mode": "testing"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to save MTA-STS policy"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No session credential was sent",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "mode": "testing"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },
