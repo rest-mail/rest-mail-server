@@ -19,3 +19,7 @@
 [checks]
 	required = CI
 	required = E2E (full topology)
+	# main merges through a merge queue (#825), which tests each pull request on
+	# top of the current main at merge time. Requiring every pull request to be up
+	# to date as well would only re-run its checks each time main moves.
+	strict = false
