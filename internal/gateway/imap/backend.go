@@ -167,15 +167,16 @@ func (m *mailbox) Messages(folder string) ([]imapsrv.Message, error) {
 // space clamps to 0 rather than wrapping to a small, wrong UID.
 func toMessage(msg apiclient.MessageSummary) imapsrv.Message {
 	return imapsrv.Message{
-		UID:     toUID(msg.ID),
-		Size:    msg.WireSize(),
-		Seen:    msg.IsRead,
-		Flagged: msg.IsFlagged || msg.IsStarred,
-		Draft:   msg.IsDraft,
-		Subject: msg.Subject,
-		From:    imapsrv.Address{Name: msg.SenderName, Email: msg.Sender},
-		To:      string(msg.RecipientsTo),
-		Date:    msg.ReceivedAt,
+		UID:      toUID(msg.ID),
+		Size:     msg.WireSize(),
+		Answered: msg.IsAnswered,
+		Seen:     msg.IsRead,
+		Flagged:  msg.IsFlagged || msg.IsStarred,
+		Draft:    msg.IsDraft,
+		Subject:  msg.Subject,
+		From:     imapsrv.Address{Name: msg.SenderName, Email: msg.Sender},
+		To:       string(msg.RecipientsTo),
+		Date:     msg.ReceivedAt,
 	}
 }
 
@@ -216,8 +217,8 @@ func (m *mailbox) rawMessage(detail apiclient.MessageDetail) string {
 // SELECT; mirroring the flag onto both columns means what you STORE is what
 // you FETCH back.
 func (m *mailbox) Store(uid uint32, f imapsrv.FlagUpdate) error {
-	updates := apiclient.MessageUpdate{IsRead: f.Seen, IsFlagged: f.Flagged, IsStarred: f.Flagged, IsDraft: f.Draft}
-	if f.Seen == nil && f.Flagged == nil && f.Draft == nil {
+	updates := apiclient.MessageUpdate{IsAnswered: f.Answered, IsRead: f.Seen, IsFlagged: f.Flagged, IsStarred: f.Flagged, IsDraft: f.Draft}
+	if f.Seen == nil && f.Answered == nil && f.Flagged == nil && f.Draft == nil {
 		return nil
 	}
 	return m.api.UpdateMessage(m.token, uint(uid), updates)
@@ -289,7 +290,7 @@ func (m *mailbox) CopyUID(uid uint32, dest string) (uint32, error) {
 
 	// Preserve the source flags and internal date on the copy. \Flagged is backed
 	// by both is_flagged and is_starred, mirroring the gateway's symmetric mapping.
-	seen, flagged, starred, draft := src.IsRead, src.IsFlagged, src.IsStarred, src.IsDraft
+	seen, flagged, starred, draft, answered := src.IsRead, src.IsFlagged, src.IsStarred, src.IsDraft, src.IsAnswered
 	received := src.ReceivedAt
 
 	deliverReq := &apiclient.DeliverRequest{
@@ -306,6 +307,7 @@ func (m *mailbox) CopyUID(uid uint32, dest string) (uint32, error) {
 		InReplyTo:    src.InReplyTo,
 		References:   src.References,
 		RawMessage:   []byte(m.rawMessage(src)),
+		IsAnswered:   &answered,
 		IsRead:       &seen,
 		IsFlagged:    &flagged,
 		IsStarred:    &starred,
@@ -373,6 +375,9 @@ func (m *mailbox) AppendUID(dest string, f imapsrv.FlagUpdate, raw []byte) (uint
 	// Apply the client-supplied APPEND flags at creation time. \Flagged writes both
 	// is_flagged and is_starred so it round-trips through FETCH's
 	// is_flagged || is_starred fold, matching Store's symmetric mapping.
+	if f.Answered != nil {
+		deliverReq.IsAnswered = f.Answered
+	}
 	if f.Seen != nil {
 		deliverReq.IsRead = f.Seen
 	}

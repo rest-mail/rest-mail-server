@@ -104,6 +104,7 @@ type deliverMessageBody struct {
 	// ReceivedAt keeps the delivery default, so ordinary inbound mail is
 	// unaffected.
 	Folder     string     `json:"folder,omitempty"`
+	IsAnswered *bool      `json:"is_answered,omitempty"`
 	IsRead     *bool      `json:"is_read,omitempty"`
 	IsFlagged  *bool      `json:"is_flagged,omitempty"`
 	IsStarred  *bool      `json:"is_starred,omitempty"`
@@ -168,11 +169,12 @@ type updateMailboxRequest struct {
 }
 
 type updateMessageBody struct {
-	IsRead    *bool   `json:"is_read,omitempty"`
-	IsFlagged *bool   `json:"is_flagged,omitempty"`
-	IsStarred *bool   `json:"is_starred,omitempty"`
-	IsDraft   *bool   `json:"is_draft,omitempty"`
-	Folder    *string `json:"folder,omitempty"`
+	IsAnswered *bool   `json:"is_answered,omitempty"`
+	IsRead     *bool   `json:"is_read,omitempty"`
+	IsFlagged  *bool   `json:"is_flagged,omitempty"`
+	IsStarred  *bool   `json:"is_starred,omitempty"`
+	IsDraft    *bool   `json:"is_draft,omitempty"`
+	Folder     *string `json:"folder,omitempty"`
 }
 
 type updatePipelineRequestBody struct {
@@ -240,6 +242,7 @@ type Message struct {
 	ReceivedTLS       *bool           `json:"received_tls,omitempty" description:"For an inbound-MX delivery, whether it arrived encrypted"`
 	TLSVersion        string          `json:"tls_version,omitempty"`
 	HasAttachments    bool            `json:"has_attachments"`
+	IsAnswered        bool            `json:"is_answered,omitempty"`
 	IsRead            bool            `json:"is_read"`
 	IsDSN             bool            `json:"is_dsn" description:"A delivery status notification this server generated"`
 	IsFlagged         bool            `json:"is_flagged"`
