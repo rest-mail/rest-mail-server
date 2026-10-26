@@ -23,7 +23,7 @@ func PutFilesystem(ctx context.Context, directory string, data []byte) (ref, che
 	if err != nil {
 		return "", "", err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	if err := root.MkdirAll("imports", 0755); err != nil {
 		return "", "", err
 	}
@@ -34,7 +34,7 @@ func PutFilesystem(ctx context.Context, directory string, data []byte) (ref, che
 	if err != nil {
 		return "", "", err
 	}
-	defer root.Remove(temporary) // only the unpublished temporary file created here
+	defer func() { _ = root.Remove(temporary) }() // only the unpublished temporary file created here
 	_, writeErr := f.Write(data)
 	closeErr := f.Close()
 	if writeErr != nil {
