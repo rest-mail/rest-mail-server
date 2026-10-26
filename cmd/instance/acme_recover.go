@@ -58,5 +58,5 @@ func recoverACMEServingKey(dir, name string) error {
 		slog.Warn("acme: restored serving key after interrupted publication", "cert", filepath.Join(dir, name+".crt"), "backup", backup)
 		return nil
 	}
-	return nil // No matching backup: normal issuance must repair the pair.
+	return nil // No matching backup: renewal validates the pair before reusing its key.
 }

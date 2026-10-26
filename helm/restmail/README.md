@@ -27,7 +27,7 @@ This chart deploys **only** the rest-mail product surface. It does **not** inclu
 
 - Postfix, Dovecot, rspamd, ClamAV, fail2ban (the "traditional mailserver"
   stack — see `rest-mail/reference-mailserver`).
-- DNS (dnsmasq), TLS issuance (cert-manager / certgen), mail-internet
+- Authoritative/test DNS (dnsmasq), TLS issuance (cert-manager / certgen), mail-internet
   simulation (`rest-mail/testbed`).
 - The marketing website.
 
@@ -79,6 +79,39 @@ verify coverage before advertising a node. Client submission uses 465, IMAP
 587. Changing workload kind replaces the controller and can interrupt gateway
 availability during the transition; plan the rollout and verify readiness on
 each advertised node. This option does not configure DNS or the load balancer.
+
+## Optional outbound DANE resolver
+
+Set `smtp.dane.enabled: true` to add an Unbound sidecar to each enabled SMTP
+gateway pod (Deployment or DaemonSet). It sets `DANE_RESOLVER=127.0.0.1:5353`;
+the queue uses the existing DANE verification and TLS-RPT path. The default is
+false, with no extra container, ConfigMap or environment variable.
+
+```yaml
+smtp:
+  dane:
+    enabled: true
+```
+
+The resolver binds only pod loopback and has no Service. It validates DNSSEC
+from the bundled root trust anchor; bogus answers remain failures, never an
+insecure fallback. The chart's DNS egress policy already permits UDP/TCP53 to
+authoritative servers. A resolver outage defers mail requiring DNS lookups;
+it does not turn DANE off. The probe uses a local health name and therefore
+does not claim external DNS connectivity.
+
+The default [multiarch Unbound image](https://github.com/klutchell/unbound-docker)
+is pinned by version and immutable digest. `smtp.dane.image` and
+`smtp.dane.resources` can be overridden. It runs as the image's uid101/gid102,
+with all capabilities dropped and privilege escalation disabled. Its root
+filesystem is writable for Unbound's RFC5011 trust-anchor updates; it has no
+mail, database credential or TLS-key mounts. Trust-anchor changes live in that
+container's filesystem; update the pinned image as root anchors/software
+change. The SMTP container keeps its existing read-only filesystem policy.
+Config changes roll the pod through a checksum annotation.
+
+This resolver setting controls outbound authentication. Receiving-side TLSA
+publication and key renewal are described in [DANE/TLSA](../../docs/dane-tlsa.md).
 
 ## The web apps
 

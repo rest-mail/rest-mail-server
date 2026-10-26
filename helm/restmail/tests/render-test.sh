@@ -680,3 +680,24 @@ fi
 pass "conflicting S3 credential sources are refused"
 
 echo "All chart render tests passed."
+
+echo "== optional loopback DANE resolver (#725) =="
+assert_absent "DANE stays off by default" "$tmp/prod.yaml" 'name: dane-resolver'
+assert_absent "no resolver env by default" "$tmp/prod.yaml" 'name: DANE_RESOLVER'
+for kind in Deployment DaemonSet; do
+  helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set smtp.dane.enabled=true \
+    --set "smtpGateway.workloadKind=$kind" > "$tmp/dane-$kind.yaml"
+  assert_contains "DANE resolver on $kind" "$tmp/dane-$kind.yaml" 'name: dane-resolver'
+  assert_contains "DANE uses loopback on $kind" "$tmp/dane-$kind.yaml" 'value: "127.0.0.1:5353"'
+  assert_contains "DANE config rolls pods on $kind" "$tmp/dane-$kind.yaml" 'checksum/dane-config:'
+  assert_contains "DNSSEC validator on $kind" "$tmp/dane-$kind.yaml" 'module-config: "validator iterator"'
+  assert_contains "DNSSEC never permissive on $kind" "$tmp/dane-$kind.yaml" 'val-permissive-mode: no'
+  resolver=$(yq -N e 'select(.metadata.name == "restmail-smtp-gateway") | .spec.template.spec.containers[] | select(.name == "dane-resolver") | .securityContext.runAsUser' "$tmp/dane-$kind.yaml")
+  [ "$resolver" = 101 ] || fail "DANE resolver must run as image uid101"
+  ports=$(yq -N e 'select(.kind == "Service") | .spec.ports[] | select(.port == 5353 or .targetPort == 5353)' "$tmp/dane-$kind.yaml")
+  [ -z "$ports" ] || fail "DANE loopback resolver must have no public Service"
+done
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set smtp.dane.enabled=true \
+  --set smtpGateway.enabled=false > "$tmp/dane-disabled-gateway.yaml"
+assert_absent "no resolver without SMTP gateway" "$tmp/dane-disabled-gateway.yaml" 'name: dane-resolver'
+assert_absent "no DANE ConfigMap without SMTP gateway" "$tmp/dane-disabled-gateway.yaml" 'name: restmail-smtp-dane'
