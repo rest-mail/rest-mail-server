@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"reflect"
 	"strings"
 	"time"
 
@@ -318,7 +319,7 @@ func (h *TestHandler) snapshot(r *http.Request, _ endpoint.Empty) (TestSnapshot,
 
 // restoreSnapshot restores database state from a previously captured snapshot.
 // POST /api/v1/admin/test/snapshot/restore
-func (h *TestHandler) restoreSnapshot(_ *http.Request, in RestoreTestSnapshot) (TestDataStatus, error) {
+func (h *TestHandler) restoreSnapshot(r *http.Request, in RestoreTestSnapshot) (TestDataStatus, error) {
 	if h.productionLocked() {
 		return TestDataStatus{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "test endpoints disabled in production")
 	}
@@ -328,7 +329,7 @@ func (h *TestHandler) restoreSnapshot(_ *http.Request, in RestoreTestSnapshot) (
 		return TestDataStatus{}, err
 	}
 
-	err = h.db.Transaction(func(tx *gorm.DB) error {
+	err = h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
 		// Clear existing data, sparing the admins.
 		if err := clearTestData(tx); err != nil {
 			return err
@@ -336,37 +337,37 @@ func (h *TestHandler) restoreSnapshot(_ *http.Request, in RestoreTestSnapshot) (
 
 		// Restore in FK-safe order
 		for i := range snap.Domains {
-			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&snap.Domains[i]).Error; err != nil {
+			if err := restoreTestRow(tx, &snap.Domains[i], true); err != nil {
 				return fmt.Errorf("restore domains: %w", err)
 			}
 		}
 		for i := range snap.Mailboxes {
-			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&snap.Mailboxes[i]).Error; err != nil {
+			if err := restoreTestRow(tx, &snap.Mailboxes[i], true); err != nil {
 				return fmt.Errorf("restore mailboxes: %w", err)
 			}
 		}
 		for i := range snap.Aliases {
-			if err := tx.Create(&snap.Aliases[i]).Error; err != nil {
+			if err := restoreTestRow(tx, &snap.Aliases[i], false); err != nil {
 				return fmt.Errorf("restore aliases: %w", err)
 			}
 		}
 		for i := range snap.Messages {
-			if err := tx.Create(&snap.Messages[i]).Error; err != nil {
+			if err := restoreTestRow(tx, &snap.Messages[i], false); err != nil {
 				return fmt.Errorf("restore messages: %w", err)
 			}
 		}
 		for i := range snap.Queue {
-			if err := tx.Create(&snap.Queue[i]).Error; err != nil {
+			if err := restoreTestRow(tx, &snap.Queue[i], false); err != nil {
 				return fmt.Errorf("restore queue: %w", err)
 			}
 		}
 		for i := range snap.Pipelines {
-			if err := tx.Create(&snap.Pipelines[i]).Error; err != nil {
+			if err := restoreTestRow(tx, &snap.Pipelines[i], false); err != nil {
 				return fmt.Errorf("restore pipelines: %w", err)
 			}
 		}
 		for i := range snap.Bans {
-			if err := tx.Create(&snap.Bans[i]).Error; err != nil {
+			if err := restoreTestRow(tx, &snap.Bans[i], false); err != nil {
 				return fmt.Errorf("restore bans: %w", err)
 			}
 		}
@@ -375,10 +376,36 @@ func (h *TestHandler) restoreSnapshot(_ *http.Request, in RestoreTestSnapshot) (
 	})
 
 	if err != nil {
-		return TestDataStatus{}, endpoint.Refuse(http.StatusInternalServerError, "internal", "restore failed: "+err.Error())
+		return TestDataStatus{}, fmt.Errorf("restore test snapshot: %w", err)
 	}
 
 	return TestDataStatus{Status: "restore_complete"}, nil
+}
+
+// Restore database columns directly: GORM's struct Create substitutes defaults
+// for false/zero fields, so a disabled account or zero quota would not round
+// trip. Associations are read views, not additional fixture table inserts.
+func restoreTestRow(tx *gorm.DB, row any, keepExisting bool) error {
+	statement := &gorm.Statement{DB: tx}
+	if err := statement.Parse(row); err != nil {
+		return err
+	}
+	values := make(map[string]any)
+	for _, field := range statement.Schema.Fields {
+		if field.DBName == "" || !field.Creatable {
+			continue
+		}
+		value, zero := field.ValueOf(tx.Statement.Context, reflect.ValueOf(row))
+		if field.PrimaryKey && zero {
+			continue // Sparse fixtures may let the database assign their ID.
+		}
+		values[field.DBName] = value
+	}
+	query := tx.Model(row).Omit(clause.Associations)
+	if keepExisting {
+		query = query.Clauses(clause.OnConflict{DoNothing: true})
+	}
+	return query.Create(values).Error
 }
 
 // testDataAdmins are the accounts the test endpoints never clear: those
