@@ -9,7 +9,7 @@ func TestPipelineAreaDescribesCapabilitiesAndPreviewLimits(t *testing.T) {
 	paths, _ := describedAPI(t)
 	operations := map[string]struct {
 		path, method, capability string
-		preview                  bool
+		rateLimited              bool
 	}{
 		"listPipelines":        {"/pipelines", "get", "pipelines:read", false},
 		"createPipeline":       {"/pipelines", "post", "pipelines:write", false},
@@ -21,11 +21,11 @@ func TestPipelineAreaDescribesCapabilitiesAndPreviewLimits(t *testing.T) {
 		"getPipelineAnalytics": {"/pipelines/analytics", "get", "observability:read", false},
 		"getMessageTrace":      {"/messages/{id}/trace", "get", "observability:read", false},
 		"listCustomFilters":    {"/custom-filters", "get", "pipelines:read", false},
-		"createCustomFilter":   {"/custom-filters", "post", "pipelines:write", false},
+		"createCustomFilter":   {"/custom-filters", "post", "pipelines:write", true},
 		"getCustomFilter":      {"/custom-filters/{id}", "get", "pipelines:read", false},
-		"updateCustomFilter":   {"/custom-filters/{id}", "patch", "pipelines:write", false},
+		"updateCustomFilter":   {"/custom-filters/{id}", "patch", "pipelines:write", true},
 		"deleteCustomFilter":   {"/custom-filters/{id}", "delete", "pipelines:delete", false},
-		"validateCustomFilter": {"/custom-filters/validate", "post", "pipelines:write", false},
+		"validateCustomFilter": {"/custom-filters/validate", "post", "pipelines:write", true},
 		"testCustomFilter":     {"/custom-filters/{id}/test", "post", "pipelines:write", true},
 	}
 	for id, want := range operations {
@@ -52,8 +52,9 @@ func TestPipelineAreaDescribesCapabilitiesAndPreviewLimits(t *testing.T) {
 					t.Errorf("missing response %s", status)
 				}
 			}
-			if _, limited := op.Responses["429"]; limited != want.preview {
-				t.Errorf("preview throttle described = %v", limited)
+			// Refused credentials can be throttled even without a preview limiter.
+			if _, limited := op.Responses["429"]; limited != want.rateLimited {
+				t.Errorf("rate-limit response described = %v", limited)
 			}
 		})
 	}
