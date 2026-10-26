@@ -49,6 +49,7 @@ auth:
     - '/api/v1/accounts/{id}/credentials/{credential_id} > Revoke an app password > 401 > application/json'
     - '/api/v1/admin/audit > Read the audit log, newest first > 401 > application/json'
     - '/api/v1/admin/audit/verify > Check the audit log''s hash chain > 401 > application/json'
+    - '/api/v1/admin/test/snapshot > Capture the current database state as JSON > 401 > application/json'
     - '/api/v1/admin/grants > List grants, oldest first > 401 > application/json'
     - '/api/v1/admin/grants/mine > The caller''s own grants > 401 > application/json'
     - '/api/v1/admin/domains/{id}/dns > Live DNS record check (MX, SPF, DMARC, DKIM, MTA-STS, TLS-RPT) for a domain > 401 > application/json'
@@ -170,6 +171,9 @@ exclude-matching:
   - '^/api/v1/admin/bans > List IP bans > (400|422)( >|$)'
   - '^/api/v1/admin/logs/delivery > .* > (400|422)( >|$)'
   - '^/api/v1/admin/test/(verify|snapshot/restore) > .* > (400|422)( >|$)'
+  # The snapshot is never sent over the body cap, and a healthy fixture's
+  # database does not fail its read; #1166 tracks topology fault injection.
+  - '^/api/v1/admin/test/snapshot > .* > (413|500)( >|$)'
   - '^/\.well-known/(restmail|autoconfig|mta-sts\.txt|acme-challenge)(/| >).* > (400|422)( >|$)'
   - '^/restmail/(capabilities|mailboxes) > .* > (400|422)( >|$)'
   # A 401 for a wrong credential on an operation that takes none (#386).
@@ -256,6 +260,12 @@ surface:
       reason: "Wipe the data the rest of the run depends on."
     - operation: restoreTestSnapshot
       reason: "Wipe the data the rest of the run depends on."
+    - operation: snapshotTestData
+      status: "413"
+      reason: "The router's body cap answers before the handler, and the run sends the snapshot without a body (#1166)."
+    - operation: snapshotTestData
+      status: "500"
+      reason: "A failed snapshot read needs a fault-injected database (#1166); handler tests cover it."
     - operation: respondToCalendar
       reason: "Needs a message carrying a calendar invitation."
     - operation: releaseQuarantine
