@@ -74,6 +74,7 @@ type TestSnapshotMessage struct {
 	ReceivedTLS       *bool               `json:"received_tls,omitempty"`
 	TLSVersion        string              `json:"tls_version,omitempty"`
 	HasAttachments    bool                `json:"has_attachments"`
+	IsAnswered        bool                `json:"is_answered,omitempty"`
 	IsRead            bool                `json:"is_read"`
 	IsDSN             bool                `json:"is_dsn"`
 	IsFlagged         bool                `json:"is_flagged"`
@@ -204,6 +205,7 @@ type RestoreSnapshotMessage struct {
 	ReceivedTLS       *bool                  `json:"received_tls,omitempty"`
 	TLSVersion        string                 `json:"tls_version,omitempty"`
 	HasAttachments    bool                   `json:"has_attachments,omitempty"`
+	IsAnswered        bool                   `json:"is_answered,omitempty"`
 	IsRead            bool                   `json:"is_read,omitempty"`
 	IsDSN             bool                   `json:"is_dsn,omitempty"`
 	IsFlagged         bool                   `json:"is_flagged,omitempty"`
