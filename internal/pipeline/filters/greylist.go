@@ -56,7 +56,14 @@ func (f *greylistFilter) ttl() time.Duration {
 	return time.Duration(f.cfg.TTLDays) * 24 * time.Hour
 }
 
-func (f *greylistFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
+func (f *greylistFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
+	// A local forward runs inside its delivery transaction. Keep filter reads
+	// and writes on that connection without changing the registered instance.
+	if db := pipeline.DBFromContext(ctx); db != nil {
+		copy := *f
+		copy.db = db
+		f = &copy
+	}
 	sender := email.Envelope.MailFrom
 	clientIP := email.Envelope.ClientIP
 

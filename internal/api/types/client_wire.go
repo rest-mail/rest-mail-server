@@ -253,7 +253,29 @@ type Message struct {
 	DateHeader        *time.Time      `json:"date_header"`
 	CreatedAt         time.Time       `json:"created_at"`
 	UpdatedAt         time.Time       `json:"updated_at"`
-	Mailbox           Mailbox         `json:"mailbox,omitempty" description:"Always the empty mailbox: the association is never loaded on these routes"`
+	Mailbox           MessageMailbox  `json:"mailbox,omitempty" description:"Always the empty mailbox: the association is never loaded on these routes"`
+}
+
+// MessageMailbox is the message model's association, including its unloaded
+// zero value. A resource Mailbox always has an email address; this association
+// can have an empty one. The wire fields remain identical.
+type MessageMailbox struct {
+	ID                     uint        `json:"id"`
+	DomainID               uint        `json:"domain_id"`
+	LocalPart              string      `json:"local_part"`
+	Address                string      `json:"address"`
+	DisplayName            string      `json:"display_name"`
+	QuotaBytes             int64       `json:"quota_bytes"`
+	QuotaUsedBytes         int64       `json:"quota_used_bytes"`
+	Active                 bool        `json:"active"`
+	LastLoginAt            *time.Time  `json:"last_login_at"`
+	PasswordChangeRequired bool        `json:"password_change_required"`
+	TwoFactorRequired      bool        `json:"two_factor_required"`
+	LastPasswordChange     *time.Time  `json:"last_password_change,omitempty"`
+	CreatedAt              time.Time   `json:"created_at"`
+	UpdatedAt              time.Time   `json:"updated_at"`
+	Domain                 *Domain     `json:"domain,omitempty" description:"Present only when loaded and the session may read the parent domain"`
+	QuotaUsage             *QuotaUsage `json:"quota_usage,omitempty"`
 }
 
 type Mailbox struct {

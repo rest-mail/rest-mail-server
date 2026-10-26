@@ -306,6 +306,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	messageH := handlers.NewMessageHandler(db, broker, pipelineEngine, cfg.MasterKey, traceRecorder)
 	tlsReportEmail := handlers.NewTLSReportEmailReceiver(db, cfg.TLSRPTReportAddress)
 	messageH.SetTLSReportEmailReceiver(tlsReportEmail)
+	messageH.SetForwardStorage(cfg.SMTPMaxMessageSize, attachmentStore)
 	// Send-path abuse limits (#184): a per-message recipient cap and a per-account
 	// send rate limiter, mirroring the SMTP submission caps (#171) so the webmail/API
 	// send path (and the draft-send / forward paths that delegate to it) cannot be

@@ -95,6 +95,17 @@ func (s *S3) validRef(ref string) bool {
 		return false
 	}
 	suffix := strings.TrimPrefix(ref, s.prefix)
+	if strings.HasPrefix(suffix, "copies/") {
+		parts := strings.Split(suffix, "/")
+		if len(parts) != 3 {
+			return false
+		}
+		nonce, err := hex.DecodeString(parts[1])
+		if err != nil || len(nonce) != 16 || parts[1] != strings.ToLower(parts[1]) {
+			return false
+		}
+		suffix = parts[2]
+	}
 	decoded, err := hex.DecodeString(suffix)
 	return err == nil && len(decoded) == sha256.Size && suffix == strings.ToLower(suffix)
 }

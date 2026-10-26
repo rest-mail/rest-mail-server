@@ -2300,7 +2300,7 @@ export interface paths {
         put?: never;
         /**
          * Forward a message
-         * @description The message (mail:read) is sent on as sendMessage sends, with Fwd: and its header above the note.
+         * @description The message (mail:read) is forwarded through the normal sender authorization, rate limit and outbound policy, with Fwd: and the note above its original header. Stored attachments, including empty and inline parts, are re-attached; the Sent copy owns independent attachment objects. The final signed MIME message is bounded by SMTP_MAX_MESSAGE_SIZE, and sender quota includes the copied parts. Sent, attachment references, quota and recipient work commit together. Unavailable or changed source objects fail the forward instead of dropping parts.
          */
         post: operations["forwardMessage"];
         delete?: never;
@@ -3048,6 +3048,14 @@ export interface components {
             /** Format: int64 */
             unread: number;
         };
+        ForwardRefusalBody: {
+            code: string;
+            details?: components["schemas"]["ValidationDetails"] | null;
+            message: string;
+        };
+        ForwardRefusalResponse: {
+            error: components["schemas"]["ForwardRefusalBody"];
+        };
         Headers: {
             bcc?: components["schemas"]["Address"][];
             cc?: components["schemas"]["Address"][];
@@ -3246,7 +3254,7 @@ export interface components {
             is_flagged: boolean;
             is_read: boolean;
             is_starred: boolean;
-            mailbox?: components["schemas"]["Mailbox"];
+            mailbox?: components["schemas"]["MessageMailbox"];
             mailbox_id: number;
             message_id: string;
             raw_size: number;
@@ -3275,6 +3283,30 @@ export interface components {
             message_id: number;
             /** Format: int64 */
             size_bytes: number;
+        };
+        MessageMailbox: {
+            active: boolean;
+            address: string;
+            /** Format: date-time */
+            created_at: string;
+            display_name: string;
+            domain?: components["schemas"]["Domain"] | null;
+            domain_id: number;
+            id: number;
+            /** Format: date-time */
+            last_login_at: string | null;
+            /** Format: date-time */
+            last_password_change?: string | null;
+            local_part: string;
+            password_change_required: boolean;
+            /** Format: int64 */
+            quota_bytes: number;
+            quota_usage?: components["schemas"]["QuotaUsage"] | null;
+            /** Format: int64 */
+            quota_used_bytes: number;
+            two_factor_required: boolean;
+            /** Format: date-time */
+            updated_at: string;
         };
         MessageTrace: {
             client_ip: string;
@@ -7656,7 +7688,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -19314,7 +19345,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -19388,13 +19418,13 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Binding validation, sender policy or sender quota refusal */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                    "application/json": components["schemas"]["ForwardRefusalResponse"];
                 };
             };
             /** @description Too Many Requests */

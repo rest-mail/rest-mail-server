@@ -50,7 +50,7 @@ func messageOf(m models.Message) Message {
 		DateHeader:        m.DateHeader,
 		CreatedAt:         m.CreatedAt,
 		UpdatedAt:         m.UpdatedAt,
-		Mailbox:           mailboxOf(m.Mailbox),
+		Mailbox:           apitypes.MessageMailbox(mailboxOf(m.Mailbox)),
 	}
 }
 
