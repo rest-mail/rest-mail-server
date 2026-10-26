@@ -23,7 +23,7 @@ docker run --detach --name "$name" --user 101:102 --cap-drop ALL \
   --entrypoint /usr/sbin/unbound "$image" -d -c /etc/restmail-dane/unbound.conf
 ready=false
 for _ in {1..20}; do
-  if timeout 3 docker exec "$name" /usr/bin/drill-hc @127.0.0.1 -p 5353 health.dane.invalid. A; then
+  if timeout 3 docker exec "$name" /usr/bin/drill-hc -p 5353 @127.0.0.1 health.dane.invalid. A; then
     ready=true
     break
   fi
@@ -36,8 +36,8 @@ fi
 # Exercise actual validation, not merely a resolver that sets the AD bit for
 # everything. A signed root response is secure; a deliberately bogus zone is
 # SERVFAIL. These public-DNS checks run in CI, never in the local focused suite.
-timeout 40 docker exec "$name" /usr/bin/drill -D @127.0.0.1 -p 5353 . DNSKEY > "$tmp/secure.txt"
+timeout 40 docker exec "$name" /usr/bin/drill -D -p 5353 @127.0.0.1 . DNSKEY > "$tmp/secure.txt"
 grep -Eq 'flags:.* ad([ ;]|$)' "$tmp/secure.txt"
-timeout 40 docker exec "$name" /usr/bin/drill -D @127.0.0.1 -p 5353 dnssec-failed.org. A > "$tmp/bogus.txt" || true
+timeout 40 docker exec "$name" /usr/bin/drill -D -p 5353 @127.0.0.1 dnssec-failed.org. A > "$tmp/bogus.txt" || true
 grep -q 'rcode: SERVFAIL' "$tmp/bogus.txt"
 echo "ok: loopback resolver starts unprivileged, validates signed DNS and refuses bogus DNS"

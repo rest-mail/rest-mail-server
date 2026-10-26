@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rest-mail/go-dkim"
+	"github.com/rest-mail/go-dkim/pkg/dkim"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/pipeline"
 )

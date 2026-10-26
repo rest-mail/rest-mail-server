@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	imapsrv "github.com/rest-mail/go-imap"
+	goimap "github.com/rest-mail/go-imap/pkg/imap"
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 )
 
@@ -67,7 +67,7 @@ func TestAnsweredSurvivesStoreFetchCopyAndAppend(t *testing.T) {
 	defer server.Close()
 	m := &mailbox{api: apiclient.New(server.URL), email: "user@example.test", accountID: 12, token: "test"}
 	for _, value := range []bool{true, false, true} {
-		if err := m.Store(41, imapsrv.FlagUpdate{Answered: &value}); err != nil {
+		if err := m.Store(41, goimap.FlagUpdate{Answered: &value}); err != nil {
 			t.Fatal(err)
 		}
 		if got := fetchFlags(t, m).Answered; got != value {
@@ -77,7 +77,7 @@ func TestAnsweredSurvivesStoreFetchCopyAndAppend(t *testing.T) {
 	if _, err := m.CopyUID(41, "Archive"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.AppendUID("Archive", imapsrv.FlagUpdate{Answered: boolp(true)}, []byte("Subject: append\r\n\r\nhistory\r\n")); err != nil {
+	if _, err := m.AppendUID("Archive", goimap.FlagUpdate{Answered: boolp(true)}, []byte("Subject: append\r\n\r\nhistory\r\n")); err != nil {
 		t.Fatal(err)
 	}
 	if patches != 3 || deliveries != 2 {

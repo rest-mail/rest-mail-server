@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/rest-mail/go-dmarc"
+	"github.com/rest-mail/go-dmarc/pkg/dmarc"
 	"github.com/restmail/restmail/internal/pipeline"
 )
 

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rest-mail/go-spf"
+	"github.com/rest-mail/go-spf/pkg/spf"
 	"github.com/restmail/restmail/internal/mail"
 	"github.com/restmail/restmail/internal/pipeline"
 )
