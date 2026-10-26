@@ -258,7 +258,7 @@ func TestDomainCleanupPostgresLifecycleRetentionAndRollback(t *testing.T) {
 				}); err != nil {
 					t.Fatal(err)
 				}
-				defer db.Callback().Delete().Remove(name)
+				defer func() { _ = db.Callback().Delete().Remove(name) }()
 			}
 			if mode == "account" {
 				status = 409
