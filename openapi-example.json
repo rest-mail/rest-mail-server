@@ -29525,7 +29525,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "\u003cfilter-test@example.com\u003e",
+              "message-id": "<filter-test@example.com>",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -29533,8 +29533,7 @@
               "content": "Hello."
             }
           }
-        },
-        "invalid": true
+        }
       },
       "response": {
         "status": 422,
@@ -29616,7 +29615,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "\u003cfilter-test@example.com\u003e",
+              "message-id": "<filter-test@example.com>",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -29636,6 +29635,1369 @@
               "filter": "header_validate",
               "result": "pass",
               "detail": "all headers valid"
+            }
+          }
+        }
+      }
+    },
+    "write_only": {
+      "summary": "Write only",
+      "request": {
+        "body": {
+          "filter_name": "header_validate",
+          "config": {},
+          "email": {
+            "envelope": {
+              "mail_from": "someone@example.com",
+              "rcpt_to": [
+                "eve@restmail.test"
+              ]
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Someone",
+                  "address": "someone@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "eve@restmail.test"
+                }
+              ],
+              "subject": "A filter test",
+              "message-id": "<filter-test@example.com>",
+              "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "Hello."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "type": "action",
+            "action": "continue",
+            "log": {
+              "filter": "header_validate",
+              "result": "pass",
+              "detail": "all headers valid"
+            }
+          }
+        }
+      }
+    },
+    "key_write": {
+      "summary": "Key write",
+      "request": {
+        "body": {
+          "filter_name": "header_validate",
+          "config": {},
+          "email": {
+            "envelope": {
+              "mail_from": "someone@example.com",
+              "rcpt_to": [
+                "eve@restmail.test"
+              ]
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Someone",
+                  "address": "someone@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "eve@restmail.test"
+                }
+              ],
+              "subject": "A filter test",
+              "message-id": "<filter-test@example.com>",
+              "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "Hello."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "type": "action",
+            "action": "continue",
+            "log": {
+              "filter": "header_validate",
+              "result": "pass",
+              "detail": "all headers valid"
+            }
+          }
+        }
+      }
+    },
+    "cookie_session": {
+      "summary": "Cookie session",
+      "request": {
+        "body": {
+          "filter_name": "header_validate",
+          "config": {},
+          "email": {
+            "envelope": {
+              "mail_from": "someone@example.com",
+              "rcpt_to": [
+                "eve@restmail.test"
+              ]
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Someone",
+                  "address": "someone@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "eve@restmail.test"
+                }
+              ],
+              "subject": "A filter test",
+              "message-id": "<filter-test@example.com>",
+              "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "Hello."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "type": "action",
+            "action": "continue",
+            "log": {
+              "filter": "header_validate",
+              "result": "pass",
+              "detail": "all headers valid"
+            }
+          }
+        }
+      }
+    },
+    "body_boundary": {
+      "summary": "Body boundary",
+      "request": {
+        "body": {
+          "filter_name": "header_validate",
+          "config": {},
+          "email": {
+            "envelope": {
+              "mail_from": "someone@example.com",
+              "rcpt_to": [
+                "eve@restmail.test"
+              ]
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Someone",
+                  "address": "someone@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "eve@restmail.test"
+                }
+              ],
+              "subject": "A filter test",
+              "message-id": "<filter-test@example.com>",
+              "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "Hello."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "type": "action",
+            "action": "continue",
+            "log": {
+              "filter": "header_validate",
+              "result": "pass",
+              "detail": "all headers valid"
+            }
+          }
+        }
+      }
+    },
+    "read_only": {
+      "summary": "Read only",
+      "request": {
+        "body": {
+          "filter_name": "header_validate",
+          "config": {},
+          "email": {
+            "envelope": {
+              "mail_from": "someone@example.com",
+              "rcpt_to": [
+                "eve@restmail.test"
+              ]
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Someone",
+                  "address": "someone@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "eve@restmail.test"
+                }
+              ],
+              "subject": "A filter test",
+              "message-id": "<filter-test@example.com>",
+              "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "Hello."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "domain_scope": {
+      "summary": "Domain scope",
+      "request": {
+        "body": {
+          "filter_name": "header_validate",
+          "config": {},
+          "email": {
+            "envelope": {
+              "mail_from": "someone@example.com",
+              "rcpt_to": [
+                "eve@restmail.test"
+              ]
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Someone",
+                  "address": "someone@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "eve@restmail.test"
+                }
+              ],
+              "subject": "A filter test",
+              "message-id": "<filter-test@example.com>",
+              "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "Hello."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "mailbox_scope": {
+      "summary": "Mailbox scope",
+      "request": {
+        "body": {
+          "filter_name": "header_validate",
+          "config": {},
+          "email": {
+            "envelope": {
+              "mail_from": "someone@example.com",
+              "rcpt_to": [
+                "eve@restmail.test"
+              ]
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Someone",
+                  "address": "someone@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "eve@restmail.test"
+                }
+              ],
+              "subject": "A filter test",
+              "message-id": "<filter-test@example.com>",
+              "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "Hello."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "wrong_domain": {
+      "summary": "Wrong domain",
+      "request": {
+        "body": {
+          "filter_name": "header_validate",
+          "config": {},
+          "email": {
+            "envelope": {
+              "mail_from": "someone@example.com",
+              "rcpt_to": [
+                "eve@restmail.test"
+              ]
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Someone",
+                  "address": "someone@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "eve@restmail.test"
+                }
+              ],
+              "subject": "A filter test",
+              "message-id": "<filter-test@example.com>",
+              "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "Hello."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_read": {
+      "summary": "Key read",
+      "request": {
+        "body": {
+          "filter_name": "header_validate",
+          "config": {},
+          "email": {
+            "envelope": {
+              "mail_from": "someone@example.com",
+              "rcpt_to": [
+                "eve@restmail.test"
+              ]
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Someone",
+                  "address": "someone@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "eve@restmail.test"
+                }
+              ],
+              "subject": "A filter test",
+              "message-id": "<filter-test@example.com>",
+              "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "Hello."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_domain": {
+      "summary": "Key domain",
+      "request": {
+        "body": {
+          "filter_name": "header_validate",
+          "config": {},
+          "email": {
+            "envelope": {
+              "mail_from": "someone@example.com",
+              "rcpt_to": [
+                "eve@restmail.test"
+              ]
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Someone",
+                  "address": "someone@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "eve@restmail.test"
+                }
+              ],
+              "subject": "A filter test",
+              "message-id": "<filter-test@example.com>",
+              "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "Hello."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_mailbox": {
+      "summary": "Key mailbox",
+      "request": {
+        "body": {
+          "filter_name": "header_validate",
+          "config": {},
+          "email": {
+            "envelope": {
+              "mail_from": "someone@example.com",
+              "rcpt_to": [
+                "eve@restmail.test"
+              ]
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Someone",
+                  "address": "someone@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "eve@restmail.test"
+                }
+              ],
+              "subject": "A filter test",
+              "message-id": "<filter-test@example.com>",
+              "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "Hello."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_wrong_domain": {
+      "summary": "Key wrong domain",
+      "request": {
+        "body": {
+          "filter_name": "header_validate",
+          "config": {},
+          "email": {
+            "envelope": {
+              "mail_from": "someone@example.com",
+              "rcpt_to": [
+                "eve@restmail.test"
+              ]
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Someone",
+                  "address": "someone@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "eve@restmail.test"
+                }
+              ],
+              "subject": "A filter test",
+              "message-id": "<filter-test@example.com>",
+              "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "Hello."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_holder_missing": {
+      "summary": "Key holder missing",
+      "request": {
+        "body": {
+          "filter_name": "header_validate",
+          "config": {},
+          "email": {
+            "envelope": {
+              "mail_from": "someone@example.com",
+              "rcpt_to": [
+                "eve@restmail.test"
+              ]
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Someone",
+                  "address": "someone@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "eve@restmail.test"
+                }
+              ],
+              "subject": "A filter test",
+              "message-id": "<filter-test@example.com>",
+              "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "Hello."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "unauthenticated": {
+      "summary": "Unauthenticated",
+      "request": {
+        "body": {
+          "filter_name": "header_validate",
+          "config": {},
+          "email": {
+            "envelope": {
+              "mail_from": "someone@example.com",
+              "rcpt_to": [
+                "eve@restmail.test"
+              ]
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Someone",
+                  "address": "someone@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "eve@restmail.test"
+                }
+              ],
+              "subject": "A filter test",
+              "message-id": "<filter-test@example.com>",
+              "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "Hello."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "session_unavailable": {
+      "summary": "Session unavailable",
+      "request": {
+        "body": {
+          "filter_name": "header_validate",
+          "config": {},
+          "email": {
+            "envelope": {
+              "mail_from": "someone@example.com",
+              "rcpt_to": [
+                "eve@restmail.test"
+              ]
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Someone",
+                  "address": "someone@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "eve@restmail.test"
+                }
+              ],
+              "subject": "A filter test",
+              "message-id": "<filter-test@example.com>",
+              "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "Hello."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        }
+      }
+    },
+    "permission_store_unavailable": {
+      "summary": "Permission store unavailable",
+      "request": {
+        "body": {
+          "filter_name": "header_validate",
+          "config": {},
+          "email": {
+            "envelope": {
+              "mail_from": "someone@example.com",
+              "rcpt_to": [
+                "eve@restmail.test"
+              ]
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Someone",
+                  "address": "someone@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "eve@restmail.test"
+                }
+              ],
+              "subject": "A filter test",
+              "message-id": "<filter-test@example.com>",
+              "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "Hello."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
+          }
+        }
+      }
+    },
+    "csrf_missing": {
+      "summary": "Csrf missing",
+      "request": {
+        "body": {
+          "filter_name": "header_validate",
+          "config": {},
+          "email": {
+            "envelope": {
+              "mail_from": "someone@example.com",
+              "rcpt_to": [
+                "eve@restmail.test"
+              ]
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Someone",
+                  "address": "someone@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "eve@restmail.test"
+                }
+              ],
+              "subject": "A filter test",
+              "message-id": "<filter-test@example.com>",
+              "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "Hello."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "csrf_mismatch": {
+      "summary": "Csrf mismatch",
+      "request": {
+        "body": {
+          "filter_name": "header_validate",
+          "config": {},
+          "email": {
+            "envelope": {
+              "mail_from": "someone@example.com",
+              "rcpt_to": [
+                "eve@restmail.test"
+              ]
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Someone",
+                  "address": "someone@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "eve@restmail.test"
+                }
+              ],
+              "subject": "A filter test",
+              "message-id": "<filter-test@example.com>",
+              "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "Hello."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "rate_limited": {
+      "summary": "Rate limited",
+      "request": {
+        "body": {
+          "filter_name": "header_validate",
+          "config": {},
+          "email": {
+            "envelope": {
+              "mail_from": "someone@example.com",
+              "rcpt_to": [
+                "eve@restmail.test"
+              ]
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Someone",
+                  "address": "someone@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "eve@restmail.test"
+                }
+              ],
+              "subject": "A filter test",
+              "message-id": "<filter-test@example.com>",
+              "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "Hello."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        }
+      }
+    },
+    "request_too_large": {
+      "summary": "Request too large",
+      "request": {
+        "body": {
+          "filter_name": "header_validate",
+          "config": {},
+          "email": {
+            "envelope": {
+              "mail_from": "someone@example.com",
+              "rcpt_to": [
+                "eve@restmail.test"
+              ]
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Someone",
+                  "address": "someone@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "eve@restmail.test"
+                }
+              ],
+              "subject": "A filter test",
+              "message-id": "<filter-test@example.com>",
+              "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "Hello."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        }
+      }
+    },
+    "malformed_json": {
+      "summary": "Malformed json",
+      "request": {
+        "body": {
+          "filter_name": "header_validate",
+          "config": {},
+          "email": {
+            "envelope": {
+              "mail_from": "someone@example.com",
+              "rcpt_to": [
+                "eve@restmail.test"
+              ]
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Someone",
+                  "address": "someone@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "eve@restmail.test"
+                }
+              ],
+              "subject": "A filter test",
+              "message-id": "<filter-test@example.com>",
+              "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "Hello."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "null_body": {
+      "summary": "Null body",
+      "request": {
+        "body": null,
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "execution_failure": {
+      "summary": "Execution failure",
+      "request": {
+        "body": {
+          "filter_name": "header_validate",
+          "config": {},
+          "email": {
+            "envelope": {
+              "mail_from": "someone@example.com",
+              "rcpt_to": [
+                "eve@restmail.test"
+              ]
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Someone",
+                  "address": "someone@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "eve@restmail.test"
+                }
+              ],
+              "subject": "A filter test",
+              "message-id": "<filter-test@example.com>",
+              "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "Hello."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "execution_panic": {
+      "summary": "Execution panic",
+      "request": {
+        "body": {
+          "filter_name": "header_validate",
+          "config": {},
+          "email": {
+            "envelope": {
+              "mail_from": "someone@example.com",
+              "rcpt_to": [
+                "eve@restmail.test"
+              ]
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Someone",
+                  "address": "someone@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "eve@restmail.test"
+                }
+              ],
+              "subject": "A filter test",
+              "message-id": "<filter-test@example.com>",
+              "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "Hello."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "execution_cancelled": {
+      "summary": "Execution cancelled",
+      "request": {
+        "body": {
+          "filter_name": "header_validate",
+          "config": {},
+          "email": {
+            "envelope": {
+              "mail_from": "someone@example.com",
+              "rcpt_to": [
+                "eve@restmail.test"
+              ]
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Someone",
+                  "address": "someone@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "eve@restmail.test"
+                }
+              ],
+              "subject": "A filter test",
+              "message-id": "<filter-test@example.com>",
+              "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "Hello."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "config_missing": {
+      "summary": "Config missing",
+      "request": {
+        "body": {
+          "filter_name": "header_validate",
+          "email": {
+            "envelope": {
+              "mail_from": "someone@example.com",
+              "rcpt_to": [
+                "eve@restmail.test"
+              ]
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Someone",
+                  "address": "someone@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "eve@restmail.test"
+                }
+              ],
+              "subject": "A filter test",
+              "message-id": "<filter-test@example.com>",
+              "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "Hello."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "config": "must be an object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "config_null": {
+      "summary": "Config null",
+      "request": {
+        "body": {
+          "filter_name": "header_validate",
+          "config": null,
+          "email": {
+            "envelope": {
+              "mail_from": "someone@example.com",
+              "rcpt_to": [
+                "eve@restmail.test"
+              ]
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Someone",
+                  "address": "someone@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "eve@restmail.test"
+                }
+              ],
+              "subject": "A filter test",
+              "message-id": "<filter-test@example.com>",
+              "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "Hello."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "config": "must be an object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "config_array": {
+      "summary": "Config array",
+      "request": {
+        "body": {
+          "filter_name": "header_validate",
+          "config": [],
+          "email": {
+            "envelope": {
+              "mail_from": "someone@example.com",
+              "rcpt_to": [
+                "eve@restmail.test"
+              ]
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Someone",
+                  "address": "someone@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "eve@restmail.test"
+                }
+              ],
+              "subject": "A filter test",
+              "message-id": "<filter-test@example.com>",
+              "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "Hello."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "config": "must be an object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "unknown_filter": {
+      "summary": "Unknown filter",
+      "request": {
+        "body": {
+          "filter_name": "missing_filter",
+          "config": {},
+          "email": {
+            "envelope": {
+              "mail_from": "someone@example.com",
+              "rcpt_to": [
+                "eve@restmail.test"
+              ]
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Someone",
+                  "address": "someone@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "eve@restmail.test"
+                }
+              ],
+              "subject": "A filter test",
+              "message-id": "<filter-test@example.com>",
+              "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "Hello."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "filter_error",
+            "message": "create filter missing_filter: unknown filter: missing_filter"
+          }
+        }
+      }
+    },
+    "rejected_email": {
+      "summary": "Rejected email",
+      "request": {
+        "body": {
+          "filter_name": "header_validate",
+          "config": {},
+          "email": {}
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "type": "action",
+            "action": "reject",
+            "reject_message": "550 Invalid headers: missing From header, missing Date header",
+            "log": {
+              "filter": "header_validate",
+              "result": "reject",
+              "detail": "missing From header; missing Date header"
             }
           }
         }
@@ -29760,6 +31122,689 @@
                   "filter": "header_validate",
                   "result": "reject",
                   "detail": "missing From header; missing Date header"
+                },
+                "duration_ms": 0
+              }
+            ],
+            "duration_ms": 0
+          }
+        }
+      }
+    },
+    "write_only": {
+      "summary": "Write only",
+      "request": {
+        "body": {
+          "pipeline_id": 1,
+          "email": {}
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "final_action": "reject",
+            "reject_message": "550 Invalid headers: missing From header, missing Date header",
+            "final_email": {
+              "envelope": {
+                "mail_from": "",
+                "rcpt_to": [],
+                "tls": false,
+                "direction": ""
+              },
+              "headers": {
+                "from": [],
+                "to": [],
+                "subject": "",
+                "date": "",
+                "message-id": ""
+              },
+              "body": {
+                "content_type": ""
+              }
+            },
+            "steps": [
+              {
+                "filter_name": "header_validate",
+                "filter_type": "action",
+                "action": "reject",
+                "log": {
+                  "filter": "header_validate",
+                  "result": "reject",
+                  "detail": "missing From header; missing Date header"
+                },
+                "duration_ms": 0
+              }
+            ],
+            "duration_ms": 0
+          }
+        }
+      }
+    },
+    "key_write": {
+      "summary": "Key write",
+      "request": {
+        "body": {
+          "pipeline_id": 1,
+          "email": {}
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "final_action": "reject",
+            "reject_message": "550 Invalid headers: missing From header, missing Date header",
+            "final_email": {
+              "envelope": {
+                "mail_from": "",
+                "rcpt_to": [],
+                "tls": false,
+                "direction": ""
+              },
+              "headers": {
+                "from": [],
+                "to": [],
+                "subject": "",
+                "date": "",
+                "message-id": ""
+              },
+              "body": {
+                "content_type": ""
+              }
+            },
+            "steps": [
+              {
+                "filter_name": "header_validate",
+                "filter_type": "action",
+                "action": "reject",
+                "log": {
+                  "filter": "header_validate",
+                  "result": "reject",
+                  "detail": "missing From header; missing Date header"
+                },
+                "duration_ms": 0
+              }
+            ],
+            "duration_ms": 0
+          }
+        }
+      }
+    },
+    "cookie_session": {
+      "summary": "Cookie session",
+      "request": {
+        "body": {
+          "pipeline_id": 1,
+          "email": {}
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "final_action": "reject",
+            "reject_message": "550 Invalid headers: missing From header, missing Date header",
+            "final_email": {
+              "envelope": {
+                "mail_from": "",
+                "rcpt_to": [],
+                "tls": false,
+                "direction": ""
+              },
+              "headers": {
+                "from": [],
+                "to": [],
+                "subject": "",
+                "date": "",
+                "message-id": ""
+              },
+              "body": {
+                "content_type": ""
+              }
+            },
+            "steps": [
+              {
+                "filter_name": "header_validate",
+                "filter_type": "action",
+                "action": "reject",
+                "log": {
+                  "filter": "header_validate",
+                  "result": "reject",
+                  "detail": "missing From header; missing Date header"
+                },
+                "duration_ms": 0
+              }
+            ],
+            "duration_ms": 0
+          }
+        }
+      }
+    },
+    "body_boundary": {
+      "summary": "Body boundary",
+      "request": {
+        "body": {
+          "pipeline_id": 1,
+          "email": {}
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "final_action": "reject",
+            "reject_message": "550 Invalid headers: missing From header, missing Date header",
+            "final_email": {
+              "envelope": {
+                "mail_from": "",
+                "rcpt_to": [],
+                "tls": false,
+                "direction": ""
+              },
+              "headers": {
+                "from": [],
+                "to": [],
+                "subject": "",
+                "date": "",
+                "message-id": ""
+              },
+              "body": {
+                "content_type": ""
+              }
+            },
+            "steps": [
+              {
+                "filter_name": "header_validate",
+                "filter_type": "action",
+                "action": "reject",
+                "log": {
+                  "filter": "header_validate",
+                  "result": "reject",
+                  "detail": "missing From header; missing Date header"
+                },
+                "duration_ms": 0
+              }
+            ],
+            "duration_ms": 0
+          }
+        }
+      }
+    },
+    "read_only": {
+      "summary": "Read only",
+      "request": {
+        "body": {
+          "pipeline_id": 1,
+          "email": {}
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "domain_scope": {
+      "summary": "Domain scope",
+      "request": {
+        "body": {
+          "pipeline_id": 1,
+          "email": {}
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "mailbox_scope": {
+      "summary": "Mailbox scope",
+      "request": {
+        "body": {
+          "pipeline_id": 1,
+          "email": {}
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "wrong_domain": {
+      "summary": "Wrong domain",
+      "request": {
+        "body": {
+          "pipeline_id": 1,
+          "email": {}
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_read": {
+      "summary": "Key read",
+      "request": {
+        "body": {
+          "pipeline_id": 1,
+          "email": {}
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_domain": {
+      "summary": "Key domain",
+      "request": {
+        "body": {
+          "pipeline_id": 1,
+          "email": {}
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_mailbox": {
+      "summary": "Key mailbox",
+      "request": {
+        "body": {
+          "pipeline_id": 1,
+          "email": {}
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_wrong_domain": {
+      "summary": "Key wrong domain",
+      "request": {
+        "body": {
+          "pipeline_id": 1,
+          "email": {}
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_holder_missing": {
+      "summary": "Key holder missing",
+      "request": {
+        "body": {
+          "pipeline_id": 1,
+          "email": {}
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "unauthenticated": {
+      "summary": "Unauthenticated",
+      "request": {
+        "body": {
+          "pipeline_id": 1,
+          "email": {}
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "session_unavailable": {
+      "summary": "Session unavailable",
+      "request": {
+        "body": {
+          "pipeline_id": 1,
+          "email": {}
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        }
+      }
+    },
+    "permission_store_unavailable": {
+      "summary": "Permission store unavailable",
+      "request": {
+        "body": {
+          "pipeline_id": 1,
+          "email": {}
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
+          }
+        }
+      }
+    },
+    "csrf_missing": {
+      "summary": "Csrf missing",
+      "request": {
+        "body": {
+          "pipeline_id": 1,
+          "email": {}
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "csrf_mismatch": {
+      "summary": "Csrf mismatch",
+      "request": {
+        "body": {
+          "pipeline_id": 1,
+          "email": {}
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "rate_limited": {
+      "summary": "Rate limited",
+      "request": {
+        "body": {
+          "pipeline_id": 1,
+          "email": {}
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        }
+      }
+    },
+    "request_too_large": {
+      "summary": "Request too large",
+      "request": {
+        "body": {
+          "pipeline_id": 1,
+          "email": {}
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        }
+      }
+    },
+    "malformed_json": {
+      "summary": "Malformed json",
+      "request": {
+        "body": {
+          "pipeline_id": 1,
+          "email": {}
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "null_body": {
+      "summary": "Null body",
+      "request": {
+        "body": null,
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "lookup_unavailable": {
+      "summary": "Lookup unavailable",
+      "request": {
+        "body": {
+          "pipeline_id": 3,
+          "email": {}
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "config_unreadable": {
+      "summary": "Config unreadable",
+      "request": {
+        "body": {
+          "pipeline_id": 4,
+          "email": {}
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Invalid pipeline filter config"
+          }
+        }
+      }
+    },
+    "empty_pipeline": {
+      "summary": "Empty pipeline",
+      "request": {
+        "body": {
+          "pipeline_id": 2,
+          "email": {}
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "final_action": "continue",
+            "final_email": {
+              "envelope": {
+                "mail_from": "",
+                "rcpt_to": [],
+                "tls": false,
+                "direction": ""
+              },
+              "headers": {
+                "from": [],
+                "to": [],
+                "subject": "",
+                "date": "",
+                "message-id": ""
+              },
+              "body": {
+                "content_type": ""
+              }
+            },
+            "steps": [],
+            "duration_ms": 0
+          }
+        }
+      }
+    },
+    "accepted_email": {
+      "summary": "Accepted email",
+      "request": {
+        "body": {
+          "pipeline_id": 1,
+          "email": {
+            "envelope": {
+              "mail_from": "someone@example.com",
+              "rcpt_to": [
+                "eve@restmail.test"
+              ]
+            },
+            "headers": {
+              "from": [
+                {
+                  "name": "Someone",
+                  "address": "someone@example.com"
+                }
+              ],
+              "to": [
+                {
+                  "address": "eve@restmail.test"
+                }
+              ],
+              "subject": "A filter test",
+              "message-id": "<filter-test@example.com>",
+              "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+            },
+            "body": {
+              "content_type": "text/plain",
+              "content": "Hello."
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "final_action": "continue",
+            "final_email": {
+              "envelope": {
+                "mail_from": "someone@example.com",
+                "rcpt_to": [
+                  "eve@restmail.test"
+                ],
+                "tls": false,
+                "direction": ""
+              },
+              "headers": {
+                "from": [
+                  {
+                    "name": "Someone",
+                    "address": "someone@example.com"
+                  }
+                ],
+                "to": [
+                  {
+                    "address": "eve@restmail.test"
+                  }
+                ],
+                "subject": "A filter test",
+                "message-id": "<filter-test@example.com>",
+                "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+              },
+              "body": {
+                "content_type": "text/plain",
+                "content": "Hello."
+              }
+            },
+            "steps": [
+              {
+                "filter_name": "header_validate",
+                "filter_type": "action",
+                "action": "continue",
+                "log": {
+                  "filter": "header_validate",
+                  "result": "pass",
+                  "detail": "all headers valid"
                 },
                 "duration_ms": 0
               }

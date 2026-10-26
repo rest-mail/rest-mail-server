@@ -389,10 +389,6 @@
   difference: "response 200 application/json.properties.data.required: openapi.yaml [\"action\"], generated [\"action\",\"log\",\"type\"]"
   reason: >-
     The engine emits its concrete ExecutionResult/FilterResult fields, including the structured log and final email where applicable; the oracle's required set describes a different result shape.
-- operation: testFilter
-  difference: "response 429: generated only"
-  reason: >-
-    The per-IP pipeline preview throttle can refuse this operation before binding, returning rate_limited and Retry-After.
 - operation: testPipeline
   difference: "request body application/json.properties.email.properties: openapi.yaml absent, generated *"
   reason: >-
@@ -447,10 +443,6 @@
   difference: "response 200 application/json.properties.data.required: openapi.yaml [\"duration_ms\",\"final_action\",\"steps\"], generated [\"duration_ms\",\"final_action\",\"final_email\",\"steps\"]"
   reason: >-
     The engine emits its concrete ExecutionResult/FilterResult fields, including the structured log and final email where applicable; the oracle's required set describes a different result shape.
-- operation: testPipeline
-  difference: "response 429: generated only"
-  reason: >-
-    The per-IP pipeline preview throttle can refuse this operation before binding, returning rate_limited and Retry-After.
 - operation: updateCustomFilter
   difference: "request body application/json.properties.config.type: openapi.yaml \"object\", generated absent"
   reason: >-

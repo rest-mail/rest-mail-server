@@ -407,8 +407,11 @@ func (h *PipelineHandler) testPipeline(r *http.Request, in testPipelineRequestBo
 	}
 
 	var p models.Pipeline
-	if err := h.db.First(&p, req.PipelineID).Error; err != nil {
-		return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "Pipeline not found")
+	if err := h.db.WithContext(r.Context()).First(&p, req.PipelineID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "Pipeline not found")
+		}
+		return zero, fmt.Errorf("load pipeline for preview: %w", err)
 	}
 
 	// Parse pipeline filters
@@ -452,6 +455,10 @@ func (h *PipelineHandler) testFilter(r *http.Request, in testFilterRequestBody) 
 
 	result, err := h.engine.TestFilter(r.Context(), req.FilterName, req.Config, req.Email.canonical())
 	if err != nil {
+		var execution *pipeline.FilterExecutionError
+		if errors.As(err, &execution) {
+			return zero, err
+		}
 		return zero, endpoint.Refuse(http.StatusBadRequest, "filter_error", err.Error())
 	}
 

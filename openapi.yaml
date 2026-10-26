@@ -5631,6 +5631,19 @@ paths:
                         fields:
                           pipeline_id: must be a non-negative integer
 
+        "429":
+          description: Too many pipeline preview requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          description: Internal lookup, stored configuration or filter execution failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/v1/admin/pipelines/test-filter:
     post:
       operationId: testFilter
@@ -5746,7 +5759,7 @@ paths:
             An empty object also gets 422 for the missing fields before any
             filter is made. A body that decodes is also refused with a 400,
             `filter_error`, when the named filter cannot be made from its
-            config or fails on the email.
+            config. Runtime execution failures return a sanitized 500 instead.
           content:
             application/json:
               schema:
@@ -5759,6 +5772,19 @@ paths:
                     error:
                       code: bad_request
                       message: Invalid request body
+
+        "429":
+          description: Too many pipeline preview requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          description: Internal lookup, stored configuration or filter execution failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api/v1/admin/pipelines/logs:
     get:
