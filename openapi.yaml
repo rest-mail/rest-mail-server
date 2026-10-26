@@ -2576,6 +2576,7 @@ paths:
         - APIKeyAuth: [mail:read, mail:send]
         - BasicAuth: [mail:read, mail:send]
       summary: Forward a message
+      description: "The message (mail:read) is forwarded through the normal sender authorization, rate limit and outbound policy, with Fwd: and the note above its original header. Stored attachments, including empty and inline parts, are re-attached; the Sent copy owns independent attachment objects. The final signed MIME message is bounded by SMTP_MAX_MESSAGE_SIZE, and sender quota includes the copied parts. Sent, attachment references, quota and recipient work commit together. Unavailable or changed source objects fail the forward instead of dropping parts."
       requestBody:
         required: true
         content:
@@ -2597,6 +2598,12 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Message"
+        "422":
+          description: Invalid request fields or insufficient sender quota
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForwardRefusalResponse"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -10792,6 +10799,62 @@ components:
             $ref: "#/components/schemas/ValidationErrorResponse"
 
   schemas:
+    ForwardRefusalResponse:
+      {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ForwardRefusalBody"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      }
+    ForwardRefusalBody:
+      {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "details": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ValidationDetails"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "type": "object"
+      }
+    ValidationDetails:
+      {
+        "additionalProperties": false,
+        "properties": {
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "fields"
+        ],
+        "type": "object"
+      }
     Data-invitationResponse:
       additionalProperties: false
       properties:

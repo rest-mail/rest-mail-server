@@ -19,7 +19,9 @@ import (
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	apitypes "github.com/restmail/restmail/internal/api/types"
+	"github.com/restmail/restmail/internal/attachmentstore"
 	"github.com/restmail/restmail/internal/auth"
+	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
 	rmail "github.com/restmail/restmail/internal/mail"
@@ -49,8 +51,11 @@ type MessageHandler struct {
 	// newMail is told of each message delivered into a mailbox's INBOX, to
 	// push to the phones of the sessions that list it (#363). Nil when push
 	// is off.
-	newMail    NewMailNotifier
-	tlsReports *TLSReportEmailReceiver
+	newMail         NewMailNotifier
+	tlsReports      *TLSReportEmailReceiver
+	forwardStore    *attachmentstore.S3
+	forwardRoot     string
+	maxForwardBytes int64
 }
 
 // SetTLSReportEmailReceiver enables ingestion at the configured reporting mailbox.
@@ -71,7 +76,7 @@ func (h *MessageHandler) SetNewMailNotifier(n NewMailNotifier) {
 }
 
 func NewMessageHandler(db *gorm.DB, broker *SSEBroker, engine *pipeline.Engine, masterKey string, recorder traceRecorder) *MessageHandler {
-	return &MessageHandler{db: db, broker: broker, engine: engine, masterKey: masterKey, recorder: recorder}
+	return &MessageHandler{db: db, broker: broker, engine: engine, masterKey: masterKey, recorder: recorder, forwardRoot: attachmentstore.FilesystemRoot, maxForwardBytes: config.DefaultSMTPMaxMessageSize}
 }
 
 // SetSendLimits configures the send-path abuse limits (#184): the per-message
@@ -451,6 +456,10 @@ type sendMessageRequest = apitypes.SendMessageRequest
 
 // SendMessage composes and sends a message from an authenticated user.
 func (h *MessageHandler) sendMessage(r *http.Request, req sendMessageRequest) (endpoint.Status[any], error) {
+	return h.sendMessageWithParts(r, req, nil)
+}
+
+func (h *MessageHandler) sendMessageWithParts(r *http.Request, req sendMessageRequest, parts []pipeline.Attachment) (endpoint.Status[any], error) {
 	var zero endpoint.Status[any]
 	claims := middleware.GetClaims(r)
 	if claims == nil {
@@ -655,6 +664,14 @@ func (h *MessageHandler) sendMessage(r *http.Request, req sendMessageRequest) (e
 			}
 		}
 
+		for _, part := range parts {
+			if part.Disposition == "inline" {
+				outEmailJSON.Inline = append(outEmailJSON.Inline, part)
+			} else {
+				outEmailJSON.Attachments = append(outEmailJSON.Attachments, part)
+			}
+		}
+
 		// Stamp the authenticated submitting account so account-scoped outbound
 		// policy (e.g. the rate_limit filter) counts against it rather than the
 		// envelope sender, which the client can rotate at will.
@@ -729,6 +746,9 @@ func (h *MessageHandler) sendMessage(r *http.Request, req sendMessageRequest) (e
 			// (sent message creation + raw RFC 2822 builder) uses the
 			// pipeline output (e.g. header_cleanup).
 			if outResult.FinalEmail != nil {
+				if parts != nil {
+					parts = append(append(make([]pipeline.Attachment, 0, len(outResult.FinalEmail.Attachments)+len(outResult.FinalEmail.Inline)), outResult.FinalEmail.Attachments...), outResult.FinalEmail.Inline...)
+				}
 				req.Subject = outResult.FinalEmail.Headers.Subject
 
 				bodyText, bodyHTML := extractBodyParts(outResult.FinalEmail.Body)
@@ -818,6 +838,10 @@ func (h *MessageHandler) sendMessage(r *http.Request, req sendMessageRequest) (e
 	if req.CalendarEvent != nil {
 		calJSON, _ := json.Marshal([]pipeline.CalendarEvent{*req.CalendarEvent})
 		sentMsg.CalendarEventsRaw = models.JSONB(calJSON)
+	}
+
+	if parts != nil {
+		return h.commitForward(r, req, &senderMailbox, &sentMsg, parts, extraHeaders, queuedTrace)
 	}
 
 	if err := h.db.Create(&sentMsg).Error; err != nil {
@@ -1614,13 +1638,17 @@ func (h *MessageHandler) forwardMessage(r *http.Request, in forwardRequest) (end
 	// client showing the HTML part sees what a client showing the text part sees
 	// (issue #286).
 	fwdText, fwdHTML := forwardBodies(req.BodyText, &original)
-	return h.sendMessage(r, sendMessageRequest{
+	parts, err := h.readForwardParts(r, &original)
+	if err != nil {
+		return zero, err
+	}
+	return h.sendMessageWithParts(r, sendMessageRequest{
 		From:     req.From,
 		To:       req.To,
 		Subject:  "Fwd: " + original.Subject,
 		BodyText: fwdText,
 		BodyHTML: fwdHTML,
-	})
+	}, parts)
 }
 
 // forwardBodies builds the text and HTML bodies of a forwarded message: the
@@ -1895,6 +1923,8 @@ type localDeliveryParams struct {
 	TLSVersion  string
 	// RequireTLS is the message's REQUIRETLS tag (RFC 8689 §4.1).
 	RequireTLS bool
+	// IndependentAttachments gives a forwarded local copy its own object lifetime.
+	IndependentAttachments bool
 }
 
 // receivedTLSFlag reports whether an inbound delivery arrived over TLS, for the
@@ -2261,6 +2291,13 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	// would permanently hide them from the recipient.
 	var attachmentRows []models.Attachment
 	var totalAttBytes int64
+	if params.IndependentAttachments && emailJSON != nil {
+		var err error
+		emailJSON, err = h.copyLocalForwardParts(ctx, emailJSON)
+		if err != nil {
+			return nil, err
+		}
+	}
 	if emailJSON != nil {
 		for _, group := range [][]pipeline.Attachment{emailJSON.Attachments, emailJSON.Inline} {
 			for _, att := range group {

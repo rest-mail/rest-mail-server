@@ -13,6 +13,10 @@ import (
 // supplied by a message never enter the path. os.Root confines every operation,
 // including existing symlinks, and rename publishes only a completely written file.
 func PutFilesystem(ctx context.Context, directory string, data []byte) (ref, checksum string, err error) {
+	return putFilesystemObject(ctx, directory, "imports", data)
+}
+
+func putFilesystemObject(ctx context.Context, directory, subdir string, data []byte) (ref, checksum string, err error) {
 	if err := ctx.Err(); err != nil {
 		return "", "", err
 	}
@@ -24,12 +28,12 @@ func PutFilesystem(ctx context.Context, directory string, data []byte) (ref, che
 		return "", "", err
 	}
 	defer func() { _ = root.Close() }()
-	if err := root.MkdirAll("imports", 0755); err != nil {
+	if err := root.MkdirAll(subdir, 0755); err != nil {
 		return "", "", err
 	}
 	checksum = fmt.Sprintf("%x", sha256.Sum256(data))
-	object := filepath.Join("imports", checksum+".bin")
-	temporary := filepath.Join("imports", ".tmp-"+rand.Text())
+	object := filepath.Join(subdir, checksum+".bin")
+	temporary := filepath.Join(subdir, ".tmp-"+rand.Text())
 	f, err := root.OpenFile(temporary, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
 	if err != nil {
 		return "", "", err

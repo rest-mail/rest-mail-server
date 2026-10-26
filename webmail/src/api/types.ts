@@ -2300,7 +2300,7 @@ export interface paths {
         put?: never;
         /**
          * Forward a message
-         * @description The message (mail:read) is sent on as sendMessage sends, with Fwd: and its header above the note.
+         * @description The message (mail:read) is forwarded through the normal sender authorization, rate limit and outbound policy, with Fwd: and the note above its original header. Stored attachments, including empty and inline parts, are re-attached; the Sent copy owns independent attachment objects. The final signed MIME message is bounded by SMTP_MAX_MESSAGE_SIZE, and sender quota includes the copied parts. Sent, attachment references, quota and recipient work commit together. Unavailable or changed source objects fail the forward instead of dropping parts.
          */
         post: operations["forwardMessage"];
         delete?: never;
@@ -3047,6 +3047,14 @@ export interface components {
             total: number;
             /** Format: int64 */
             unread: number;
+        };
+        ForwardRefusalBody: {
+            code: string;
+            details?: components["schemas"]["ValidationDetails"] | null;
+            message: string;
+        };
+        ForwardRefusalResponse: {
+            error: components["schemas"]["ForwardRefusalBody"];
         };
         Headers: {
             bcc?: components["schemas"]["Address"][];
@@ -7648,7 +7656,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -19277,7 +19284,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -19351,13 +19357,13 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Binding validation, sender policy or sender quota refusal */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                    "application/json": components["schemas"]["ForwardRefusalResponse"];
                 };
             };
             /** @description Too Many Requests */

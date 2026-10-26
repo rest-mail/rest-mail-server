@@ -20845,6 +20845,56 @@
     }
   },
   "forwardMessage": {
+    "attachment_write_failed": {
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "from": "sender@example.test",
+          "to": [
+            "target@remote.test"
+          ],
+          "body_text": "please review"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "checksum_mismatch": {
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "from": "sender@example.test",
+          "to": [
+            "target@remote.test"
+          ],
+          "body_text": "please review"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "attachment_unavailable",
+            "message": "Could not read an original attachment"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "example": {
       "summary": "The operation's example",
       "request": {
@@ -20858,6 +20908,258 @@
       },
       "response": {
         "status": 201
+      }
+    },
+    "mailbox_full": {
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "from": "sender@example.test",
+          "to": [
+            "target@remote.test"
+          ],
+          "body_text": "please review"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "mailbox_full",
+            "message": "The sender account has insufficient quota"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "mime_too_large": {
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "from": "sender@example.test",
+          "to": [
+            "target@remote.test"
+          ],
+          "body_text": "please review"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "message_too_large",
+            "message": "The forwarded message exceeds the message size limit"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing_object": {
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "from": "sender@example.test",
+          "to": [
+            "target@remote.test"
+          ],
+          "body_text": "please review"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "attachment_unavailable",
+            "message": "Could not read an original attachment"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "not_authorized": {
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "from": "sender@example.test",
+          "to": [
+            "target@remote.test"
+          ],
+          "body_text": "please review"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "queue_write_failed": {
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "from": "sender@example.test",
+          "to": [
+            "target@remote.test"
+          ],
+          "body_text": "please review"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "quota_write_failed": {
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "from": "sender@example.test",
+          "to": [
+            "target@remote.test"
+          ],
+          "body_text": "please review"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "source_unavailable": {
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "from": "sender@example.test",
+          "to": [
+            "target@remote.test"
+          ],
+          "body_text": "please review"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "attachment_unavailable",
+            "message": "Could not read an original attachment"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "from": "sender@example.test",
+          "to": [
+            "target@remote.test"
+          ],
+          "body_text": "please review"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Invalid or expired token"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "with_attachments": {
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "from": "sender@example.test",
+          "to": [
+            "target@remote.test"
+          ],
+          "body_text": "please review"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "body_html": "\u003cp\u003eplease review\u003c/p\u003e\n\u003cp\u003e---------- Forwarded message ----------\u003cbr\u003e\nFrom: old@example.test\u003cbr\u003e\nSubject: receipt\u003c/p\u003e\n\u003cp\u003eoriginal\u003cimg src=\"cid:original-image\"\u003e\u003c/p\u003e",
+            "body_text": "please review\n\n---------- Forwarded message ----------\nFrom: old@example.test\nSubject: receipt\n\noriginal receipt",
+            "created_at": "2030-01-02T03:04:05Z",
+            "date_header": null,
+            "folder": "Sent",
+            "has_attachments": true,
+            "id": 41,
+            "in_reply_to": "",
+            "is_deleted": false,
+            "is_draft": false,
+            "is_dsn": false,
+            "is_flagged": false,
+            "is_read": true,
+            "is_starred": false,
+            "mailbox_id": 1,
+            "message_id": "\u003c00000000-0000-4000-8000-000000000001@example.test\u003e",
+            "raw_size": 1714,
+            "received_at": "2030-01-02T03:04:05Z",
+            "recipients_cc": [],
+            "recipients_to": [
+              "target@remote.test"
+            ],
+            "references": "",
+            "sender": "sender@example.test",
+            "sender_name": "",
+            "size_bytes": 285,
+            "subject": "Fwd: receipt",
+            "thread_id": "\u003c00000000-0000-4000-8000-000000000001@example.test\u003e",
+            "updated_at": "2030-01-02T03:04:05Z"
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },

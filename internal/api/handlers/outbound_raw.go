@@ -32,8 +32,9 @@ type outboundMessage struct {
 
 	// ICS, when set, is the iCalendar payload attached as invite.ics, and
 	// ICSMethod is its method parameter (REQUEST when empty).
-	ICS       []byte
-	ICSMethod string
+	ICS         []byte
+	ICSMethod   string
+	Attachments []pipeline.Attachment
 }
 
 // buildOutboundRaw renders the message as the bytes handed to the outbound
@@ -61,18 +62,25 @@ func buildOutboundRaw(m outboundMessage) (string, error) {
 	if m.InReplyTo != "" {
 		email.Headers.InReplyTo = "<" + m.InReplyTo + ">"
 	}
+	for _, part := range m.Attachments {
+		if part.Disposition == "inline" {
+			email.Inline = append(email.Inline, part)
+		} else {
+			email.Attachments = append(email.Attachments, part)
+		}
+	}
 	if m.ICS != nil {
 		method := strings.ToUpper(m.ICSMethod)
 		if method == "" {
 			method = "REQUEST"
 		}
-		email.Attachments = []pipeline.Attachment{{
+		email.Attachments = append(email.Attachments, pipeline.Attachment{
 			Filename:    "invite.ics",
 			ContentType: "text/calendar; charset=utf-8; method=" + method,
 			Disposition: "attachment",
 			Size:        int64(len(m.ICS)),
 			Content:     base64.StdEncoding.EncodeToString(m.ICS),
-		}}
+		})
 	}
 
 	raw, err := rmime.Serialize(email)

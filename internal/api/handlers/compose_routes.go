@@ -8,6 +8,7 @@ import (
 	oapifly "github.com/antimatter-studios/go-oapifly"
 
 	"github.com/restmail/restmail/internal/api/endpoint"
+	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
 )
 
@@ -74,6 +75,17 @@ var sendOutcomes = []oapifly.EndpointResponse{
 
 // sentOrDiscarded are the answers of a send that cannot be scheduled: a draft's, a forward's.
 var sentOrDiscarded = []oapifly.EndpointResponse{sendOutcomes[0], sendOutcomes[2]}
+
+// ForwardRefusalResponse covers binding validation and a quota/policy refusal.
+// Their code and message are always present; only validation has field details.
+type ForwardRefusalResponse struct {
+	Error ForwardRefusalBody `json:"error"`
+}
+type ForwardRefusalBody struct {
+	Code    string                     `json:"code"`
+	Message string                     `json:"message"`
+	Details *respond.ValidationDetails `json:"details,omitempty"`
+}
 
 // sendRefusals are what a send refuses with: a field missing or invalid (400), no session
 // (401), an address the session may not send as or the outbound pipeline's reject or
@@ -185,8 +197,8 @@ func (h *MessageHandler) RegisterCompose(rs endpoint.Routes) {
 		Errors: append([]int{http.StatusNotFound}, sendRefusals...), Security: writeAndSend}, h.sendDraft)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/{id}/forward",
 		OperationID: "forwardMessage", Summary: "Forward a message", Tags: []string{"Messages"},
-		Description: "The message (mail:read) is sent on as sendMessage sends, with Fwd: and its header above the note.",
-		Status:      http.StatusCreated, SuccessStatuses: []int{http.StatusOK}, Responses: sentOrDiscarded,
+		Description: "The message (mail:read) is forwarded through the normal sender authorization, rate limit and outbound policy, with Fwd: and the note above its original header. Stored attachments, including empty and inline parts, are re-attached; the Sent copy owns independent attachment objects. The final signed MIME message is bounded by SMTP_MAX_MESSAGE_SIZE, and sender quota includes the copied parts. Sent, attachment references, quota and recipient work commit together. Unavailable or changed source objects fail the forward instead of dropping parts.",
+		Status:      http.StatusCreated, SuccessStatuses: []int{http.StatusOK}, Responses: append(append([]oapifly.EndpointResponse{}, sentOrDiscarded...), oapifly.EndpointResponse{Status: http.StatusUnprocessableEntity, Description: "Binding validation, sender policy or sender quota refusal", Type: oapifly.TypeOf[ForwardRefusalResponse]()}),
 		Errors: append([]int{http.StatusNotFound}, sendRefusals...), Security: readAndSend}, h.forwardMessage)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/calendar-events",
 		OperationID: "listCalendarEvents", Summary: "List the calendar invitations an account has received", Tags: []string{"Calendar"},
