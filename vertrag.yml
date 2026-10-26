@@ -183,6 +183,11 @@ exclude-matching:
   # New 2FA reads/enrollment remain counted; only fault-injected internal
   # errors cannot be produced against the healthy contract fixture.
   - '^/api/v1/auth/2fa(/enroll)? > .* > 500( >|$)'
+  # A healthy fixture cannot produce these dependency/worker failures. Their
+  # production-router fault regressions run separately; #1166 tracks topology
+  # fault injection. This never ignores a 5xx answering a normal transaction.
+  - '^/api/v1/admin/pipelines/test(-filter)? > .* > 500( >|$)'
+  - '^/api/v1/admin/custom-filters/\{id\}/test > .* > (408|413|500)( >|$)'
 
 # What the run is held to (vertrag's surface gate, #376): every operation in
 # the spec, counted only when every documented transaction of it was sent in
@@ -276,6 +281,21 @@ surface:
     - operation: enrollTwoFactor
       status: "500"
       reason: "Database or cryptography failure needs fault injection; normal enrollment and missing-session refusal remain counted."
+    - operation: testPipeline
+      status: "500"
+      reason: "Database, stored-configuration and engine failures need fault injection (#1166); production-router regression tests cover them."
+    - operation: testFilter
+      status: "500"
+      reason: "Engine execution failure needs fault injection (#1166); production-router regression tests cover it."
+    - operation: testCustomFilter
+      status: "408"
+      reason: "A sidecar timeout needs a controlled dependency (#1166); transport regression tests cover it."
+    - operation: testCustomFilter
+      status: "413"
+      reason: "The sidecar's bare size refusal needs a controlled dependency (#1166); transport regression tests cover it."
+    - operation: testCustomFilter
+      status: "500"
+      reason: "Database or sidecar worker failure needs fault injection (#1166); production-router regression tests cover it."
 
 # The HAR records the traffic for the secret scan (tests/contract/secret_scan.py, #673).
 reporter: [cli, junit, har]
