@@ -3,7 +3,7 @@ package queue
 import (
 	"testing"
 
-	mtasts "github.com/rest-mail/go-mtasts"
+	mtasts "github.com/rest-mail/go-mtasts/pkg/mtasts"
 )
 
 // TestRESTMAILUpgradePermitted_EnforceGate is the red-green guard for #168: the

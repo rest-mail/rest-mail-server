@@ -12,7 +12,8 @@ import (
 	"testing"
 	"time"
 
-	imapsrv "github.com/rest-mail/go-imap"
+	goimap "github.com/rest-mail/go-imap/pkg/imap"
+	imapserver "github.com/rest-mail/go-imap/pkg/imap/server"
 
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 )
@@ -58,7 +59,7 @@ type imapClient struct {
 func dialUTF8(t *testing.T) *imapClient {
 	t.Helper()
 	client, server := net.Pipe()
-	sess := imapsrv.NewSession(server, NewBackend(utf8API(t), nil), "imap.test", nil, imapsrv.NopLimiter{})
+	sess := imapserver.NewSession(server, NewBackend(utf8API(t), nil), "imap.test", nil, goimap.NopLimiter{})
 	done := make(chan struct{})
 	go func() {
 		defer close(done)

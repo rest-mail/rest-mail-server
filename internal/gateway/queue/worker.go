@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rest-mail/go-mtasts"
+	"github.com/rest-mail/go-mtasts/pkg/mtasts"
 	"github.com/restmail/restmail/internal/dane"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"

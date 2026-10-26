@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	dkim "github.com/rest-mail/go-dkim"
+	dkim "github.com/rest-mail/go-dkim/pkg/dkim"
 	rmail "github.com/restmail/restmail/internal/mail"
 )
 

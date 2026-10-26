@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	mtasts "github.com/rest-mail/go-mtasts"
+	mtasts "github.com/rest-mail/go-mtasts/pkg/mtasts"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
 )

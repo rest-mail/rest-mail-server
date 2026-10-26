@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	dkim "github.com/rest-mail/go-dkim"
+	dkim "github.com/rest-mail/go-dkim/pkg/dkim"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 	"github.com/restmail/restmail/internal/gateway/connlimiter"
