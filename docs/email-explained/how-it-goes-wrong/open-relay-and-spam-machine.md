@@ -215,6 +215,10 @@ configuration file that carries every old default forward.
 
 ## What it costs
 
+![What a relaying server costs you, from spam at volume to your own mail bouncing](../diagrams/open-relay-cost.svg)
+
+*Its source is [`open-relay-cost.workflow.json`](../diagrams/open-relay-cost.workflow.json).*
+
 - **Blocklists.** Large mailbox providers and blocklist operators such as
   Spamhaus see spam from your address, and list it.
 - **Your real mail bounces.** Servers that check those lists refuse mail from

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg viewBox="0 3 1152 604" data-layout-contract="readable-v2" role="img" lang="en" aria-labelledby="archify-diagram-title archify-diagram-description" data-animation="trace" data-preset="editorial" data-quality-profile="showcase" data-node-ui="" width="1152" height="604" xmlns="http://www.w3.org/2000/svg" data-source-sha256="2a8064ae9e01e77bacccb08d586aef453a5b68b1891a500e7eb706dbc54e08ae" data-archify="3.2.0 208acba8d412335185b2056fedf54b3405df43fb" data-look-sha256="2bf1255e6e2f6538664e439cee3a906d6a62723d1727ef2456d51fc2d715d615"><style>
+<svg viewBox="0 2 898 479" data-layout-contract="readable-v2" role="img" lang="en" aria-labelledby="archify-diagram-title archify-diagram-description" data-animation="trace" data-preset="editorial" data-quality-profile="showcase" data-node-ui="" width="898" height="479" xmlns="http://www.w3.org/2000/svg" data-source-sha256="214ba99f3d587a206228403b89a54144a78f7acd49faa721f34efd396df3a8f4" data-archify="3.2.0 208acba8d412335185b2056fedf54b3405df43fb" data-look-sha256="2bf1255e6e2f6538664e439cee3a906d6a62723d1727ef2456d51fc2d715d615"><style>
 /*
 JetBrains Mono variable WOFF2 subsets from Google Fonts service revision v24.
 These fixed bytes are shared by the viewer and its SVG/raster exports.
@@ -386,251 +386,149 @@ svg[data-preset="editorial"] { --flow-halo-peak: 0.07; --flow-glow-peak: 0.28; -
 [data-preset="editorial"][data-theme="dark"] { --bg: #15110d; --text: #e8e3d6; --arrow-emphasis: #1840ff; }
 @keyframes archify-relay-ripple { 
   0% { r: 2px; opacity: var(--flow-peak, 0.6); }
-  14.722%, 100% { r: 20px; opacity: 0; }
+  20.833%, 100% { r: 20px; opacity: 0; }
 }
 @keyframes archify-relay-comet-0 { 
   0% { stroke-dashoffset: calc(var(--flow-len, 0px) + var(--flow-shift, 0px)); opacity: 0; animation-timing-function: cubic-bezier(0.45, 0.05, 0.35, 1); }
-  1.649% { opacity: var(--flow-peak, 0.9); }
-  8.245% { stroke-dashoffset: var(--flow-shift, 0px); opacity: var(--flow-peak, 0.9); }
-  11.385%, 100% { stroke-dashoffset: var(--flow-shift, 0px); opacity: 0; }
+  2.333% { opacity: var(--flow-peak, 0.9); }
+  11.667% { stroke-dashoffset: var(--flow-shift, 0px); opacity: var(--flow-peak, 0.9); }
+  16.111%, 100% { stroke-dashoffset: var(--flow-shift, 0px); opacity: 0; }
 }
 @keyframes archify-relay-wake-0 { 
   0% { stroke-dashoffset: var(--flow-len, 0px); opacity: var(--flow-peak, 0.3); animation-timing-function: cubic-bezier(0.45, 0.05, 0.35, 1); }
-  8.245% { stroke-dashoffset: 0px; opacity: var(--flow-peak, 0.3); }
-  25.911%, 100% { stroke-dashoffset: 0px; opacity: 0; }
+  11.667% { stroke-dashoffset: 0px; opacity: var(--flow-peak, 0.3); }
+  36.667%, 100% { stroke-dashoffset: 0px; opacity: 0; }
 }
 @keyframes archify-relay-comet-1 { 
   0% { stroke-dashoffset: calc(var(--flow-len, 0px) + var(--flow-shift, 0px)); opacity: 0; animation-timing-function: cubic-bezier(0.45, 0.05, 0.35, 1); }
-  1.649% { opacity: var(--flow-peak, 0.9); }
-  8.245% { stroke-dashoffset: var(--flow-shift, 0px); opacity: var(--flow-peak, 0.9); }
-  11.385%, 100% { stroke-dashoffset: var(--flow-shift, 0px); opacity: 0; }
+  2.333% { opacity: var(--flow-peak, 0.9); }
+  11.667% { stroke-dashoffset: var(--flow-shift, 0px); opacity: var(--flow-peak, 0.9); }
+  16.111%, 100% { stroke-dashoffset: var(--flow-shift, 0px); opacity: 0; }
 }
 @keyframes archify-relay-wake-1 { 
-  0%, 2.473% { opacity: 0; }
-  8.245% { opacity: var(--flow-peak, 0.3); }
-  25.911%, 100% { stroke-dashoffset: 0px; opacity: 0; }
+  0%, 3.5% { opacity: 0; }
+  11.667% { opacity: var(--flow-peak, 0.3); }
+  36.667%, 100% { stroke-dashoffset: 0px; opacity: 0; }
 }
 @keyframes archify-relay-comet-2 { 
   0% { stroke-dashoffset: calc(var(--flow-len, 0px) + var(--flow-shift, 0px)); opacity: 0; animation-timing-function: cubic-bezier(0.45, 0.05, 0.35, 1); }
-  2.356% { opacity: var(--flow-peak, 0.9); }
-  23.763% { stroke-dashoffset: var(--flow-shift, 0px); opacity: var(--flow-peak, 0.9); }
-  26.904%, 100% { stroke-dashoffset: var(--flow-shift, 0px); opacity: 0; }
+  3.333% { opacity: var(--flow-peak, 0.9); }
+  31.643% { stroke-dashoffset: var(--flow-shift, 0px); opacity: var(--flow-peak, 0.9); }
+  36.087%, 100% { stroke-dashoffset: var(--flow-shift, 0px); opacity: 0; }
 }
 @keyframes archify-relay-wake-2 { 
   0% { stroke-dashoffset: var(--flow-len, 0px); opacity: var(--flow-peak, 0.3); animation-timing-function: cubic-bezier(0.45, 0.05, 0.35, 1); }
-  23.763% { stroke-dashoffset: 0px; opacity: var(--flow-peak, 0.3); }
-  41.43%, 100% { stroke-dashoffset: 0px; opacity: 0; }
+  31.643% { stroke-dashoffset: 0px; opacity: var(--flow-peak, 0.3); }
+  56.643%, 100% { stroke-dashoffset: 0px; opacity: 0; }
 }
 @keyframes archify-relay-comet-3 { 
   0% { stroke-dashoffset: calc(var(--flow-len, 0px) + var(--flow-shift, 0px)); opacity: 0; animation-timing-function: cubic-bezier(0.45, 0.05, 0.35, 1); }
-  1.649% { opacity: var(--flow-peak, 0.9); }
-  8.245% { stroke-dashoffset: var(--flow-shift, 0px); opacity: var(--flow-peak, 0.9); }
-  11.385%, 100% { stroke-dashoffset: var(--flow-shift, 0px); opacity: 0; }
+  2.333% { opacity: var(--flow-peak, 0.9); }
+  11.667% { stroke-dashoffset: var(--flow-shift, 0px); opacity: var(--flow-peak, 0.9); }
+  16.111%, 100% { stroke-dashoffset: var(--flow-shift, 0px); opacity: 0; }
 }
 @keyframes archify-relay-wake-3 { 
-  0% { stroke-dashoffset: var(--flow-len, 0px); opacity: var(--flow-peak, 0.3); animation-timing-function: cubic-bezier(0.45, 0.05, 0.35, 1); }
-  8.245% { stroke-dashoffset: 0px; opacity: var(--flow-peak, 0.3); }
-  25.911%, 100% { stroke-dashoffset: 0px; opacity: 0; }
+  0%, 3.5% { opacity: 0; }
+  11.667% { opacity: var(--flow-peak, 0.3); }
+  36.667%, 100% { stroke-dashoffset: 0px; opacity: 0; }
 }
 @keyframes archify-relay-comet-4 { 
   0% { stroke-dashoffset: calc(var(--flow-len, 0px) + var(--flow-shift, 0px)); opacity: 0; animation-timing-function: cubic-bezier(0.45, 0.05, 0.35, 1); }
-  1.649% { opacity: var(--flow-peak, 0.9); }
-  8.245% { stroke-dashoffset: var(--flow-shift, 0px); opacity: var(--flow-peak, 0.9); }
-  11.385%, 100% { stroke-dashoffset: var(--flow-shift, 0px); opacity: 0; }
+  2.333% { opacity: var(--flow-peak, 0.9); }
+  11.667% { stroke-dashoffset: var(--flow-shift, 0px); opacity: var(--flow-peak, 0.9); }
+  16.111%, 100% { stroke-dashoffset: var(--flow-shift, 0px); opacity: 0; }
 }
 @keyframes archify-relay-wake-4 { 
   0% { stroke-dashoffset: var(--flow-len, 0px); opacity: var(--flow-peak, 0.3); animation-timing-function: cubic-bezier(0.45, 0.05, 0.35, 1); }
-  8.245% { stroke-dashoffset: 0px; opacity: var(--flow-peak, 0.3); }
-  25.911%, 100% { stroke-dashoffset: 0px; opacity: 0; }
+  11.667% { stroke-dashoffset: 0px; opacity: var(--flow-peak, 0.3); }
+  36.667%, 100% { stroke-dashoffset: 0px; opacity: 0; }
 }
 @keyframes archify-relay-comet-5 { 
   0% { stroke-dashoffset: calc(var(--flow-len, 0px) + var(--flow-shift, 0px)); opacity: 0; animation-timing-function: cubic-bezier(0.45, 0.05, 0.35, 1); }
-  2.356% { opacity: var(--flow-peak, 0.9); }
-  14.021% { stroke-dashoffset: var(--flow-shift, 0px); opacity: var(--flow-peak, 0.9); }
-  17.162%, 100% { stroke-dashoffset: var(--flow-shift, 0px); opacity: 0; }
+  3.333% { opacity: var(--flow-peak, 0.9); }
+  22.636% { stroke-dashoffset: var(--flow-shift, 0px); opacity: var(--flow-peak, 0.9); }
+  27.081%, 100% { stroke-dashoffset: var(--flow-shift, 0px); opacity: 0; }
 }
 @keyframes archify-relay-wake-5 { 
-  0%, 4.206% { opacity: 0; }
-  14.021% { opacity: var(--flow-peak, 0.3); }
-  31.688%, 100% { stroke-dashoffset: 0px; opacity: 0; }
+  0%, 6.791% { opacity: 0; }
+  22.636% { opacity: var(--flow-peak, 0.3); }
+  47.636%, 100% { stroke-dashoffset: 0px; opacity: 0; }
 }
 @keyframes archify-relay-comet-6 { 
   0% { stroke-dashoffset: calc(var(--flow-len, 0px) + var(--flow-shift, 0px)); opacity: 0; animation-timing-function: cubic-bezier(0.45, 0.05, 0.35, 1); }
-  1.649% { opacity: var(--flow-peak, 0.9); }
-  8.245% { stroke-dashoffset: var(--flow-shift, 0px); opacity: var(--flow-peak, 0.9); }
-  11.385%, 100% { stroke-dashoffset: var(--flow-shift, 0px); opacity: 0; }
+  2.333% { opacity: var(--flow-peak, 0.9); }
+  11.667% { stroke-dashoffset: var(--flow-shift, 0px); opacity: var(--flow-peak, 0.9); }
+  16.111%, 100% { stroke-dashoffset: var(--flow-shift, 0px); opacity: 0; }
 }
 @keyframes archify-relay-wake-6 { 
-  0%, 2.473% { opacity: 0; }
-  8.245% { opacity: var(--flow-peak, 0.3); }
-  25.911%, 100% { stroke-dashoffset: 0px; opacity: 0; }
+  0%, 3.5% { opacity: 0; }
+  11.667% { opacity: var(--flow-peak, 0.3); }
+  36.667%, 100% { stroke-dashoffset: 0px; opacity: 0; }
 }
 @keyframes archify-relay-comet-7 { 
   0% { stroke-dashoffset: calc(var(--flow-len, 0px) + var(--flow-shift, 0px)); opacity: 0; animation-timing-function: cubic-bezier(0.45, 0.05, 0.35, 1); }
-  1.649% { opacity: var(--flow-peak, 0.9); }
-  8.245% { stroke-dashoffset: var(--flow-shift, 0px); opacity: var(--flow-peak, 0.9); }
-  11.385%, 100% { stroke-dashoffset: var(--flow-shift, 0px); opacity: 0; }
+  2.333% { opacity: var(--flow-peak, 0.9); }
+  11.667% { stroke-dashoffset: var(--flow-shift, 0px); opacity: var(--flow-peak, 0.9); }
+  16.111%, 100% { stroke-dashoffset: var(--flow-shift, 0px); opacity: 0; }
 }
 @keyframes archify-relay-wake-7 { 
-  0%, 2.473% { opacity: 0; }
-  8.245% { opacity: var(--flow-peak, 0.3); }
-  25.911%, 100% { stroke-dashoffset: 0px; opacity: 0; }
-}
-@keyframes archify-relay-comet-8 { 
-  0% { stroke-dashoffset: calc(var(--flow-len, 0px) + var(--flow-shift, 0px)); opacity: 0; animation-timing-function: cubic-bezier(0.45, 0.05, 0.35, 1); }
-  1.649% { opacity: var(--flow-peak, 0.9); }
-  8.245% { stroke-dashoffset: var(--flow-shift, 0px); opacity: var(--flow-peak, 0.9); }
-  11.385%, 100% { stroke-dashoffset: var(--flow-shift, 0px); opacity: 0; }
-}
-@keyframes archify-relay-wake-8 { 
-  0% { stroke-dashoffset: var(--flow-len, 0px); opacity: var(--flow-peak, 0.3); animation-timing-function: cubic-bezier(0.45, 0.05, 0.35, 1); }
-  8.245% { stroke-dashoffset: 0px; opacity: var(--flow-peak, 0.3); }
-  25.911%, 100% { stroke-dashoffset: 0px; opacity: 0; }
-}
-@keyframes archify-relay-comet-9 { 
-  0% { stroke-dashoffset: calc(var(--flow-len, 0px) + var(--flow-shift, 0px)); opacity: 0; animation-timing-function: cubic-bezier(0.45, 0.05, 0.35, 1); }
-  1.649% { opacity: var(--flow-peak, 0.9); }
-  8.245% { stroke-dashoffset: var(--flow-shift, 0px); opacity: var(--flow-peak, 0.9); }
-  11.385%, 100% { stroke-dashoffset: var(--flow-shift, 0px); opacity: 0; }
-}
-@keyframes archify-relay-wake-9 { 
-  0% { stroke-dashoffset: var(--flow-len, 0px); opacity: var(--flow-peak, 0.3); animation-timing-function: cubic-bezier(0.45, 0.05, 0.35, 1); }
-  8.245% { stroke-dashoffset: 0px; opacity: var(--flow-peak, 0.3); }
-  25.911%, 100% { stroke-dashoffset: 0px; opacity: 0; }
-}
-@keyframes archify-relay-comet-10 { 
-  0% { stroke-dashoffset: calc(var(--flow-len, 0px) + var(--flow-shift, 0px)); opacity: 0; animation-timing-function: cubic-bezier(0.45, 0.05, 0.35, 1); }
-  2.356% { opacity: var(--flow-peak, 0.9); }
-  18.492% { stroke-dashoffset: var(--flow-shift, 0px); opacity: var(--flow-peak, 0.9); }
-  21.633%, 100% { stroke-dashoffset: var(--flow-shift, 0px); opacity: 0; }
-}
-@keyframes archify-relay-wake-10 { 
-  0%, 5.548% { opacity: 0; }
-  18.492% { opacity: var(--flow-peak, 0.3); }
-  36.159%, 100% { stroke-dashoffset: 0px; opacity: 0; }
-}
-@keyframes archify-relay-comet-11 { 
-  0% { stroke-dashoffset: calc(var(--flow-len, 0px) + var(--flow-shift, 0px)); opacity: 0; animation-timing-function: cubic-bezier(0.45, 0.05, 0.35, 1); }
-  1.649% { opacity: var(--flow-peak, 0.9); }
-  8.245% { stroke-dashoffset: var(--flow-shift, 0px); opacity: var(--flow-peak, 0.9); }
-  11.385%, 100% { stroke-dashoffset: var(--flow-shift, 0px); opacity: 0; }
-}
-@keyframes archify-relay-wake-11 { 
-  0%, 2.473% { opacity: 0; }
-  8.245% { opacity: var(--flow-peak, 0.3); }
-  25.911%, 100% { stroke-dashoffset: 0px; opacity: 0; }
-}
-@keyframes archify-relay-comet-12 { 
-  0% { stroke-dashoffset: calc(var(--flow-len, 0px) + var(--flow-shift, 0px)); opacity: 0; animation-timing-function: cubic-bezier(0.45, 0.05, 0.35, 1); }
-  1.649% { opacity: var(--flow-peak, 0.9); }
-  8.245% { stroke-dashoffset: var(--flow-shift, 0px); opacity: var(--flow-peak, 0.9); }
-  11.385%, 100% { stroke-dashoffset: var(--flow-shift, 0px); opacity: 0; }
-}
-@keyframes archify-relay-wake-12 { 
-  0%, 2.473% { opacity: 0; }
-  8.245% { opacity: var(--flow-peak, 0.3); }
-  25.911%, 100% { stroke-dashoffset: 0px; opacity: 0; }
-}
-@keyframes archify-relay-comet-13 { 
-  0% { stroke-dashoffset: calc(var(--flow-len, 0px) + var(--flow-shift, 0px)); opacity: 0; animation-timing-function: cubic-bezier(0.45, 0.05, 0.35, 1); }
-  1.649% { opacity: var(--flow-peak, 0.9); }
-  8.245% { stroke-dashoffset: var(--flow-shift, 0px); opacity: var(--flow-peak, 0.9); }
-  11.385%, 100% { stroke-dashoffset: var(--flow-shift, 0px); opacity: 0; }
-}
-@keyframes archify-relay-wake-13 { 
-  0%, 2.473% { opacity: 0; }
-  8.245% { opacity: var(--flow-peak, 0.3); }
-  25.911%, 100% { stroke-dashoffset: 0px; opacity: 0; }
+  0%, 3.5% { opacity: 0; }
+  11.667% { opacity: var(--flow-peak, 0.3); }
+  36.667%, 100% { stroke-dashoffset: 0px; opacity: 0; }
 }
 @keyframes archify-relay-node-0 { 
   0%, 100% { filter: var(--ambient-node-base-filter, none); }
   0% { filter: var(--ambient-node-base-filter, none); }
-  2.356%, 8.245% { filter: var(--ambient-node-base-filter,) drop-shadow(0 0 10px var(--arrow-emphasis)); }
-  23.556% { filter: var(--ambient-node-base-filter, none); }
+  3.333%, 11.667% { filter: var(--ambient-node-base-filter,) drop-shadow(0 0 10px var(--arrow-emphasis)); }
+  33.333% { filter: var(--ambient-node-base-filter, none); }
 }
 @keyframes archify-relay-node-1 { 
   0%, 100% { filter: var(--ambient-node-base-filter, none); }
   0% { filter: var(--ambient-node-base-filter, none); }
-  2.356%, 8.245% { filter: var(--ambient-node-base-filter,) drop-shadow(0 0 10px var(--arrow-emphasis)); }
-  23.556% { filter: var(--ambient-node-base-filter, none); }
+  3.333%, 11.667% { filter: var(--ambient-node-base-filter,) drop-shadow(0 0 10px var(--arrow-emphasis)); }
+  33.333% { filter: var(--ambient-node-base-filter, none); }
 }
 @keyframes archify-relay-node-2 { 
   0%, 100% { filter: var(--ambient-node-base-filter, none); }
   0% { filter: var(--ambient-node-base-filter, none); }
-  2.356%, 8.245% { filter: var(--ambient-node-base-filter,) drop-shadow(0 0 10px var(--arrow-emphasis)); }
-  23.556% { filter: var(--ambient-node-base-filter, none); }
+  3.333%, 11.667% { filter: var(--ambient-node-base-filter,) drop-shadow(0 0 10px var(--arrow-emphasis)); }
+  33.333% { filter: var(--ambient-node-base-filter, none); }
 }
 @keyframes archify-relay-node-3 { 
   0%, 100% { filter: var(--ambient-node-base-filter, none); }
   0% { filter: var(--ambient-node-base-filter, none); }
-  2.356%, 8.245% { filter: var(--ambient-node-base-filter,) drop-shadow(0 0 10px var(--arrow-emphasis)); }
-  23.556% { filter: var(--ambient-node-base-filter, none); }
+  3.333%, 11.667% { filter: var(--ambient-node-base-filter,) drop-shadow(0 0 10px var(--arrow-emphasis)); }
+  33.333% { filter: var(--ambient-node-base-filter, none); }
 }
 @keyframes archify-relay-node-4 { 
   0%, 100% { filter: var(--ambient-node-base-filter, none); }
   0% { filter: var(--ambient-node-base-filter, none); }
-  2.356%, 8.245% { filter: var(--ambient-node-base-filter,) drop-shadow(0 0 10px var(--arrow-emphasis)); }
-  23.556% { filter: var(--ambient-node-base-filter, none); }
+  3.333%, 11.667% { filter: var(--ambient-node-base-filter,) drop-shadow(0 0 10px var(--arrow-emphasis)); }
+  33.333% { filter: var(--ambient-node-base-filter, none); }
 }
 @keyframes archify-relay-node-5 { 
   0%, 100% { filter: var(--ambient-node-base-filter, none); }
-  0% { filter: var(--ambient-node-base-filter, none); }
-  2.356%, 8.245% { filter: var(--ambient-node-base-filter,) drop-shadow(0 0 10px var(--arrow-emphasis)); }
-  23.556% { filter: var(--ambient-node-base-filter, none); }
+  11.667% { filter: var(--ambient-node-base-filter, none); }
+  15%, 23.333% { filter: var(--ambient-node-base-filter,) drop-shadow(0 0 10px var(--arrow-emphasis)); }
+  45% { filter: var(--ambient-node-base-filter, none); }
 }
 @keyframes archify-relay-node-6 { 
   0%, 100% { filter: var(--ambient-node-base-filter, none); }
-  8.245% { filter: var(--ambient-node-base-filter, none); }
-  10.6%, 16.489% { filter: var(--ambient-node-base-filter,) drop-shadow(0 0 10px var(--arrow-emphasis)); }
-  31.8% { filter: var(--ambient-node-base-filter, none); }
+  11.667% { filter: var(--ambient-node-base-filter, none); }
+  15%, 23.333% { filter: var(--ambient-node-base-filter,) drop-shadow(0 0 10px var(--arrow-emphasis)); }
+  45% { filter: var(--ambient-node-base-filter, none); }
 }
 @keyframes archify-relay-node-7 { 
   0%, 100% { filter: var(--ambient-node-base-filter, none); }
-  8.245% { filter: var(--ambient-node-base-filter, none); }
-  10.6%, 16.489% { filter: var(--ambient-node-base-filter,) drop-shadow(0 0 10px var(--arrow-emphasis)); }
-  31.8% { filter: var(--ambient-node-base-filter, none); }
+  26.111% { filter: var(--ambient-node-base-filter, none); }
+  29.444%, 37.778% { filter: var(--ambient-node-base-filter,) drop-shadow(0 0 10px var(--arrow-emphasis)); }
+  59.444% { filter: var(--ambient-node-base-filter, none); }
 }
 @keyframes archify-relay-node-8 { 
   0%, 100% { filter: var(--ambient-node-base-filter, none); }
-  8.245% { filter: var(--ambient-node-base-filter, none); }
-  10.6%, 16.489% { filter: var(--ambient-node-base-filter,) drop-shadow(0 0 10px var(--arrow-emphasis)); }
-  31.8% { filter: var(--ambient-node-base-filter, none); }
-}
-@keyframes archify-relay-node-9 { 
-  0%, 100% { filter: var(--ambient-node-base-filter, none); }
-  18.452% { filter: var(--ambient-node-base-filter, none); }
-  20.808%, 26.697% { filter: var(--ambient-node-base-filter,) drop-shadow(0 0 10px var(--arrow-emphasis)); }
-  42.008% { filter: var(--ambient-node-base-filter, none); }
-}
-@keyframes archify-relay-node-10 { 
-  0%, 100% { filter: var(--ambient-node-base-filter, none); }
-  18.452% { filter: var(--ambient-node-base-filter, none); }
-  20.808%, 26.697% { filter: var(--ambient-node-base-filter,) drop-shadow(0 0 10px var(--arrow-emphasis)); }
-  42.008% { filter: var(--ambient-node-base-filter, none); }
-}
-@keyframes archify-relay-node-11 { 
-  0%, 100% { filter: var(--ambient-node-base-filter, none); }
-  18.452% { filter: var(--ambient-node-base-filter, none); }
-  20.808%, 26.697% { filter: var(--ambient-node-base-filter,) drop-shadow(0 0 10px var(--arrow-emphasis)); }
-  42.008% { filter: var(--ambient-node-base-filter, none); }
-}
-@keyframes archify-relay-node-12 { 
-  0%, 100% { filter: var(--ambient-node-base-filter, none); }
-  34.436% { filter: var(--ambient-node-base-filter, none); }
-  36.792%, 42.681% { filter: var(--ambient-node-base-filter,) drop-shadow(0 0 10px var(--arrow-emphasis)); }
-  57.992% { filter: var(--ambient-node-base-filter, none); }
-}
-@keyframes archify-relay-node-13 { 
-  0%, 100% { filter: var(--ambient-node-base-filter, none); }
-  44.644% { filter: var(--ambient-node-base-filter, none); }
-  46.999%, 52.888% { filter: var(--ambient-node-base-filter,) drop-shadow(0 0 10px var(--arrow-emphasis)); }
-  68.2% { filter: var(--ambient-node-base-filter, none); }
-}
-@keyframes archify-relay-node-14 { 
-  0%, 100% { filter: var(--ambient-node-base-filter, none); }
-  54.851% { filter: var(--ambient-node-base-filter, none); }
-  57.207%, 63.096% { filter: var(--ambient-node-base-filter,) drop-shadow(0 0 10px var(--arrow-emphasis)); }
-  78.407% { filter: var(--ambient-node-base-filter, none); }
+  26.111% { filter: var(--ambient-node-base-filter, none); }
+  29.444%, 37.778% { filter: var(--ambient-node-base-filter,) drop-shadow(0 0 10px var(--arrow-emphasis)); }
+  59.444% { filter: var(--ambient-node-base-filter, none); }
 }
 svg[data-node-ui] [data-node-id] &gt; rect:not(.c-mask) { stroke-width: 1.25px; }
 :is([data-theme="dark"] svg[data-node-ui], svg[data-node-ui][data-theme="dark"]) [data-node-id] &gt; rect:not(.c-mask).c-frontend { fill: color-mix(in srgb, var(--frontend-stroke) 13%, var(--mask)); stroke: color-mix(in srgb, var(--frontend-stroke) 72%, var(--mask)); }
@@ -656,8 +554,8 @@ svg[data-node-ui][data-preset="editorial"] :is([data-graph-role="structural-fram
 svg[data-theme="light"] { --bg: #f4f1ea; --grid: #d8d0c2; --canvas-dot: #e2e7ec; --text: #15110d; --text-muted: #5a5247; --text-dim: #8a8175; --text-faint: #5a5247; --panel: rgba(251, 248, 241, 0.97); --panel-border: #c4b9a6; --lane-fill: rgba(229, 221, 207, 0.42); --lane-stroke: #b8aa94; --arrow: #8a806f; --arrow-emphasis: #1840ff; --mask: #fbf8f1; --frontend-fill: rgba(31, 117, 126, 0.09); --frontend-stroke: #287e84; --backend-fill: rgba(42, 119, 75, 0.09); --backend-stroke: #397b53; --database-fill: rgba(105, 75, 130, 0.09); --database-stroke: #765d86; --cloud-fill: rgba(157, 103, 31, 0.1); --cloud-stroke: #9a671f; --security-fill: rgba(153, 58, 52, 0.09); --security-stroke: #9e463f; --messagebus-fill: rgba(182, 70, 27, 0.09); --messagebus-stroke: #ad4b25; --external-fill: rgba(101, 91, 75, 0.09); --external-stroke: #746b5e; --toolbar-bg: rgba(251, 248, 241, 0.94); --toolbar-border: #c4b9a6; --toolbar-text: #40392f; --toolbar-hover: #fffdf8; --toolbar-menu-bg: #fbf8f1; --flow-cycle: ; --flow-halo-peak: ; --flow-glow-peak: ; --flow-tail-peak: ; --flow-head-peak: ; --flow-wake-peak: ; --flow-ripple-peak: ; --flow-peak: ; }
 svg[data-theme="dark"] { --bg: #15110d; --grid: #39342a; --canvas-dot: rgba(148, 163, 184, 0.16); --text: #e8e3d6; --text-muted: #b9ae9b; --text-dim: #776e60; --text-faint: #9d917e; --panel: rgba(35, 31, 24, 0.96); --panel-border: #625a4a; --lane-fill: rgba(52, 46, 35, 0.46); --lane-stroke: #726957; --arrow: #948978; --arrow-emphasis: #1840ff; --mask: #231f18; --frontend-fill: rgba(43, 133, 142, 0.16); --frontend-stroke: #7fc6c7; --backend-fill: rgba(63, 132, 92, 0.16); --backend-stroke: #8fc29e; --database-fill: rgba(117, 91, 141, 0.17); --database-stroke: #c0a4d0; --cloud-fill: rgba(170, 119, 49, 0.16); --cloud-stroke: #d8ad68; --security-fill: rgba(157, 69, 65, 0.17); --security-stroke: #df9085; --messagebus-fill: rgba(174, 79, 42, 0.16); --messagebus-stroke: #df946f; --external-fill: rgba(126, 115, 96, 0.18); --external-stroke: #b8ad99; --toolbar-bg: rgba(35, 31, 24, 0.92); --toolbar-border: #625a4a; --toolbar-text: #eee5d5; --toolbar-hover: #302a20; --toolbar-menu-bg: #231f18; --flow-cycle: ; --flow-halo-peak: ; --flow-glow-peak: ; --flow-tail-peak: ; --flow-head-peak: ; --flow-wake-peak: ; --flow-ripple-peak: ; --flow-peak: ; }
 rect.c-bg-rect { fill: var(--bg); }
-</style><rect x="0" y="0" width="1152" height="660" class="c-bg-rect"/>
-        <title id="archify-diagram-title">From tutorial to spam machine: how a Postfix server relays for strangers</title>
+</style><rect x="0" y="0" width="898" height="534" class="c-bg-rect"/>
+        <title id="archify-diagram-title">From tutorial to open relay: how a Postfix server relays for strangers</title>
         <desc id="archify-diagram-description">A workflow diagram generated by Archify.</desc>
         <!-- Definitions -->
         <defs>
@@ -703,305 +601,192 @@ rect.c-bg-rect { fill: var(--bg); }
         <rect width="100%" height="100%" fill="url(#grid)"/>
 
         <!-- Swimlanes -->
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-0" x="40" y="52" width="1096" height="106" rx="10" class="c-lane" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-0" x="40" y="52" width="842" height="106" rx="10" class="c-lane" stroke-width="1"/>
         <text x="54" y="74" class="t-muted" font-size="10" font-weight="600">01 / Spammer</text>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-1" x="40" y="178" width="1096" height="106" rx="10" class="c-lane" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-1" x="40" y="178" width="842" height="106" rx="10" class="c-lane" stroke-width="1"/>
         <text x="54" y="200" class="t-muted" font-size="10" font-weight="600">02 / Your Postfix server</text>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-2" x="40" y="304" width="1096" height="106" rx="10" class="c-lane" stroke-width="1"/>
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="exception-lane" data-composition-frame-id="lane-2-exception" x="46" y="310" width="1084" height="94" rx="8" class="c-security-group" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-2" x="40" y="304" width="842" height="106" rx="10" class="c-lane" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="exception-lane" data-composition-frame-id="lane-2-exception" x="46" y="310" width="830" height="94" rx="8" class="c-security-group" stroke-width="1"/>
         <text x="54" y="326" class="t-security" font-size="10" font-weight="600">EX / Copied from tutorials</text>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-3" x="40" y="430" width="1096" height="106" rx="10" class="c-lane" stroke-width="1"/>
-        <text x="54" y="452" class="t-muted" font-size="10" font-weight="600">04 / The rest of the internet</text>
-
         <!-- Phase headers -->
-        <path d="M 64 35 H 274" class="a-default phase-rule" stroke-width="1" stroke-linecap="round" fill="none"/>
-        <rect x="142.2" y="27" width="53.6" height="16" rx="8" class="c-mask phase-chip"/>
-        <text x="169" y="38.5" class="t-muted" font-size="8" font-weight="600" text-anchor="middle" letter-spacing=".04em">Connect</text>
-        <path d="M 390.3999999999999 35 H 677.2" class="a-security phase-rule" stroke-width="1" stroke-linecap="round" fill="none"/>
-        <rect x="480.59999999999997" y="27" width="106.39999999999999" height="16" rx="8" class="c-mask phase-chip"/>
-        <text x="533.8" y="38.5" class="t-security" font-size="8" font-weight="600" text-anchor="middle" letter-spacing=".04em">The relay decision</text>
-        <path d="M 826.8 35 H 1089.1999999999998" class="a-dashed phase-rule" stroke-width="1" stroke-linecap="round" fill="none"/>
-        <rect x="914.4" y="27" width="87.2" height="16" rx="8" class="c-mask phase-chip"/>
-        <text x="958" y="38.5" class="t-messagebus" font-size="8" font-weight="600" text-anchor="middle" letter-spacing=".04em">Abuse at scale</text>
+        <path d="M 56 35 H 258" class="a-default phase-rule" stroke-width="1" stroke-linecap="round" fill="none"/>
+        <rect x="130.2" y="27" width="53.6" height="16" rx="8" class="c-mask phase-chip"/>
+        <text x="157" y="38.5" class="t-muted" font-size="8" font-weight="600" text-anchor="middle" letter-spacing=".04em">Connect</text>
+        <path d="M 370.4 35 H 621.5999999999999" class="a-security phase-rule" stroke-width="1" stroke-linecap="round" fill="none"/>
+        <rect x="442.79999999999995" y="27" width="106.39999999999999" height="16" rx="8" class="c-mask phase-chip"/>
+        <text x="495.99999999999994" y="38.5" class="t-security" font-size="8" font-weight="600" text-anchor="middle" letter-spacing=".04em">The relay decision</text>
 
         <!-- Workflow groups -->
 
 
         <!-- Edge paths -->
-        <path data-edge-from="session" data-edge-to="relay" data-edge-label="relay for me?" data-edge-key="0" data-edge-id="ask" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="286,246;366.4,246" d="M 286 246 L 366.4 246" class="a-emphasis" data-animate="edge" style="--step: 1;" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="stolen" data-edge-to="session" data-edge-label="AUTH with it" data-edge-key="1" data-edge-id="auth" data-composition-routing="workflow-v2-auto" data-edge-role="branch" data-composition-points="236,146;236,220" d="M 236 146 L 236 220" class="a-security" data-animate="edge" style="--step: 8;" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
-        <path data-edge-from="bot" data-edge-to="session" data-edge-label="connects to port 25" data-edge-key="2" data-edge-id="connect" data-edge-role="main" data-composition-points="102,146;102,162;20,162;20,246;186,246" d="M 102 146 L 102 154 Q 102 162 94 162 L 28 162 Q 20 162 20 170 L 20 238 Q 20 246 28 246 L 186 246" class="a-default" data-animate="edge" style="--step: 0;" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="queue" data-edge-to="outbound" data-edge-key="3" data-edge-id="deliver" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="926.8000000000001,246;979.2,246" d="M 926.8000000000001 246 L 979.2 246" class="a-default" data-animate="edge" style="--step: 4;" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="accepted" data-edge-to="queue" data-edge-label="queued" data-edge-key="4" data-edge-id="enqueue" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="693.2,246;802.8000000000001,246" d="M 693.2 246 L 802.8000000000001 246" class="a-default" data-animate="edge" style="--step: 3;" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="outbound" data-edge-to="providers" data-edge-label="spam at volume" data-edge-key="5" data-edge-id="flood" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="1051.2,272;1051.2,472" d="M 1051.2 272 L 1051.2 472" class="a-security" data-animate="edge" style="--step: 5;" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
-        <path data-edge-from="blocklists" data-edge-to="bounced" data-edge-label="your IP is listed" data-edge-key="6" data-edge-id="listed" data-composition-routing="workflow-v2-auto" data-edge-role="branch" data-composition-points="810.8000000000001,498;711.2,498" d="M 810.8000000000001 498 L 711.2 498" class="a-security" data-animate="edge" style="--step: 12;" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
-        <path data-edge-from="relay" data-edge-to="accepted" data-edge-label="a permit matched" data-edge-key="7" data-edge-id="permit" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="490.4,246;585.2,246" d="M 490.4 246 L 585.2 246" class="a-security" data-animate="edge" style="--step: 2;" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
-        <path data-edge-from="relay" data-edge-to="denied" data-edge-label="correct config" data-edge-key="8" data-edge-id="refuse" data-composition-routing="workflow-v2-auto" data-edge-role="branch" data-composition-points="428.4,212;428.4,146" d="M 428.4 212 L 428.4 146" class="a-default" data-animate="edge" style="--step: 12;" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="providers" data-edge-to="blocklists" data-edge-label="reported" data-edge-key="9" data-edge-id="report" data-composition-routing="workflow-v2-auto" data-edge-role="branch" data-composition-points="975.2,498;918.8000000000001,498" d="M 975.2 498 L 918.8000000000001 498" class="a-default" data-animate="edge" style="--step: 12;" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="order" data-edge-to="relay" data-edge-label="check ends early" data-edge-key="10" data-edge-id="skip-reject" data-edge-role="branch" data-composition-points="639.2,346;639.2,306;435.4,306;435.4,280" d="M 639.2 346 L 639.2 314 Q 639.2 306 631.2 306 L 443.4 306 Q 435.4 306 435.4 298 L 435.4 280" class="a-security" data-animate="edge" style="--step: 12;" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
-        <path data-edge-from="widenet" data-edge-to="relay" data-edge-label="permit_mynetworks" data-edge-key="11" data-edge-id="trust-all" data-edge-role="branch" data-composition-points="428.4,346;428.4,330;400.9,330;400.9,296;421.4,296;421.4,280" d="M 428.4 346 L 428.4 336.25 Q 428.4 330 422.15 330 L 407.15 330 Q 400.9 330 400.9 323.75 L 400.9 302.25 Q 400.9 296 407.15 296 L 415.15 296 Q 421.4 296 421.4 289.75 L 421.4 280" class="a-security" data-animate="edge" style="--step: 12;" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
-        <path data-edge-from="gateway" data-edge-to="session" data-edge-label="everyone is 172.17.0.1" data-edge-key="12" data-edge-id="trust-gateway" data-edge-role="branch" data-composition-points="236,346;236,272" d="M 236 346 L 236 272" class="a-security" data-animate="edge" style="--step: 12;" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
-        <path data-edge-from="nolimit" data-edge-to="queue" data-edge-label="nothing slows it" data-edge-key="13" data-edge-id="unlimited" data-composition-routing="workflow-v2-auto" data-edge-role="branch" data-composition-points="864.8000000000001,346;864.8000000000001,272" d="M 864.8000000000001 346 L 864.8000000000001 272" class="a-security" data-animate="edge" style="--step: 12;" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
+        <path data-edge-from="session" data-edge-to="relay" data-edge-label="relay for me?" data-edge-key="0" data-edge-id="ask" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="266,246;346.4,246" d="M 266 246 L 346.4 246" class="a-emphasis" data-animate="edge" style="--step: 1;" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="stolen" data-edge-to="session" data-edge-label="AUTH with it" data-edge-key="1" data-edge-id="auth" data-composition-routing="workflow-v2-auto" data-edge-role="branch" data-composition-points="220,146;220,220" d="M 220 146 L 220 220" class="a-security" data-animate="edge" style="--step: 5;" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
+        <path data-edge-from="bot" data-edge-to="session" data-edge-label="connects to port 25" data-edge-key="2" data-edge-id="connect" data-edge-role="main" data-composition-points="94,146;94,162;20,162;20,246;174,246" d="M 94 146 L 94 154 Q 94 162 86 162 L 28 162 Q 20 162 20 170 L 20 238 Q 20 246 28 246 L 174 246" class="a-default" data-animate="edge" style="--step: 0;" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="relay" data-edge-to="accepted" data-edge-label="permitted" data-edge-key="3" data-edge-id="permit" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="470.4,246;531.5999999999999,246" d="M 470.4 246 L 531.5999999999999 246" class="a-security" data-animate="edge" style="--step: 2;" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
+        <path data-edge-from="relay" data-edge-to="denied" data-edge-label="correct config" data-edge-key="4" data-edge-id="refuse" data-composition-routing="workflow-v2-auto" data-edge-role="branch" data-composition-points="408.4,212;408.4,146" d="M 408.4 212 L 408.4 146" class="a-default" data-animate="edge" style="--step: 8;" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="order" data-edge-to="relay" data-edge-label="check ends early" data-edge-key="5" data-edge-id="skip-reject" data-edge-role="branch" data-composition-points="583.5999999999999,346;583.5999999999999,306;415.4,306;415.4,280" d="M 583.5999999999999 346 L 583.5999999999999 314 Q 583.5999999999999 306 575.5999999999999 306 L 423.4 306 Q 415.4 306 415.4 298 L 415.4 280" class="a-security" data-animate="edge" style="--step: 9;" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
+        <path data-edge-from="widenet" data-edge-to="relay" data-edge-label="permit_mynetworks" data-edge-key="6" data-edge-id="trust-all" data-edge-role="branch" data-composition-points="408.4,346;408.4,330;380.9,330;380.9,296;401.4,296;401.4,280" d="M 408.4 346 L 408.4 336.25 Q 408.4 330 402.15 330 L 387.15 330 Q 380.9 330 380.9 323.75 L 380.9 302.25 Q 380.9 296 387.15 296 L 395.15 296 Q 401.4 296 401.4 289.75 L 401.4 280" class="a-security" data-animate="edge" style="--step: 10;" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
+        <path data-edge-from="gateway" data-edge-to="session" data-edge-label="everyone is 172.17.0.1" data-edge-key="7" data-edge-id="trust-gateway" data-edge-role="branch" data-composition-points="220,346;220,272" d="M 220 346 L 220 272" class="a-security" data-animate="edge" style="--step: 11;" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
 
         <!-- Nodes -->
         <g id="node-bot" data-node-id="bot" data-node-label="Spammer's bot" tabindex="0" role="button" aria-label="Focus Spammer's bot, scans for open port 25, Spammer › Connect" aria-pressed="false" data-node-kind="external" data-node-sublabel="scans for open port 25" data-node-context="Spammer › Connect">
           <title>Spammer's bot · scans for open port 25 · Spammer › Connect</title>
-          <rect x="48" y="94" width="108" height="52" rx="8" class="c-mask"/>
-          <rect x="48" y="94" width="108" height="52" rx="8" class="c-external" data-animate="node" style="--step: 0; --flow-node-name: archify-relay-node-1;" stroke-width="1.5"/>
+          <rect x="48" y="94" width="92" height="52" rx="8" class="c-mask"/>
+          <rect x="48" y="94" width="92" height="52" rx="8" class="c-external" data-animate="node" style="--step: 0; --flow-node-name: archify-relay-node-1;" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="person" class="semantic-sigil s-external" transform="translate(54 100) scale(0.6875)">
             <circle cx="8" cy="4.5" r="2.5"/><path d="M3 14v-2a5 5 0 0 1 10 0v2"/>
           </g>
-          <text data-node-label="" x="102" y="126.2" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Spammer's bot</text>
-          <text x="102" y="140.5" class="t-muted" font-size="7.5" text-anchor="middle">scans for open port 25</text>
+          <text data-node-label="" x="94" y="125.9" class="t-primary" font-size="10.7" font-weight="600" text-anchor="middle">Spammer's bot</text>
+          <text x="94" y="138.7" class="t-muted" font-size="6.3" text-anchor="middle">scans for open port 25</text>
         </g>
 
         <g id="node-stolen" data-node-id="stolen" data-node-label="Stolen password" tabindex="0" role="button" aria-label="Focus Stolen password, phished or guessed, Spammer › Connect" aria-pressed="false" data-node-kind="external" data-node-sublabel="phished or guessed" data-node-context="Spammer › Connect">
           <title>Stolen password · phished or guessed · Spammer › Connect</title>
-          <rect x="188" y="94" width="96" height="52" rx="8" class="c-mask"/>
-          <rect x="188" y="94" width="96" height="52" rx="8" class="c-external" data-animate="node" style="--step: 8; --flow-node-name: archify-relay-node-0;" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(194 100) scale(0.6875)">
+          <rect x="172" y="94" width="96" height="52" rx="8" class="c-mask"/>
+          <rect x="172" y="94" width="96" height="52" rx="8" class="c-external" data-animate="node" style="--step: 5; --flow-node-name: archify-relay-node-0;" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(178 100) scale(0.6875)">
             <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
             <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
           </g>
-          <text data-node-label="" x="236" y="124.7" class="t-primary" font-size="9.7" font-weight="600" text-anchor="middle">Stolen password</text>
-          <text x="236" y="139.3" class="t-muted" font-size="8" text-anchor="middle">phished or guessed</text>
+          <text data-node-label="" x="220" y="124.7" class="t-primary" font-size="9.7" font-weight="600" text-anchor="middle">Stolen password</text>
+          <text x="220" y="139.3" class="t-muted" font-size="8" text-anchor="middle">phished or guessed</text>
         </g>
 
         <g id="node-denied" data-node-id="denied" data-node-label="Relay access denied" tabindex="0" role="button" aria-label="Focus Relay access denied, 454 or 554: a correct answer, Spammer › The relay decision" aria-pressed="false" data-node-kind="security" data-node-sublabel="454 or 554: a correct answer" data-node-context="Spammer › The relay decision">
           <title>Relay access denied · 454 or 554: a correct answer · Spammer › The relay decision</title>
-          <rect x="360.4" y="94" width="136" height="52" rx="8" class="c-mask"/>
-          <rect x="360.4" y="94" width="136" height="52" rx="8" class="c-security" data-animate="node" style="--step: 9; --flow-node-name: archify-relay-node-10;" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="success" class="semantic-sigil s-security" transform="translate(366.4 100) scale(0.6875)">
+          <rect x="346.4" y="94" width="124" height="52" rx="8" class="c-mask"/>
+          <rect x="346.4" y="94" width="124" height="52" rx="8" class="c-security" data-animate="node" style="--step: 6; --flow-node-name: archify-relay-node-8;" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="success" class="semantic-sigil s-security" transform="translate(352.4 100) scale(0.6875)">
             <circle cx="8" cy="8" r="5.3"/>
             <path d="m5.2 8 1.8 1.8 3.8-4"/>
           </g>
-          <text data-node-label="" x="428.4" y="126.2" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Relay access denied</text>
-          <text x="428.4" y="140.7" class="t-muted" font-size="7.6" text-anchor="middle">454 or 554: a correct answer</text>
+          <text data-node-label="" x="408.4" y="125.2" class="t-primary" font-size="10.1" font-weight="600" text-anchor="middle">Relay access denied</text>
+          <text x="408.4" y="138.6" class="t-muted" font-size="6.9" text-anchor="middle">454 or 554: a correct answer</text>
         </g>
 
         <g id="node-session" data-node-id="session" data-node-label="SMTP session" tabindex="0" role="button" aria-label="Focus SMTP session, RCPT TO: x@gmail.com, Your Postfix server › Connect" aria-pressed="false" data-node-kind="backend" data-node-sublabel="RCPT TO: x@gmail.com" data-node-context="Your Postfix server › Connect">
           <title>SMTP session · RCPT TO: x@gmail.com · Your Postfix server › Connect</title>
-          <rect x="186" y="220" width="100" height="52" rx="8" class="c-mask"/>
-          <rect x="186" y="220" width="100" height="52" rx="8" class="c-backend" data-animate="node" style="--step: 1; --flow-node-name: archify-relay-node-6;" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(192 226) scale(0.6875)">
+          <rect x="174" y="220" width="92" height="52" rx="8" class="c-mask"/>
+          <rect x="174" y="220" width="92" height="52" rx="8" class="c-backend" data-animate="node" style="--step: 1; --flow-node-name: archify-relay-node-5;" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(180 226) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" x="236" y="252.2" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">SMTP session</text>
-          <text x="236" y="266.7" class="t-muted" font-size="7.6" text-anchor="middle">RCPT TO: x@gmail.com</text>
+          <text data-node-label="" x="220" y="252.2" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">SMTP session</text>
+          <text x="220" y="265.9" class="t-muted" font-size="7" text-anchor="middle">RCPT TO: x@gmail.com</text>
         </g>
 
         <g id="node-relay" data-node-id="relay" data-node-label="Relay decision" tabindex="0" role="button" aria-label="Focus Relay decision, smtpd_relay_restrictions, Your Postfix server › The relay decision" aria-pressed="false" data-node-kind="security" data-node-sublabel="smtpd_relay_restrictions" data-node-tag="first match wins" data-node-context="Your Postfix server › The relay decision">
           <title>Relay decision · smtpd_relay_restrictions · Your Postfix server › The relay decision · first match wins</title>
-          <rect x="366.4" y="212" width="124" height="68" rx="8" class="c-mask"/>
-          <rect x="366.4" y="212" width="124" height="68" rx="8" class="c-security" data-animate="node" style="--step: 2; --flow-node-name: archify-relay-node-7;" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="decision" class="semantic-sigil s-security" transform="translate(372.4 218) scale(0.6875)">
+          <rect x="346.4" y="212" width="124" height="68" rx="8" class="c-mask"/>
+          <rect x="346.4" y="212" width="124" height="68" rx="8" class="c-security" data-animate="node" style="--step: 2; --flow-node-name: archify-relay-node-6;" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="decision" class="semantic-sigil s-security" transform="translate(352.4 218) scale(0.6875)">
             <path d="M8 2.2 13.8 8 8 13.8 2.2 8Z"/>
           </g>
-          <text data-node-label="" x="431.59999999999997" y="233" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Relay decision</text>
-          <text x="428.4" y="250" class="t-muted" font-size="8" text-anchor="middle">smtpd_relay_restrictions</text>
-        <text x="428.4" y="268" class="t-security" font-size="7" text-anchor="middle">first match wins</text>
+          <text data-node-label="" x="411.59999999999997" y="233" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Relay decision</text>
+          <text x="408.4" y="250" class="t-muted" font-size="8" text-anchor="middle">smtpd_relay_restrictions</text>
+        <text x="408.4" y="268" class="t-security" font-size="7" text-anchor="middle">first match wins</text>
         </g>
 
         <g id="node-accepted" data-node-id="accepted" data-node-label="250 OK, accepted" tabindex="0" role="button" aria-label="Focus 250 OK, accepted, for a domain not yours, Your Postfix server › The relay decision" aria-pressed="false" data-node-kind="backend" data-node-sublabel="for a domain not yours" data-node-context="Your Postfix server › The relay decision">
           <title>250 OK, accepted · for a domain not yours · Your Postfix server › The relay decision</title>
-          <rect x="585.2" y="220" width="108" height="52" rx="8" class="c-mask"/>
-          <rect x="585.2" y="220" width="108" height="52" rx="8" class="c-backend" data-animate="node" style="--step: 3; --flow-node-name: archify-relay-node-9;" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="failure" class="semantic-sigil s-backend" transform="translate(591.2 226) scale(0.6875)">
+          <rect x="531.5999999999999" y="220" width="104" height="52" rx="8" class="c-mask"/>
+          <rect x="531.5999999999999" y="220" width="104" height="52" rx="8" class="c-backend" data-animate="node" style="--step: 3; --flow-node-name: archify-relay-node-7;" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="failure" class="semantic-sigil s-backend" transform="translate(537.5999999999999 226) scale(0.6875)">
             <circle cx="8" cy="8" r="5.3"/>
             <path d="m5.7 5.7 4.6 4.6m0-4.6-4.6 4.6"/>
           </g>
-          <text data-node-label="" x="639.2" y="251.5" class="t-primary" font-size="10.4" font-weight="600" text-anchor="middle">250 OK, accepted</text>
-          <text x="639.2" y="265.7" class="t-muted" font-size="7.5" text-anchor="middle">for a domain not yours</text>
-        </g>
-
-        <g id="node-queue" data-node-id="queue" data-node-label="Mail queue" tabindex="0" role="button" aria-label="Focus Mail queue, spam and bounces pile up, Your Postfix server › Abuse at scale" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="spam and bounces pile up" data-node-context="Your Postfix server › Abuse at scale">
-          <title>Mail queue · spam and bounces pile up · Your Postfix server › Abuse at scale</title>
-          <rect x="802.8000000000001" y="220" width="124" height="52" rx="8" class="c-mask"/>
-          <rect x="802.8000000000001" y="220" width="124" height="52" rx="8" class="c-messagebus" data-animate="node" style="--step: 4; --flow-node-name: archify-relay-node-8;" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(808.8000000000001 226) scale(0.6875)">
-            <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/>
-            <circle cx="5" cy="4.5" r="1" class="sigil-fill"/>
-            <circle cx="10.5" cy="8" r="1" class="sigil-fill"/>
-            <circle cx="7" cy="11.5" r="1" class="sigil-fill"/>
-          </g>
-          <text data-node-label="" x="864.8000000000001" y="241" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Mail queue</text>
-          <text x="864.8000000000001" y="258" class="t-muted" font-size="8" text-anchor="middle">spam and bounces pile up</text>
-        </g>
-
-        <g id="node-outbound" data-node-id="outbound" data-node-label="Delivered from your IP" tabindex="0" role="button" aria-label="Focus Delivered from your IP, sent from your IP, Your Postfix server › Abuse at scale" aria-pressed="false" data-node-kind="backend" data-node-sublabel="sent from your IP" data-node-context="Your Postfix server › Abuse at scale">
-          <title>Delivered from your IP · sent from your IP · Your Postfix server › Abuse at scale</title>
-          <rect x="979.2" y="220" width="144" height="52" rx="8" class="c-mask"/>
-          <rect x="979.2" y="220" width="144" height="52" rx="8" class="c-backend" data-animate="node" style="--step: 5; --flow-node-name: archify-relay-node-11;" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(985.2 226) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" x="1051.2" y="251.4" class="t-primary" font-size="10.3" font-weight="600" text-anchor="middle">Delivered from your IP</text>
-          <text x="1051.2" y="266.1" class="t-muted" font-size="8" text-anchor="middle">sent from your IP</text>
+          <text data-node-label="" x="583.5999999999999" y="251" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">250 OK, accepted</text>
+          <text x="583.5999999999999" y="264.7" class="t-muted" font-size="7.2" text-anchor="middle">for a domain not yours</text>
         </g>
 
         <g id="node-gateway" data-node-id="gateway" data-node-label="Gateway trusted" tabindex="0" role="button" aria-label="Focus Gateway trusted, Docker or proxy hides IPs, Copied from tutorials › Connect" aria-pressed="false" data-node-kind="security" data-node-sublabel="Docker or proxy hides IPs" data-node-context="Copied from tutorials › Connect">
           <title>Gateway trusted · Docker or proxy hides IPs · Copied from tutorials › Connect</title>
-          <rect x="172" y="346" width="128" height="52" rx="8" class="c-mask"/>
-          <rect x="172" y="346" width="128" height="52" rx="8" class="c-security" data-animate="node" style="--step: 12; --flow-node-name: archify-relay-node-4;" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(178 352) scale(0.6875)">
+          <rect x="156" y="346" width="128" height="52" rx="8" class="c-mask"/>
+          <rect x="156" y="346" width="128" height="52" rx="8" class="c-security" data-animate="node" style="--step: 10; --flow-node-name: archify-relay-node-4;" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(162 352) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-node-label="" x="240.5" y="367" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Gateway trusted</text>
-          <text x="236" y="384" class="t-muted" font-size="8" text-anchor="middle">Docker or proxy hides IPs</text>
+          <text data-node-label="" x="224.5" y="367" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Gateway trusted</text>
+          <text x="220" y="384" class="t-muted" font-size="8" text-anchor="middle">Docker or proxy hides IPs</text>
         </g>
 
         <g id="node-widenet" data-node-id="widenet" data-node-label="mynetworks too wide" tabindex="0" role="button" aria-label="Focus mynetworks too wide, 0.0.0.0/0 to fix a client, Copied from tutorials › The relay decision" aria-pressed="false" data-node-kind="security" data-node-sublabel="0.0.0.0/0 to fix a client" data-node-context="Copied from tutorials › The relay decision">
           <title>mynetworks too wide · 0.0.0.0/0 to fix a client · Copied from tutorials › The relay decision</title>
-          <rect x="366.4" y="346" width="124" height="52" rx="8" class="c-mask"/>
-          <rect x="366.4" y="346" width="124" height="52" rx="8" class="c-security" data-animate="node" style="--step: 12; --flow-node-name: archify-relay-node-3;" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(372.4 352) scale(0.6875)">
+          <rect x="346.4" y="346" width="124" height="52" rx="8" class="c-mask"/>
+          <rect x="346.4" y="346" width="124" height="52" rx="8" class="c-security" data-animate="node" style="--step: 11; --flow-node-name: archify-relay-node-3;" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(352.4 352) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-node-label="" x="428.4" y="377.2" class="t-primary" font-size="10.1" font-weight="600" text-anchor="middle">mynetworks too wide</text>
-          <text x="428.4" y="391.5" class="t-muted" font-size="7.7" text-anchor="middle">0.0.0.0/0 to fix a client</text>
+          <text data-node-label="" x="408.4" y="377.2" class="t-primary" font-size="10.1" font-weight="600" text-anchor="middle">mynetworks too wide</text>
+          <text x="408.4" y="391.5" class="t-muted" font-size="7.7" text-anchor="middle">0.0.0.0/0 to fix a client</text>
         </g>
 
         <g id="node-order" data-node-id="order" data-node-label="permit before reject" tabindex="0" role="button" aria-label="Focus permit before reject, unauth check never runs, Copied from tutorials › The relay decision" aria-pressed="false" data-node-kind="security" data-node-sublabel="unauth check never runs" data-node-context="Copied from tutorials › The relay decision">
           <title>permit before reject · unauth check never runs · Copied from tutorials › The relay decision</title>
-          <rect x="573.2" y="346" width="132" height="52" rx="8" class="c-mask"/>
-          <rect x="573.2" y="346" width="132" height="52" rx="8" class="c-security" data-animate="node" style="--step: 12; --flow-node-name: archify-relay-node-2;" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(579.2 352) scale(0.6875)">
+          <rect x="517.5999999999999" y="346" width="132" height="52" rx="8" class="c-mask"/>
+          <rect x="517.5999999999999" y="346" width="132" height="52" rx="8" class="c-security" data-animate="node" style="--step: 12; --flow-node-name: archify-relay-node-2;" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(523.5999999999999 352) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-node-label="" x="639.2" y="377.4" class="t-primary" font-size="10.3" font-weight="600" text-anchor="middle">permit before reject</text>
-          <text x="639.2" y="392.1" class="t-muted" font-size="8" text-anchor="middle">unauth check never runs</text>
-        </g>
-
-        <g id="node-nolimit" data-node-id="nolimit" data-node-label="No sending limits" tabindex="0" role="button" aria-label="Focus No sending limits, one login sends millions, Copied from tutorials › Abuse at scale" aria-pressed="false" data-node-kind="security" data-node-sublabel="one login sends millions" data-node-context="Copied from tutorials › Abuse at scale">
-          <title>No sending limits · one login sends millions · Copied from tutorials › Abuse at scale</title>
-          <rect x="806.8000000000001" y="346" width="116" height="52" rx="8" class="c-mask"/>
-          <rect x="806.8000000000001" y="346" width="116" height="52" rx="8" class="c-security" data-animate="node" style="--step: 12; --flow-node-name: archify-relay-node-5;" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(812.8000000000001 352) scale(0.6875)">
-            <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
-            <path d="m5.8 8 1.5 1.5 3-3"/>
-          </g>
-          <text data-node-label="" x="864.8000000000001" y="377.6" class="t-primary" font-size="10.5" font-weight="600" text-anchor="middle">No sending limits</text>
-          <text x="864.8000000000001" y="391.8" class="t-muted" font-size="7.5" text-anchor="middle">one login sends millions</text>
-        </g>
-
-        <g id="node-bounced" data-node-id="bounced" data-node-label="Your real mail bounces" tabindex="0" role="button" aria-label="Focus Your real mail bounces, 550 5.7.1: IP listed, The rest of the internet › The relay decision" aria-pressed="false" data-node-kind="external" data-node-sublabel="550 5.7.1: IP listed" data-node-context="The rest of the internet › The relay decision">
-          <title>Your real mail bounces · 550 5.7.1: IP listed · The rest of the internet › The relay decision</title>
-          <rect x="567.2" y="472" width="144" height="52" rx="8" class="c-mask"/>
-          <rect x="567.2" y="472" width="144" height="52" rx="8" class="c-external" data-animate="node" style="--step: 12; --flow-node-name: archify-relay-node-14;" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="failure" class="semantic-sigil s-external" transform="translate(573.2 478) scale(0.6875)">
-            <circle cx="8" cy="8" r="5.3"/>
-            <path d="m5.7 5.7 4.6 4.6m0-4.6-4.6 4.6"/>
-          </g>
-          <text data-node-label="" x="639.2" y="503.4" class="t-primary" font-size="10.3" font-weight="600" text-anchor="middle">Your real mail bounces</text>
-          <text x="639.2" y="518.1" class="t-muted" font-size="8" text-anchor="middle">550 5.7.1: IP listed</text>
-        </g>
-
-        <g id="node-blocklists" data-node-id="blocklists" data-node-label="DNS blocklists" tabindex="0" role="button" aria-label="Focus DNS blocklists, Spamhaus lists your IP, The rest of the internet › Abuse at scale" aria-pressed="false" data-node-kind="external" data-node-sublabel="Spamhaus lists your IP" data-node-context="The rest of the internet › Abuse at scale">
-          <title>DNS blocklists · Spamhaus lists your IP · The rest of the internet › Abuse at scale</title>
-          <rect x="810.8000000000001" y="472" width="108" height="52" rx="8" class="c-mask"/>
-          <rect x="810.8000000000001" y="472" width="108" height="52" rx="8" class="c-external" data-animate="node" style="--step: 12; --flow-node-name: archify-relay-node-13;" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(816.8000000000001 478) scale(0.6875)">
-            <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
-            <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
-          </g>
-          <text data-node-label="" x="864.8000000000001" y="504.2" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">DNS blocklists</text>
-          <text x="864.8000000000001" y="518.5" class="t-muted" font-size="7.5" text-anchor="middle">Spamhaus lists your IP</text>
-        </g>
-
-        <g id="node-providers" data-node-id="providers" data-node-label="Gmail, Microsoft, Yahoo" tabindex="0" role="button" aria-label="Focus Gmail, Microsoft, Yahoo, traps and user reports, The rest of the internet › Abuse at scale" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="traps and user reports" data-node-context="The rest of the internet › Abuse at scale">
-          <title>Gmail, Microsoft, Yahoo · traps and user reports · The rest of the internet › Abuse at scale</title>
-          <rect x="975.2" y="472" width="152" height="52" rx="8" class="c-mask"/>
-          <rect x="975.2" y="472" width="152" height="52" rx="8" class="c-cloud" data-animate="node" style="--step: 6; --flow-node-name: archify-relay-node-12;" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(981.2 478) scale(0.6875)">
-            <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
-          </g>
-          <text data-node-label="" x="1051.2" y="503.5" class="t-primary" font-size="10.4" font-weight="600" text-anchor="middle">Gmail, Microsoft, Yahoo</text>
-          <text x="1051.2" y="518.3" class="t-muted" font-size="8" text-anchor="middle">traps and user reports</text>
+          <text data-node-label="" x="583.5999999999999" y="377.4" class="t-primary" font-size="10.3" font-weight="600" text-anchor="middle">permit before reject</text>
+          <text x="583.5999999999999" y="392.1" class="t-muted" font-size="8" text-anchor="middle">unauth check never runs</text>
         </g>
 
         <!-- Edge labels -->
         <g data-edge-from="session" data-edge-to="relay" data-edge-label="relay for me?" data-edge-key="0" data-edge-id="ask">
-          <rect x="290" y="226" width="72.4" height="14" rx="3" class="c-mask"/>
-          <text x="326.2" y="236" class="t-edge-emphasis" font-size="8" text-anchor="middle">relay for me?</text>
+          <rect x="270" y="226" width="72.4" height="14" rx="3" class="c-mask"/>
+          <text x="306.2" y="236" class="t-edge-emphasis" font-size="8" text-anchor="middle">relay for me?</text>
         </g>
         <g data-edge-from="stolen" data-edge-to="session" data-edge-label="AUTH with it" data-edge-key="1" data-edge-id="auth">
-          <rect x="202.2" y="173" width="67.6" height="14" rx="3" class="c-mask"/>
-          <text x="236" y="183" class="t-edge-security" font-size="8" text-anchor="middle">AUTH with it</text>
+          <rect x="186.2" y="173" width="67.6" height="14" rx="3" class="c-mask"/>
+          <text x="220" y="183" class="t-edge-security" font-size="8" text-anchor="middle">AUTH with it</text>
         </g>
         <g data-edge-from="bot" data-edge-to="session" data-edge-label="connects to port 25" data-edge-key="2" data-edge-id="connect">
-          <rect x="52.4" y="226" width="101.2" height="14" rx="3" class="c-mask"/>
-          <text x="103" y="236" class="t-muted" font-size="8" text-anchor="middle">connects to port 25</text>
+          <rect x="46.4" y="226" width="101.2" height="14" rx="3" class="c-mask"/>
+          <text x="97" y="236" class="t-muted" font-size="8" text-anchor="middle">connects to port 25</text>
         </g>
-
-        <g data-edge-from="accepted" data-edge-to="queue" data-edge-label="queued" data-edge-key="4" data-edge-id="enqueue">
-          <rect x="728.6" y="226" width="38.8" height="14" rx="3" class="c-mask"/>
-          <text x="748" y="236" class="t-muted" font-size="8" text-anchor="middle">queued</text>
+        <g data-edge-from="relay" data-edge-to="accepted" data-edge-label="permitted" data-edge-key="3" data-edge-id="permit">
+          <rect x="474.3999999999999" y="226" width="53.199999999999996" height="14" rx="3" class="c-mask"/>
+          <text x="500.99999999999994" y="236" class="t-edge-security" font-size="8" text-anchor="middle">permitted</text>
         </g>
-        <g data-edge-from="outbound" data-edge-to="providers" data-edge-label="spam at volume" data-edge-key="5" data-edge-id="flood">
-          <rect x="1012.6" y="362" width="77.2" height="14" rx="3" class="c-mask"/>
-          <text x="1051.2" y="372" class="t-edge-security" font-size="8" text-anchor="middle">spam at volume</text>
+        <g data-edge-from="relay" data-edge-to="denied" data-edge-label="correct config" data-edge-key="4" data-edge-id="refuse">
+          <rect x="369.79999999999995" y="169" width="77.2" height="14" rx="3" class="c-mask"/>
+          <text x="408.4" y="179" class="t-muted" font-size="8" text-anchor="middle">correct config</text>
         </g>
-        <g data-edge-from="blocklists" data-edge-to="bounced" data-edge-label="your IP is listed" data-edge-key="6" data-edge-id="listed">
-          <rect x="715.2" y="478" width="91.6" height="14" rx="3" class="c-mask"/>
-          <text x="761" y="488" class="t-edge-security" font-size="8" text-anchor="middle">your IP is listed</text>
+        <g data-edge-from="order" data-edge-to="relay" data-edge-label="check ends early" data-edge-key="5" data-edge-id="skip-reject">
+          <rect x="456.09999999999997" y="286" width="86.8" height="14" rx="3" class="c-mask"/>
+          <text x="499.49999999999994" y="296" class="t-edge-security" font-size="8" text-anchor="middle">check ends early</text>
         </g>
-        <g data-edge-from="relay" data-edge-to="accepted" data-edge-label="a permit matched" data-edge-key="7" data-edge-id="permit">
-          <rect x="494.4" y="226" width="86.8" height="14" rx="3" class="c-mask"/>
-          <text x="537.8" y="236" class="t-edge-security" font-size="8" text-anchor="middle">a permit matched</text>
+        <g data-edge-from="widenet" data-edge-to="relay" data-edge-label="permit_mynetworks" data-edge-key="6" data-edge-id="trust-all">
+          <rect x="348.84999999999997" y="310" width="91.6" height="14" rx="3" class="c-mask"/>
+          <text x="394.65" y="320" class="t-edge-security" font-size="8" text-anchor="middle">permit_mynetworks</text>
         </g>
-        <g data-edge-from="relay" data-edge-to="denied" data-edge-label="correct config" data-edge-key="8" data-edge-id="refuse">
-          <rect x="389.79999999999995" y="169" width="77.2" height="14" rx="3" class="c-mask"/>
-          <text x="428.4" y="179" class="t-muted" font-size="8" text-anchor="middle">correct config</text>
-        </g>
-        <g data-edge-from="providers" data-edge-to="blocklists" data-edge-label="reported" data-edge-key="9" data-edge-id="report">
-          <rect x="922.8" y="478" width="48.4" height="14" rx="3" class="c-mask"/>
-          <text x="947" y="488" class="t-muted" font-size="8" text-anchor="middle">reported</text>
-        </g>
-        <g data-edge-from="order" data-edge-to="relay" data-edge-label="check ends early" data-edge-key="10" data-edge-id="skip-reject">
-          <rect x="493.9" y="286" width="86.8" height="14" rx="3" class="c-mask"/>
-          <text x="537.3" y="296" class="t-edge-security" font-size="8" text-anchor="middle">check ends early</text>
-        </g>
-        <g data-edge-from="widenet" data-edge-to="relay" data-edge-label="permit_mynetworks" data-edge-key="11" data-edge-id="trust-all">
-          <rect x="368.84999999999997" y="310" width="91.6" height="14" rx="3" class="c-mask"/>
-          <text x="414.65" y="320" class="t-edge-security" font-size="8" text-anchor="middle">permit_mynetworks</text>
-        </g>
-        <g data-edge-from="gateway" data-edge-to="session" data-edge-label="everyone is 172.17.0.1" data-edge-key="12" data-edge-id="trust-gateway">
-          <rect x="178.2" y="299" width="115.6" height="14" rx="3" class="c-mask"/>
-          <text x="236" y="309" class="t-edge-security" font-size="8" text-anchor="middle">everyone is 172.17.0.1</text>
-        </g>
-        <g data-edge-from="nolimit" data-edge-to="queue" data-edge-label="nothing slows it" data-edge-key="13" data-edge-id="unlimited">
-          <rect x="821.4000000000001" y="299" width="86.8" height="14" rx="3" class="c-mask"/>
-          <text x="864.8000000000001" y="309" class="t-edge-security" font-size="8" text-anchor="middle">nothing slows it</text>
+        <g data-edge-from="gateway" data-edge-to="session" data-edge-label="everyone is 172.17.0.1" data-edge-key="7" data-edge-id="trust-gateway">
+          <rect x="162.2" y="299" width="115.6" height="14" rx="3" class="c-mask"/>
+          <text x="220" y="309" class="t-edge-security" font-size="8" text-anchor="middle">everyone is 172.17.0.1</text>
         </g>
 
         <!-- Legend -->
         <g data-legend="">
-          <text x="20" y="560" class="t-primary" font-size="12" font-weight="650">Legend</text>
-          <g data-legend-semantic-kind="backend" data-legend-x="20" data-legend-baseline="580" data-legend-width="109">
-            <rect x="20" y="572" width="14" height="9" rx="2" class="c-backend" stroke-width="1"/>
-            <text x="42" y="580" class="t-muted" font-size="7.5" font-weight="500">Postfix stages</text>
+          <text x="20" y="434" class="t-primary" font-size="12" font-weight="650">Legend</text>
+          <g data-legend-semantic-kind="backend" data-legend-x="20" data-legend-baseline="454" data-legend-width="109">
+            <rect x="20" y="446" width="14" height="9" rx="2" class="c-backend" stroke-width="1"/>
+            <text x="42" y="454" class="t-muted" font-size="7.5" font-weight="500">Postfix stages</text>
           </g>
-          <g data-legend-semantic-kind="security" data-legend-x="136" data-legend-baseline="580" data-legend-width="257">
-            <rect x="136" y="572" width="14" height="9" rx="2" class="c-security" stroke-width="1"/>
-            <text x="158" y="580" class="t-muted" font-size="7.5" font-weight="500">Relay checks and the mistakes that defeat them</text>
+          <g data-legend-semantic-kind="security" data-legend-x="136" data-legend-baseline="454" data-legend-width="257">
+            <rect x="136" y="446" width="14" height="9" rx="2" class="c-security" stroke-width="1"/>
+            <text x="158" y="454" class="t-muted" font-size="7.5" font-weight="500">Relay checks and the mistakes that defeat them</text>
           </g>
-          <g data-legend-semantic-kind="messagebus" data-legend-x="400" data-legend-baseline="580" data-legend-width="90">
-            <rect x="400" y="572" width="14" height="9" rx="2" class="c-messagebus" stroke-width="1"/>
-            <text x="422" y="580" class="t-muted" font-size="7.5" font-weight="500">Mail queue</text>
-          </g>
-          <g data-legend-semantic-kind="cloud" data-legend-x="497" data-legend-baseline="580" data-legend-width="141">
-            <rect x="497" y="572" width="14" height="9" rx="2" class="c-cloud" stroke-width="1"/>
-            <text x="519" y="580" class="t-muted" font-size="7.5" font-weight="500">Big mailbox providers</text>
-          </g>
-          <g data-legend-semantic-kind="external" data-legend-x="645" data-legend-baseline="580" data-legend-width="188">
-            <rect x="645" y="572" width="14" height="9" rx="2" class="c-external" stroke-width="1"/>
-            <text x="667" y="580" class="t-muted" font-size="7.5" font-weight="500">Outside actors and consequences</text>
+          <g data-legend-semantic-kind="external" data-legend-x="400" data-legend-baseline="454" data-legend-width="188">
+            <rect x="400" y="446" width="14" height="9" rx="2" class="c-external" stroke-width="1"/>
+            <text x="422" y="454" class="t-muted" font-size="7.5" font-weight="500">Outside actors and consequences</text>
           </g>
         </g>
       </svg>
