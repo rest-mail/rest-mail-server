@@ -10084,6 +10084,176 @@
       }
     }
   },
+  "restmailCheckMailbox": {
+    "canonical_address": {
+      "summary": "Case-equivalent input uses the stored account identity",
+      "request": {
+        "query": {
+          "address": "USER@EXAMPLE.TEST"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "address": "user@example.test",
+            "exists": true
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "disabled": {
+      "summary": "A disabled recipient is unavailable",
+      "request": {
+        "query": {
+          "address": "disabled@example.test"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "exists": false
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "empty_address": {
+      "summary": "An empty address is refused before lookup",
+      "request": {
+        "query": {
+          "address": ""
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Query parameters failed validation",
+            "details": {
+              "fields": {
+                "address": "address query parameter required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "found": {
+      "summary": "An active recipient returns its stored address",
+      "request": {
+        "query": {
+          "address": "user@example.test"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "address": "user@example.test",
+            "exists": true
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault cannot claim the mailbox is absent",
+      "request": {
+        "query": {
+          "address": "error@example.test"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to look up mailbox"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_address": {
+      "summary": "A non-address remains an unavailable recipient",
+      "request": {
+        "query": {
+          "address": "not-an-address"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "exists": false
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "An absent recipient has no address field",
+      "request": {
+        "query": {
+          "address": "missing@example.test"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "exists": false
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing_address": {
+      "summary": "An omitted address is refused before lookup",
+      "request": {
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Query parameters failed validation",
+            "details": {
+              "fields": {
+                "address": "address query parameter required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unicode_address": {
+      "summary": "NFC and IDNA normalization preserve the stored public identity",
+      "request": {
+        "query": {
+          "address": "café@münchen.test"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "address": "café@xn--mnchen-3ya.test",
+            "exists": true
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "restmailDeliver": {
     "delivered": {
       "request": {
@@ -10138,14 +10308,203 @@
     }
   },
   "restmailDiscover": {
-    "example": {
-      "summary": "The operation's example",
-      "request": {},
+    "canonical_domain": {
+      "summary": "A domain is case-folded and its trailing dot removed",
+      "request": {
+        "query": {
+          "domain": "EXAMPLE.TEST."
+        }
+      },
       "response": {
         "status": 200,
         "body": {
-          "endpoint": "https://restmail.test/restmail"
+          "endpoint": "https://mx.example.test/restmail"
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "empty_domain": {
+      "summary": "An explicitly empty domain is invalid",
+      "request": {
+        "query": {
+          "domain": ""
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid domain query parameter"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "example": {
+      "summary": "The configured public delivery endpoint is advertised",
+      "description": "No session is required. The protocol document has no API data envelope. The configured gateway wins over caller Host and forwarding headers; every answer is no-store.",
+      "request": {
+        "query": {
+          "domain": "example.test"
         }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "endpoint": "https://mx.example.test/restmail"
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "inactive": {
+      "summary": "An inactive hosted domain is not advertised",
+      "request": {
+        "query": {
+          "domain": "inactive.test"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Domain not hosted"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "A failed domain lookup never becomes a false404",
+      "request": {
+        "query": {
+          "domain": "error.test"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to look up domain"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_domain": {
+      "summary": "A mailbox address is not a recipient domain",
+      "request": {
+        "query": {
+          "domain": "alice@example.test"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid domain query parameter"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "An unknown domain is not advertised",
+      "request": {
+        "query": {
+          "domain": "missing.test"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Domain not hosted"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing_domain": {
+      "summary": "A missing domain is refused by typed binding",
+      "request": {
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Query parameters failed validation",
+            "details": {
+              "fields": {
+                "domain": "required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "repeated_domain": {
+      "summary": "The domain must be supplied exactly once",
+      "request": {
+        "query": {
+          "domain": [
+            "example.test",
+            "other.test"
+          ]
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Exactly one domain query parameter required"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unconfigured": {
+      "summary": "The server has no valid public discovery hostname",
+      "request": {
+        "query": {
+          "domain": "example.test"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "RESTMAIL discovery hostname not configured"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unicode_domain": {
+      "summary": "An internationalized domain resolves through its IDNA identity",
+      "request": {
+        "query": {
+          "domain": "münchen.test"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "endpoint": "https://mx.example.test/restmail"
+        },
+        "mediaType": "application/json"
       }
     }
   },
