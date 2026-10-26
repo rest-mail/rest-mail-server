@@ -12,8 +12,8 @@ func TestPipelineAreaDescribesCapabilitiesAndPreviewLimits(t *testing.T) {
 		rateLimited              bool
 	}{
 		"listPipelines":        {"/pipelines", "get", "pipelines:read", false},
-		"createPipeline":       {"/pipelines", "post", "pipelines:write", false},
-		"updatePipeline":       {"/pipelines/{id}", "patch", "pipelines:write", false},
+		"createPipeline":       {"/pipelines", "post", "pipelines:write", true},
+		"updatePipeline":       {"/pipelines/{id}", "patch", "pipelines:write", true},
 		"deletePipeline":       {"/pipelines/{id}", "delete", "pipelines:delete", false},
 		"testPipeline":         {"/pipelines/test", "post", "pipelines:write", true},
 		"testFilter":           {"/pipelines/test-filter", "post", "pipelines:write", true},
