@@ -78,11 +78,15 @@ type IssueConfig struct {
 	// AccountKey identifies an existing account; nil generates a new account key.
 	// Callers that renew certificates should persist and reuse this key.
 	AccountKey crypto.Signer
+	// CertificateKey preserves a serving key across renewals, keeping TLSA 3 1 1
+	// records valid. Nil generates a new ECDSA P-256 key for initial issuance.
+	CertificateKey crypto.Signer
 }
 
 // Issue obtains one certificate covering every name in cfg.Domains by HTTP-01,
 // publishing the challenge responses through responder, and returns the chain
-// and its fresh ECDSA P-256 key as PEM. It registers or reuses cfg.AccountKey's
+// and its serving key as PEM. It reuses cfg.CertificateKey when supplied,
+// otherwise generating an ECDSA P-256 key. It registers or reuses cfg.AccountKey's
 // account and touches no database or disk: the caller persists keys and certs.
 func Issue(ctx context.Context, cfg IssueConfig, responder *HTTP01Responder) (certPEM, keyPEM string, err error) {
 	if len(cfg.Domains) == 0 {
@@ -126,9 +130,12 @@ func Issue(ctx context.Context, cfg IssueConfig, responder *HTTP01Responder) (ce
 		return "", "", fmt.Errorf("acme: order did not become ready: %w", err)
 	}
 
-	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return "", "", fmt.Errorf("acme: failed to generate certificate key: %w", err)
+	certKey := cfg.CertificateKey
+	if certKey == nil {
+		certKey, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			return "", "", fmt.Errorf("acme: failed to generate certificate key: %w", err)
+		}
 	}
 	csr, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
 		Subject:  pkix.Name{CommonName: cfg.Domains[0]},

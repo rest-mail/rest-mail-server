@@ -15,6 +15,10 @@ spec:
       {{- include "restmail.componentSelectorLabels" (list . "smtp-gateway") | nindent 6 }}
   template:
     metadata:
+      {{- if .Values.smtp.dane.enabled }}
+      annotations:
+        checksum/dane-config: {{ include (print $.Template.BasePath "/smtp-dane-configmap.yaml") . | sha256sum }}
+      {{- end }}
       labels:
         {{- include "restmail.componentSelectorLabels" (list . "smtp-gateway") | nindent 8 }}
     spec:
@@ -66,6 +70,10 @@ spec:
             - name: SMTP_TRANSFER_STALL_TIMEOUT
               value: {{ . | quote }}
             {{- end }}
+            {{- if .Values.smtp.dane.enabled }}
+            - name: DANE_RESOLVER
+              value: "127.0.0.1:5353"
+            {{- end }}
             - name: QUEUE_WORKERS
               value: {{ .Values.smtpGateway.queueWorkers | quote }}
             - name: LOG_LEVEL
@@ -99,6 +107,40 @@ spec:
             periodSeconds: 30
           resources:
             {{- toYaml .Values.smtpGateway.resources | nindent 12 }}
+        {{- if .Values.smtp.dane.enabled }}
+        - name: dane-resolver
+          image: "{{ .Values.smtp.dane.image.repository }}:{{ .Values.smtp.dane.image.tag }}{{ with .Values.smtp.dane.image.digest }}@{{ . }}{{ end }}"
+          imagePullPolicy: {{ .Values.smtp.dane.image.pullPolicy }}
+          command: ["/usr/sbin/unbound"]
+          args: ["-d", "-c", "/etc/restmail-dane/unbound.conf"]
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 101
+            runAsGroup: 102
+            allowPrivilegeEscalation: false
+            # Unbound maintains its bundled RFC5011 root trust anchor here.
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: dane-config
+              mountPath: /etc/restmail-dane
+              readOnly: true
+          readinessProbe:
+            exec:
+              command: ["/usr/bin/drill-hc", "-p", "5353", "@127.0.0.1", "health.dane.invalid.", "A"]
+            initialDelaySeconds: 2
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            exec:
+              command: ["/usr/bin/drill-hc", "-p", "5353", "@127.0.0.1", "health.dane.invalid.", "A"]
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 3
+          resources:
+            {{- toYaml .Values.smtp.dane.resources | nindent 12 }}
+        {{- end }}
       volumes:
         - name: tls
           secret:
@@ -110,6 +152,11 @@ spec:
                 path: {{ .Values.tls.keyFilename }}
         {{- if .Values.internalMtls.enabled }}
         {{- include "restmail.internalMtls.volume" (list . "client") | nindent 8 }}
+        {{- end }}
+        {{- if .Values.smtp.dane.enabled }}
+        - name: dane-config
+          configMap:
+            name: {{ include "restmail.componentName" (list . "smtp-dane") }}
         {{- end }}
         - name: tmp
           emptyDir: {}

@@ -1,8 +1,10 @@
 # Preparing SMTP TLSA records
 
 REST Mail can prepare TLSA publication data for its MX's public certificate.
-This is the receiving-side preparation step of [#725](https://github.com/rest-mail/rest-mail-server/issues/725).
-Outbound DANE authentication and automatic DNS/key rollover are still pending.
+The queue already authenticates outbound SMTP through a configured loopback
+DNSSEC resolver, defers bogus DNS or TLSA mismatches, and reports DANE results
+through TLS-RPT. The chart can supply that resolver with `smtp.dane.enabled`
+(off by default); see the [chart documentation](../helm/restmail/README.md#optional-outbound-dane-resolver).
 
 Use the public certificate actually served on port 25 for the MX hostname,
 including when the sender supplies that hostname as SNI. A PEM chain must
@@ -57,9 +59,21 @@ for every key still serving, including instances finishing a rollout; retire
 the old record once the old key is no longer served. The helper deduplicates
 identical public keys while preserving current-before-staged order.
 
-REST Mail's current ACME renewal obtains a fresh serving key. This helper
-does not change that behavior, stage ACME renewals, or coordinate an external
-certificate manager. Do not publish these records for a certificate whose
-key can change automatically without the DNS overlap. Arrange managed key
-reuse or a staged rollover first. Automatic safe renewal remains part of
-#725; generated candidate records alone do not complete DANE support.
+## ACME renewal preserves the published key
+
+Both the API's database-backed ACME renewal and `instance acme-issue` reuse
+an existing serving key. The renewed certificate's SubjectPublicKeyInfo stays
+the same, so its `3 1 1` TLSA digest stays valid. The ACME account key remains
+a separate identity. First issuance generates a serving key; renewal can reuse
+ECDSA, RSA or Ed25519 keys, including a key whose old certificate has expired.
+
+A damaged, missing, mismatched or undecryptable existing serving pair stops
+renewal before a new order/store replaces it. Restore the key or plan a
+rotation with the overlap above. `-renew-before=0` forces a new certificate
+order under the same serving key, not an unannounced key rotation. Existing
+instance publication locking and interrupted-write recovery still apply.
+
+The TLSA helper does not publish DNS, stage a deliberate key rotation, or
+coordinate external certificate managers. For externally managed certificates,
+configure key reuse in that manager or use the staged rollover above. Keep
+records for every public key still serving while instances finish a rollout.

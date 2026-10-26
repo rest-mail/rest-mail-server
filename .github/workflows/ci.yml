@@ -239,6 +239,9 @@ jobs:
       - name: Lint and render (render-test.sh)
         run: helm/restmail/tests/render-test.sh
 
+      - name: Exercise the optional DANE resolver image
+        run: bash helm/restmail/tests/dane-resolver-test.sh
+
   webmail:
     name: Webmail Build
     runs-on: ubuntu-latest

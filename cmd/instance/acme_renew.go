@@ -44,6 +44,12 @@ func renewACME(ctx context.Context, outputDir, listen string, cfg acme.IssueConf
 			return nil
 		}
 	}
+	if cfg.CertificateKey == nil {
+		cfg.CertificateKey, err = existingACMEServingKey(outputDir, cfg.Domains[0])
+		if err != nil {
+			return err
+		}
+	}
 	return issueACME(ctx, outputDir, listen, cfg)
 }
 
