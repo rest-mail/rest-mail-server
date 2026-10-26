@@ -1,9 +1,9 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net"
 	"net/http"
 	"strings"
@@ -13,6 +13,7 @@ import (
 	"github.com/restmail/restmail/internal/api/respond"
 	apitypes "github.com/restmail/restmail/internal/api/types"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/db/repositories"
 	"github.com/restmail/restmail/internal/dns"
 	rmail "github.com/restmail/restmail/internal/mail"
 	"github.com/restmail/restmail/internal/pipeline"
@@ -111,14 +112,14 @@ func (h *DomainHandler) Register(rs endpoint.Routes, checks DomainRouteChecks) {
 		Middleware: []endpoint.Middleware{checks.OnList(middleware.CapDomainsRead)}}, h.list)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/domains",
 		OperationID: "createDomain", Summary: "Create a new domain", Tags: tags,
-		Status: http.StatusCreated, Errors: []int{http.StatusConflict},
+		Status: http.StatusCreated, Errors: []int{http.StatusConflict, http.StatusTooManyRequests},
 		Middleware: []endpoint.Middleware{checks.At(middleware.CapDomainsWrite)}}, h.create)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/domains/{id}",
 		OperationID: "getDomain", Summary: "Get a domain by ID", Tags: tags, Errors: missing,
 		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsRead)}}, h.get)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPatch, Path: "/api/v1/admin/domains/{id}",
 		OperationID: "updateDomain", Summary: "Update a domain", Tags: tags,
-		Errors:     []int{http.StatusNotFound, http.StatusConflict},
+		Errors:     []int{http.StatusNotFound, http.StatusConflict, http.StatusTooManyRequests},
 		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsWrite)}}, h.update)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/admin/domains/{id}",
 		OperationID: "deleteDomain", Summary: "Delete a domain", Tags: tags,
@@ -137,9 +138,9 @@ type domainPath struct {
 
 var errDomainNotFound = endpoint.Refuse(http.StatusNotFound, "domain_not_found", "Domain not found")
 
-func (h *DomainHandler) find(id uint32) (models.Domain, error) {
+func (h *DomainHandler) find(ctx context.Context, id uint32) (models.Domain, error) {
 	var domain models.Domain
-	if err := h.db.First(&domain, id).Error; err != nil {
+	if err := h.db.WithContext(ctx).First(&domain, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return domain, errDomainNotFound
 		}
@@ -179,7 +180,7 @@ func (h *DomainHandler) list(r *http.Request, in listDomainsRequest) (endpoint.L
 // for none (#144). Its DMARC policy is none unless the request asks for another (#729).
 type createDomainRequest = apitypes.CreateDomainRequest
 
-func (h *DomainHandler) create(_ *http.Request, req createDomainRequest) (Domain, error) {
+func (h *DomainHandler) create(r *http.Request, req createDomainRequest) (Domain, error) {
 	// Reject non-hostname input before it is inserted and normalize to the
 	// canonical ASCII form (issue #202).
 	normalized, err := validateDomainName(req.Name)
@@ -198,11 +199,12 @@ func (h *DomainHandler) create(_ *http.Request, req createDomainRequest) (Domain
 	// certificate cannot be served (issue #289). Making it live is a separate
 	// request, refused while there is no certificate to serve it with.
 	domain := models.Domain{
-		Name:          req.Name,
-		ServerType:    serverType,
-		Active:        false,
-		SendingPolicy: req.SendingPolicy,
-		DMARCPolicy:   models.DMARCPolicyNone,
+		Name:              req.Name,
+		ServerType:        serverType,
+		Active:            false,
+		SendingPolicy:     req.SendingPolicy,
+		DMARCPolicy:       models.DMARCPolicyNone,
+		DefaultQuotaBytes: 1 << 30,
 	}
 	if req.DMARCPolicy != nil {
 		domain.DMARCPolicy = *req.DMARCPolicy
@@ -211,27 +213,37 @@ func (h *DomainHandler) create(_ *http.Request, req createDomainRequest) (Domain
 		domain.DefaultQuotaBytes = *req.DefaultQuotaBytes
 	}
 
-	if err := h.db.Create(&domain).Error; err != nil {
-		return Domain{}, endpoint.Refuse(http.StatusConflict, "already_exists", "Domain already exists")
-	}
-
-	// Create default inbound and outbound pipelines for the new domain.
-	for _, direction := range []string{"inbound", "outbound"} {
-		if err := h.db.Create(&models.Pipeline{
-			DomainID:  domain.ID,
-			Direction: direction,
-			Filters:   pipeline.DefaultPipelineJSON(direction),
-			Active:    true,
-		}).Error; err != nil {
-			slog.Error("failed to create default "+direction+" pipeline", "domain", domain.Name, "error", err)
+	// Preserve an explicit zero instead of replacing it with GORM's model
+	// default. Omitted quotas retain the model's documented 1 GiB default.
+	row := struct {
+		models.Domain
+		DefaultQuotaBytes *int64
+	}{Domain: domain, DefaultQuotaBytes: &domain.DefaultQuotaBytes}
+	if err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Table("domains").Create(&row).Error; err != nil {
+			if repositories.IsUniqueViolation(err) {
+				return endpoint.Refuse(http.StatusConflict, "already_exists", "Domain already exists")
+			}
+			return fmt.Errorf("create domain: %w", err)
 		}
+		// A domain and its default pipelines are one provisioning operation.
+		for _, direction := range []string{"inbound", "outbound"} {
+			if err := tx.Create(&models.Pipeline{
+				DomainID: row.ID, Direction: direction,
+				Filters: pipeline.DefaultPipelineJSON(direction), Active: true,
+			}).Error; err != nil {
+				return fmt.Errorf("create default %s pipeline: %w", direction, err)
+			}
+		}
+		return nil
+	}); err != nil {
+		return Domain{}, err
 	}
-
-	return domainOf(domain), nil
+	return domainOf(row.Domain), nil
 }
 
-func (h *DomainHandler) get(_ *http.Request, in domainPath) (Domain, error) {
-	domain, err := h.find(in.ID)
+func (h *DomainHandler) get(r *http.Request, in domainPath) (Domain, error) {
+	domain, err := h.find(r.Context(), in.ID)
 	if err != nil {
 		return Domain{}, err
 	}
@@ -251,8 +263,8 @@ type updateDomainBody struct {
 	DMARCPolicy       *string `json:"dmarc_policy,omitempty" enums:"none,quarantine,reject" message:"must be 'none', 'quarantine' or 'reject'"`
 }
 
-func (h *DomainHandler) update(_ *http.Request, in updateDomainRequest) (Domain, error) {
-	domain, err := h.find(in.ID)
+func (h *DomainHandler) update(r *http.Request, in updateDomainRequest) (Domain, error) {
+	domain, err := h.find(r.Context(), in.ID)
 	if err != nil {
 		return Domain{}, err
 	}
@@ -267,7 +279,7 @@ func (h *DomainHandler) update(_ *http.Request, in updateDomainRequest) (Domain,
 		// allowed.
 		if *req.Active {
 			var current int64
-			if err := h.db.Model(&models.Certificate{}).
+			if err := h.db.WithContext(r.Context()).Model(&models.Certificate{}).
 				Where("domain_id = ? AND not_before <= NOW() AND not_after > NOW()", domain.ID).
 				Count(&current).Error; err != nil {
 				return Domain{}, fmt.Errorf("check the domain's certificate: %w", err)
@@ -292,16 +304,16 @@ func (h *DomainHandler) update(_ *http.Request, in updateDomainRequest) (Domain,
 	}
 
 	if len(updates) > 0 {
-		if err := h.db.Model(&domain).Updates(updates).Error; err != nil {
+		if err := h.db.WithContext(r.Context()).Model(&domain).Updates(updates).Error; err != nil {
 			return Domain{}, fmt.Errorf("update domain: %w", err)
 		}
 	}
 
-	return h.get(nil, domainPath{ID: in.ID})
+	return h.get(r, domainPath{ID: in.ID})
 }
 
-func (h *DomainHandler) delete(_ *http.Request, in domainPath) (endpoint.Empty, error) {
-	domain, err := h.find(in.ID)
+func (h *DomainHandler) delete(r *http.Request, in domainPath) (endpoint.Empty, error) {
+	domain, err := h.find(r.Context(), in.ID)
 	if err != nil {
 		return endpoint.Empty{}, err
 	}
@@ -346,8 +358,8 @@ type DNSRecordCheck struct {
 }
 
 // dnsCheck verifies DNS records for a domain (MX, SPF, DKIM, DMARC, MTA-STS, TLS-RPT).
-func (h *DomainHandler) dnsCheck(_ *http.Request, in domainPath) (DomainDNSCheck, error) {
-	domain, err := h.find(in.ID)
+func (h *DomainHandler) dnsCheck(r *http.Request, in domainPath) (DomainDNSCheck, error) {
+	domain, err := h.find(r.Context(), in.ID)
 	if err != nil {
 		return DomainDNSCheck{}, err
 	}
