@@ -3328,6 +3328,221 @@
       }
     }
   },
+  "deleteBan": {
+    "domain_scope": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "found": {
+      "description": "Production routing, JWT/session and capability middleware precede exact parameterized deletion. Controlled SQL proves ID/address selection, empty 204 answers, mutation faults and refusals before writes; it does not prove PostgreSQL persistence, protocol-ban caches or firewall behavior.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "internal_error": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_format": {
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "other_capability": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "permission_store_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "read_only": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "required_capability": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "session_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "deleteCertificate": {
     "domain_scope": {
       "request": {
@@ -27674,6 +27889,210 @@
       }
     }
   },
+  "unbanIP": {
+    "domain_scope": {
+      "request": {
+        "path": {
+          "ip": "192.0.2.10"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "found": {
+      "description": "Production routing, JWT/session and capability middleware precede exact parameterized deletion. Controlled SQL proves ID/address selection, empty 204 answers, mutation faults and refusals before writes; it does not prove PostgreSQL persistence, protocol-ban caches or firewall behavior.",
+      "request": {
+        "path": {
+          "ip": "192.0.2.10"
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "internal_error": {
+      "request": {
+        "path": {
+          "ip": "192.0.2.10"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "ipv6": {
+      "request": {
+        "path": {
+          "ip": "2001:db8::10"
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "literal_address": {
+      "description": "The current address lookup accepts a literal string rather than parsing an IP; this change preserves that request contract. An absent path segment never matches the route, so no binding 422 is advertised.",
+      "request": {
+        "path": {
+          "ip": "not-an-ip"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "No ban found for this IP"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "ip": "192.0.2.99"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "No ban found for this IP"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "other_capability": {
+      "request": {
+        "path": {
+          "ip": "192.0.2.10"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "permission_store_unavailable": {
+      "request": {
+        "path": {
+          "ip": "192.0.2.10"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "read_only": {
+      "request": {
+        "path": {
+          "ip": "192.0.2.10"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "request": {
+        "path": {
+          "ip": "192.0.2.10"
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "required_capability": {
+      "request": {
+        "path": {
+          "ip": "192.0.2.10"
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "session_unavailable": {
+      "request": {
+        "path": {
+          "ip": "192.0.2.10"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "ip": "192.0.2.10"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "updateAlias": {
     "destination_invalid": {
       "request": {
@@ -29037,425 +29456,6 @@
         },
         "mediaType": "application/json"
       }
-    }
-  },
-  "deleteBan": {
-    "internal_error": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 500,
-        "body": {
-          "error": {
-            "code": "internal_error",
-            "message": "Internal server error"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "request_too_large": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 413,
-        "body": {
-          "error": {
-            "code": "request_too_large",
-            "message": "Request body too large"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "session_unavailable": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 503,
-        "body": {
-          "error": {
-            "code": "unavailable",
-            "message": "Could not verify the session"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "unauthenticated": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 401,
-        "body": {
-          "error": {
-            "code": "unauthorized",
-            "message": "Missing authorization header"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "domain_scope": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
-          }
-        }
-      }
-    },
-    "read_only": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
-          }
-        }
-      }
-    },
-    "permission_store_unavailable": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 503,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "unavailable",
-            "message": "Could not verify permissions"
-          }
-        }
-      }
-    },
-    "invalid_id": {
-      "request": {
-        "path": {
-          "id": 0
-        },
-        "invalid": true
-      },
-      "response": {
-        "status": 422,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "validation_failed",
-            "message": "Path parameters failed validation",
-            "details": {
-              "fields": {
-                "id": "must be at least 1"
-              }
-            }
-          }
-        }
-      }
-    },
-    "invalid_format": {
-      "request": {
-        "path": {
-          "id": "not-an-integer"
-        },
-        "invalid": true
-      },
-      "response": {
-        "status": 422,
-        "body": {
-          "error": {
-            "code": "validation_failed",
-            "message": "Path parameters failed validation",
-            "details": {
-              "fields": {
-                "id": "must be a non-negative integer"
-              }
-            }
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "other_capability": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
-          }
-        }
-      }
-    },
-    "found": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 204
-      },
-      "description": "Production routing, JWT/session and capability middleware precede exact parameterized deletion. Controlled SQL proves ID/address selection, empty 204 answers, mutation faults and refusals before writes; it does not prove PostgreSQL persistence, protocol-ban caches or firewall behavior."
-    },
-    "required_capability": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 204
-      }
-    },
-    "missing": {
-      "request": {
-        "path": {
-          "id": 2147483647
-        }
-      },
-      "response": {
-        "status": 204
-      }
-    }
-  },
-  "unbanIP": {
-    "internal_error": {
-      "request": {
-        "path": {
-          "ip": "192.0.2.10"
-        }
-      },
-      "response": {
-        "status": 500,
-        "body": {
-          "error": {
-            "code": "internal_error",
-            "message": "Internal server error"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "request_too_large": {
-      "request": {
-        "path": {
-          "ip": "192.0.2.10"
-        }
-      },
-      "response": {
-        "status": 413,
-        "body": {
-          "error": {
-            "code": "request_too_large",
-            "message": "Request body too large"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "session_unavailable": {
-      "request": {
-        "path": {
-          "ip": "192.0.2.10"
-        }
-      },
-      "response": {
-        "status": 503,
-        "body": {
-          "error": {
-            "code": "unavailable",
-            "message": "Could not verify the session"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "unauthenticated": {
-      "request": {
-        "path": {
-          "ip": "192.0.2.10"
-        }
-      },
-      "response": {
-        "status": 401,
-        "body": {
-          "error": {
-            "code": "unauthorized",
-            "message": "Missing authorization header"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "domain_scope": {
-      "request": {
-        "path": {
-          "ip": "192.0.2.10"
-        }
-      },
-      "response": {
-        "status": 403,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
-          }
-        }
-      }
-    },
-    "read_only": {
-      "request": {
-        "path": {
-          "ip": "192.0.2.10"
-        }
-      },
-      "response": {
-        "status": 403,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
-          }
-        }
-      }
-    },
-    "permission_store_unavailable": {
-      "request": {
-        "path": {
-          "ip": "192.0.2.10"
-        }
-      },
-      "response": {
-        "status": 503,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "unavailable",
-            "message": "Could not verify permissions"
-          }
-        }
-      }
-    },
-    "other_capability": {
-      "request": {
-        "path": {
-          "ip": "192.0.2.10"
-        }
-      },
-      "response": {
-        "status": 403,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
-          }
-        }
-      }
-    },
-    "found": {
-      "request": {
-        "path": {
-          "ip": "192.0.2.10"
-        }
-      },
-      "response": {
-        "status": 204
-      },
-      "description": "Production routing, JWT/session and capability middleware precede exact parameterized deletion. Controlled SQL proves ID/address selection, empty 204 answers, mutation faults and refusals before writes; it does not prove PostgreSQL persistence, protocol-ban caches or firewall behavior."
-    },
-    "required_capability": {
-      "request": {
-        "path": {
-          "ip": "192.0.2.10"
-        }
-      },
-      "response": {
-        "status": 204
-      }
-    },
-    "missing": {
-      "request": {
-        "path": {
-          "ip": "192.0.2.99"
-        }
-      },
-      "response": {
-        "status": 404,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "not_found",
-            "message": "No ban found for this IP"
-          }
-        }
-      }
-    },
-    "ipv6": {
-      "request": {
-        "path": {
-          "ip": "2001:db8::10"
-        }
-      },
-      "response": {
-        "status": 204
-      }
-    },
-    "literal_address": {
-      "request": {
-        "path": {
-          "ip": "not-an-ip"
-        }
-      },
-      "response": {
-        "status": 404,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "not_found",
-            "message": "No ban found for this IP"
-          }
-        }
-      },
-      "description": "The current address lookup accepts a literal string rather than parsing an IP; this change preserves that request contract. An absent path segment never matches the route, so no binding 422 is advertised."
     }
   }
 }
