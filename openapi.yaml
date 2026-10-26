@@ -10575,6 +10575,10 @@ components:
     # ─────────────────────────────────────────────────────────────
     Message:
       type: object
+      description: >-
+        Public message metadata and bodies; raw source is served separately.
+        An unloaded mailbox association is omitted rather than serialized as
+        an empty mailbox.
       required: [id, mailbox_id, folder, sender, subject, is_read, is_flagged, is_starred, is_draft, is_deleted, received_at, created_at, updated_at]
       properties:
         id:
