@@ -357,7 +357,13 @@ func (reg *Registry) record(applied []oapifly.Middleware, op Operation, reqType,
 		if status == http.StatusUnprocessableEntity {
 			body = reflect.TypeOf(respond.ValidationErrorResponse{})
 		}
-		responses = append(responses, oapifly.EndpointResponse{Status: status, Type: body})
+		response := oapifly.EndpointResponse{Status: status, Type: body}
+		if status == http.StatusTooManyRequests {
+			response.Headers = map[string]oapifly.ResponseHeader{
+				"Retry-After": {Description: "Seconds until another request is allowed", Required: true, Type: oapifly.TypeOf[int]()},
+			}
+		}
+		responses = append(responses, response)
 	}
 
 	for _, override := range op.Responses {
