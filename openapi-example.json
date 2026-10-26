@@ -24063,7 +24063,7 @@
         "body": {
           "error": {
             "code": "bad_request",
-            "message": "Invalid TLS-RPT JSON"
+            "message": "Invalid request body"
           }
         }
       }
@@ -24170,6 +24170,1056 @@
         "body": {
           "data": {
             "stored": 1
+          }
+        }
+      }
+    },
+    "request_too_large": {
+      "request": {
+        "body": {
+          "organization-name": "Example Reporter",
+          "contact-info": "tlsrpt@reporter.example.com",
+          "report-id": "2026-10-17T00:00:00Z_restmail.test",
+          "date-range": {
+            "start-datetime": "2026-10-16T00:00:00Z",
+            "end-datetime": "2026-10-16T23:59:59Z"
+          },
+          "policies": [
+            {
+              "policy": {
+                "policy-type": "sts",
+                "policy-string": [
+                  "version: STSv1",
+                  "mode: testing",
+                  "mx: mail.restmail.test",
+                  "max_age: 86400"
+                ],
+                "policy-domain": "restmail.test",
+                "mx-host": [
+                  "mail.restmail.test"
+                ]
+              },
+              "summary": {
+                "total-successful-session-count": 12,
+                "total-failure-session-count": 1
+              },
+              "failure-details": [
+                {
+                  "result-type": "certificate-expired",
+                  "sending-mta-ip": "192.0.2.1",
+                  "receiving-mx-hostname": "mail.restmail.test",
+                  "failed-session-count": 1
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        }
+      },
+      "description": "Send this JSON followed by ASCII whitespace to a wire size of 524289 bytes. The receiver caps reports at 524288 bytes."
+    },
+    "body_boundary": {
+      "request": {
+        "body": {
+          "organization-name": "Example Reporter",
+          "contact-info": "tlsrpt@reporter.example.com",
+          "report-id": "2026-10-17T00:00:00Z_restmail.test",
+          "date-range": {
+            "start-datetime": "2026-10-16T00:00:00Z",
+            "end-datetime": "2026-10-16T23:59:59Z"
+          },
+          "policies": [
+            {
+              "policy": {
+                "policy-type": "sts",
+                "policy-string": [
+                  "version: STSv1",
+                  "mode: testing",
+                  "mx: mail.restmail.test",
+                  "max_age: 86400"
+                ],
+                "policy-domain": "restmail.test",
+                "mx-host": [
+                  "mail.restmail.test"
+                ]
+              },
+              "summary": {
+                "total-successful-session-count": 12,
+                "total-failure-session-count": 1
+              },
+              "failure-details": [
+                {
+                  "result-type": "certificate-expired",
+                  "sending-mta-ip": "192.0.2.1",
+                  "receiving-mx-hostname": "mail.restmail.test",
+                  "failed-session-count": 1
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "stored": 1
+          }
+        }
+      },
+      "description": "Send this JSON followed by ASCII whitespace to exactly 524288 bytes. The complete original report bytes are stored."
+    },
+    "unsupported_media": {
+      "request": {
+        "mediaType": "text/plain",
+        "invalid": true
+      },
+      "response": {
+        "status": 415,
+        "body": {
+          "error": {
+            "code": "unsupported_media_type",
+            "message": "Unsupported media type: text/plain; the body is taken as application/tlsrpt+json, application/json, application/tlsrpt+gzip"
+          }
+        }
+      }
+    },
+    "rate_limited": {
+      "request": {
+        "body": {
+          "organization-name": "Example Reporter",
+          "contact-info": "tlsrpt@reporter.example.com",
+          "report-id": "2026-10-17T00:00:00Z_restmail.test",
+          "date-range": {
+            "start-datetime": "2026-10-16T00:00:00Z",
+            "end-datetime": "2026-10-16T23:59:59Z"
+          },
+          "policies": [
+            {
+              "policy": {
+                "policy-type": "sts",
+                "policy-string": [
+                  "version: STSv1",
+                  "mode: testing",
+                  "mx: mail.restmail.test",
+                  "max_age: 86400"
+                ],
+                "policy-domain": "restmail.test",
+                "mx-host": [
+                  "mail.restmail.test"
+                ]
+              },
+              "summary": {
+                "total-successful-session-count": 12,
+                "total-failure-session-count": 1
+              },
+              "failure-details": [
+                {
+                  "result-type": "certificate-expired",
+                  "sending-mta-ip": "192.0.2.1",
+                  "receiving-mx-hostname": "mail.restmail.test",
+                  "failed-session-count": 1
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        }
+      },
+      "description": "The same client IP has exhausted its configured TLS report bucket. Retry-After states the positive number of seconds to wait."
+    },
+    "lookup_failure": {
+      "request": {
+        "body": {
+          "organization-name": "Example Reporter",
+          "contact-info": "tlsrpt@reporter.example.com",
+          "report-id": "2026-10-17T00:00:00Z_restmail.test",
+          "date-range": {
+            "start-datetime": "2026-10-16T00:00:00Z",
+            "end-datetime": "2026-10-16T23:59:59Z"
+          },
+          "policies": [
+            {
+              "policy": {
+                "policy-type": "sts",
+                "policy-string": [
+                  "version: STSv1",
+                  "mode: testing",
+                  "mx: mail.restmail.test",
+                  "max_age: 86400"
+                ],
+                "policy-domain": "restmail.test",
+                "mx-host": [
+                  "mail.restmail.test"
+                ]
+              },
+              "summary": {
+                "total-successful-session-count": 12,
+                "total-failure-session-count": 1
+              },
+              "failure-details": [
+                {
+                  "result-type": "certificate-expired",
+                  "sending-mta-ip": "192.0.2.1",
+                  "receiving-mx-hostname": "mail.restmail.test",
+                  "failed-session-count": 1
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      },
+      "description": "The report database fails during lookup failure. The receiver returns no internal database detail and commits no report rows."
+    },
+    "insert_failure": {
+      "request": {
+        "body": {
+          "organization-name": "Example Reporter",
+          "contact-info": "tlsrpt@reporter.example.com",
+          "report-id": "2026-10-17T00:00:00Z_restmail.test",
+          "date-range": {
+            "start-datetime": "2026-10-16T00:00:00Z",
+            "end-datetime": "2026-10-16T23:59:59Z"
+          },
+          "policies": [
+            {
+              "policy": {
+                "policy-type": "sts",
+                "policy-string": [
+                  "version: STSv1",
+                  "mode: testing",
+                  "mx: mail.restmail.test",
+                  "max_age: 86400"
+                ],
+                "policy-domain": "restmail.test",
+                "mx-host": [
+                  "mail.restmail.test"
+                ]
+              },
+              "summary": {
+                "total-successful-session-count": 12,
+                "total-failure-session-count": 1
+              },
+              "failure-details": [
+                {
+                  "result-type": "certificate-expired",
+                  "sending-mta-ip": "192.0.2.1",
+                  "receiving-mx-hostname": "mail.restmail.test",
+                  "failed-session-count": 1
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      },
+      "description": "The report database fails during insert failure. The receiver returns no internal database detail and commits no report rows."
+    },
+    "late_lookup_failure": {
+      "request": {
+        "body": {
+          "organization-name": "Example Reporter",
+          "contact-info": "tlsrpt@reporter.example.com",
+          "report-id": "2026-10-17T00:00:00Z_restmail.test",
+          "date-range": {
+            "start-datetime": "2026-10-16T00:00:00Z",
+            "end-datetime": "2026-10-16T23:59:59Z"
+          },
+          "policies": [
+            {
+              "policy": {
+                "policy-type": "sts",
+                "policy-string": [
+                  "version: STSv1",
+                  "mode: testing",
+                  "mx: mail.restmail.test",
+                  "max_age: 86400"
+                ],
+                "policy-domain": "restmail.test",
+                "mx-host": [
+                  "mail.restmail.test"
+                ]
+              },
+              "summary": {
+                "total-successful-session-count": 12,
+                "total-failure-session-count": 1
+              },
+              "failure-details": [
+                {
+                  "result-type": "certificate-expired",
+                  "sending-mta-ip": "192.0.2.1",
+                  "receiving-mx-hostname": "mail.restmail.test",
+                  "failed-session-count": 1
+                }
+              ]
+            },
+            {
+              "policy": {
+                "policy-type": "sts",
+                "policy-string": [
+                  "version: STSv1",
+                  "mode: testing",
+                  "mx: mail.restmail.test",
+                  "max_age: 86400"
+                ],
+                "policy-domain": "example.com",
+                "mx-host": [
+                  "mail.restmail.test"
+                ]
+              },
+              "summary": {
+                "total-successful-session-count": 12,
+                "total-failure-session-count": 1
+              },
+              "failure-details": [
+                {
+                  "result-type": "certificate-expired",
+                  "sending-mta-ip": "192.0.2.1",
+                  "receiving-mx-hostname": "mail.restmail.test",
+                  "failed-session-count": 1
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      },
+      "description": "The report database fails during late lookup failure. The receiver returns no internal database detail and commits no report rows."
+    },
+    "late_insert_failure": {
+      "request": {
+        "body": {
+          "organization-name": "Example Reporter",
+          "contact-info": "tlsrpt@reporter.example.com",
+          "report-id": "2026-10-17T00:00:00Z_restmail.test",
+          "date-range": {
+            "start-datetime": "2026-10-16T00:00:00Z",
+            "end-datetime": "2026-10-16T23:59:59Z"
+          },
+          "policies": [
+            {
+              "policy": {
+                "policy-type": "sts",
+                "policy-string": [
+                  "version: STSv1",
+                  "mode: testing",
+                  "mx: mail.restmail.test",
+                  "max_age: 86400"
+                ],
+                "policy-domain": "restmail.test",
+                "mx-host": [
+                  "mail.restmail.test"
+                ]
+              },
+              "summary": {
+                "total-successful-session-count": 12,
+                "total-failure-session-count": 1
+              },
+              "failure-details": [
+                {
+                  "result-type": "certificate-expired",
+                  "sending-mta-ip": "192.0.2.1",
+                  "receiving-mx-hostname": "mail.restmail.test",
+                  "failed-session-count": 1
+                }
+              ]
+            },
+            {
+              "policy": {
+                "policy-type": "sts",
+                "policy-string": [
+                  "version: STSv1",
+                  "mode: testing",
+                  "mx: mail.restmail.test",
+                  "max_age: 86400"
+                ],
+                "policy-domain": "example.com",
+                "mx-host": [
+                  "mail.restmail.test"
+                ]
+              },
+              "summary": {
+                "total-successful-session-count": 12,
+                "total-failure-session-count": 1
+              },
+              "failure-details": [
+                {
+                  "result-type": "certificate-expired",
+                  "sending-mta-ip": "192.0.2.1",
+                  "receiving-mx-hostname": "mail.restmail.test",
+                  "failed-session-count": 1
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      },
+      "description": "The report database fails during late insert failure. The receiver returns no internal database detail and commits no report rows."
+    },
+    "commit_failure": {
+      "request": {
+        "body": {
+          "organization-name": "Example Reporter",
+          "contact-info": "tlsrpt@reporter.example.com",
+          "report-id": "2026-10-17T00:00:00Z_restmail.test",
+          "date-range": {
+            "start-datetime": "2026-10-16T00:00:00Z",
+            "end-datetime": "2026-10-16T23:59:59Z"
+          },
+          "policies": [
+            {
+              "policy": {
+                "policy-type": "sts",
+                "policy-string": [
+                  "version: STSv1",
+                  "mode: testing",
+                  "mx: mail.restmail.test",
+                  "max_age: 86400"
+                ],
+                "policy-domain": "restmail.test",
+                "mx-host": [
+                  "mail.restmail.test"
+                ]
+              },
+              "summary": {
+                "total-successful-session-count": 12,
+                "total-failure-session-count": 1
+              },
+              "failure-details": [
+                {
+                  "result-type": "certificate-expired",
+                  "sending-mta-ip": "192.0.2.1",
+                  "receiving-mx-hostname": "mail.restmail.test",
+                  "failed-session-count": 1
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      },
+      "description": "The report database fails during commit failure. The receiver returns no internal database detail and commits no report rows."
+    },
+    "cancelled": {
+      "request": {
+        "body": {
+          "organization-name": "Example Reporter",
+          "contact-info": "tlsrpt@reporter.example.com",
+          "report-id": "2026-10-17T00:00:00Z_restmail.test",
+          "date-range": {
+            "start-datetime": "2026-10-16T00:00:00Z",
+            "end-datetime": "2026-10-16T23:59:59Z"
+          },
+          "policies": [
+            {
+              "policy": {
+                "policy-type": "sts",
+                "policy-string": [
+                  "version: STSv1",
+                  "mode: testing",
+                  "mx: mail.restmail.test",
+                  "max_age: 86400"
+                ],
+                "policy-domain": "restmail.test",
+                "mx-host": [
+                  "mail.restmail.test"
+                ]
+              },
+              "summary": {
+                "total-successful-session-count": 12,
+                "total-failure-session-count": 1
+              },
+              "failure-details": [
+                {
+                  "result-type": "certificate-expired",
+                  "sending-mta-ip": "192.0.2.1",
+                  "receiving-mx-hostname": "mail.restmail.test",
+                  "failed-session-count": 1
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      },
+      "description": "The request is cancelled during its domain lookup."
+    },
+    "cancelled_after_first": {
+      "request": {
+        "body": {
+          "organization-name": "Example Reporter",
+          "contact-info": "tlsrpt@reporter.example.com",
+          "report-id": "2026-10-17T00:00:00Z_restmail.test",
+          "date-range": {
+            "start-datetime": "2026-10-16T00:00:00Z",
+            "end-datetime": "2026-10-16T23:59:59Z"
+          },
+          "policies": [
+            {
+              "policy": {
+                "policy-type": "sts",
+                "policy-string": [
+                  "version: STSv1",
+                  "mode: testing",
+                  "mx: mail.restmail.test",
+                  "max_age: 86400"
+                ],
+                "policy-domain": "restmail.test",
+                "mx-host": [
+                  "mail.restmail.test"
+                ]
+              },
+              "summary": {
+                "total-successful-session-count": 12,
+                "total-failure-session-count": 1
+              },
+              "failure-details": [
+                {
+                  "result-type": "certificate-expired",
+                  "sending-mta-ip": "192.0.2.1",
+                  "receiving-mx-hostname": "mail.restmail.test",
+                  "failed-session-count": 1
+                }
+              ]
+            },
+            {
+              "policy": {
+                "policy-type": "sts",
+                "policy-string": [
+                  "version: STSv1",
+                  "mode: testing",
+                  "mx: mail.restmail.test",
+                  "max_age: 86400"
+                ],
+                "policy-domain": "example.com",
+                "mx-host": [
+                  "mail.restmail.test"
+                ]
+              },
+              "summary": {
+                "total-successful-session-count": 12,
+                "total-failure-session-count": 1
+              },
+              "failure-details": [
+                {
+                  "result-type": "certificate-expired",
+                  "sending-mta-ip": "192.0.2.1",
+                  "receiving-mx-hostname": "mail.restmail.test",
+                  "failed-session-count": 1
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      },
+      "description": "The request is cancelled after its first policy insert; the report is rolled back."
+    },
+    "no_matching_domains": {
+      "request": {
+        "body": {
+          "organization-name": "Example Reporter",
+          "contact-info": "tlsrpt@reporter.example.com",
+          "report-id": "2026-10-17T00:00:00Z_restmail.test",
+          "date-range": {
+            "start-datetime": "2026-10-16T00:00:00Z",
+            "end-datetime": "2026-10-16T23:59:59Z"
+          },
+          "policies": [
+            {
+              "policy": {
+                "policy-type": "sts",
+                "policy-string": [
+                  "version: STSv1",
+                  "mode: testing",
+                  "mx: mail.restmail.test",
+                  "max_age: 86400"
+                ],
+                "policy-domain": "unknown.test",
+                "mx-host": [
+                  "mail.restmail.test"
+                ]
+              },
+              "summary": {
+                "total-successful-session-count": 12,
+                "total-failure-session-count": 1
+              },
+              "failure-details": [
+                {
+                  "result-type": "certificate-expired",
+                  "sending-mta-ip": "192.0.2.1",
+                  "receiving-mx-hostname": "mail.restmail.test",
+                  "failed-session-count": 1
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "no_matching_domains",
+            "message": "None of the policy domains in the report match a known domain"
+          }
+        }
+      }
+    },
+    "mixed_policies": {
+      "request": {
+        "body": {
+          "organization-name": "Example Reporter",
+          "contact-info": "tlsrpt@reporter.example.com",
+          "report-id": "2026-10-17T00:00:00Z_restmail.test",
+          "date-range": {
+            "start-datetime": "2026-10-16T00:00:00Z",
+            "end-datetime": "2026-10-16T23:59:59Z"
+          },
+          "policies": [
+            {
+              "policy": {
+                "policy-type": "sts",
+                "policy-string": [
+                  "version: STSv1",
+                  "mode: testing",
+                  "mx: mail.restmail.test",
+                  "max_age: 86400"
+                ],
+                "policy-domain": "restmail.test",
+                "mx-host": [
+                  "mail.restmail.test"
+                ]
+              },
+              "summary": {
+                "total-successful-session-count": 12,
+                "total-failure-session-count": 1
+              },
+              "failure-details": [
+                {
+                  "result-type": "certificate-expired",
+                  "sending-mta-ip": "192.0.2.1",
+                  "receiving-mx-hostname": "mail.restmail.test",
+                  "failed-session-count": 1
+                }
+              ]
+            },
+            {
+              "policy": {
+                "policy-type": "sts",
+                "policy-string": [
+                  "version: STSv1",
+                  "mode: testing",
+                  "mx: mail.restmail.test",
+                  "max_age: 86400"
+                ],
+                "policy-domain": "unknown.test",
+                "mx-host": [
+                  "mail.restmail.test"
+                ]
+              },
+              "summary": {
+                "total-successful-session-count": 12,
+                "total-failure-session-count": 1
+              },
+              "failure-details": [
+                {
+                  "result-type": "certificate-expired",
+                  "sending-mta-ip": "192.0.2.1",
+                  "receiving-mx-hostname": "mail.restmail.test",
+                  "failed-session-count": 1
+                }
+              ]
+            },
+            {
+              "policy": {
+                "policy-type": "sts",
+                "policy-string": [
+                  "version: STSv1",
+                  "mode: testing",
+                  "mx: mail.restmail.test",
+                  "max_age: 86400"
+                ],
+                "policy-domain": "",
+                "mx-host": [
+                  "mail.restmail.test"
+                ]
+              },
+              "summary": {
+                "total-successful-session-count": 12,
+                "total-failure-session-count": 1
+              },
+              "failure-details": [
+                {
+                  "result-type": "certificate-expired",
+                  "sending-mta-ip": "192.0.2.1",
+                  "receiving-mx-hostname": "mail.restmail.test",
+                  "failed-session-count": 1
+                }
+              ]
+            },
+            {
+              "policy": {
+                "policy-type": "tlsa",
+                "policy-string": [
+                  "version: STSv1",
+                  "mode: testing",
+                  "mx: mail.restmail.test",
+                  "max_age: 86400"
+                ],
+                "policy-domain": "example.com.",
+                "mx-host": [
+                  "mail.restmail.test"
+                ]
+              },
+              "summary": {
+                "total-successful-session-count": 12,
+                "total-failure-session-count": 1
+              },
+              "failure-details": [
+                {
+                  "result-type": "certificate-expired",
+                  "sending-mta-ip": "192.0.2.1",
+                  "receiving-mx-hostname": "mail.restmail.test",
+                  "failed-session-count": 1
+                }
+              ]
+            },
+            {
+              "policy": {
+                "policy-type": "no-policy-found",
+                "policy-string": [
+                  "version: STSv1",
+                  "mode: testing",
+                  "mx: mail.restmail.test",
+                  "max_age: 86400"
+                ],
+                "policy-domain": "restmail.test.",
+                "mx-host": [
+                  "mail.restmail.test"
+                ]
+              },
+              "summary": {
+                "total-successful-session-count": 12,
+                "total-failure-session-count": 1
+              },
+              "failure-details": [
+                {
+                  "result-type": "certificate-expired",
+                  "sending-mta-ip": "192.0.2.1",
+                  "receiving-mx-hostname": "mail.restmail.test",
+                  "failed-session-count": 1
+                }
+              ]
+            },
+            {
+              "policy": {
+                "policy-type": "future-policy",
+                "policy-string": [
+                  "version: STSv1",
+                  "mode: testing",
+                  "mx: mail.restmail.test",
+                  "max_age: 86400"
+                ],
+                "policy-domain": "example.com",
+                "mx-host": [
+                  "mail.restmail.test"
+                ]
+              },
+              "summary": {
+                "total-successful-session-count": 12,
+                "total-failure-session-count": 1
+              },
+              "failure-details": [
+                {
+                  "result-type": "certificate-expired",
+                  "sending-mta-ip": "192.0.2.1",
+                  "receiving-mx-hostname": "mail.restmail.test",
+                  "failed-session-count": 1
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "stored": 4
+          }
+        }
+      },
+      "description": "Hosted policies are stored, unknown or unnamed domains are skipped, one trailing dot is removed, and unknown policy kinds retain the receiver’s no-policy mapping."
+    },
+    "reporter_extensions": {
+      "request": {
+        "body": {
+          "organization-name": "Example Reporter",
+          "contact-info": "tlsrpt@reporter.example.com",
+          "report-id": "2026-10-17T00:00:00Z_restmail.test",
+          "date-range": {
+            "start-datetime": "2026-10-16T00:00:00Z",
+            "end-datetime": "2026-10-16T23:59:59Z",
+            "x-clock": "utc"
+          },
+          "policies": [
+            {
+              "policy": {
+                "policy-type": "sts",
+                "policy-string": [
+                  "version: STSv1",
+                  "mode: testing",
+                  "mx: mail.restmail.test",
+                  "max_age: 86400"
+                ],
+                "policy-domain": "restmail.test",
+                "mx-host": [
+                  "mail.restmail.test"
+                ],
+                "x-description": {
+                  "version": 2
+                }
+              },
+              "summary": {
+                "total-successful-session-count": 12,
+                "total-failure-session-count": 1,
+                "x-count": 17
+              },
+              "failure-details": [
+                {
+                  "result-type": "certificate-expired",
+                  "sending-mta-ip": "192.0.2.1",
+                  "receiving-mx-hostname": "mail.restmail.test",
+                  "failed-session-count": 1,
+                  "x-reason": [
+                    "future",
+                    true
+                  ]
+                }
+              ],
+              "x-policy": "kept"
+            }
+          ],
+          "x-reporter": {
+            "nested": [
+              1,
+              false
+            ]
+          }
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "stored": 1
+          }
+        }
+      },
+      "description": "Reporter extension fields at every open report level survive in the original raw report; failure-detail extensions survive in stored details."
+    },
+    "policy_limit": {
+      "request": {
+        "body": {
+          "organization-name": "Example Reporter",
+          "contact-info": "tlsrpt@reporter.example.com",
+          "report-id": "2026-10-17T00:00:00Z_restmail.test",
+          "date-range": {
+            "start-datetime": "2026-10-16T00:00:00Z",
+            "end-datetime": "2026-10-16T23:59:59Z"
+          },
+          "policies": [
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {}
+          ]
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "policies": "Must hold 1 to 100 policy entries"
+              }
+            }
           }
         }
       }

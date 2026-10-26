@@ -8542,11 +8542,30 @@ paths:
                       code: bad_request
                       message: Invalid request body
         "422":
-          description: Request body failed validation
+          description: Invalid report fields, or no policy domain hosted by this server
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ValidationErrorResponse"
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: object
+                    required: [code, message]
+                    properties:
+                      code:
+                        type: string
+                        enum: [validation_failed, no_matching_domains]
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        required: [fields]
+                        properties:
+                          fields:
+                            type: object
+                            additionalProperties:
+                              type: string
               examples:
                 organization_missing:
                   value:
