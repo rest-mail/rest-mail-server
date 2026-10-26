@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -114,7 +115,10 @@ func (h *DKIMHandler) setKey(_ *http.Request, in setDKIMKeyRequest) (dkimEntry, 
 func (h *DKIMHandler) deleteKey(_ *http.Request, in domainPath) (endpoint.Empty, error) {
 	var domain models.Domain
 	if err := h.db.First(&domain, in.ID).Error; err != nil {
-		return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Domain not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Domain not found")
+		}
+		return endpoint.Empty{}, fmt.Errorf("find domain for DKIM removal: %w", err)
 	}
 
 	if err := h.db.Model(&domain).Updates(map[string]interface{}{
