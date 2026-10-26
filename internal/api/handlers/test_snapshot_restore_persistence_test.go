@@ -69,7 +69,7 @@ func TestSnapshotRestorePersistence(t *testing.T) {
 	// The arrays are authoritative. Nested read associations must not create
 	// extra rows or change an administrator that ON CONFLICT preserves.
 	snap := testSnapshotModels{
-		Domains:    []models.Domain{{ID: 11, Name: "snapshot.test", ServerType: "traditional", Active: false, DefaultQuotaBytes: 0, CreatedAt: stamp, UpdatedAt: stamp}, {ID: domain.ID, Name: "changed-admin.test"}},
+		Domains:    []models.Domain{{ID: 11, Name: "snapshot.test", ServerType: "traditional", Active: false, DefaultQuotaBytes: 0, DMARCPolicy: "none", CreatedAt: stamp, UpdatedAt: stamp}, {ID: domain.ID, Name: "changed-admin.test", DMARCPolicy: "none"}},
 		Mailboxes:  []models.Mailbox{{ID: 21, DomainID: 11, LocalPart: "owner", Address: "owner@snapshot.test", Active: false, QuotaBytes: 0, CreatedAt: stamp, UpdatedAt: stamp, Domain: models.Domain{ID: 999, Name: "read-view.test"}}, {ID: admin.ID, DomainID: domain.ID, Address: "changed@admin.test"}},
 		Aliases:    []models.Alias{{ID: 31, DomainID: 11, SourceAddress: "alias@snapshot.test", DestinationAddress: "owner@snapshot.test", Active: false, CreatedAt: stamp}},
 		Messages:   []models.Message{{ID: 41, MailboxID: 21, Folder: "INBOX", MsgID: "<restore@snapshot.test>", Sender: "sender@example.test", RecipientsTo: models.JSONB(`["owner@snapshot.test"]`), RecipientsCc: models.JSONB(`[]`), Headers: models.JSONB(`{"X-Fixture":"true"}`), BodyText: "Fixture body ✓", ReceivedAt: stamp, CreatedAt: stamp, UpdatedAt: stamp}},
