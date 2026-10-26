@@ -123,7 +123,7 @@ func (h *DomainHandler) Register(rs endpoint.Routes, checks DomainRouteChecks) {
 		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsWrite)}}, h.update)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/admin/domains/{id}",
 		OperationID: "deleteDomain", Summary: "Delete a domain", Tags: tags,
-		Status: http.StatusNoContent, Errors: []int{http.StatusNotFound, http.StatusConflict},
+		Status: http.StatusNoContent, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusTooManyRequests},
 		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsDelete)}}, h.delete)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/domains/{id}/dns",
 		OperationID: "domainDNSCheck", Summary: "Live DNS record check (MX, SPF, DMARC, DKIM, MTA-STS) for a domain",
@@ -321,9 +321,10 @@ func (h *DomainHandler) delete(r *http.Request, in domainPath) (endpoint.Empty, 
 	// A domain still holding accounts or aliases stays (#388): deleting it
 	// left them pointing at no domain, and every send from such an account
 	// then failed with a 500 on its domain's sending policy.
+	db := h.db.WithContext(r.Context())
 	for _, held := range []interface{}{&models.Mailbox{}, &models.Alias{}} {
 		var n int64
-		if err := h.db.Model(held).Where("domain_id = ?", domain.ID).Count(&n).Error; err != nil {
+		if err := db.Model(held).Where("domain_id = ?", domain.ID).Count(&n).Error; err != nil {
 			return endpoint.Empty{}, fmt.Errorf("check the domain's addresses: %w", err)
 		}
 		if n > 0 {
@@ -332,7 +333,7 @@ func (h *DomainHandler) delete(r *http.Request, in domainPath) (endpoint.Empty, 
 		}
 	}
 
-	if err := h.db.Delete(&domain).Error; err != nil {
+	if err := db.Delete(&domain).Error; err != nil {
 		return endpoint.Empty{}, fmt.Errorf("delete domain: %w", err)
 	}
 	return endpoint.Empty{}, nil
