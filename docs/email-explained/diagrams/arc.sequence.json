@@ -2,6 +2,7 @@
   "schema_version": 1,
   "diagram_type": "sequence",
   "meta": {
+    "visual_preset": "editorial",
     "title": "ARC: a mailing list records what it saw, and the receiver decides whether to believe it",
     "locale": "en",
     "quality_profile": "showcase",

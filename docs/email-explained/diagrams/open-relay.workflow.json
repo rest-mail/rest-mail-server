@@ -2,6 +2,7 @@
   "schema_version": 2,
   "diagram_type": "workflow",
   "meta": {
+    "visual_preset": "editorial",
     "title": "From tutorial to spam machine: how a Postfix server relays for strangers",
     "locale": "en",
     "quality_profile": "showcase",

@@ -2,6 +2,7 @@
   "schema_version": 1,
   "diagram_type": "sequence",
   "meta": {
+    "visual_preset": "editorial",
     "title": "A DKIM signature: checked directly, and broken by a mailing list",
     "locale": "en",
     "quality_profile": "showcase",

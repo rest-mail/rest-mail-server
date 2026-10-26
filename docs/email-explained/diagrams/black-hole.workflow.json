@@ -2,6 +2,7 @@
   "schema_version": 2,
   "diagram_type": "workflow",
   "meta": {
+    "visual_preset": "editorial",
     "title": "The black hole: where a message can disappear without a bounce",
     "locale": "en",
     "quality_profile": "showcase",

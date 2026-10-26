@@ -2,6 +2,7 @@
   "schema_version": 2,
   "diagram_type": "workflow",
   "meta": {
+    "visual_preset": "editorial",
     "title": "Before delivering: how a sender applies DANE and MTA-STS",
     "locale": "en",
     "quality_profile": "showcase",

@@ -6,10 +6,11 @@ import { anchorsOf, checkGuide, linksOf, outsideLinks } from "./check.mjs";
 const chapter = (body, front = "title: Open relay\npart: How it goes wrong\nsummary: How it happens.") => `---\n${front}\n---\n\n# Open relay\n\n${body}\n\n## Sources\n\n- [RFC 5321](https://www.rfc-editor.org/rfc/rfc5321)\n`;
 
 const ARCHIFY = "3.2.0 208acba8d412335185b2056fedf54b3405df43fb";
-const SOURCE = '{"title":"Relay"}\n';
-// A static image as svg.mjs exports it: stamped with its source and Archify.
-const image = (source = SOURCE, archify = ARCHIFY) =>
-  `<svg viewBox="0 0 10 10" data-source-sha256="${createHash("sha256").update(source).digest("hex")}" data-archify="${archify}"></svg>`;
+const LOOK = "c".repeat(64);
+const SOURCE = '{"meta":{"title":"Relay","visual_preset":"editorial"}}\n';
+// A static image as svg.mjs exports it: stamped with its source, Archify and the look.
+const image = (source = SOURCE, archify = ARCHIFY, look = LOOK) =>
+  `<svg viewBox="0 0 10 10" data-source-sha256="${createHash("sha256").update(source).digest("hex")}" data-archify="${archify}" data-look-sha256="${look}"></svg>`;
 
 // A small guide and repository to check: the front page, one chapter, one
 // diagram, and some code to link to.
@@ -29,7 +30,7 @@ function check(pages, { files = {}, diagrams = ["relay.workflow.json", "relay.sv
   }
   for (const file of all.keys()) kinds.set(`docs/email-explained/${file}`, "file");
   const repo = { kind: (path) => kinds.get(path), text: (path) => tracked[path] };
-  return checkGuide({ pages: all, repo, diagramFiles: new Set(diagrams), archify: ARCHIFY }).map((p) => `${p.file}${p.line ? `:${p.line}` : ""}: ${p.message}`);
+  return checkGuide({ pages: all, repo, diagramFiles: new Set(diagrams), archify: ARCHIFY, look: LOOK }).map((p) => `${p.file}${p.line ? `:${p.line}` : ""}: ${p.message}`);
 }
 
 const good = chapter("![The relay](../diagrams/relay.svg)\n\nSee [the session](../../../internal/gateway/session.go#L3) and [installing](../../MANUAL.md#install).");
@@ -114,6 +115,16 @@ test("a static image must be exported from its source as it is now, by the pinne
   ]);
   assert.deepEqual(check({ "wrong/relay.md": good }, { files: { "docs/email-explained/diagrams/relay.svg": "<svg viewBox=\"0 0 1 1\"></svg>" } }), [
     "docs/email-explained/diagrams/relay.svg: was not exported from relay.workflow.json as it is now: run svg.mjs relay",
+  ]);
+  assert.deepEqual(check({ "wrong/relay.md": good }, { files: { "docs/email-explained/diagrams/relay.svg": image(SOURCE, ARCHIFY, "d".repeat(64)) } }), [
+    "docs/email-explained/diagrams/relay.svg: was not drawn in the current look (look.mjs): run svg.mjs relay",
+  ]);
+});
+
+test("every diagram is drawn in the site's look (#823)", () => {
+  const classic = '{"meta":{"title":"Relay"}}\n';
+  assert.deepEqual(check({ "wrong/relay.md": good }, { files: { "docs/email-explained/diagrams/relay.workflow.json": classic, "docs/email-explained/diagrams/relay.svg": image(classic) } }), [
+    'docs/email-explained/diagrams/relay.workflow.json: is not drawn in the site\'s look: its meta.visual_preset must be "editorial" (look.mjs)',
   ]);
 });
 

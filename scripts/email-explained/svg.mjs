@@ -1,9 +1,10 @@
 // The static image of each diagram, for readers who see the guide on GitHub.
 // Archify renders the diagram's source, and headless Chrome takes the SVG its
 // viewer's Export menu gives: vector, with its typefaces inside, and in the
-// reader's light or dark theme. Its canvas is cropped to the drawing, and the
-// file records the source it was made from and the Archify that drew it, so
-// CI can tell when an image is older than its source (check.mjs).
+// reader's light or dark theme, in the site's look (look.mjs). Its canvas is
+// cropped to the drawing, and the file records the source it was made from,
+// the Archify that drew it and the look, so CI can tell when an image is older
+// than any of them (check.mjs).
 //
 //   CHROME=<chrome or chromium> node svg.mjs --archify <archify.mjs> [name ...]
 //
@@ -16,12 +17,17 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { GUIDE, TYPES } from "./bundle.mjs";
+import { lookHash, withLook } from "./look.mjs";
 
-/** What an image records of where it came from: its source's hash and Archify. */
+/** What an image records of where it came from: its source's hash, Archify, and the look (look.mjs). */
 export const sourceHash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 export function provenanceOf(svg) {
   const root = svg.match(/<svg\b[^>]*>/)?.[0] ?? "";
-  return { source: root.match(/\sdata-source-sha256="([0-9a-f]{64})"/)?.[1] ?? null, archify: root.match(/\sdata-archify="([^"]*)"/)?.[1] ?? null };
+  return {
+    source: root.match(/\sdata-source-sha256="([0-9a-f]{64})"/)?.[1] ?? null,
+    archify: root.match(/\sdata-archify="([^"]*)"/)?.[1] ?? null,
+    look: root.match(/\sdata-look-sha256="([0-9a-f]{64})"/)?.[1] ?? null,
+  };
 }
 
 /**
@@ -53,7 +59,7 @@ export function dropUnusedFonts(svg) {
  * own units), without the typeface subsets it does not use, and stamped with
  * where it came from.
  */
-export function finish(svg, crop, { source, archify }) {
+export function finish(svg, crop, { source, archify, look }) {
   const box = [crop.x, crop.y, crop.width, crop.height].join(" ");
   return dropUnusedFonts(svg).replace(/<svg\b[^>]*>/, (root) =>
     root
@@ -62,7 +68,7 @@ export function finish(svg, crop, { source, archify }) {
       .replace(/\sheight="[^"]*"/, ` height="${crop.height}"`)
       // The viewer's own sizing, which would override the crop.
       .replace(/\sstyle="[^"]*"/, "")
-      .replace(/>$/, ` data-source-sha256="${source}" data-archify="${archify}">`),
+      .replace(/>$/, ` data-source-sha256="${source}" data-archify="${archify}" data-look-sha256="${look}">`),
   );
 }
 
@@ -124,6 +130,7 @@ async function main() {
         env: { ...process.env, ARCHIFY_UPDATE_CHECK_DISABLED: "1" },
         stdio: ["ignore", "ignore", "inherit"],
       });
+      await writeFile(html, withLook(await readFile(html, "utf8")));
       await page("Page.navigate", { url: `${pathToFileURL(html)}?embed=1` });
       let exported = null;
       for (let i = 0; i < 100 && !exported; i++) {
@@ -166,7 +173,7 @@ async function main() {
         if (!exported) await new Promise((ok) => setTimeout(ok, 100));
       }
       if (!exported) throw new Error(`${name}: no diagram drawn`);
-      const out = finish(exported.svg, exported.crop, { source: sourceHash(bytes), archify: `${pin.version} ${pin.commit}` });
+      const out = finish(exported.svg, exported.crop, { source: sourceHash(bytes), archify: `${pin.version} ${pin.commit}`, look: lookHash });
       await writeFile(join(dir, `${name}.svg`), out);
       console.log(`${GUIDE}/diagrams/${name}.svg: ${exported.crop.width}×${exported.crop.height}, ${Math.round(out.length / 1024)} KB`);
     }
