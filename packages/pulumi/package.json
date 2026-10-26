@@ -1,0 +1,30 @@
+{
+  "name": "@rest-mail/pulumi",
+  "version": "0.1.0",
+  "description": "A Pulumi component for installing REST Mail with its Helm chart and APNs credentials",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist", "README.md", "LICENSE"],
+  "engines": { "node": ">=22" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rest-mail/rest-mail-server.git",
+    "directory": "packages/pulumi"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test test/*.test.cjs",
+    "prepack": "npm run build"
+  },
+  "peerDependencies": {
+    "@pulumi/pulumi": "^3.100.0",
+    "@pulumi/kubernetes": "^4.0.0"
+  },
+  "devDependencies": {
+    "@pulumi/pulumi": "3.272.0",
+    "@pulumi/kubernetes": "4.34.2",
+    "@types/node": "22.10.0",
+    "typescript": "5.9.3"
+  }
+}
