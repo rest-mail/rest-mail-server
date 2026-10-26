@@ -26,7 +26,7 @@ require (
 	github.com/rest-mail/go-arc v0.4.0
 	github.com/rest-mail/go-dkim v0.5.0
 	github.com/rest-mail/go-dmarc v0.6.0
-	github.com/rest-mail/go-imap v0.13.0
+	github.com/rest-mail/go-imap v0.13.1
 	github.com/rest-mail/go-mtasts v0.5.0
 	github.com/rest-mail/go-pop3 v0.4.0
 	github.com/rest-mail/go-sieve v0.7.0
