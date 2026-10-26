@@ -10260,10 +10260,6 @@ paths:
               description: 'no-store: invitation secrets are never cacheable'
               schema:
                 type: string
-            Referrer-Policy:
-              description: no-referrer
-              schema:
-                type: string
         '401':
           description: 'unauthorized: no token, a bad one, or a session that has ended'
           content:
@@ -10387,10 +10383,6 @@ paths:
           headers:
             Cache-Control:
               description: 'no-store: invitation secrets are never cacheable'
-              schema:
-                type: string
-            Referrer-Policy:
-              description: no-referrer
               schema:
                 type: string
             Set-Cookie:
