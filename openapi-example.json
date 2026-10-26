@@ -63000,5 +63000,1110 @@
         "status": 204
       }
     }
+  },
+  "snapshotTestData": {
+    "snapshot": {
+      "description": "A complete seven-table snapshot. The production router test checks every response field, ordered SELECT targets, raw JSON, explicit zero/false values and a real request-time timestamp. Controlled rows prove mapping rather than database consistency or persistence.",
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domains": [
+              {
+                "id": 11,
+                "name": "example.com",
+                "server_type": "traditional",
+                "active": false,
+                "default_quota_bytes": 0,
+                "dkim_selector": "rm2026",
+                "sending_policy": "bulk",
+                "dmarc_policy": "reject",
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z"
+              }
+            ],
+            "mailboxes": [
+              {
+                "id": 21,
+                "domain_id": 11,
+                "local_part": "owner",
+                "address": "owner@example.com",
+                "display_name": "Fixture Owner",
+                "quota_bytes": 1073741824,
+                "quota_used_bytes": 123,
+                "active": false,
+                "last_login_at": null,
+                "password_change_required": false,
+                "two_factor_required": false,
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
+                "domain": {
+                  "id": 0,
+                  "name": "",
+                  "server_type": "",
+                  "active": false,
+                  "default_quota_bytes": 0,
+                  "dkim_selector": "",
+                  "sending_policy": "",
+                  "dmarc_policy": "",
+                  "created_at": "0001-01-01T00:00:00Z",
+                  "updated_at": "0001-01-01T00:00:00Z"
+                }
+              }
+            ],
+            "aliases": [
+              {
+                "id": 31,
+                "domain_id": 11,
+                "source_address": "alias@example.com",
+                "destination_address": "owner@example.com",
+                "active": false,
+                "created_at": "2026-01-01T00:00:00Z",
+                "domain": {
+                  "id": 0,
+                  "name": "",
+                  "server_type": "",
+                  "active": false,
+                  "default_quota_bytes": 0,
+                  "dkim_selector": "",
+                  "sending_policy": "",
+                  "dmarc_policy": "",
+                  "created_at": "0001-01-01T00:00:00Z",
+                  "updated_at": "0001-01-01T00:00:00Z"
+                }
+              }
+            ],
+            "messages": [
+              {
+                "id": 41,
+                "mailbox_id": 21,
+                "folder": "INBOX",
+                "message_id": "<snapshot-fixture@example.com>",
+                "in_reply_to": "",
+                "references": "",
+                "thread_id": "",
+                "sender": "sender@example.net",
+                "sender_name": "",
+                "recipients_to": [
+                  "owner@example.com"
+                ],
+                "recipients_cc": [],
+                "subject": "Fixture subject",
+                "body_text": "Fixture body ✓",
+                "headers": {
+                  "X-Fixture": "true"
+                },
+                "size_bytes": 123,
+                "raw_size": 0,
+                "has_attachments": false,
+                "is_read": false,
+                "is_dsn": false,
+                "is_flagged": false,
+                "is_starred": false,
+                "is_draft": false,
+                "is_deleted": false,
+                "received_at": "2026-01-01T00:00:00Z",
+                "date_header": null,
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
+                "mailbox": {
+                  "id": 0,
+                  "domain_id": 0,
+                  "local_part": "",
+                  "address": "",
+                  "display_name": "",
+                  "quota_bytes": 0,
+                  "quota_used_bytes": 0,
+                  "active": false,
+                  "last_login_at": null,
+                  "password_change_required": false,
+                  "two_factor_required": false,
+                  "created_at": "0001-01-01T00:00:00Z",
+                  "updated_at": "0001-01-01T00:00:00Z",
+                  "domain": {
+                    "id": 0,
+                    "name": "",
+                    "server_type": "",
+                    "active": false,
+                    "default_quota_bytes": 0,
+                    "dkim_selector": "",
+                    "sending_policy": "",
+                    "dmarc_policy": "",
+                    "created_at": "0001-01-01T00:00:00Z",
+                    "updated_at": "0001-01-01T00:00:00Z"
+                  }
+                }
+              }
+            ],
+            "queue": [
+              {
+                "id": 51,
+                "message_id": 41,
+                "sender": "sender@example.net",
+                "recipient": "owner@example.com",
+                "domain": "example.com",
+                "body_type": "",
+                "status": "pending",
+                "attempts": 0,
+                "last_attempt": null,
+                "next_attempt": "2026-01-01T00:00:00Z",
+                "last_error": "",
+                "last_error_code": 0,
+                "failure_category": "",
+                "max_retries": 3,
+                "created_at": "2026-01-01T00:00:00Z",
+                "expires_at": "2026-01-01T01:00:00Z"
+              }
+            ],
+            "pipelines": [
+              {
+                "id": 61,
+                "domain_id": 11,
+                "direction": "inbound",
+                "filters": [
+                  {
+                    "name": "header_validate",
+                    "enabled": false,
+                    "config": {
+                      "nested": [
+                        1,
+                        false
+                      ]
+                    }
+                  }
+                ],
+                "active": false,
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
+                "domain": {
+                  "id": 0,
+                  "name": "",
+                  "server_type": "",
+                  "active": false,
+                  "default_quota_bytes": 0,
+                  "dkim_selector": "",
+                  "sending_policy": "",
+                  "dmarc_policy": "",
+                  "created_at": "0001-01-01T00:00:00Z",
+                  "updated_at": "0001-01-01T00:00:00Z"
+                }
+              }
+            ],
+            "bans": [
+              {
+                "id": 71,
+                "ip": "192.0.2.17",
+                "reason": "Fixture only",
+                "protocol": "smtp",
+                "created_by": "fixture",
+                "created_at": "2026-01-01T00:00:00Z"
+              }
+            ],
+            "snapshot_at": "2026-01-01T00:00:00Z"
+          }
+        }
+      }
+    },
+    "admin": {
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domains": [
+              {
+                "id": 11,
+                "name": "example.com",
+                "server_type": "traditional",
+                "active": false,
+                "default_quota_bytes": 0,
+                "dkim_selector": "rm2026",
+                "sending_policy": "bulk",
+                "dmarc_policy": "reject",
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z"
+              }
+            ],
+            "mailboxes": [
+              {
+                "id": 21,
+                "domain_id": 11,
+                "local_part": "owner",
+                "address": "owner@example.com",
+                "display_name": "Fixture Owner",
+                "quota_bytes": 1073741824,
+                "quota_used_bytes": 123,
+                "active": false,
+                "last_login_at": null,
+                "password_change_required": false,
+                "two_factor_required": false,
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
+                "domain": {
+                  "id": 0,
+                  "name": "",
+                  "server_type": "",
+                  "active": false,
+                  "default_quota_bytes": 0,
+                  "dkim_selector": "",
+                  "sending_policy": "",
+                  "dmarc_policy": "",
+                  "created_at": "0001-01-01T00:00:00Z",
+                  "updated_at": "0001-01-01T00:00:00Z"
+                }
+              }
+            ],
+            "aliases": [
+              {
+                "id": 31,
+                "domain_id": 11,
+                "source_address": "alias@example.com",
+                "destination_address": "owner@example.com",
+                "active": false,
+                "created_at": "2026-01-01T00:00:00Z",
+                "domain": {
+                  "id": 0,
+                  "name": "",
+                  "server_type": "",
+                  "active": false,
+                  "default_quota_bytes": 0,
+                  "dkim_selector": "",
+                  "sending_policy": "",
+                  "dmarc_policy": "",
+                  "created_at": "0001-01-01T00:00:00Z",
+                  "updated_at": "0001-01-01T00:00:00Z"
+                }
+              }
+            ],
+            "messages": [
+              {
+                "id": 41,
+                "mailbox_id": 21,
+                "folder": "INBOX",
+                "message_id": "<snapshot-fixture@example.com>",
+                "in_reply_to": "",
+                "references": "",
+                "thread_id": "",
+                "sender": "sender@example.net",
+                "sender_name": "",
+                "recipients_to": [
+                  "owner@example.com"
+                ],
+                "recipients_cc": [],
+                "subject": "Fixture subject",
+                "body_text": "Fixture body ✓",
+                "headers": {
+                  "X-Fixture": "true"
+                },
+                "size_bytes": 123,
+                "raw_size": 0,
+                "has_attachments": false,
+                "is_read": false,
+                "is_dsn": false,
+                "is_flagged": false,
+                "is_starred": false,
+                "is_draft": false,
+                "is_deleted": false,
+                "received_at": "2026-01-01T00:00:00Z",
+                "date_header": null,
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
+                "mailbox": {
+                  "id": 0,
+                  "domain_id": 0,
+                  "local_part": "",
+                  "address": "",
+                  "display_name": "",
+                  "quota_bytes": 0,
+                  "quota_used_bytes": 0,
+                  "active": false,
+                  "last_login_at": null,
+                  "password_change_required": false,
+                  "two_factor_required": false,
+                  "created_at": "0001-01-01T00:00:00Z",
+                  "updated_at": "0001-01-01T00:00:00Z",
+                  "domain": {
+                    "id": 0,
+                    "name": "",
+                    "server_type": "",
+                    "active": false,
+                    "default_quota_bytes": 0,
+                    "dkim_selector": "",
+                    "sending_policy": "",
+                    "dmarc_policy": "",
+                    "created_at": "0001-01-01T00:00:00Z",
+                    "updated_at": "0001-01-01T00:00:00Z"
+                  }
+                }
+              }
+            ],
+            "queue": [
+              {
+                "id": 51,
+                "message_id": 41,
+                "sender": "sender@example.net",
+                "recipient": "owner@example.com",
+                "domain": "example.com",
+                "body_type": "",
+                "status": "pending",
+                "attempts": 0,
+                "last_attempt": null,
+                "next_attempt": "2026-01-01T00:00:00Z",
+                "last_error": "",
+                "last_error_code": 0,
+                "failure_category": "",
+                "max_retries": 3,
+                "created_at": "2026-01-01T00:00:00Z",
+                "expires_at": "2026-01-01T01:00:00Z"
+              }
+            ],
+            "pipelines": [
+              {
+                "id": 61,
+                "domain_id": 11,
+                "direction": "inbound",
+                "filters": [
+                  {
+                    "name": "header_validate",
+                    "enabled": false,
+                    "config": {
+                      "nested": [
+                        1,
+                        false
+                      ]
+                    }
+                  }
+                ],
+                "active": false,
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
+                "domain": {
+                  "id": 0,
+                  "name": "",
+                  "server_type": "",
+                  "active": false,
+                  "default_quota_bytes": 0,
+                  "dkim_selector": "",
+                  "sending_policy": "",
+                  "dmarc_policy": "",
+                  "created_at": "0001-01-01T00:00:00Z",
+                  "updated_at": "0001-01-01T00:00:00Z"
+                }
+              }
+            ],
+            "bans": [
+              {
+                "id": 71,
+                "ip": "192.0.2.17",
+                "reason": "Fixture only",
+                "protocol": "smtp",
+                "created_by": "fixture",
+                "created_at": "2026-01-01T00:00:00Z"
+              }
+            ],
+            "snapshot_at": "2026-01-01T00:00:00Z"
+          }
+        }
+      }
+    },
+    "non_admin": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "domain_scope": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "mailbox_scope": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "wrong_domain": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_admin": {
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domains": [
+              {
+                "id": 11,
+                "name": "example.com",
+                "server_type": "traditional",
+                "active": false,
+                "default_quota_bytes": 0,
+                "dkim_selector": "rm2026",
+                "sending_policy": "bulk",
+                "dmarc_policy": "reject",
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z"
+              }
+            ],
+            "mailboxes": [
+              {
+                "id": 21,
+                "domain_id": 11,
+                "local_part": "owner",
+                "address": "owner@example.com",
+                "display_name": "Fixture Owner",
+                "quota_bytes": 1073741824,
+                "quota_used_bytes": 123,
+                "active": false,
+                "last_login_at": null,
+                "password_change_required": false,
+                "two_factor_required": false,
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
+                "domain": {
+                  "id": 0,
+                  "name": "",
+                  "server_type": "",
+                  "active": false,
+                  "default_quota_bytes": 0,
+                  "dkim_selector": "",
+                  "sending_policy": "",
+                  "dmarc_policy": "",
+                  "created_at": "0001-01-01T00:00:00Z",
+                  "updated_at": "0001-01-01T00:00:00Z"
+                }
+              }
+            ],
+            "aliases": [
+              {
+                "id": 31,
+                "domain_id": 11,
+                "source_address": "alias@example.com",
+                "destination_address": "owner@example.com",
+                "active": false,
+                "created_at": "2026-01-01T00:00:00Z",
+                "domain": {
+                  "id": 0,
+                  "name": "",
+                  "server_type": "",
+                  "active": false,
+                  "default_quota_bytes": 0,
+                  "dkim_selector": "",
+                  "sending_policy": "",
+                  "dmarc_policy": "",
+                  "created_at": "0001-01-01T00:00:00Z",
+                  "updated_at": "0001-01-01T00:00:00Z"
+                }
+              }
+            ],
+            "messages": [
+              {
+                "id": 41,
+                "mailbox_id": 21,
+                "folder": "INBOX",
+                "message_id": "<snapshot-fixture@example.com>",
+                "in_reply_to": "",
+                "references": "",
+                "thread_id": "",
+                "sender": "sender@example.net",
+                "sender_name": "",
+                "recipients_to": [
+                  "owner@example.com"
+                ],
+                "recipients_cc": [],
+                "subject": "Fixture subject",
+                "body_text": "Fixture body ✓",
+                "headers": {
+                  "X-Fixture": "true"
+                },
+                "size_bytes": 123,
+                "raw_size": 0,
+                "has_attachments": false,
+                "is_read": false,
+                "is_dsn": false,
+                "is_flagged": false,
+                "is_starred": false,
+                "is_draft": false,
+                "is_deleted": false,
+                "received_at": "2026-01-01T00:00:00Z",
+                "date_header": null,
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
+                "mailbox": {
+                  "id": 0,
+                  "domain_id": 0,
+                  "local_part": "",
+                  "address": "",
+                  "display_name": "",
+                  "quota_bytes": 0,
+                  "quota_used_bytes": 0,
+                  "active": false,
+                  "last_login_at": null,
+                  "password_change_required": false,
+                  "two_factor_required": false,
+                  "created_at": "0001-01-01T00:00:00Z",
+                  "updated_at": "0001-01-01T00:00:00Z",
+                  "domain": {
+                    "id": 0,
+                    "name": "",
+                    "server_type": "",
+                    "active": false,
+                    "default_quota_bytes": 0,
+                    "dkim_selector": "",
+                    "sending_policy": "",
+                    "dmarc_policy": "",
+                    "created_at": "0001-01-01T00:00:00Z",
+                    "updated_at": "0001-01-01T00:00:00Z"
+                  }
+                }
+              }
+            ],
+            "queue": [
+              {
+                "id": 51,
+                "message_id": 41,
+                "sender": "sender@example.net",
+                "recipient": "owner@example.com",
+                "domain": "example.com",
+                "body_type": "",
+                "status": "pending",
+                "attempts": 0,
+                "last_attempt": null,
+                "next_attempt": "2026-01-01T00:00:00Z",
+                "last_error": "",
+                "last_error_code": 0,
+                "failure_category": "",
+                "max_retries": 3,
+                "created_at": "2026-01-01T00:00:00Z",
+                "expires_at": "2026-01-01T01:00:00Z"
+              }
+            ],
+            "pipelines": [
+              {
+                "id": 61,
+                "domain_id": 11,
+                "direction": "inbound",
+                "filters": [
+                  {
+                    "name": "header_validate",
+                    "enabled": false,
+                    "config": {
+                      "nested": [
+                        1,
+                        false
+                      ]
+                    }
+                  }
+                ],
+                "active": false,
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
+                "domain": {
+                  "id": 0,
+                  "name": "",
+                  "server_type": "",
+                  "active": false,
+                  "default_quota_bytes": 0,
+                  "dkim_selector": "",
+                  "sending_policy": "",
+                  "dmarc_policy": "",
+                  "created_at": "0001-01-01T00:00:00Z",
+                  "updated_at": "0001-01-01T00:00:00Z"
+                }
+              }
+            ],
+            "bans": [
+              {
+                "id": 71,
+                "ip": "192.0.2.17",
+                "reason": "Fixture only",
+                "protocol": "smtp",
+                "created_by": "fixture",
+                "created_at": "2026-01-01T00:00:00Z"
+              }
+            ],
+            "snapshot_at": "2026-01-01T00:00:00Z"
+          }
+        }
+      }
+    },
+    "key_domain_read": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_domain": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_mailbox": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_wrong_domain": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_holder_missing": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "permission_store_unavailable": {
+      "request": {},
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
+          }
+        }
+      }
+    },
+    "unauthenticated": {
+      "request": {},
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "session_unavailable": {
+      "request": {},
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        }
+      }
+    },
+    "cookie_session": {
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domains": [
+              {
+                "id": 11,
+                "name": "example.com",
+                "server_type": "traditional",
+                "active": false,
+                "default_quota_bytes": 0,
+                "dkim_selector": "rm2026",
+                "sending_policy": "bulk",
+                "dmarc_policy": "reject",
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z"
+              }
+            ],
+            "mailboxes": [
+              {
+                "id": 21,
+                "domain_id": 11,
+                "local_part": "owner",
+                "address": "owner@example.com",
+                "display_name": "Fixture Owner",
+                "quota_bytes": 1073741824,
+                "quota_used_bytes": 123,
+                "active": false,
+                "last_login_at": null,
+                "password_change_required": false,
+                "two_factor_required": false,
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
+                "domain": {
+                  "id": 0,
+                  "name": "",
+                  "server_type": "",
+                  "active": false,
+                  "default_quota_bytes": 0,
+                  "dkim_selector": "",
+                  "sending_policy": "",
+                  "dmarc_policy": "",
+                  "created_at": "0001-01-01T00:00:00Z",
+                  "updated_at": "0001-01-01T00:00:00Z"
+                }
+              }
+            ],
+            "aliases": [
+              {
+                "id": 31,
+                "domain_id": 11,
+                "source_address": "alias@example.com",
+                "destination_address": "owner@example.com",
+                "active": false,
+                "created_at": "2026-01-01T00:00:00Z",
+                "domain": {
+                  "id": 0,
+                  "name": "",
+                  "server_type": "",
+                  "active": false,
+                  "default_quota_bytes": 0,
+                  "dkim_selector": "",
+                  "sending_policy": "",
+                  "dmarc_policy": "",
+                  "created_at": "0001-01-01T00:00:00Z",
+                  "updated_at": "0001-01-01T00:00:00Z"
+                }
+              }
+            ],
+            "messages": [
+              {
+                "id": 41,
+                "mailbox_id": 21,
+                "folder": "INBOX",
+                "message_id": "<snapshot-fixture@example.com>",
+                "in_reply_to": "",
+                "references": "",
+                "thread_id": "",
+                "sender": "sender@example.net",
+                "sender_name": "",
+                "recipients_to": [
+                  "owner@example.com"
+                ],
+                "recipients_cc": [],
+                "subject": "Fixture subject",
+                "body_text": "Fixture body ✓",
+                "headers": {
+                  "X-Fixture": "true"
+                },
+                "size_bytes": 123,
+                "raw_size": 0,
+                "has_attachments": false,
+                "is_read": false,
+                "is_dsn": false,
+                "is_flagged": false,
+                "is_starred": false,
+                "is_draft": false,
+                "is_deleted": false,
+                "received_at": "2026-01-01T00:00:00Z",
+                "date_header": null,
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
+                "mailbox": {
+                  "id": 0,
+                  "domain_id": 0,
+                  "local_part": "",
+                  "address": "",
+                  "display_name": "",
+                  "quota_bytes": 0,
+                  "quota_used_bytes": 0,
+                  "active": false,
+                  "last_login_at": null,
+                  "password_change_required": false,
+                  "two_factor_required": false,
+                  "created_at": "0001-01-01T00:00:00Z",
+                  "updated_at": "0001-01-01T00:00:00Z",
+                  "domain": {
+                    "id": 0,
+                    "name": "",
+                    "server_type": "",
+                    "active": false,
+                    "default_quota_bytes": 0,
+                    "dkim_selector": "",
+                    "sending_policy": "",
+                    "dmarc_policy": "",
+                    "created_at": "0001-01-01T00:00:00Z",
+                    "updated_at": "0001-01-01T00:00:00Z"
+                  }
+                }
+              }
+            ],
+            "queue": [
+              {
+                "id": 51,
+                "message_id": 41,
+                "sender": "sender@example.net",
+                "recipient": "owner@example.com",
+                "domain": "example.com",
+                "body_type": "",
+                "status": "pending",
+                "attempts": 0,
+                "last_attempt": null,
+                "next_attempt": "2026-01-01T00:00:00Z",
+                "last_error": "",
+                "last_error_code": 0,
+                "failure_category": "",
+                "max_retries": 3,
+                "created_at": "2026-01-01T00:00:00Z",
+                "expires_at": "2026-01-01T01:00:00Z"
+              }
+            ],
+            "pipelines": [
+              {
+                "id": 61,
+                "domain_id": 11,
+                "direction": "inbound",
+                "filters": [
+                  {
+                    "name": "header_validate",
+                    "enabled": false,
+                    "config": {
+                      "nested": [
+                        1,
+                        false
+                      ]
+                    }
+                  }
+                ],
+                "active": false,
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
+                "domain": {
+                  "id": 0,
+                  "name": "",
+                  "server_type": "",
+                  "active": false,
+                  "default_quota_bytes": 0,
+                  "dkim_selector": "",
+                  "sending_policy": "",
+                  "dmarc_policy": "",
+                  "created_at": "0001-01-01T00:00:00Z",
+                  "updated_at": "0001-01-01T00:00:00Z"
+                }
+              }
+            ],
+            "bans": [
+              {
+                "id": 71,
+                "ip": "192.0.2.17",
+                "reason": "Fixture only",
+                "protocol": "smtp",
+                "created_by": "fixture",
+                "created_at": "2026-01-01T00:00:00Z"
+              }
+            ],
+            "snapshot_at": "2026-01-01T00:00:00Z"
+          }
+        }
+      }
+    },
+    "csrf_missing": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "csrf_mismatch": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "request_too_large": {
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        }
+      }
+    },
+    "empty": {
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domains": [],
+            "mailboxes": [],
+            "aliases": [],
+            "messages": [],
+            "queue": [],
+            "pipelines": [],
+            "bans": [],
+            "snapshot_at": "2026-01-01T00:00:00Z"
+          }
+        }
+      }
+    },
+    "failure_domains": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "failure_mailboxes": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "failure_aliases": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "failure_messages": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "failure_outbound_queue": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "failure_pipelines": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "failure_bans": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "cancelled": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    }
   }
 }

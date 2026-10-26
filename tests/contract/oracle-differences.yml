@@ -1292,9 +1292,6 @@
 - operation: snapshotTestData
   difference: "response 200 application/json.properties.data.required: openapi.yaml absent, generated [\"aliases\",\"bans\",\"domains\",\"mailboxes\",\"messages\",\"pipelines\",\"queue\",\"snapshot_at\"]"
   reason: "These fields are always written by the existing success response; the oracle leaves them optional."
-- operation: snapshotTestData
-  difference: "response 403 application/json: generated only"
-  reason: "The shared admin middleware refuses setup, CSRF and capability failures with the JSON error envelope. The oracle only describes the production refusal without a body; production now omits these routes entirely."
 - operation: verifyDelivery
   difference: "parameter query timeout schema.default: openapi.yaml \"5s\", generated absent"
   reason: "The handler retains the five-second timeout default and thirty-second cap. The generator does not describe defaults yet."

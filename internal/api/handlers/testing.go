@@ -267,39 +267,54 @@ func (h *TestHandler) seedTestData(_ *http.Request, _ endpoint.Empty) (TestDataS
 
 // snapshot captures the current database state as JSON.
 // POST /api/v1/admin/test/snapshot
-func (h *TestHandler) snapshot(_ *http.Request, _ endpoint.Empty) (TestSnapshot, error) {
+func (h *TestHandler) snapshot(r *http.Request, _ endpoint.Empty) (TestSnapshot, error) {
 	if h.productionLocked() {
 		return TestSnapshot{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "test endpoints disabled in production")
 	}
 
 	snap := testSnapshotModels{}
+	database := h.db.WithContext(r.Context())
 
 	var domains []models.Domain
-	h.db.Find(&domains)
+	if err := database.Find(&domains).Error; err != nil {
+		return TestSnapshot{}, fmt.Errorf("snapshot domains: %w", err)
+	}
 	snap.Domains = domains
 
 	var mailboxes []models.Mailbox
-	h.db.Find(&mailboxes)
+	if err := database.Find(&mailboxes).Error; err != nil {
+		return TestSnapshot{}, fmt.Errorf("snapshot mailboxes: %w", err)
+	}
 	snap.Mailboxes = mailboxes
 
 	var aliases []models.Alias
-	h.db.Find(&aliases)
+	if err := database.Find(&aliases).Error; err != nil {
+		return TestSnapshot{}, fmt.Errorf("snapshot aliases: %w", err)
+	}
 	snap.Aliases = aliases
 
 	var messages []models.Message
-	h.db.Find(&messages)
+	if err := database.Find(&messages).Error; err != nil {
+		return TestSnapshot{}, fmt.Errorf("snapshot messages: %w", err)
+	}
 	snap.Messages = messages
 
 	var queue []models.OutboundQueue
-	h.db.Find(&queue)
+	if err := database.Find(&queue).Error; err != nil {
+		return TestSnapshot{}, fmt.Errorf("snapshot queue: %w", err)
+	}
 	snap.Queue = queue
 
 	var pipelines []models.Pipeline
-	h.db.Find(&pipelines)
+	if err := database.Find(&pipelines).Error; err != nil {
+		return TestSnapshot{}, fmt.Errorf("snapshot pipelines: %w", err)
+	}
 	snap.Pipelines = pipelines
 
 	var bans []models.Ban
-	h.db.Find(&bans)
+	if err := database.Find(&bans).Error; err != nil {
+		return TestSnapshot{}, fmt.Errorf("snapshot bans: %w", err)
+	}
 	snap.Bans = bans
 
 	snap.SnapshotAt = time.Now()
