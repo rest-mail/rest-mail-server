@@ -260,15 +260,22 @@ func (h *MessageHandler) listMessages(r *http.Request, in listMessagesRequest) (
 // ownedMessage is the message the path names, when the session may reach its account with
 // capability.
 func (h *MessageHandler) ownedMessage(r *http.Request, id uint32, capability string) (models.Message, error) {
-	if middleware.GetClaims(r) == nil {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
 		return models.Message{}, errNotSignedIn
 	}
 	var msg models.Message
 	if err := h.db.First(&msg, id).Error; err != nil {
-		return models.Message{}, errMessageNotFound
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return models.Message{}, errMessageNotFound
+		}
+		return models.Message{}, fmt.Errorf("load message: %w", err)
 	}
-	if !h.verifyMessageOwnership(nil, r, &msg, capability) {
-		return models.Message{}, errMessageAccess
+	if _, err := mayReach(h.db, claims, msg.MailboxID, capability); err != nil {
+		if errors.Is(err, errNoAccess) {
+			return models.Message{}, errMessageAccess
+		}
+		return models.Message{}, fmt.Errorf("check message access: %w", err)
 	}
 	return msg, nil
 }
@@ -1140,7 +1147,10 @@ func (h *MessageHandler) accountMailbox(r *http.Request, accountID uint32, capab
 	}
 	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims, capability)
 	if err != nil {
-		return 0, errMailboxAccess
+		if errors.Is(err, errNoAccess) {
+			return 0, errMailboxAccess
+		}
+		return 0, err
 	}
 	return mailboxID, nil
 }
@@ -1153,12 +1163,14 @@ func (h *MessageHandler) listFolders(r *http.Request, in accountPath) (endpoint.
 	}
 
 	var folders []FolderSummary
-	h.db.Model(&models.Message{}).
+	if err := h.db.Model(&models.Message{}).
 		Select("folder, COUNT(CASE WHEN is_deleted = false THEN 1 END) as total, COUNT(CASE WHEN is_deleted = false AND is_read = false THEN 1 END) as unread").
 		Where("mailbox_id = ?", mailboxID).
 		Group("folder").
 		Order("folder ASC").
-		Scan(&folders)
+		Scan(&folders).Error; err != nil {
+		return endpoint.List[FolderSummary]{}, fmt.Errorf("list folders: %w", err)
+	}
 
 	folderMap := make(map[string]bool)
 	for _, f := range folders {
@@ -1284,15 +1296,24 @@ func (h *MessageHandler) getQuota(r *http.Request, in accountPath) (Quota, error
 
 	var mailbox models.Mailbox
 	if err := h.db.First(&mailbox, mailboxID).Error; err != nil {
-		return Quota{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Mailbox not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return Quota{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Mailbox not found")
+		}
+		return Quota{}, err
 	}
 
 	var messageCount int64
-	h.db.Model(&models.Message{}).Where("mailbox_id = ?", mailboxID).Count(&messageCount)
+	if err := h.db.Model(&models.Message{}).Where("mailbox_id = ?", mailboxID).Count(&messageCount).Error; err != nil {
+		return Quota{}, err
+	}
+	percentUsed := 0.0
+	if mailbox.QuotaBytes > 0 {
+		percentUsed = float64(mailbox.QuotaUsedBytes) / float64(mailbox.QuotaBytes) * 100
+	}
 
 	return Quota{
 		MessageCount:   messageCount,
-		PercentUsed:    float64(mailbox.QuotaUsedBytes) / float64(mailbox.QuotaBytes) * 100,
+		PercentUsed:    percentUsed,
 		QuotaBytes:     mailbox.QuotaBytes,
 		QuotaUsedBytes: mailbox.QuotaUsedBytes,
 	}, nil
@@ -2326,9 +2347,11 @@ func (h *MessageHandler) listCalendarEvents(r *http.Request, in accountPath) ([]
 	}
 
 	var versions []models.CalendarEventVersion
-	h.db.Where("mailbox_id = ?", mailboxID).
+	if err := h.db.Where("mailbox_id = ?", mailboxID).
 		Order("uid, sequence DESC").
-		Find(&versions)
+		Find(&versions).Error; err != nil {
+		return nil, fmt.Errorf("list calendar events: %w", err)
+	}
 
 	seen := map[string]*CalendarEventSummary{}
 	var order []string // preserve insertion order
