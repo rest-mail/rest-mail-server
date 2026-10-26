@@ -37,14 +37,15 @@ func testCustomFilterNoDB(t *testing.T, body string) (rr *httptest.ResponseRecor
 }
 
 // The pairs vertrag compiles for testCustomFilter (#386): valid with the 200
-// and invalid_body with the 400, nothing else.
+// invalid_body with the 400, and unknown_field with the 422.
 func TestTestCustomFilter_ExamplePairs(t *testing.T) {
 	requests, responses := postExamples(t, testCustomFilterPath, "testCustomFilter")
 
 	want := map[string][]string{
-		"request": {"invalid_body", "valid"},
+		"request": {"invalid_body", "unknown_field", "valid"},
 		"200":     {"valid"},
 		"400":     {"invalid_body"},
+		"422":     {"unknown_field"},
 	}
 	got := map[string][]string{"request": names(requests)}
 	for status, examples := range responses {
