@@ -51,6 +51,7 @@ export function LoginPage() {
         {/* Form */}
         <a href="#recover" className="text-sm underline">Forgot password?</a>
         <a href="#reset" className="text-sm underline">Use an account recovery token</a>
+        <a href="#invite" className="text-sm underline">Accept an invitation</a>
           <form onSubmit={handleSubmit} className="space-y-3">
           {!totpRequired && (
             <>

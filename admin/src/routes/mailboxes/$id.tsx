@@ -4,6 +4,7 @@ import { useAuthStore } from "../../lib/stores/authStore";
 import { useMailboxStore } from "../../lib/stores/mailboxStore";
 import { AppShell } from "../../components/layout/AppShell";
 import { QuotaBreakdown } from "../../components/mailboxes/QuotaBreakdown";
+import { InvitationCard } from "../../components/mailboxes/InvitationCard";
 import { apiV1 } from "../../lib/api";
 import { expectSuccess } from "../../lib/api-contract";
 import type { JsonResponse, RequestBody } from "../../lib/api-contract";
@@ -561,6 +562,11 @@ function MailboxDetailsPage() {
           </form>
         ) : (
           <div className="space-y-6">
+            <InvitationCard
+              key={id}
+              accountId={Number(id)}
+              active={mailbox.active}
+            />
             {/* Quota Usage */}
             <div
               className="p-6 border"

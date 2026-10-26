@@ -2670,6 +2670,11 @@
   reason: >-
     A browser's session is set, rotated and ended with cookies: restmail_access and
     restmail_refresh (httpOnly) and restmail_csrf. The oracle describes them in prose only.
+- operation: acceptInvitation
+  difference: "response 200 header Set-Cookie: generated only"
+  reason: >-
+    A browser's session is set, rotated and ended with cookies: restmail_access and
+    restmail_refresh (httpOnly) and restmail_csrf. The oracle describes them in prose only.
 - operation: login
   difference: "response 400: generated only"
   reason: >-
@@ -2953,6 +2958,21 @@
   reason: >-
     A missing challenge, key or signature fails the signed message as a wrong one does: 401
     invalid_challenge or 403 not_status_key.
+- operation: acceptInvitation
+  difference: "request body application/json.required: openapi.yaml [\"password\",\"token\"], generated absent"
+  reason: >-
+    Checked when the invitation is redeemed: a missing token is the 401 invalid_token a wrong
+    one is, and a missing password the 422 password a short one is, which does not spend it.
+- operation: acceptInvitation
+  difference: "request body application/json.properties.password.minLength: openapi.yaml 12, generated absent"
+  reason: >-
+    The password is counted in bytes (12-72), as bootstrap and a password change count it,
+    when the invitation is redeemed; minLength would count characters.
+- operation: acceptInvitation
+  difference: "request body application/json.properties.client.enum: openapi.yaml [\"native\"], generated absent"
+  reason: >-
+    An empty client means a browser, as an absent one does; any other value is 422 client in
+    the handler (must be "native" or omitted).
 - operation: resetAdmin
   difference: "request body application/json.required: openapi.yaml [\"password\",\"token\"], generated absent"
   reason: >-

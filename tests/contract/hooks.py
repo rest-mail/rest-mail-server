@@ -55,6 +55,7 @@ def basic(address, password):
 @hooks.before("createAppPassword")
 @hooks.before("protocolSignIn")
 @hooks.before("enrollTwoFactor")
+@hooks.before("acceptInvitation")
 def pace_auth_requests(transaction):
     # These operations share the default 1 request/second auth bucket. Coverage
     # repeats valid requests as well as refusals, so even correct credentials
@@ -1596,3 +1597,72 @@ def on_the_created_account(transaction):
     transaction["fullPath"] = (
         parent + "/" + str(account["id"]) + ("?" + query if query else "")
     )
+
+
+def an_account_without_credentials(origin):
+    """A fresh restmail.test account made without a password, so invitable."""
+    count = hooks.stash.get("invitable_accounts", 0) + 1
+    hooks.stash["invitable_accounts"] = count
+    address = "invited-{}-{}@restmail.test".format(time.time_ns(), count)
+    request = urllib.request.Request(
+        origin + "/api/v1/accounts",
+        data=json.dumps({"address": address, "display_name": "Invited"}).encode(),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + admin_token(origin),
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        return json.load(response)["data"]["id"]
+
+
+@hooks.before("inviteAccount")
+def invite_an_account_without_credentials(transaction):
+    # Only the created example's placeholder id (12) needs an invitable account.
+    # The fixture admin (existing_credentials) has a password, and missing and
+    # every coverage probe keep their ids so their refusals are reachable.
+    path, _, query = transaction["fullPath"].partition("?")
+    mailboxes, placeholder, _ = path.rstrip("/").rsplit("/", 2)
+    if placeholder != "12":
+        return
+    origin = "{}//{}:{}".format(
+        transaction["protocol"],
+        transaction["host"],
+        transaction["port"],
+    )
+    account_id = an_account_without_credentials(origin)
+    transaction["fullPath"] = (
+        "{}/{:d}/invitation".format(mailboxes, account_id)
+        + ("?" + query if query else "")
+    )
+
+
+@hooks.before("acceptInvitation")
+def redeem_a_fresh_invitation(transaction):
+    body = hooks.get_json(transaction)
+    # The accepted example and every coverage probe of its 200 need an unspent
+    # invitation: coverage runs no after hooks, and a schema-valid body with an
+    # unknown token is a 401. The named refusals (invalid_token, invalid_field,
+    # body_array) and probes whose token is not a string reach the handler
+    # unchanged.
+    if (
+        " > 200 > " not in transaction.get("name", "")
+        or not isinstance(body, dict)
+        or not isinstance(body.get("token"), str)
+    ):
+        return
+    origin = "{}//{}:{}".format(
+        transaction["protocol"],
+        transaction["host"],
+        transaction["port"],
+    )
+    account_id = an_account_without_credentials(origin)
+    request = urllib.request.Request(
+        origin + "/api/v1/admin/mailboxes/{:d}/invitation".format(account_id),
+        headers={"Authorization": "Bearer " + admin_token(origin)},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        body["token"] = json.load(response)["data"]["token"]
+    hooks.set_json(transaction, body)

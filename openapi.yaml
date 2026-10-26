@@ -10283,6 +10283,248 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/admin/mailboxes/{id}/invitation:
+    post:
+      summary: Invite an account to choose its first password
+      description: For an active account created without credentials. The invitation
+        lasts 15 minutes; issuing another invalidates the previous one. Only a hash
+        is stored. Authenticator enrollment and server encryption must be enabled before
+        invitations can be issued.
+      operationId: inviteAccount
+      tags:
+      - 'Admin: Mailboxes'
+      parameters:
+      # Named, as are the responses they produce. The created id is a
+      # placeholder: a hook invites a fresh account made without a password.
+      # The fixture admin (1) has a password, so it cannot be invited.
+      # Like the other path IDs, its 422 is not sent (#386).
+      - name: id
+        in: path
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+        examples:
+          created:
+            value: 12
+          existing_credentials:
+            value: 1
+          missing:
+            value: 2147483647
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Data-invitationResponse'
+              examples:
+                created:
+                  value:
+                    data:
+                      expires_at: '2030-01-01T00:15:00Z'
+                      token: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+          headers:
+            Cache-Control:
+              description: 'no-store: invitation secrets are never cacheable'
+              schema:
+                type: string
+        '401':
+          description: 'unauthorized: no token, a bad one, or a session that has ended'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 'Refused before the handler runs: setup_required (the account
+            has not finished setup), csrf_failed (a cookie session''s unsafe request
+            without the CSRF header) or forbidden (the session lacks the capability)'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing:
+                  value:
+                    error:
+                      code: mailbox_not_found
+                      message: Mailbox not found
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                existing_credentials:
+                  value:
+                    error:
+                      code: account_not_invitable
+                      message: only an active account that has never held credentials can be invited
+        '413':
+          description: 'request_too_large: the body is over the API''s size cap'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Service Unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - CookieAuth:
+        - mailboxes:write
+      - BearerAuth:
+        - mailboxes:write
+      - APIKeyAuth:
+        - mailboxes:write
+  /api/v1/auth/invitation:
+    post:
+      summary: Choose your first password with an invitation
+      description: 'Redeems an invitation once, chooses a password of 12–72 bytes and
+        signs in. The session can only finish authenticator enrollment until it is confirmed.
+        Owner reset tokens cannot be used here. Native clients send client: native;
+        browsers receive httpOnly session cookies.'
+      operationId: acceptInvitation
+      tags:
+      - Auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/resetRequest'
+            # Named, as are the responses they produce. A hook swaps the
+            # accepted token for a fresh invitation; invalid_token's is unknown.
+            examples:
+              accepted:
+                value:
+                  token: supplied-by-contract-hook
+                  password: the recipient chooses this password
+                  client: native
+              body_array:
+                value: []
+              invalid_token:
+                value:
+                  token: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+                  password: the recipient chooses this password
+                  client: native
+              invalid_field:
+                value:
+                  token: 3
+                  password: the recipient chooses this password
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Data-loginResponse'
+              examples:
+                accepted:
+                  value:
+                    data:
+                      expires_in: 900
+                      setup_required: [two_factor]
+                      user: {id: 12, email: invited@restmail.test, display_name: ''}
+                      access_token: example-access-token
+                      refresh_token: example-refresh-token
+          headers:
+            Cache-Control:
+              description: 'no-store: invitation secrets are never cacheable'
+              schema:
+                type: string
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                body_array:
+                  value:
+                    error:
+                      code: bad_request
+                      message: Invalid request body
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalid_token:
+                  value:
+                    error:
+                      code: invalid_token
+                      message: 'the token is not valid: unknown, already used, or expired'
+        '413':
+          description: Request Entity Too Large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+              examples:
+                invalid_field:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          token: must be a string
+        '429':
+          description: 'rate_limited: too many requests to the shared authentication
+            throttle'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Retry-After:
+              description: Seconds until a request may be made again
+              required: true
+              schema:
+                type: integer
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Service Unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security: []
 components:
   securitySchemes:
     CookieAuth:
@@ -10411,6 +10653,101 @@ components:
             $ref: "#/components/schemas/ValidationErrorResponse"
 
   schemas:
+    Data-invitationResponse:
+      additionalProperties: false
+      properties:
+        data:
+          $ref: '#/components/schemas/invitationResponse'
+      required:
+      - data
+      type: object
+    invitationResponse:
+      additionalProperties: false
+      properties:
+        expires_at:
+          format: date-time
+          type: string
+        token:
+          type: string
+      required:
+      - token
+      - expires_at
+      type: object
+    resetRequest:
+      additionalProperties: false
+      properties:
+        client:
+          enum: [native]
+          type: string
+        password:
+          minLength: 12
+          type: string
+        token:
+          type: string
+      required: [token, password]
+      type: object
+    Data-loginResponse:
+      additionalProperties: false
+      properties:
+        data:
+          $ref: '#/components/schemas/loginResponse'
+      required:
+      - data
+      type: object
+    loginResponse:
+      additionalProperties: false
+      properties:
+        access_token:
+          type: string
+        capabilities:
+          items:
+            type: string
+          type: array
+        expires_in:
+          type: integer
+        refresh_expires_in:
+          type: integer
+        refresh_token:
+          type: string
+        scoped_capabilities:
+          items:
+            $ref: '#/components/schemas/Entry'
+          type: array
+        setup_required:
+          items:
+            type: string
+          type: array
+        user:
+          $ref: '#/components/schemas/userInfo'
+      required:
+      - expires_in
+      - user
+      type: object
+    Entry:
+      additionalProperties: false
+      properties:
+        capability:
+          type: string
+        scope:
+          type: string
+      required:
+      - scope
+      - capability
+      type: object
+    userInfo:
+      additionalProperties: false
+      properties:
+        display_name:
+          type: string
+        email:
+          type: string
+        id:
+          type: integer
+      required:
+      - id
+      - email
+      - display_name
+      type: object
     TestProbeResult:
       additionalProperties: false
       properties:

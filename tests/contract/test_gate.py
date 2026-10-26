@@ -150,6 +150,7 @@ class PairedRefusals(unittest.TestCase):
         "validateSieveScript",
         "createContact",
         "setDKIMKey",
+        "acceptInvitation",
     }
 
     def test_exclude_matching_sends_exactly_the_paired_refusals(self):
@@ -276,6 +277,7 @@ class MissingResourceRefusals(unittest.TestCase):
                 "updatePipeline",
                 "deletePipeline",
                 "testPipeline",
+                "inviteAccount",
             },
         )
 
