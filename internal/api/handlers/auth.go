@@ -450,14 +450,17 @@ func signInMethods(verified bool) []string {
 func (h *AuthHandler) logout(r *http.Request, in sessionTokenRequest) (endpoint.Headed[endpoint.Empty], error) {
 	// Revoke the presented refresh token server-side so it can no longer be
 	// exchanged (OSI-10: logout was previously client-side only). The token is
-	// the cookie, or for a native client the body. Best-effort: a missing or
-	// invalid token still clears client state below. Idempotent, so a double
+	// the cookie, or for a native client the body. A missing or invalid token
+	// still clears client state below. A storage failure keeps the cookies for
+	// retry and reports the failure. Idempotent, so a double
 	// logout is harmless. A body whose refresh_token is not a string is a
 	// client bug, refused by binding with 422 rather than silently treated as
 	// no token.
 	if token, _ := presentedRefreshToken(r, in.Body); token != "" && h.refreshStore != nil {
 		if claims, err := h.jwtService.ValidateRefreshToken(token); err == nil && claims.ID != "" {
-			_ = h.refreshStore.Revoke(claims.ID)
+			if err := h.refreshStore.Revoke(claims.ID); err != nil {
+				return endpoint.Headed[endpoint.Empty]{}, fmt.Errorf("revoke the signed-out session: %w", err)
+			}
 			// The phones the session registered for push go with it.
 			if h.pushDevices != nil {
 				if _, err := h.pushDevices.SessionEnded(claims.SessionID, time.Now()); err != nil {
