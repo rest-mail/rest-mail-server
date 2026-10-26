@@ -115,7 +115,9 @@ func (h *MessageHandler) readForwardParts(r *http.Request, original *models.Mess
 func (h *MessageHandler) commitForward(r *http.Request, req sendMessageRequest, sender *models.Mailbox, sent *models.Message, parts []pipeline.Attachment, extra map[string]string, queued *traceInputs) (endpoint.Status[any], error) {
 	var zero endpoint.Status[any]
 	// Outbound transforms may replace content with a stored reference. Read the
-	// transformed parts with the same bounds and integrity checks before MIME.
+	// transformed parts with the same bounds and integrity checks before MIME,
+	// into a copy: the caller's parts stay as they were passed.
+	parts = append([]pipeline.Attachment(nil), parts...)
 	remaining := h.maxForwardBytes
 	for i, part := range parts {
 		data, err := h.forwardPartBytes(r.Context(), part, remaining)
