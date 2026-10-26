@@ -106,18 +106,27 @@ func (h *InvitationHandler) accept(r *http.Request, req acceptInvitationRequest)
 	if !h.enrollmentAvailable {
 		return zero, errInvitationUnavailable
 	}
-	account, err := bootstrap.AcceptInvitation(r.Context(), h.db, req.Token, req.Password)
-	if err != nil {
+	if err := r.Context().Err(); err != nil {
 		return zero, redeemRefusal(err)
 	}
-	h.auth.sessions.Forget(account.ID)
-	// Keep capability, enrollment and session-ledger reads on the HTTP context
-	// as well. The password transaction has already committed at this point.
-	sessionHandler := NewAuthHandler(h.db.WithContext(r.Context()), h.auth.jwtService, h.auth.masterKey, h.auth.sessions)
-	session, err := sessionHandler.newSession(account, req.Client == clientNative, nil)
+	// Spending the invitation, installing the password and preparing its session
+	// are one commit. A failed session must leave the invitation retryable.
+	var session endpoint.Headed[loginResponse]
+	var accountID uint
+	err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
+		account, err := bootstrap.AcceptInvitation(r.Context(), tx, req.Token, req.Password)
+		if err != nil {
+			return redeemRefusal(err)
+		}
+		accountID = account.ID
+		sessionHandler := NewAuthHandler(tx, h.auth.jwtService, h.auth.masterKey, h.auth.sessions)
+		session, err = sessionHandler.newSession(account, req.Client == clientNative, nil)
+		return err
+	})
 	if err != nil {
 		return zero, err
 	}
+	h.auth.sessions.Forget(accountID)
 	for key, values := range invitationSecretHeaders() {
 		session.Header[key] = values
 	}
