@@ -55,12 +55,22 @@ def basic(address, password):
 @hooks.before("createAppPassword")
 @hooks.before("protocolSignIn")
 @hooks.before("enrollTwoFactor")
+@hooks.before("acceptInvitation")
 def pace_auth_requests(transaction):
     # These operations share the default 1 request/second auth bucket. Coverage
     # repeats valid requests as well as refusals, so even correct credentials
     # drain its burst. Wait for a token without changing or retrying the probe.
     # Leave a small margin for clock/scheduling differences at the boundary.
     time.sleep(1.1)
+
+
+@hooks.before("testPipeline")
+@hooks.before("testFilter")
+@hooks.before("testCustomFilter")
+def pace_pipeline_previews(transaction):
+    # Pipeline previews share a 2 requests/second bucket in the E2E topology.
+    # Pace every probe without changing its body, credential or expected reply.
+    time.sleep(0.55)
 
 
 def admin_token(origin):
@@ -771,10 +781,16 @@ def list_the_sent_messages_queue_entry(transaction):
     params = urllib.parse.parse_qs(query, keep_blank_values=True)
     defaults = {"limit": ["50"], "offset": ["0"]}
     if params.get("status") != ["pending"] or any(
-            name != "status" and defaults.get(name) != value for name, value in params.items()):
+        name != "status" and defaults.get(name) != value
+        for name, value in params.items()
+    ):
         return
-    transaction["fullPath"] = path + "?" + urllib.parse.urlencode(
-        {"recipient": FIXTURE_PLAN["queue"]["retry"]["recipient"]}
+    transaction["fullPath"] = (
+        path
+        + "?"
+        + urllib.parse.urlencode(
+            {"recipient": FIXTURE_PLAN["queue"]["retry"]["recipient"]}
+        )
     )
 
 
@@ -1577,3 +1593,65 @@ def on_the_created_account(transaction):
     transaction["fullPath"] = (
         parent + "/" + str(account["id"]) + ("?" + query if query else "")
     )
+
+
+def an_account_without_credentials(origin):
+    """A fresh restmail.test account made without a password, so invitable."""
+    count = hooks.stash.get("invitable_accounts", 0) + 1
+    hooks.stash["invitable_accounts"] = count
+    address = "invited-{}-{}@restmail.test".format(time.time_ns(), count)
+    request = urllib.request.Request(
+        origin + "/api/v1/accounts",
+        data=json.dumps({"address": address, "display_name": "Invited"}).encode(),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + admin_token(origin),
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        return json.load(response)["data"]["id"]
+
+
+@hooks.before("inviteAccount")
+def invite_an_account_without_credentials(transaction):
+    # Only the created example needs an invitable account; the fixture admin
+    # (existing_credentials) has a password, and missing and invalid_id keep
+    # their ids so their refusals are reachable.
+    if " > 201 > " not in transaction["name"]:
+        return
+    origin = "{}//{}:{}".format(
+        transaction["protocol"],
+        transaction["host"],
+        transaction["port"],
+    )
+    path, _, query = transaction["fullPath"].partition("?")
+    mailboxes, _, _ = path.rstrip("/").rsplit("/", 2)
+    account_id = an_account_without_credentials(origin)
+    transaction["fullPath"] = (
+        "{}/{:d}/invitation".format(mailboxes, account_id)
+        + ("?" + query if query else "")
+    )
+
+
+@hooks.before("acceptInvitation")
+def redeem_a_fresh_invitation(transaction):
+    body = hooks.get_json(transaction)
+    # Replace only the accepted example's placeholder. Unknown tokens, wrong
+    # types and coverage mutations must reach the handler unchanged.
+    if not isinstance(body, dict) or body.get("token") != "supplied-by-contract-hook":
+        return
+    origin = "{}//{}:{}".format(
+        transaction["protocol"],
+        transaction["host"],
+        transaction["port"],
+    )
+    account_id = an_account_without_credentials(origin)
+    request = urllib.request.Request(
+        origin + "/api/v1/admin/mailboxes/{:d}/invitation".format(account_id),
+        headers={"Authorization": "Bearer " + admin_token(origin)},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        body["token"] = json.load(response)["data"]["token"]
+    hooks.set_json(transaction, body)

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -11,8 +12,8 @@ import (
 	"github.com/restmail/restmail/internal/db/models"
 )
 
-// A message is written as the model wrote it, its raw source never: the gateways, webmail and
-// the mobile app all read these bytes.
+// Public message fields retain their values. The raw source and an unloaded
+// mailbox association are omitted rather than exposing a fictitious mailbox.
 func TestMessageResponseJSONParity(t *testing.T) {
 	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	encrypted := true
@@ -39,10 +40,15 @@ func TestMessageResponseJSONParity(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			// An unloaded mailbox's domain is a zero-filled record in the model's JSON;
-			// the answer omits it rather than send an invalid record (#912, #963).
-			old = withoutUnloadedMailboxDomain(t, old)
-			if string(old) != string(current) {
+			var oldFields, currentFields map[string]json.RawMessage
+			if err := json.Unmarshal(old, &oldFields); err != nil {
+				t.Fatal(err)
+			}
+			if err := json.Unmarshal(current, &currentFields); err != nil {
+				t.Fatal(err)
+			}
+			delete(oldFields, "mailbox") // These two model fixtures have no loaded mailbox.
+			if !reflect.DeepEqual(oldFields, currentFields) {
 				t.Fatalf("response JSON changed:\nold %s\nnew %s", old, current)
 			}
 			if strings.Contains(string(current), "secret-raw") {
@@ -50,36 +56,6 @@ func TestMessageResponseJSONParity(t *testing.T) {
 			}
 		})
 	}
-}
-
-// withoutUnloadedMailboxDomain drops mailbox.domain from a model's JSON when the domain was
-// never loaded (its id is 0), keeping key order for the comparison.
-func withoutUnloadedMailboxDomain(t *testing.T, data []byte) []byte {
-	t.Helper()
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		t.Fatal(err)
-	}
-	mailbox, ok := raw["mailbox"]
-	if !ok {
-		return data
-	}
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(mailbox, &fields); err != nil {
-		t.Fatal(err)
-	}
-	var domain struct {
-		ID uint `json:"id"`
-	}
-	if d, ok := fields["domain"]; !ok || json.Unmarshal(d, &domain) != nil || domain.ID != 0 {
-		return data
-	}
-	i := strings.Index(string(data), `,"domain":{"id":0,`)
-	if i < 0 {
-		t.Fatalf("unloaded mailbox domain not found in %s", data)
-	}
-	end := i + strings.Index(string(data[i:]), "}") + 1
-	return append(append([]byte{}, data[:i]...), data[end:]...)
 }
 
 // An attachment's answer says what it is, never where it is stored (#658): no path on the
@@ -141,5 +117,16 @@ func TestMessageBindingBeforeDatabase(t *testing.T) {
 				t.Fatalf("want 401, got %d %s", rr.Code, rr.Body)
 			}
 		})
+	}
+}
+
+func TestMessageLoadedMailboxIsPreserved(t *testing.T) {
+	got := messageOf(models.Message{ID: 3, MailboxID: 4,
+		Mailbox: models.Mailbox{ID: 4, Address: "owner@example.com", DisplayName: "Owner", Active: true}})
+	if got.Mailbox == nil || got.Mailbox.ID != 4 || got.Mailbox.Address != "owner@example.com" || got.Mailbox.DisplayName != "Owner" || !got.Mailbox.Active {
+		t.Fatalf("loaded mailbox lost: %+v", got.Mailbox)
+	}
+	if got.Mailbox.Domain != nil {
+		t.Fatal("unloaded parent domain was invented")
 	}
 }

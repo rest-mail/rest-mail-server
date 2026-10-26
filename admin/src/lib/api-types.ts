@@ -3272,7 +3272,7 @@ export interface components {
       is_flagged: boolean;
       is_read: boolean;
       is_starred: boolean;
-      mailbox?: components["schemas"]["MessageMailbox"];
+      mailbox?: components["schemas"]["Mailbox"] | null;
       mailbox_id: number;
       message_id: string;
       raw_size: number;
@@ -3301,30 +3301,6 @@ export interface components {
       message_id: number;
       /** Format: int64 */
       size_bytes: number;
-    };
-    MessageMailbox: {
-      active: boolean;
-      address: string;
-      /** Format: date-time */
-      created_at: string;
-      display_name: string;
-      domain?: components["schemas"]["Domain"] | null;
-      domain_id: number;
-      id: number;
-      /** Format: date-time */
-      last_login_at: string | null;
-      /** Format: date-time */
-      last_password_change?: string | null;
-      local_part: string;
-      password_change_required: boolean;
-      /** Format: int64 */
-      quota_bytes: number;
-      quota_usage?: components["schemas"]["QuotaUsage"] | null;
-      /** Format: int64 */
-      quota_used_bytes: number;
-      two_factor_required: boolean;
-      /** Format: date-time */
-      updated_at: string;
     };
     MessageTrace: {
       client_ip: string;
@@ -5589,7 +5565,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -5779,7 +5754,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -6061,7 +6035,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -6154,7 +6127,6 @@ export interface operations {
       };
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -6862,7 +6834,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -7212,7 +7183,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -7640,9 +7610,7 @@ export interface operations {
       };
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
-        /** @example INBOX */
         folder: string;
       };
       cookie?: never;
@@ -7840,7 +7808,6 @@ export interface operations {
       };
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -8126,7 +8093,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -8329,7 +8295,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -8716,9 +8681,7 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
-        /** @example 1 */
         threadID: string;
       };
       cookie?: never;
@@ -8806,7 +8769,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -9866,7 +9828,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 192.0.2.10 */
         ip: string;
       };
       cookie?: never;
@@ -9916,15 +9877,6 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Unprocessable Entity */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ValidationErrorResponse"];
-        };
-      };
       /** @description Internal Server Error */
       500: {
         headers: {
@@ -9950,7 +9902,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -10348,7 +10299,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -15792,7 +15742,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -15876,7 +15825,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -15962,7 +15910,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -16650,7 +16597,6 @@ export interface operations {
   verifyDelivery: {
     parameters: {
       query: {
-        /** @example admin@restmail.test */
         to: string;
         subject?: string;
         message_id?: string;
@@ -16812,7 +16758,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -18895,7 +18840,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -19200,7 +19144,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -19525,7 +19468,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;

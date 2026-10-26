@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -50,17 +49,19 @@ func TestAdminDeletes_DocumentedMissingExamples(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var generated map[string]map[string]struct {
+	type deleteExample struct {
 		Request struct {
-			// Raw, because other operations' examples use non-integer IDs on purpose.
-			Path map[string]json.RawMessage `json:"path"`
-			Body interface{}                `json:"body"`
+			Path map[string]uint `json:"path"`
+			Body interface{}     `json:"body"`
 		} `json:"request"`
 		Response struct {
 			Status int         `json:"status"`
 			Body   interface{} `json:"body"`
 		} `json:"response"`
 	}
+	// Decode only the named missing pair. Other operations legitimately use
+	// strings (including invalid numeric inputs) in their path examples.
+	var generated map[string]map[string]json.RawMessage
 	if err := json.Unmarshal(data, &generated); err != nil {
 		t.Fatal(err)
 	}
@@ -91,8 +92,11 @@ func TestAdminDeletes_DocumentedMissingExamples(t *testing.T) {
 			if len(refusals) != 1 || !reflect.DeepEqual(jsonValue(t, refusals["missing"].Value), want) {
 				t.Fatalf("unexpected 404 examples: %+v", refusals)
 			}
-			pair := generated[tc.operation]["missing"]
-			if string(pair.Request.Path["id"]) != strconv.FormatUint(uint64(missing), 10) || pair.Request.Body != nil || pair.Response.Status != 404 || !reflect.DeepEqual(pair.Response.Body, want) {
+			var pair deleteExample
+			if err := json.Unmarshal(generated[tc.operation]["missing"], &pair); err != nil {
+				t.Fatal(err)
+			}
+			if pair.Request.Path["id"] != missing || pair.Request.Body != nil || pair.Response.Status != 404 || !reflect.DeepEqual(pair.Response.Body, want) {
 				t.Fatalf("generated-description pair differs: %+v", pair)
 			}
 

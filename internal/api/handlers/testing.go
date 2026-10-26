@@ -23,12 +23,13 @@ import (
 // TestHandler provides endpoints for testing and debugging the mail system.
 // These endpoints are only available in non-production environments.
 type TestHandler struct {
-	db  *gorm.DB
-	cfg *config.Config
+	db       *gorm.DB
+	cfg      *config.Config
+	resolver *net.Resolver
 }
 
 func NewTestHandler(db *gorm.DB, cfg *config.Config) *TestHandler {
-	return &TestHandler{db: db, cfg: cfg}
+	return &TestHandler{db: db, cfg: cfg, resolver: &net.Resolver{}}
 }
 
 // productionLocked reports whether the destructive/abusable test endpoints
@@ -154,6 +155,8 @@ func (h *TestHandler) verifyDelivery(_ *http.Request, in verifyDeliveryRequest) 
 		var msg models.Message
 		if err := query.Order("received_at DESC").First(&msg).Error; err == nil {
 			return TestDelivery{Found: true, MessageID: &msg.ID, MsgID: &msg.MsgID, Subject: &msg.Subject, Sender: &msg.Sender, ReceivedAt: &msg.ReceivedAt}, nil
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return TestDelivery{}, fmt.Errorf("verify delivered message: %w", err)
 		}
 
 		if time.Now().After(deadline) {
@@ -170,7 +173,7 @@ var probeableServices = map[string]bool{
 
 // probeServices checks connectivity to SMTP, IMAP, POP3, and DNS services.
 // POST /api/v1/admin/test/probe
-func (h *TestHandler) probeServices(_ *http.Request, req probeServicesRequest) (TestProbeResults, error) {
+func (h *TestHandler) probeServices(r *http.Request, req probeServicesRequest) (TestProbeResults, error) {
 	if h.productionLocked() {
 		return TestProbeResults{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "test endpoints disabled in production")
 	}
@@ -205,17 +208,21 @@ func (h *TestHandler) probeServices(_ *http.Request, req probeServicesRequest) (
 		// 587, 143 or 110 to reach. `smtp` is inbound relay on 25, the one listener a
 		// plain TCP probe still describes accurately.
 		case "smtp":
-			results.SMTP = probePtr(probeTCP(req.Host, h.cfg.SMTPPortInbound, timeout))
+			results.SMTP = probePtr(probeTCP(r.Context(), req.Host, h.cfg.SMTPPortInbound, timeout))
 		case "smtp_submission":
-			results.SMTPSubmission = probePtr(probeTCP(req.Host, h.cfg.SMTPPortSubmissionTLS, timeout))
+			results.SMTPSubmission = probePtr(probeTCP(r.Context(), req.Host, h.cfg.SMTPPortSubmissionTLS, timeout))
 		case "imap":
-			results.IMAP = probePtr(probeTCP(req.Host, h.cfg.IMAPTLSPort, timeout))
+			results.IMAP = probePtr(probeTCP(r.Context(), req.Host, h.cfg.IMAPTLSPort, timeout))
 		case "pop3":
-			results.POP3 = probePtr(probeTCP(req.Host, h.cfg.POP3TLSPort, timeout))
+			results.POP3 = probePtr(probeTCP(r.Context(), req.Host, h.cfg.POP3TLSPort, timeout))
 		case "dns":
-			results.DNS = probePtr(probeDNS("mail1.test", timeout))
+			results.DNS = probePtr(h.probeDNS(r.Context(), "mail1.test", timeout))
 		case "db":
-			results.DB = probePtr(probeDB(h.db))
+			result, err := probeDB(r.Context(), h.db, timeout)
+			if err != nil {
+				return TestProbeResults{}, err
+			}
+			results.DB = probePtr(result)
 		}
 	}
 
@@ -398,10 +405,11 @@ func clearTestData(tx *gorm.DB) error {
 
 // --- helpers ---
 
-func probeTCP(host string, port int, timeout time.Duration) TestProbeResult {
+func probeTCP(ctx context.Context, host string, port int, timeout time.Duration) TestProbeResult {
 	addr := net.JoinHostPort(host, fmt.Sprintf("%d", port))
 	start := time.Now()
-	conn, err := net.DialTimeout("tcp", addr, timeout)
+	dialer := net.Dialer{Timeout: timeout}
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	latency := time.Since(start)
 	if err != nil {
 		return TestProbeResult{
@@ -419,12 +427,11 @@ func probeTCP(host string, port int, timeout time.Duration) TestProbeResult {
 	}
 }
 
-func probeDNS(domain string, timeout time.Duration) TestProbeResult {
-	resolver := &net.Resolver{}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+func (h *TestHandler) probeDNS(ctx context.Context, domain string, timeout time.Duration) TestProbeResult {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	start := time.Now()
-	records, err := resolver.LookupMX(ctx, domain)
+	records, err := h.resolver.LookupMX(ctx, domain)
 	latency := time.Since(start)
 	if err != nil {
 		return TestProbeResult{
@@ -446,16 +453,20 @@ func probeDNS(domain string, timeout time.Duration) TestProbeResult {
 	}
 }
 
-func probeDB(db *gorm.DB) TestProbeResult {
+func probeDB(ctx context.Context, db *gorm.DB, timeout time.Duration) (TestProbeResult, error) {
 	start := time.Now()
 	sqlDB, err := db.DB()
 	if err != nil {
-		return TestProbeResult{Status: "error", Error: err.Error()}
+		// Failure to obtain the probe's database handle is an internal setup
+		// failure; an actual ping failure remains a service diagnostic below.
+		return TestProbeResult{}, fmt.Errorf("open database probe: %w", err)
 	}
-	if err := sqlDB.Ping(); err != nil {
-		return TestProbeResult{Status: "error", Error: err.Error(), Latency: time.Since(start).String()}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	if err := sqlDB.PingContext(ctx); err != nil {
+		return TestProbeResult{Status: "error", Error: err.Error(), Latency: time.Since(start).String()}, nil
 	}
-	return TestProbeResult{Status: "ok", Latency: time.Since(start).String()}
+	return TestProbeResult{Status: "ok", Latency: time.Since(start).String()}, nil
 }
 
 // seedTestData creates the standard test domains, accounts (each with the
