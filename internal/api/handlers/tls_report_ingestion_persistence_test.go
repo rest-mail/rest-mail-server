@@ -72,7 +72,7 @@ func TestTLSIngestionPersistence(t *testing.T) {
 		t.Fatal("stored policy fields, unknown-domain skip or extension details changed")
 	}
 	for _, row := range rows {
-		if row.RawReport != raw || row.ReportingOrg != "Fixture Reporter" || row.StartDate.Format(time.RFC3339) != "2026-10-16T00:00:00Z" || row.EndDate.Format(time.RFC3339) != "2026-10-16T23:59:59Z" || row.ReceivedAt.Before(start) || row.ReceivedAt.After(end) {
+		if row.RawReport != raw || row.ReportingOrg != "Fixture Reporter" || row.StartDate.UTC().Format(time.RFC3339) != "2026-10-16T00:00:00Z" || row.EndDate.UTC().Format(time.RFC3339) != "2026-10-16T23:59:59Z" || row.ReceivedAt.Before(start) || row.ReceivedAt.After(end) {
 			t.Fatal("persisted original report or timestamps changed")
 		}
 	}
