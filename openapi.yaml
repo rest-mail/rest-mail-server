@@ -10450,6 +10450,22 @@ paths:
           application/json:
             schema:
               "$ref": "#/components/schemas/ImportMessageBody"
+            # Named, as are the responses they produce. created goes to the
+            # fixture admin's own INBOX; a rerun skips it as a duplicate, still 200.
+            examples:
+              created:
+                value:
+                  folder: INBOX
+                  flags: ['\Seen']
+                  internal_date: '2020-01-02T03:04:05Z'
+                  raw_message: TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo=
+              body_array:
+                value: []
+              invalid_base64:
+                value:
+                  folder: INBOX
+                  internal_date: '2020-01-02T03:04:05Z'
+                  raw_message: '!not-base64!'
         required: true
       responses:
         '200':
@@ -10457,12 +10473,26 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Data-ImportMessageResult"
+              examples:
+                created:
+                  value:
+                    data:
+                      id: 41
+                      imported: true
+                      message_id: <history@example.test>
+                      folder: INBOX
           description: OK
         '400':
           content:
             application/json:
               schema:
                 "$ref": "#/components/schemas/ErrorResponse"
+              examples:
+                body_array:
+                  value:
+                    error:
+                      code: bad_request
+                      message: Invalid request body
           description: Bad Request
         '401':
           content:
@@ -10501,6 +10531,15 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/ValidationErrorResponse"
+              examples:
+                invalid_base64:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          raw_message: must be a base64 string
           description: Unprocessable Entity
         '500':
           content:
