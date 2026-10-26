@@ -4919,6 +4919,13 @@ paths:
                         fields:
                           source_address: must be a valid email address
 
+        "429":
+          description: Authentication refusals exceeded the configured rate limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/admin/aliases/{id}:
     parameters:
       - $ref: "#/components/parameters/ResourceId"
@@ -5053,6 +5060,12 @@ paths:
                       details:
                         fields:
                           destination_address: must be a valid email address
+        "429":
+          description: Authentication refusals exceeded the configured rate limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
       parameters:
         - name: id
@@ -5877,6 +5890,13 @@ paths:
                         fields:
                           enabled: must be a boolean
 
+        "429":
+          description: Authentication refusals exceeded the configured rate limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/admin/custom-filters/validate:
     post:
       operationId: validateCustomFilter
@@ -5964,6 +5984,13 @@ paths:
           description: >-
             JS filter sidecar unavailable, or it refused the API's token
             (JS_FILTER_TOKEN differs between the API and the sidecar)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+        "429":
+          description: Authentication refusals exceeded the configured rate limit
           content:
             application/json:
               schema:
@@ -6145,6 +6172,12 @@ paths:
                       message: Request body failed validation
                       details:
                         fields: {config: must be an object}
+        "429":
+          description: Authentication refusals exceeded the configured rate limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
       parameters:
         - name: id
@@ -11455,10 +11488,10 @@ components:
           type: integer
         source_address:
           type: string
-          format: email
+          format: idn-email
         destination_address:
           type: string
-          format: email
+          description: Remote address retaining its submitted display name, quoting and internationalized spelling
         active:
           type: boolean
         created_at:

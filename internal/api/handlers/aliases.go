@@ -11,6 +11,7 @@ import (
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/db/repositories"
 	rmail "github.com/restmail/restmail/internal/mail"
 	"golang.org/x/text/unicode/norm"
 	"gorm.io/gorm"
@@ -59,20 +60,20 @@ type createAliasRequest struct {
 func (h *AliasHandler) create(r *http.Request, in createAliasRequest) (Alias, error) {
 	req := in
 
-	errors := map[string]string{}
+	fieldErrors := map[string]string{}
 	if req.SourceAddress == "" {
-		errors["source_address"] = "required"
+		fieldErrors["source_address"] = "required"
 	}
 	if req.DestinationAddress == "" {
-		errors["destination_address"] = "required"
+		fieldErrors["destination_address"] = "required"
 	} else if rmail.ValidateAddress(req.DestinationAddress) != nil {
-		errors["destination_address"] = "must be a valid email address"
+		fieldErrors["destination_address"] = "must be a valid email address"
 	}
-	if len(errors) > 0 {
-		return Alias{}, endpoint.Invalid(errors)
+	if len(fieldErrors) > 0 {
+		return Alias{}, endpoint.Invalid(fieldErrors)
 	}
 
-	// The source must be one mail address, as the spec's format: email says,
+	// The source must be one mail address, including internationalized identities,
 	// before its domain is looked up (#388): an "@" alone let "@domain",
 	// "local@", two addresses and CR/LF-injected values through.
 	if rmail.ValidateAddress(req.SourceAddress) != nil {
@@ -99,8 +100,11 @@ func (h *AliasHandler) create(r *http.Request, in createAliasRequest) (Alias, er
 		return Alias{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "Insufficient permissions")
 	}
 	var domain models.Domain
-	if err := h.db.Where("name = ?", domainName).First(&domain).Error; err != nil {
-		return Alias{}, endpoint.Refuse(http.StatusNotFound, "domain_not_found", "Domain not found for source address")
+	if err := h.db.WithContext(r.Context()).Where("name = ?", domainName).First(&domain).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return Alias{}, endpoint.Refuse(http.StatusNotFound, "domain_not_found", "Domain not found for source address")
+		}
+		return Alias{}, fmt.Errorf("find alias source domain: %w", err)
 	}
 
 	alias := models.Alias{
@@ -110,8 +114,11 @@ func (h *AliasHandler) create(r *http.Request, in createAliasRequest) (Alias, er
 		Active:             true,
 	}
 
-	if err := h.db.Create(&alias).Error; err != nil {
-		return Alias{}, endpoint.Refuse(http.StatusConflict, "already_exists", "Alias already exists")
+	if err := h.db.WithContext(r.Context()).Create(&alias).Error; err != nil {
+		if repositories.IsUniqueViolation(err) {
+			return Alias{}, endpoint.Refuse(http.StatusConflict, "already_exists", "Alias already exists")
+		}
+		return Alias{}, fmt.Errorf("create alias: %w", err)
 	}
 
 	return aliasOf(alias), nil
@@ -141,8 +148,11 @@ func (h *AliasHandler) update(r *http.Request, in updateAliasInput) (Alias, erro
 	id := in.ID
 
 	var alias models.Alias
-	if err := h.db.First(&alias, id).Error; err != nil {
-		return Alias{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Alias not found")
+	if err := h.db.WithContext(r.Context()).First(&alias, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return Alias{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Alias not found")
+		}
+		return Alias{}, fmt.Errorf("find alias for update: %w", err)
 	}
 
 	req := in.Body
@@ -159,12 +169,17 @@ func (h *AliasHandler) update(r *http.Request, in updateAliasInput) (Alias, erro
 	}
 
 	if len(updates) > 0 {
-		if err := h.db.Model(&alias).Updates(updates).Error; err != nil {
+		if err := h.db.WithContext(r.Context()).Model(&alias).Updates(updates).Error; err != nil {
 			return Alias{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to update alias")
 		}
 	}
 
-	h.db.Preload("Domain").First(&alias, id)
+	if err := h.db.WithContext(r.Context()).Preload("Domain").First(&alias, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return Alias{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Alias not found")
+		}
+		return Alias{}, fmt.Errorf("reload updated alias: %w", err)
+	}
 	redactAdminDomain(r, &alias.Domain)
 	return aliasOf(alias), nil
 }
