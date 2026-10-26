@@ -9904,6 +9904,8 @@ paths:
                   to: admin@restmail.test
                   subject: Test
                   body: A test message.
+              non_object:
+                value: []
               # No sender: refused before any mailbox is looked up. The
               # refusal names only the missing sender.
               from_missing:
@@ -9948,6 +9950,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                non_object:
+                  value:
+                    error:
+                      code: bad_request
+                      message: Invalid request body
         "403":
           description: Wildcard capability or cookie CSRF is missing
           content:
