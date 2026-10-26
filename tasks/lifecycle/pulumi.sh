@@ -8,7 +8,7 @@
 #
 # The admin password is made here and shown once; the stack keeps only a bcrypt
 # hash of it, an ordinary config value, which nobody can sign in with. So no
-# step here needs the stack's passphrase.
+# step here needs the stack's passphrase unless APNs secret configuration is requested.
 #
 # install   sets the config, prints the code (pulumi-code.sh), waits for you to
 #           add it, proves with `pulumi preview` that the code and the config
@@ -30,6 +30,8 @@ here=$(dirname "$0")
 . "$here/lib.sh"
 # shellcheck source=owner-key.sh
 . "$here/owner-key.sh"
+# shellcheck source=pulumi-apns.sh
+. "$here/pulumi-apns.sh"
 
 need pulumi jq helm
 mode=${1:-}
@@ -64,14 +66,21 @@ runtime() {
 # other: wrong stack, wrong config namespace, wrong project all show up here.
 preview_release() {
   local out
-  out=$(p preview --json 2>"$preview_err") || return 1
-  jq -c --arg n "$NAME" '[.steps[]?
-    | select(.newState.type == "kubernetes:helm.sh/v3:Release")
-    | select(.newState.inputs.name == $n)
-    | {op, urn, name: .newState.inputs.name,
-       hostname: .newState.inputs.values.mailserver.hostname,
-       version: .newState.inputs.version}][0] // empty' <<<"$out"
+  out=$(p preview --json --show-sames 2>"$preview_err") || return 1
+  jq -c --arg name "$NAME" --arg namespace "$NAMESPACE" -f "$here/pulumi-preview.jq" <<<"$out"
 }
+# Target the component and its declared children explicitly. A release-only
+# target cannot create a new namespace or credential Secret it depends on.
+apply_preview() {
+  local found=$1 target
+  local -a targets=()
+  while IFS= read -r target; do
+    [ -n "$target" ] && targets+=(--target "$target")
+  done < <(jq -r '.targets[]' <<<"$found")
+  [ "${#targets[@]}" -gt 0 ] || die "Preview returned no REST Mail deployment targets."
+  p up --yes --skip-preview "${targets[@]}"
+}
+
 preview_err=$(private_tmp)
 preview_failed() {
   err "pulumi preview failed, so nothing can be checked yet:" "" "$(tail -n 20 "$preview_err")" ""
@@ -117,6 +126,7 @@ install() {
   else
     version=${VERSION:-}
   fi
+  configure_apns
   # An explicit file replaces the managed value; omission preserves it.
   owner_key=''
   if [ -n "${OWNER_KEY:-}" ] || [ -z "$stack" ] || ! config_has ownerKeys || [ -z "$(config_get ownerKeys)" ]; then
@@ -209,12 +219,12 @@ EOF
     "It should read $NAME:hostname from config, as the printed code does."
   say "pulumi preview: would $(jq -r .op <<<"$found") Helm release \"$NAME\" as $HOST, chart $(jq -r .version <<<"$found")."
 
-  if ! yes_no "Run pulumi up to install it now (the release only, nothing else in the stack)?"; then
+  if ! yes_no "Run pulumi up to install REST Mail and its component resources only?"; then
     say "" "Deploy it however you deploy — pulumi up, or your pipeline — then check it:" \
       "  chore server:verify --name $NAME --namespace $NAMESPACE"
     exit 0
   fi
-  p up --yes --skip-preview --target "$(jq -r .urn <<<"$found")" || die "pulumi up failed (above)."
+  apply_preview "$found" || die "pulumi up failed (above)."
   wait_and_verify "$password"
 }
 
@@ -274,7 +284,7 @@ upgrade() {
     refuse "pulumi preview does not pick up the new version: the program does not read $NAME:chartVersion." \
       "The config is back to $from. Make the program read it, as install:pulumi's code does."
   fi
-  p up --yes --skip-preview --target "$urn" || die "pulumi up failed (above). To put the config back: pulumi config set $NAME:chartVersion $from"
+  apply_preview "$found" || die "pulumi up failed (above). To put the config back: pulumi config set $NAME:chartVersion $from"
   wait_and_verify
   local verified=$?
   if [ "$verified" = "$EXIT_OUTSIDE" ]; then
