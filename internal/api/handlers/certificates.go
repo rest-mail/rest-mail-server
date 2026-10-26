@@ -4,6 +4,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -123,7 +124,10 @@ func (h *CertificateHandler) createCertificate(_ *http.Request, req createCertif
 func (h *CertificateHandler) deleteCertificate(_ *http.Request, in certificatePath) (endpoint.Empty, error) {
 	var cert models.Certificate
 	if err := h.db.First(&cert, in.ID).Error; err != nil {
-		return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Certificate not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Certificate not found")
+		}
+		return endpoint.Empty{}, fmt.Errorf("load certificate for deletion: %w", err)
 	}
 
 	if err := h.db.Delete(&cert).Error; err != nil {

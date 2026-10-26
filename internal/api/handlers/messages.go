@@ -1266,23 +1266,35 @@ func (h *MessageHandler) deleteFolder(r *http.Request, in folderPath) (endpoint.
 		return endpoint.Empty{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "Cannot delete standard folder")
 	}
 
-	// Sum message sizes for quota adjustment
-	var totalSize int64
-	h.db.Model(&models.Message{}).
-		Where("mailbox_id = ? AND folder = ?", mailboxID, folderName).
-		Select("COALESCE(SUM(size_bytes), 0)").
-		Scan(&totalSize)
+	// Removing the folder and adjusting its mailbox quota must succeed together.
+	// In particular, a failed quota update must not leave the messages deleted.
+	if err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
+		var totalSize int64
+		if err := tx.Model(&models.Message{}).
+			Where("mailbox_id = ? AND folder = ?", mailboxID, folderName).
+			Select("COALESCE(SUM(size_bytes), 0)").
+			Scan(&totalSize).Error; err != nil {
+			return fmt.Errorf("sum folder size for deletion: %w", err)
+		}
 
-	result := h.db.Where("mailbox_id = ? AND folder = ?", mailboxID, folderName).
-		Delete(&models.Message{})
-	if result.RowsAffected == 0 {
-		return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Folder not found")
-	}
+		result := tx.Where("mailbox_id = ? AND folder = ?", mailboxID, folderName).
+			Delete(&models.Message{})
+		if result.Error != nil {
+			return fmt.Errorf("delete folder messages: %w", result.Error)
+		}
+		if result.RowsAffected == 0 {
+			return endpoint.Refuse(http.StatusNotFound, "not_found", "Folder not found")
+		}
 
-	// Update quota
-	if totalSize > 0 {
-		h.db.Model(&models.Mailbox{}).Where("id = ?", mailboxID).
-			Update("quota_used_bytes", gorm.Expr("GREATEST(quota_used_bytes - ?, 0)", totalSize))
+		if totalSize > 0 {
+			if err := tx.Model(&models.Mailbox{}).Where("id = ?", mailboxID).
+				Update("quota_used_bytes", gorm.Expr("GREATEST(quota_used_bytes - ?, 0)", totalSize)).Error; err != nil {
+				return fmt.Errorf("adjust quota after folder deletion: %w", err)
+			}
+		}
+		return nil
+	}); err != nil {
+		return endpoint.Empty{}, err
 	}
 
 	return endpoint.Empty{}, nil
