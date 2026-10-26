@@ -635,6 +635,306 @@
       }
     }
   },
+  "bounceQueueEntry": {
+    "already_delivered": {
+      "description": "The existing single-entry bounce action accepts an entry regardless of its prior status; this contract change preserves that behavior and does not infer the bulk action transition policy.",
+      "request": {
+        "path": {
+          "id": 4
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "status": "bounced"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "already_delivering": {
+      "request": {
+        "path": {
+          "id": 7
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "status": "bounced"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "deferred": {
+      "request": {
+        "path": {
+          "id": 2
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "status": "bounced"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_scope": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "found": {
+      "description": "Production routes, actual JWT/session and capability middleware, controlled grant-cache states and actual GORM ID-bound lookups/mutations are exercised. Mutation fields and failure-before-write boundaries are captured. SQL snapshots prove wiring, not PostgreSQL transactions, state races, audit persistence or actual mail delivery.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "status": "bounced"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_format": {
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "lookup_unavailable": {
+      "request": {
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Queue entry not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "permission_store_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "read_only": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "required_capability": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "status": "bounced"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "setup_required": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "bulkBounceQueue": {
     "by_filter": {
       "request": {
@@ -3248,6 +3548,238 @@
             "message": "Pipeline not found"
           }
         }
+      }
+    }
+  },
+  "deleteQueueEntry": {
+    "deferred": {
+      "request": {
+        "path": {
+          "id": 2
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "domain_scope": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "found": {
+      "description": "Production routes, actual JWT/session and capability middleware, controlled grant-cache states and actual GORM ID-bound lookups/mutations are exercised. Mutation fields and failure-before-write boundaries are captured. SQL snapshots prove wiring, not PostgreSQL transactions, state races, audit persistence or actual mail delivery.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "internal_error": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_format": {
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Queue entry not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "permission_store_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "read_only": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "required_capability": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "session_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "setup_required": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },
@@ -24256,6 +24788,341 @@
       }
     }
   },
+  "retryQueueEntry": {
+    "already_bounced": {
+      "request": {
+        "path": {
+          "id": 5
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Only pending or deferred entries can be retried"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "already_delivered": {
+      "request": {
+        "path": {
+          "id": 4
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Only pending or deferred entries can be retried"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "already_delivering": {
+      "request": {
+        "path": {
+          "id": 7
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Only pending or deferred entries can be retried"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "deferred": {
+      "request": {
+        "path": {
+          "id": 2
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "status": "retrying"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_scope": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "expired": {
+      "request": {
+        "path": {
+          "id": 6
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Only pending or deferred entries can be retried"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "found": {
+      "description": "Production routes, actual JWT/session and capability middleware, controlled grant-cache states and actual GORM ID-bound lookups/mutations are exercised. Mutation fields and failure-before-write boundaries are captured. SQL snapshots prove wiring, not PostgreSQL transactions, state races, audit persistence or actual mail delivery.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "status": "retrying"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_format": {
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "lookup_unavailable": {
+      "request": {
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Queue entry not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "permission_store_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "read_only": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "required_capability": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "status": "retrying"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "setup_required": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "saveDraft": {
     "empty": {
       "summary": "Start an empty draft in the signed-in account",
@@ -27497,873 +28364,6 @@
           }
         },
         "mediaType": "application/json"
-      }
-    }
-  },
-  "retryQueueEntry": {
-    "internal_error": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 500,
-        "body": {
-          "error": {
-            "code": "internal_error",
-            "message": "Internal server error"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "request_too_large": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 413,
-        "body": {
-          "error": {
-            "code": "request_too_large",
-            "message": "Request body too large"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "session_unavailable": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 503,
-        "body": {
-          "error": {
-            "code": "unavailable",
-            "message": "Could not verify the session"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "setup_required": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "setup_required",
-            "message": "Finish setting up this account first: a new password and two-factor authentication"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "unauthenticated": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 401,
-        "body": {
-          "error": {
-            "code": "unauthorized",
-            "message": "Missing authorization header"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "domain_scope": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
-          }
-        }
-      }
-    },
-    "read_only": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
-          }
-        }
-      }
-    },
-    "permission_store_unavailable": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 503,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "unavailable",
-            "message": "Could not verify permissions"
-          }
-        }
-      }
-    },
-    "invalid_id": {
-      "request": {
-        "path": {
-          "id": 0
-        },
-        "invalid": true
-      },
-      "response": {
-        "status": 422,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "validation_failed",
-            "message": "Path parameters failed validation",
-            "details": {
-              "fields": {
-                "id": "must be at least 1"
-              }
-            }
-          }
-        }
-      }
-    },
-    "invalid_format": {
-      "request": {
-        "path": {
-          "id": "not-an-integer"
-        },
-        "invalid": true
-      },
-      "response": {
-        "status": 422,
-        "body": {
-          "error": {
-            "code": "validation_failed",
-            "message": "Path parameters failed validation",
-            "details": {
-              "fields": {
-                "id": "must be a non-negative integer"
-              }
-            }
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "found": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 200,
-        "mediaType": "application/json",
-        "body": {
-          "data": {
-            "status": "retrying"
-          }
-        }
-      },
-      "description": "Production routes, actual JWT/session and capability middleware, controlled grant-cache states and actual GORM ID-bound lookups/mutations are exercised. Mutation fields and failure-before-write boundaries are captured. SQL snapshots prove wiring, not PostgreSQL transactions, state races, audit persistence or actual mail delivery."
-    },
-    "required_capability": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 200,
-        "mediaType": "application/json",
-        "body": {
-          "data": {
-            "status": "retrying"
-          }
-        }
-      }
-    },
-    "deferred": {
-      "request": {
-        "path": {
-          "id": 2
-        }
-      },
-      "response": {
-        "status": 200,
-        "mediaType": "application/json",
-        "body": {
-          "data": {
-            "status": "retrying"
-          }
-        }
-      }
-    },
-    "missing": {
-      "request": {
-        "path": {
-          "id": 2147483647
-        }
-      },
-      "response": {
-        "status": 404,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "not_found",
-            "message": "Queue entry not found"
-          }
-        }
-      }
-    },
-    "lookup_unavailable": {
-      "request": {
-        "path": {
-          "id": 3
-        }
-      },
-      "response": {
-        "status": 500,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "internal_error",
-            "message": "Internal server error"
-          }
-        }
-      }
-    },
-    "already_delivered": {
-      "request": {
-        "path": {
-          "id": 4
-        }
-      },
-      "response": {
-        "status": 400,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "bad_request",
-            "message": "Only pending or deferred entries can be retried"
-          }
-        }
-      }
-    },
-    "already_bounced": {
-      "request": {
-        "path": {
-          "id": 5
-        }
-      },
-      "response": {
-        "status": 400,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "bad_request",
-            "message": "Only pending or deferred entries can be retried"
-          }
-        }
-      }
-    },
-    "expired": {
-      "request": {
-        "path": {
-          "id": 6
-        }
-      },
-      "response": {
-        "status": 400,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "bad_request",
-            "message": "Only pending or deferred entries can be retried"
-          }
-        }
-      }
-    },
-    "already_delivering": {
-      "request": {
-        "path": {
-          "id": 7
-        }
-      },
-      "response": {
-        "status": 400,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "bad_request",
-            "message": "Only pending or deferred entries can be retried"
-          }
-        }
-      }
-    }
-  },
-  "bounceQueueEntry": {
-    "internal_error": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 500,
-        "body": {
-          "error": {
-            "code": "internal_error",
-            "message": "Internal server error"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "request_too_large": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 413,
-        "body": {
-          "error": {
-            "code": "request_too_large",
-            "message": "Request body too large"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "session_unavailable": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 503,
-        "body": {
-          "error": {
-            "code": "unavailable",
-            "message": "Could not verify the session"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "setup_required": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "setup_required",
-            "message": "Finish setting up this account first: a new password and two-factor authentication"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "unauthenticated": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 401,
-        "body": {
-          "error": {
-            "code": "unauthorized",
-            "message": "Missing authorization header"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "domain_scope": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
-          }
-        }
-      }
-    },
-    "read_only": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
-          }
-        }
-      }
-    },
-    "permission_store_unavailable": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 503,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "unavailable",
-            "message": "Could not verify permissions"
-          }
-        }
-      }
-    },
-    "invalid_id": {
-      "request": {
-        "path": {
-          "id": 0
-        },
-        "invalid": true
-      },
-      "response": {
-        "status": 422,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "validation_failed",
-            "message": "Path parameters failed validation",
-            "details": {
-              "fields": {
-                "id": "must be at least 1"
-              }
-            }
-          }
-        }
-      }
-    },
-    "invalid_format": {
-      "request": {
-        "path": {
-          "id": "not-an-integer"
-        },
-        "invalid": true
-      },
-      "response": {
-        "status": 422,
-        "body": {
-          "error": {
-            "code": "validation_failed",
-            "message": "Path parameters failed validation",
-            "details": {
-              "fields": {
-                "id": "must be a non-negative integer"
-              }
-            }
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "found": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 200,
-        "mediaType": "application/json",
-        "body": {
-          "data": {
-            "status": "bounced"
-          }
-        }
-      },
-      "description": "Production routes, actual JWT/session and capability middleware, controlled grant-cache states and actual GORM ID-bound lookups/mutations are exercised. Mutation fields and failure-before-write boundaries are captured. SQL snapshots prove wiring, not PostgreSQL transactions, state races, audit persistence or actual mail delivery."
-    },
-    "required_capability": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 200,
-        "mediaType": "application/json",
-        "body": {
-          "data": {
-            "status": "bounced"
-          }
-        }
-      }
-    },
-    "deferred": {
-      "request": {
-        "path": {
-          "id": 2
-        }
-      },
-      "response": {
-        "status": 200,
-        "mediaType": "application/json",
-        "body": {
-          "data": {
-            "status": "bounced"
-          }
-        }
-      }
-    },
-    "missing": {
-      "request": {
-        "path": {
-          "id": 2147483647
-        }
-      },
-      "response": {
-        "status": 404,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "not_found",
-            "message": "Queue entry not found"
-          }
-        }
-      }
-    },
-    "lookup_unavailable": {
-      "request": {
-        "path": {
-          "id": 3
-        }
-      },
-      "response": {
-        "status": 500,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "internal_error",
-            "message": "Internal server error"
-          }
-        }
-      }
-    },
-    "already_delivering": {
-      "request": {
-        "path": {
-          "id": 7
-        }
-      },
-      "response": {
-        "status": 200,
-        "mediaType": "application/json",
-        "body": {
-          "data": {
-            "status": "bounced"
-          }
-        }
-      }
-    },
-    "already_delivered": {
-      "request": {
-        "path": {
-          "id": 4
-        }
-      },
-      "response": {
-        "status": 200,
-        "mediaType": "application/json",
-        "body": {
-          "data": {
-            "status": "bounced"
-          }
-        }
-      },
-      "description": "The existing single-entry bounce action accepts an entry regardless of its prior status; this contract change preserves that behavior and does not infer the bulk action transition policy."
-    }
-  },
-  "deleteQueueEntry": {
-    "internal_error": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 500,
-        "body": {
-          "error": {
-            "code": "internal_error",
-            "message": "Internal server error"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "request_too_large": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 413,
-        "body": {
-          "error": {
-            "code": "request_too_large",
-            "message": "Request body too large"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "session_unavailable": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 503,
-        "body": {
-          "error": {
-            "code": "unavailable",
-            "message": "Could not verify the session"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "setup_required": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "setup_required",
-            "message": "Finish setting up this account first: a new password and two-factor authentication"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "unauthenticated": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 401,
-        "body": {
-          "error": {
-            "code": "unauthorized",
-            "message": "Missing authorization header"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "domain_scope": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
-          }
-        }
-      }
-    },
-    "read_only": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
-          }
-        }
-      }
-    },
-    "permission_store_unavailable": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 503,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "unavailable",
-            "message": "Could not verify permissions"
-          }
-        }
-      }
-    },
-    "invalid_id": {
-      "request": {
-        "path": {
-          "id": 0
-        },
-        "invalid": true
-      },
-      "response": {
-        "status": 422,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "validation_failed",
-            "message": "Path parameters failed validation",
-            "details": {
-              "fields": {
-                "id": "must be at least 1"
-              }
-            }
-          }
-        }
-      }
-    },
-    "invalid_format": {
-      "request": {
-        "path": {
-          "id": "not-an-integer"
-        },
-        "invalid": true
-      },
-      "response": {
-        "status": 422,
-        "body": {
-          "error": {
-            "code": "validation_failed",
-            "message": "Path parameters failed validation",
-            "details": {
-              "fields": {
-                "id": "must be a non-negative integer"
-              }
-            }
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "found": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 204
-      },
-      "description": "Production routes, actual JWT/session and capability middleware, controlled grant-cache states and actual GORM ID-bound lookups/mutations are exercised. Mutation fields and failure-before-write boundaries are captured. SQL snapshots prove wiring, not PostgreSQL transactions, state races, audit persistence or actual mail delivery."
-    },
-    "required_capability": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 204
-      }
-    },
-    "deferred": {
-      "request": {
-        "path": {
-          "id": 2
-        }
-      },
-      "response": {
-        "status": 204
-      }
-    },
-    "missing": {
-      "request": {
-        "path": {
-          "id": 2147483647
-        }
-      },
-      "response": {
-        "status": 404,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "not_found",
-            "message": "Queue entry not found"
-          }
-        }
       }
     }
   }
