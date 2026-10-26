@@ -44,8 +44,8 @@ func mailboxOf(m models.Mailbox) Mailbox {
 type Alias struct {
 	ID                 uint      `json:"id"`
 	DomainID           uint      `json:"domain_id"`
-	SourceAddress      string    `json:"source_address" format:"email"`
-	DestinationAddress string    `json:"destination_address" format:"email"`
+	SourceAddress      string    `json:"source_address" format:"idn-email"`
+	DestinationAddress string    `json:"destination_address" description:"Remote address retaining its submitted display name, quoting and internationalized spelling"`
 	Active             bool      `json:"active"`
 	CreatedAt          time.Time `json:"created_at"`
 	Domain             *Domain   `json:"domain,omitempty"`
@@ -133,10 +133,10 @@ func (h *MailboxHandler) Register(rs endpoint.Routes, checks MailboxRouteChecks)
 		Errors: []int{http.StatusNotFound}, Middleware: []endpoint.Middleware{checks.OnMailbox(middleware.CapMailboxesWrite)}}, h.update)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/admin/mailboxes/{id}",
 		OperationID: "deleteMailbox", Summary: "Delete an account", Tags: []string{"Admin: Mailboxes"}, Status: http.StatusNoContent,
-		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusForbidden}, Middleware: []endpoint.Middleware{checks.OnMailbox(middleware.CapMailboxesDel)}}, h.delete)
+		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusForbidden, http.StatusTooManyRequests}, Middleware: []endpoint.Middleware{checks.OnMailbox(middleware.CapMailboxesDel)}}, h.delete)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/admin/mailboxes/{id}/sessions",
 		OperationID: "endMailboxSessions", Summary: "Sign an account out everywhere", Tags: []string{"Admin: Mailboxes"}, Status: http.StatusNoContent,
-		Errors: []int{http.StatusNotFound}, Middleware: []endpoint.Middleware{checks.OnMailbox(middleware.CapMailboxesWrite)}}, h.endSessions)
+		Errors: []int{http.StatusNotFound, http.StatusTooManyRequests}, Middleware: []endpoint.Middleware{checks.OnMailbox(middleware.CapMailboxesWrite)}}, h.endSessions)
 }
 
 // Register mounts the five admin aliases operations with their request and response types.
@@ -149,13 +149,13 @@ func (h *AliasHandler) Register(rs endpoint.Routes, checks AliasRouteChecks) {
 		Errors: []int{http.StatusNotFound}, Middleware: []endpoint.Middleware{checks.OnAlias(middleware.CapMailboxesRead)}}, h.get)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPatch, Path: "/api/v1/admin/aliases/{id}",
 		OperationID: "updateAlias", Summary: "Update an alias", Tags: []string{"Admin: Aliases"}, Status: http.StatusOK,
-		Errors: []int{http.StatusNotFound}, Middleware: []endpoint.Middleware{checks.OnAlias(middleware.CapMailboxesWrite)}}, h.update)
+		Errors: []int{http.StatusNotFound, http.StatusTooManyRequests}, Middleware: []endpoint.Middleware{checks.OnAlias(middleware.CapMailboxesWrite)}}, h.update)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/admin/aliases/{id}",
 		OperationID: "deleteAlias", Summary: "Delete an alias", Tags: []string{"Admin: Aliases"}, Status: http.StatusNoContent,
 		Errors: []int{http.StatusNotFound}, Middleware: []endpoint.Middleware{checks.OnAlias(middleware.CapMailboxesDel)}}, h.delete)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/aliases",
 		OperationID: "createAlias", Summary: "Create a new alias", Tags: []string{"Admin: Aliases"}, Status: http.StatusCreated,
-		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusForbidden}, Middleware: []endpoint.Middleware{checks.OnList(middleware.CapMailboxesWrite)}}, h.create)
+		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusForbidden, http.StatusTooManyRequests}, Middleware: []endpoint.Middleware{checks.OnList(middleware.CapMailboxesWrite)}}, h.create)
 }
 
 // mailboxGrantError preserves the grant API's reachable deletion refusals.

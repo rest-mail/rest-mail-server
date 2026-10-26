@@ -4,6 +4,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -64,11 +65,15 @@ type createCertificateRequest struct {
 	AutoRenew *bool  `json:"auto_renew,omitempty"`
 }
 
-func (h *CertificateHandler) createCertificate(_ *http.Request, req createCertificateRequest) (Certificate, error) {
+func (h *CertificateHandler) createCertificate(r *http.Request, req createCertificateRequest) (Certificate, error) {
 	// Verify domain exists
 	var domain models.Domain
-	if err := h.db.First(&domain, req.DomainID).Error; err != nil {
-		return Certificate{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Domain not found")
+	db := h.db.WithContext(r.Context())
+	if err := db.First(&domain, req.DomainID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return Certificate{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Domain not found")
+		}
+		return Certificate{}, fmt.Errorf("load certificate domain: %w", err)
 	}
 
 	// Parse certificate PEM to extract metadata
@@ -109,12 +114,26 @@ func (h *CertificateHandler) createCertificate(_ *http.Request, req createCertif
 		AutoRenew: autoRenew,
 	}
 
-	if err := h.db.Create(&cert).Error; err != nil {
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		// A pointer keeps an explicit false from being replaced by the model's
+		// database default. The rest of the persisted fields retain their model.
+		row := struct {
+			models.Certificate
+			AutoRenew *bool
+		}{Certificate: cert, AutoRenew: &autoRenew}
+		if err := tx.Table("certificates").Create(&row).Error; err != nil {
+			return err
+		}
+		cert = row.Certificate
+		// Do not commit an upload whose public response cannot be loaded.
+		if err := tx.Preload("Domain").First(&cert, cert.ID).Error; err != nil {
+			return fmt.Errorf("reload uploaded certificate: %w", err)
+		}
+		return nil
+	}); err != nil {
 		return Certificate{}, err
 	}
 
-	// Reload with domain association
-	h.db.Preload("Domain").First(&cert, cert.ID)
 	return certificateOf(cert), nil
 }
 
@@ -123,7 +142,10 @@ func (h *CertificateHandler) createCertificate(_ *http.Request, req createCertif
 func (h *CertificateHandler) deleteCertificate(_ *http.Request, in certificatePath) (endpoint.Empty, error) {
 	var cert models.Certificate
 	if err := h.db.First(&cert, in.ID).Error; err != nil {
-		return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Certificate not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Certificate not found")
+		}
+		return endpoint.Empty{}, fmt.Errorf("load certificate for deletion: %w", err)
 	}
 
 	if err := h.db.Delete(&cert).Error; err != nil {

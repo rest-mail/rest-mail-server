@@ -12,9 +12,9 @@ func TestAdminObservabilityIsDescribedFromItsTypes(t *testing.T) {
 		statuses                     []string
 	}{
 		{"listBans", "/api/v1/admin/bans", "get", "bans:read", []string{"200", "401", "403", "413", "422", "500", "503"}},
-		{"createBan", "/api/v1/admin/bans", "post", "bans:write", []string{"200", "201", "400", "401", "403", "413", "422", "500", "503"}},
+		{"createBan", "/api/v1/admin/bans", "post", "bans:write", []string{"200", "201", "400", "401", "403", "413", "422", "429", "500", "503"}},
 		{"deleteBan", "/api/v1/admin/bans/{id}", "delete", "bans:delete", []string{"204", "401", "403", "413", "422", "500", "503"}},
-		{"unbanIP", "/api/v1/admin/bans/ip/{ip}", "delete", "bans:delete", []string{"204", "401", "403", "404", "413", "422", "500", "503"}},
+		{"unbanIP", "/api/v1/admin/bans/ip/{ip}", "delete", "bans:delete", []string{"204", "401", "403", "404", "413", "500", "503"}},
 		{"getDeliveryLogs", "/api/v1/admin/logs/delivery", "get", "messages:read", []string{"200", "401", "403", "413", "422", "500", "503"}},
 		{"listAuditEntries", "/api/v1/admin/audit", "get", "audit:read", []string{"200", "401", "403", "413", "422", "500", "503"}},
 		{"verifyAuditLog", "/api/v1/admin/audit/verify", "get", "audit:read", []string{"200", "401", "403", "413", "422", "500", "503"}},

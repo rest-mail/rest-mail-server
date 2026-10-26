@@ -150,6 +150,8 @@ class PairedRefusals(unittest.TestCase):
         "validateSieveScript",
         "createContact",
         "setDKIMKey",
+        "acceptInvitation",
+        "importMessage",
     }
 
     def test_exclude_matching_sends_exactly_the_paired_refusals(self):
@@ -203,6 +205,33 @@ class PairedRefusals(unittest.TestCase):
                             )
 
 
+class PreviewFaultScope(unittest.TestCase):
+    def test_fault_exclusions_keep_normal_preview_transactions_counted(self):
+        with open(os.path.join(ROOT, "vertrag.yml")) as file:
+            config = yaml.safe_load(file)
+        patterns = [re.compile(pattern) for pattern in config["exclude-matching"]]
+        paths = {
+            "testPipeline": "/api/v1/admin/pipelines/test",
+            "testFilter": "/api/v1/admin/pipelines/test-filter",
+            "testCustomFilter": "/api/v1/admin/custom-filters/{id}/test",
+        }
+        faults = {
+            "testPipeline": {"500"},
+            "testFilter": {"500"},
+            "testCustomFilter": {"408", "413", "500"},
+        }
+        for operation, path in paths.items():
+            for status in faults[operation] | {"200", "400", "422"}:
+                with self.subTest(operation=operation, status=status):
+                    name = f"{path} > Preview > {status} > application/json"
+                    self.assertEqual(
+                        any(p.search(name) for p in patterns),
+                        status in faults[operation],
+                    )
+        name = "/api/v1/messages/send > Send > 500 > application/json"
+        self.assertFalse(any(p.search(name) for p in patterns))
+
+
 class MissingResourceRefusals(unittest.TestCase):
     def test_only_enabled_operations_send_their_documented_404(self):
         with open(os.path.join(ROOT, "openapi.yaml")) as file:
@@ -249,6 +278,7 @@ class MissingResourceRefusals(unittest.TestCase):
                 "updatePipeline",
                 "deletePipeline",
                 "testPipeline",
+                "inviteAccount",
             },
         )
 

@@ -129,7 +129,7 @@ func TestCertificateCreate_DocumentedResponses(t *testing.T) {
 		statuses = append(statuses, status)
 	}
 	sort.Strings(statuses)
-	if want := []string{"201", "400", "422"}; !reflect.DeepEqual(statuses, want) {
+	if want := []string{"201", "400", "422", "429"}; !reflect.DeepEqual(statuses, want) {
 		t.Errorf("createCertificate documents %v, want %v", statuses, want)
 	}
 	if _, ok := op.Responses["201"].Links["getCertificate"]; !ok {

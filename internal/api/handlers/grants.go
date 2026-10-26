@@ -215,7 +215,7 @@ func (h *GrantHandler) delete(r *http.Request, req grantPath) (endpoint.Empty, e
 	if claims == nil || !claims.HasAMR(auth.AMROTP) {
 		return endpoint.Empty{}, grantChangeError(errTwoFactorRequired)
 	}
-	err := h.db.Transaction(func(tx *gorm.DB) error {
+	err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
 		if err := grants.Lock(tx); err != nil {
 			return err
 		}

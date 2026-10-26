@@ -5,11 +5,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
-	"runtime/debug"
 	"strings"
 	"testing"
 
 	"github.com/restmail/restmail/internal/pipeline/filters"
+	"gorm.io/gorm"
 )
 
 // createPipeline's filters are required and are an array of objects
@@ -18,29 +18,16 @@ import (
 // accepted body must get as far as storing it.
 
 // createPipelineNoDB sends body to CreatePipeline on a handler with no
-// database. reached reports whether the handler got to gorm's Create (which
-// panics on the nil database), checked against the panic's own stack so no
-// other panic passes for it.
+// live database. reached reports whether validation reached the insert;
+// only the controlled callback can mark that boundary as reached.
 func createPipelineNoDB(t *testing.T, body string) (rr *httptest.ResponseRecorder, reached bool) {
 	t.Helper()
-	h := NewPipelineHandler(nil, nil, filters.JSSidecar{})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/pipelines", strings.NewReader(body))
 	rr = httptest.NewRecorder()
-	func() {
-		defer func() {
-			r := recover()
-			if r == nil {
-				return
-			}
-			stack := string(debug.Stack())
-			if !strings.Contains(stack, "gorm.io/gorm.(*DB).Create(") ||
-				!strings.Contains(stack, "handlers.(*PipelineHandler).createPipeline(") {
-				t.Fatalf("%s: panicked outside gorm's Create: %v\n%s", body, r, stack)
-			}
-			reached = true
-		}()
+	reached = runToValidationDB(t, "pipelines", func(db *gorm.DB) {
+		h := NewPipelineHandler(db, nil, filters.JSSidecar{})
 		pipelineRoutes(h).ServeHTTP(rr, req)
-	}()
+	})
 	return rr, reached
 }
 
