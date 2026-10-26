@@ -266,7 +266,10 @@ func (h *PipelineHandler) getMessageTrace(r *http.Request, in pipelinePath) (Mes
 
 	var trace models.MessageTrace
 	if err := h.db.Where("message_id = ?", uint(id)).Order("created_at DESC").First(&trace).Error; err != nil {
-		return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "No pipeline trace for this message")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "No pipeline trace for this message")
+		}
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to get message trace")
 	}
 	return messageTraceOf(trace)
 }
