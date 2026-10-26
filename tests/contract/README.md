@@ -540,7 +540,10 @@ a hosted domain and mailbox for each address a test send probe uses, and,
   collects every password, private key and recovery code the run sent and every
   app password, enrollment secret, recovery code, session token and API key the
   server issued, and fails when any of them appears in another answer or in the
-  audit log, read through the API at the end. vertrag writes its own credentials
+  audit log, read through the API at the end. JSON strings and object keys are
+  decoded before matching, so multiline private keys, Unicode and escaped
+  passwords cannot evade the scan; non-JSON bodies are checked as plain text.
+  vertrag writes its own credentials
   as `<redacted>`, so that string in any answer but sign-in and refresh is a
   finding too. Its tests are `test_secret_scan.py`. The HAR holds fixture
   passwords and is not uploaded with the logs.
