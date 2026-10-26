@@ -10802,11 +10802,14 @@ components:
       additionalProperties: false
       properties:
         client:
+          enum: [native]
           type: string
         password:
+          minLength: 12
           type: string
         token:
           type: string
+      required: [token, password]
       type: object
     Data-loginResponse:
       additionalProperties: false
