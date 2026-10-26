@@ -13,11 +13,13 @@ import (
 	"gorm.io/gorm"
 )
 
-// These bare-domain cases test refusal and cancellation, not lifecycle cleanup
-// of configuration provisioned by POST. That defect is tracked separately in1141.
+// These bare-domain cases test refusal and cancellation. Removal also clears the
+// domain's grants and owned configuration, so those tables exist here too; the
+// cleanup itself is TestDomainCleanupPostgresLifecycleRetentionAndRollback's (#1141).
 func TestDomainRemovalPersistenceAndCancellation(t *testing.T) {
 	db := openDomainMutationScratchDB(t)
-	if err := db.AutoMigrate(&models.Mailbox{}, &models.Alias{}); err != nil {
+	if err := db.AutoMigrate(&models.Mailbox{}, &models.Alias{}, &models.Role{}, &models.Capability{}, &models.RoleCapability{}, &models.Grant{},
+		&models.Pipeline{}, &models.CustomFilter{}, &models.DomainSenderRule{}, &models.Certificate{}, &models.DKIMRotationKey{}, &models.MTASTSPolicy{}, &models.DomainRelay{}, &models.Suppression{}); err != nil {
 		t.Fatal(err)
 	}
 	h := NewDomainHandler(db, nil)
