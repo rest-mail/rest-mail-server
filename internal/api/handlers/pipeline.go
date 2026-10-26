@@ -525,7 +525,7 @@ func (h *PipelineHandler) createCustomFilter(r *http.Request, in createCustomFil
 		models.CustomFilter
 		Enabled *bool
 	}{CustomFilter: cf, Enabled: &cf.Enabled}
-	if err := h.db.Table(cf.TableName()).Create(&row).Error; err != nil {
+	if err := h.db.WithContext(r.Context()).Table(cf.TableName()).Create(&row).Error; err != nil {
 		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to create custom filter")
 	}
 
@@ -577,8 +577,11 @@ func (h *PipelineHandler) updateCustomFilter(r *http.Request, in updateCustomFil
 	id := in.ID
 
 	var cf models.CustomFilter
-	if err := h.db.First(&cf, id).Error; err != nil {
-		return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "Custom filter not found")
+	if err := h.db.WithContext(r.Context()).First(&cf, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "Custom filter not found")
+		}
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to get custom filter")
 	}
 
 	// Config is not a pointer: a pointer leaves an explicit null nil, the same
@@ -616,7 +619,7 @@ func (h *PipelineHandler) updateCustomFilter(r *http.Request, in updateCustomFil
 		return zero, endpoint.Invalid(map[string]string{"config": "must be an object"})
 	}
 
-	if err := h.db.Save(&cf).Error; err != nil {
+	if err := h.db.WithContext(r.Context()).Save(&cf).Error; err != nil {
 		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to update custom filter")
 	}
 
@@ -727,7 +730,10 @@ func (h *PipelineHandler) validateCustomFilter(r *http.Request, in validateCusto
 		return zero, endpoint.Refuse(http.StatusServiceUnavailable, "service_unavailable", jsSidecarRefused)
 	}
 
-	respBody, _ := io.ReadAll(sidecarResp.Body)
+	respBody, err := io.ReadAll(sidecarResp.Body)
+	if err != nil {
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Invalid sidecar response")
+	}
 
 	var result json.RawMessage
 	if err := json.Unmarshal(respBody, &result); err != nil {

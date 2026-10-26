@@ -190,6 +190,7 @@ func (h *PipelineHandler) Register(rs endpoint.Routes, checks PipelineRouteCheck
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/custom-filters",
 		OperationID: "createCustomFilter", Summary: "Create custom filter", Tags: []string{"Admin: Pipelines"},
 		Status:     http.StatusCreated,
+		Errors:     []int{http.StatusTooManyRequests},
 		Middleware: []endpoint.Middleware{checks.At(middleware.CapPipelinesWrite)}}, h.createCustomFilter)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/custom-filters/{id}",
 		OperationID: "getCustomFilter", Summary: "Get custom filter", Tags: []string{"Admin: Pipelines"},
@@ -197,7 +198,7 @@ func (h *PipelineHandler) Register(rs endpoint.Routes, checks PipelineRouteCheck
 		Middleware: []endpoint.Middleware{checks.At(middleware.CapPipelinesRead)}}, h.getCustomFilter)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPatch, Path: "/api/v1/admin/custom-filters/{id}",
 		OperationID: "updateCustomFilter", Summary: "Update custom filter", Tags: []string{"Admin: Pipelines"},
-		Errors:     []int{http.StatusNotFound},
+		Errors:     []int{http.StatusNotFound, http.StatusTooManyRequests},
 		Middleware: []endpoint.Middleware{checks.At(middleware.CapPipelinesWrite)}}, h.updateCustomFilter)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/admin/custom-filters/{id}",
 		OperationID: "deleteCustomFilter", Summary: "Delete custom filter", Tags: []string{"Admin: Pipelines"},
@@ -210,6 +211,6 @@ func (h *PipelineHandler) Register(rs endpoint.Routes, checks PipelineRouteCheck
 		Middleware: []endpoint.Middleware{checks.At(middleware.CapPipelinesWrite), checks.TestThrottle}}, h.testCustomFilter)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/custom-filters/validate",
 		OperationID: "validateCustomFilter", Summary: "Validate custom filter", Tags: []string{"Admin: Pipelines"},
-		Errors:     []int{http.StatusServiceUnavailable},
+		Errors:     []int{http.StatusServiceUnavailable, http.StatusTooManyRequests},
 		Middleware: []endpoint.Middleware{checks.At(middleware.CapPipelinesWrite)}}, h.validateCustomFilter)
 }
