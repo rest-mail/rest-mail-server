@@ -162,6 +162,7 @@
     "setDKIMRotation"
   ],
   "648": [
+    "importMessage",
     "inviteAccount",
     "createAlias",
     "deleteAlias",

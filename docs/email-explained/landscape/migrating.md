@@ -107,10 +107,14 @@ Only when nothing has arrived at the old server for several days:
   permissions, work-factor limits and the API. SHA-crypt and Argon2 hashes
   become bcrypt after a matching password proof, when the password fits
   bcrypt's length limit.
-- **Still to come:** importing mail from IMAP, Maildir or mbox remains in
-  [#734](https://github.com/rest-mail/rest-mail-server/issues/734). Mail can be
-  copied over IMAP with a tool such as imapsync; that cutover still needs proof
-  against REST Mail.
+- **Historical mail:** `restmail import-maildir` and `restmail import-mbox`
+  import supported source formats through a domain-scoped public API, keeping
+  original octets, folders, internal dates and supported flags. Reruns skip
+  existing Message-IDs in the same account and folder. Start with a dry run and
+  read [importing historical mail](../../migrating-mail.md) for format limits,
+  unsupported Deleted/keyword flags and cutover checks.
+- **Remaining migration work:** direct IMAP-source bulk import and the imapsync
+  cutover proof remain in [#734](https://github.com/rest-mail/rest-mail-server/issues/734).
 
 ## Sources
 

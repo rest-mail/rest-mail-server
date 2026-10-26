@@ -10525,6 +10525,145 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
       security: []
+  /api/v1/accounts/{id}/messages/import:
+    post:
+      description: Stores original message octets, folder, supported system flags and
+        required internal_date without delivery rules or notifications. Requires mailboxes:write
+        on the destination. A Message-ID already present in that account and folder is
+        skipped without changing its flags or date. Messages without Message-ID use a
+        deterministic SHA-256 import identity; the raw source remains unchanged. Every
+        attempt is audited; successful imports and skips also receive a transactional
+        messages.import audit entry. The decoded message is bounded by SMTP_MAX_MESSAGE_SIZE
+        (10 MiB by default); the general API body limit may be stricter. Deleted-state
+        and keyword flags are unsupported and refused rather than hidden or discarded.
+      operationId: importMessage
+      parameters:
+      - example: 1
+        in: path
+        name: id
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/ImportMessageBody"
+            # Named, as are the responses they produce. created goes to the
+            # fixture admin's own INBOX; a rerun skips it as a duplicate, still 200.
+            examples:
+              created:
+                value:
+                  folder: INBOX
+                  flags: ['\Seen']
+                  internal_date: '2020-01-02T03:04:05Z'
+                  raw_message: TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo=
+              body_array:
+                value: []
+              invalid_base64:
+                value:
+                  folder: INBOX
+                  internal_date: '2020-01-02T03:04:05Z'
+                  raw_message: '!not-base64!'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Data-ImportMessageResult"
+              examples:
+                created:
+                  value:
+                    data:
+                      id: 41
+                      imported: true
+                      message_id: <history@example.test>
+                      folder: INBOX
+          description: OK
+        '400':
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+              examples:
+                body_array:
+                  value:
+                    error:
+                      code: bad_request
+                      message: Invalid request body
+          description: Bad Request
+        '401':
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+          description: 'unauthorized: no token, a bad one, or a session that has ended'
+        '403':
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+          description: 'Refused before the handler runs: setup_required (the account has
+            not finished setup), csrf_failed (a cookie session''s unsafe request without
+            the CSRF header) or forbidden (the session lacks the capability)'
+        '404':
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+          description: Conflict
+        '413':
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+          description: Request Entity Too Large
+        '422':
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ValidationErrorResponse"
+              examples:
+                invalid_base64:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          raw_message: must be a base64 string
+          description: Unprocessable Entity
+        '500':
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+          description: Internal Server Error
+        '503':
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+          description: 'unavailable: the session or grants check could not be made'
+      security:
+      - CookieAuth:
+        - mailboxes:write
+      - BearerAuth:
+        - mailboxes:write
+      - APIKeyAuth:
+        - mailboxes:write
+      summary: Import one historical message
+      tags:
+      - 'Admin: Mailboxes'
+
 components:
   securitySchemes:
     CookieAuth:
@@ -11336,6 +11475,8 @@ components:
         an empty mailbox.
       required: [id, mailbox_id, folder, sender, subject, is_read, is_flagged, is_starred, is_draft, is_deleted, received_at, created_at, updated_at]
       properties:
+        is_answered:
+          type: boolean
         id:
           type: integer
         mailbox_id:
@@ -11426,6 +11567,10 @@ components:
     UpdateMessageRequest:
       type: object
       properties:
+        is_answered:
+          type:
+          - boolean
+          - 'null'
         is_read:
           type: boolean
         is_flagged:
@@ -11863,6 +12008,10 @@ components:
       type: object
       required: [address, sender]
       properties:
+        is_answered:
+          type:
+          - boolean
+          - 'null'
         address:
           type: string
           format: email
@@ -13719,3 +13868,50 @@ components:
           description: Filter configuration (opaque JSON)
         enabled:
           type: boolean
+
+    ImportMessageBody:
+      additionalProperties: false
+      properties:
+        flags:
+          items:
+            type: string
+          type: array
+        folder:
+          type: string
+        internal_date:
+          format: date-time
+          type: string
+        raw_message:
+          format: byte
+          type: string
+      required:
+      - raw_message
+      - internal_date
+      type: object
+
+    ImportMessageResult:
+      additionalProperties: false
+      properties:
+        folder:
+          type: string
+        id:
+          type: integer
+        imported:
+          type: boolean
+        message_id:
+          type: string
+      required:
+      - id
+      - imported
+      - message_id
+      - folder
+      type: object
+
+    Data-ImportMessageResult:
+      additionalProperties: false
+      properties:
+        data:
+          "$ref": "#/components/schemas/ImportMessageResult"
+      required:
+      - data
+      type: object

@@ -301,6 +301,9 @@ func (h *MessageHandler) updateMessage(r *http.Request, in updateMessageRequest)
 
 	req := in.Body
 	updates := map[string]interface{}{}
+	if req.IsAnswered != nil {
+		updates["is_answered"] = *req.IsAnswered
+	}
 	if req.IsRead != nil {
 		updates["is_read"] = *req.IsRead
 	}
@@ -1017,6 +1020,7 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody)
 		ClientIP:     req.ClientIP,
 		HeloName:     req.HeloName,
 		Folder:       folder,
+		IsAnswered:   req.IsAnswered,
 		IsRead:       req.IsRead,
 		IsFlagged:    req.IsFlagged,
 		IsStarred:    req.IsStarred,
@@ -1574,10 +1578,10 @@ func (h *MessageHandler) getRawMessage(r *http.Request, in messagePath) (endpoin
 	if err != nil {
 		return endpoint.Document{}, err
 	}
-	if msg.RawMessage == "" {
+	if len(msg.Source()) == 0 {
 		return endpoint.Document{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Raw message not available")
 	}
-	return endpoint.Document{ContentType: "message/rfc822", Body: []byte(msg.RawMessage)}, nil
+	return endpoint.Document{ContentType: "message/rfc822", Body: msg.Source()}, nil
 }
 
 // forwardRequest forwards message {id}. from and to are checked in the handler, as they always
@@ -1878,6 +1882,7 @@ type localDeliveryParams struct {
 	// a nil flag / nil-or-zero ReceivedAt keeps the delivery default, so ordinary
 	// inbound mail (which never sets them) is unaffected.
 	Folder     string
+	IsAnswered *bool
 	IsRead     *bool
 	IsFlagged  *bool
 	IsStarred  *bool
@@ -2231,6 +2236,9 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	// applies the client-supplied flags. A nil flag pointer leaves the model
 	// default; a nil-or-zero ReceivedAt leaves the column's `default:now()` to fill
 	// the internal date, so ordinary inbound mail keeps arriving stamped with now().
+	if params.IsAnswered != nil {
+		msg.IsAnswered = *params.IsAnswered
+	}
 	if params.IsRead != nil {
 		msg.IsRead = *params.IsRead
 	}
