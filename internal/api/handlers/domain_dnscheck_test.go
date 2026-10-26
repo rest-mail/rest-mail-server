@@ -51,10 +51,10 @@ func TestDNSCheck_DKIMUsesTheDomainsSelector(t *testing.T) {
 			}
 
 			h := NewDomainHandler(tx, nil)
-			h.lookupMX = func(name string) ([]*net.MX, error) {
+			h.lookupMX = func(_ context.Context, name string) ([]*net.MX, error) {
 				return nil, &net.DNSError{Err: "no such host", Name: name, IsNotFound: true}
 			}
-			h.lookupTXT = func(name string) ([]string, error) {
+			h.lookupTXT = func(_ context.Context, name string) ([]string, error) {
 				if txts, ok := published[name]; ok {
 					return txts, nil
 				}
@@ -125,14 +125,14 @@ func TestDNSCheck_IDNLooksUpALabels(t *testing.T) {
 		}
 		var queried []string
 		h := NewDomainHandler(tx, nil)
-		h.lookupMX = func(name string) ([]*net.MX, error) {
+		h.lookupMX = func(_ context.Context, name string) ([]*net.MX, error) {
 			queried = append(queried, name)
 			if name == ascii {
 				return []*net.MX{{Host: "mx." + ascii + ".", Pref: 10}}, nil
 			}
 			return nil, &net.DNSError{Err: "no such host", Name: name, IsNotFound: true}
 		}
-		h.lookupTXT = func(name string) ([]string, error) {
+		h.lookupTXT = func(_ context.Context, name string) ([]string, error) {
 			queried = append(queried, name)
 			if txts, ok := published[name]; ok {
 				return txts, nil
@@ -168,11 +168,11 @@ func TestDNSCheck_IDNLooksUpALabels(t *testing.T) {
 			t.Fatalf("create domain: %v", err)
 		}
 		h := NewDomainHandler(tx, nil)
-		h.lookupMX = func(name string) ([]*net.MX, error) {
+		h.lookupMX = func(_ context.Context, name string) ([]*net.MX, error) {
 			t.Errorf("looked up MX %q for an invalid name", name)
 			return nil, nil
 		}
-		h.lookupTXT = func(name string) ([]string, error) {
+		h.lookupTXT = func(_ context.Context, name string) ([]string, error) {
 			t.Errorf("looked up TXT %q for an invalid name", name)
 			return nil, nil
 		}

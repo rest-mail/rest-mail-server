@@ -38,7 +38,7 @@ func Maildir(ctx context.Context, directory string, maxBytes int64, visit Visit)
 	if err != nil {
 		return err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	return filepath.WalkDir(directory, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -164,7 +164,7 @@ func Mbox(ctx context.Context, source io.Reader, folder, format string, maxBytes
 			return errors.New("Content-Length-framed mbox is unsupported; export as From-framed mboxrd or RFC4155")
 		}
 		if message.Header.Get("X-IMAP") != "" {
-			return errors.New("Dovecot metadata-only mbox pseudo-message requires an IMAP export; it was not imported as mail")
+			return errors.New("a Dovecot metadata-only mbox pseudo-message requires an IMAP export; it was not imported as mail")
 		}
 		if strings.TrimSpace(message.Header.Get("X-Keywords")) != "" {
 			return errors.New("mbox keywords are unsupported; they were not silently discarded")

@@ -27,7 +27,7 @@ func putFilesystemObject(ctx context.Context, directory, subdir string, data []b
 	if err != nil {
 		return "", "", err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	if err := root.MkdirAll(subdir, 0755); err != nil {
 		return "", "", err
 	}
@@ -38,7 +38,7 @@ func putFilesystemObject(ctx context.Context, directory, subdir string, data []b
 	if err != nil {
 		return "", "", err
 	}
-	defer root.Remove(temporary) // only the unpublished temporary file created here
+	defer func() { _ = root.Remove(temporary) }() // only the unpublished temporary file created here
 	_, writeErr := f.Write(data)
 	closeErr := f.Close()
 	if writeErr != nil {

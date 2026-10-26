@@ -7,7 +7,6 @@ import (
 	"database/sql/driver"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -312,7 +311,7 @@ func TestForwardAttachmentsRealRouteRefusesPartialWrites(t *testing.T) {
 				t.Fatalf("partial/refusal: code=%d body=%s sent=%d parts=%d queued=%d quota=%d; queries=%v", w.Code, w.Body, len(f.c.state.messages), len(f.c.attachments), len(f.c.queue), f.c.state.quota, f.c.queries)
 			}
 			if strings.HasSuffix(tc.mode, "_failure") && !f.c.failed {
-				t.Fatal(fmt.Sprintf("%s fault not reached", tc.mode))
+				t.Fatalf("%s fault not reached", tc.mode)
 			}
 		})
 	}

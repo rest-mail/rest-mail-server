@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rest-mail/go-dkim"
+	"github.com/rest-mail/go-dkim/pkg/dkim"
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"gorm.io/gorm"
 )

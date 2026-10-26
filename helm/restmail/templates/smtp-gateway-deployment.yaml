@@ -128,13 +128,13 @@ spec:
               readOnly: true
           readinessProbe:
             exec:
-              command: ["/usr/bin/drill-hc", "@127.0.0.1", "-p", "5353", "health.dane.invalid.", "A"]
+              command: ["/usr/bin/drill-hc", "-p", "5353", "@127.0.0.1", "health.dane.invalid.", "A"]
             initialDelaySeconds: 2
             periodSeconds: 10
             timeoutSeconds: 3
           livenessProbe:
             exec:
-              command: ["/usr/bin/drill-hc", "@127.0.0.1", "-p", "5353", "health.dane.invalid.", "A"]
+              command: ["/usr/bin/drill-hc", "-p", "5353", "@127.0.0.1", "health.dane.invalid.", "A"]
             initialDelaySeconds: 10
             periodSeconds: 30
             timeoutSeconds: 3
