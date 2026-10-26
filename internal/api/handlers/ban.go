@@ -145,6 +145,9 @@ func (h *BanHandler) unbanIP(_ *http.Request, in unbanIPRequest) (endpoint.Empty
 	ip := in.IP
 
 	result := h.db.Where("ip = ?", ip).Delete(&models.Ban{})
+	if result.Error != nil {
+		return endpoint.Empty{}, fmt.Errorf("unban address: %w", result.Error)
+	}
 	if result.RowsAffected == 0 {
 		return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "No ban found for this IP")
 	}

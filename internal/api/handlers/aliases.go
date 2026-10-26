@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"net/mail"
 	"strings"
@@ -173,7 +174,10 @@ func (h *AliasHandler) delete(r *http.Request, in adminAddressPath) (endpoint.Em
 
 	var alias models.Alias
 	if err := h.db.First(&alias, id).Error; err != nil {
-		return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Alias not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Alias not found")
+		}
+		return endpoint.Empty{}, fmt.Errorf("find alias for deletion: %w", err)
 	}
 
 	if err := h.db.Delete(&alias).Error; err != nil {

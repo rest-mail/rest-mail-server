@@ -277,7 +277,10 @@ func (h *ContactHandler) delete(r *http.Request, in contactPath) (endpoint.Empty
 
 	var contact models.Contact
 	if err := h.db.Where("id = ? AND mailbox_id = ?", in.CID, mailboxID).First(&contact).Error; err != nil {
-		return endpoint.Empty{}, errContactNotFound
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return endpoint.Empty{}, errContactNotFound
+		}
+		return endpoint.Empty{}, fmt.Errorf("find contact for deletion: %w", err)
 	}
 
 	if err := h.db.Delete(&contact).Error; err != nil {
