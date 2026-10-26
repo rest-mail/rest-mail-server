@@ -1476,6 +1476,7 @@
   "deleteMtaStsPolicy": {
     "found": {
       "summary": "The permitted domain policy operation succeeds",
+      "description": "The session holds the required capability at domain:example.com. The real target lookup resolves domain1 and the handler maps stored settings or executes the policy deletion inside GORM transaction callbacks.",
       "request": {
         "path": {
           "id": 1
@@ -1483,11 +1484,11 @@
       },
       "response": {
         "status": 204
-      },
-      "description": "The session holds the required capability at domain:example.com. The real target lookup resolves domain1 and the handler maps stored settings or executes the policy deletion inside GORM transaction callbacks."
+      }
     },
     "internal_error": {
       "summary": "The domain-policy query fails",
+      "description": "A dependency failure is preserved as a sanitized500, rather than mistaken for an absent domain or policy. The real handler and error writer execute against a controlled database fault.",
       "request": {
         "path": {
           "id": 4
@@ -1502,8 +1503,7 @@
           }
         },
         "mediaType": "application/json"
-      },
-      "description": "A dependency failure is preserved as a sanitized500, rather than mistaken for an absent domain or policy. The real handler and error writer execute against a controlled database fault."
+      }
     },
     "invalid_domain": {
       "summary": "The domain ID cannot bind to an integer",
@@ -1549,6 +1549,7 @@
     },
     "outside_domain": {
       "summary": "A grant on another domain is refused",
+      "description": "The setup-complete session holds domains:read only at domain:other.test. The real scope lookup resolves the requested domain1 to example.com, so permission middleware refuses access before listing data.",
       "request": {
         "path": {
           "id": 1
@@ -1563,8 +1564,7 @@
           }
         },
         "mediaType": "application/json"
-      },
-      "description": "The setup-complete session holds domains:read only at domain:other.test. The real scope lookup resolves the requested domain1 to example.com, so permission middleware refuses access before listing data."
+      }
     },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
@@ -2167,6 +2167,8 @@
       }
     },
     "found": {
+      "summary": "The permitted domain policy operation succeeds",
+      "description": "The session holds the required capability at domain:example.com. The real target lookup resolves domain1 and the handler maps stored settings or executes the policy deletion inside GORM transaction callbacks.",
       "request": {
         "path": {
           "id": 1
@@ -2186,12 +2188,11 @@
           }
         },
         "mediaType": "application/json"
-      },
-      "summary": "The permitted domain policy operation succeeds",
-      "description": "The session holds the required capability at domain:example.com. The real target lookup resolves domain1 and the handler maps stored settings or executes the policy deletion inside GORM transaction callbacks."
+      }
     },
     "internal_error": {
       "summary": "The domain-policy query fails",
+      "description": "A dependency failure is preserved as a sanitized500, rather than mistaken for an absent domain or policy. The real handler and error writer execute against a controlled database fault.",
       "request": {
         "path": {
           "id": 4
@@ -2206,8 +2207,7 @@
           }
         },
         "mediaType": "application/json"
-      },
-      "description": "A dependency failure is preserved as a sanitized500, rather than mistaken for an absent domain or policy. The real handler and error writer execute against a controlled database fault."
+      }
     },
     "invalid_domain": {
       "summary": "The domain ID cannot bind to an integer",
@@ -2252,6 +2252,7 @@
     },
     "outside_domain": {
       "summary": "A grant on another domain is refused",
+      "description": "The setup-complete session holds domains:read only at domain:other.test. The real scope lookup resolves the requested domain1 to example.com, so permission middleware refuses access before listing data.",
       "request": {
         "path": {
           "id": 1
@@ -2266,8 +2267,7 @@
           }
         },
         "mediaType": "application/json"
-      },
-      "description": "The setup-complete session holds domains:read only at domain:other.test. The real scope lookup resolves the requested domain1 to example.com, so permission middleware refuses access before listing data."
+      }
     },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
@@ -2464,6 +2464,8 @@
   },
   "getMtaStsPolicy": {
     "found": {
+      "summary": "The permitted domain policy operation succeeds",
+      "description": "The session holds the required capability at domain:example.com. The real target lookup resolves domain1 and the handler maps stored settings or executes the policy deletion inside GORM transaction callbacks.",
       "request": {
         "path": {
           "id": 1
@@ -2496,12 +2498,11 @@
           }
         },
         "mediaType": "application/json"
-      },
-      "summary": "The permitted domain policy operation succeeds",
-      "description": "The session holds the required capability at domain:example.com. The real target lookup resolves domain1 and the handler maps stored settings or executes the policy deletion inside GORM transaction callbacks."
+      }
     },
     "internal_error": {
       "summary": "The domain-policy query fails",
+      "description": "A dependency failure is preserved as a sanitized500, rather than mistaken for an absent domain or policy. The real handler and error writer execute against a controlled database fault.",
       "request": {
         "path": {
           "id": 4
@@ -2516,8 +2517,7 @@
           }
         },
         "mediaType": "application/json"
-      },
-      "description": "A dependency failure is preserved as a sanitized500, rather than mistaken for an absent domain or policy. The real handler and error writer execute against a controlled database fault."
+      }
     },
     "invalid_domain": {
       "summary": "The domain ID cannot bind to an integer",
@@ -2562,6 +2562,7 @@
     },
     "outside_domain": {
       "summary": "A grant on another domain is refused",
+      "description": "The setup-complete session holds domains:read only at domain:other.test. The real scope lookup resolves the requested domain1 to example.com, so permission middleware refuses access before listing data.",
       "request": {
         "path": {
           "id": 1
@@ -2576,8 +2577,7 @@
           }
         },
         "mediaType": "application/json"
-      },
-      "description": "The setup-complete session holds domains:read only at domain:other.test. The real scope lookup resolves the requested domain1 to example.com, so permission middleware refuses access before listing data."
+      }
     },
     "policy_absent": {
       "request": {
