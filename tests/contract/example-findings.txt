@@ -10,8 +10,6 @@ example-invalid createAPIKey/wildcard_capability
 example-invalid createAppPassword/name_control
 example-invalid createAppPassword/name_empty
 example-invalid createAppPassword/name_too_long
-example-invalid createPipeline/direction_missing
-example-invalid createPipeline/filters_missing
 example-invalid probeServices/service_unknown
 example-invalid protocolSignIn/protocol_missing
 example-invalid restmailDeliver/recipients_missing
@@ -21,5 +19,3 @@ example-invalid sendMessage/unsubscribe_not_allowed 422
 example-invalid sendMessage/valid 201
 example-invalid testFilter/filter_name_missing
 example-invalid updateMailbox/password_short
-example-invalid updatePipeline/filters_null
-example-invalid updatePipeline/filters_object

@@ -322,7 +322,7 @@ func (h *PipelineHandler) createPipeline(r *http.Request, in createPipelineReque
 		models.Pipeline
 		Active *bool
 	}{Pipeline: p, Active: &p.Active}
-	if err := h.db.Create(&row).Error; err != nil {
+	if err := h.db.WithContext(r.Context()).Create(&row).Error; err != nil {
 		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to create pipeline")
 	}
 
@@ -335,8 +335,12 @@ func (h *PipelineHandler) updatePipeline(r *http.Request, in updatePipelineReque
 	id := in.ID
 
 	var p models.Pipeline
-	if err := h.db.First(&p, id).Error; err != nil {
-		return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "Pipeline not found")
+	db := h.db.WithContext(r.Context())
+	if err := db.First(&p, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "Pipeline not found")
+		}
+		return zero, fmt.Errorf("load pipeline for update: %w", err)
 	}
 
 	req := in.Body
@@ -362,8 +366,14 @@ func (h *PipelineHandler) updatePipeline(r *http.Request, in updatePipelineReque
 		p.Active = *req.Active
 	}
 
-	if err := h.db.Save(&p).Error; err != nil {
+	// Save falls back to INSERT when its UPDATE finds no row. A concurrent
+	// removal must stay removed, so update only the mutable fields explicitly.
+	result := db.Model(&p).Updates(map[string]interface{}{"filters": p.Filters, "active": p.Active})
+	if result.Error != nil {
 		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to update pipeline")
+	}
+	if result.RowsAffected == 0 {
+		return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "Pipeline not found")
 	}
 
 	return pipelineOf(p), nil

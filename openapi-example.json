@@ -10326,7 +10326,19 @@
             ],
             "active": true,
             "created_at": "2026-01-01T00:00:00Z",
-            "updated_at": "2026-01-01T00:00:00Z"
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
           }
         }
       }
@@ -10341,8 +10353,7 @@
               "config": {}
             }
           ]
-        },
-        "invalid": true
+        }
       },
       "response": {
         "status": 422,
@@ -10364,8 +10375,7 @@
         "body": {
           "domain_id": 1,
           "direction": "inbound"
-        },
-        "invalid": true
+        }
       },
       "response": {
         "status": 422,
@@ -10393,6 +10403,944 @@
           "error": {
             "code": "bad_request",
             "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "write_only": {
+      "summary": "Write only",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "direction": "inbound",
+          "filters": [
+            {
+              "name": "header_validate",
+              "config": {}
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "direction": "inbound",
+            "filters": [
+              {
+                "name": "header_validate",
+                "config": {}
+              }
+            ],
+            "active": true,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "key_write": {
+      "summary": "Key write",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "direction": "inbound",
+          "filters": [
+            {
+              "name": "header_validate",
+              "config": {}
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "direction": "inbound",
+            "filters": [
+              {
+                "name": "header_validate",
+                "config": {}
+              }
+            ],
+            "active": true,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "cookie_session": {
+      "summary": "Cookie session",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "direction": "inbound",
+          "filters": [
+            {
+              "name": "header_validate",
+              "config": {}
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "direction": "inbound",
+            "filters": [
+              {
+                "name": "header_validate",
+                "config": {}
+              }
+            ],
+            "active": true,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "body_boundary": {
+      "summary": "Body boundary",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "direction": "inbound",
+          "filters": [
+            {
+              "name": "header_validate",
+              "config": {}
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "direction": "inbound",
+            "filters": [
+              {
+                "name": "header_validate",
+                "config": {}
+              }
+            ],
+            "active": true,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "read_only": {
+      "summary": "Read only",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "direction": "inbound",
+          "filters": [
+            {
+              "name": "header_validate",
+              "config": {}
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "domain_scope": {
+      "summary": "Domain scope",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "direction": "inbound",
+          "filters": [
+            {
+              "name": "header_validate",
+              "config": {}
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "mailbox_scope": {
+      "summary": "Mailbox scope",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "direction": "inbound",
+          "filters": [
+            {
+              "name": "header_validate",
+              "config": {}
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "wrong_domain": {
+      "summary": "Wrong domain",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "direction": "inbound",
+          "filters": [
+            {
+              "name": "header_validate",
+              "config": {}
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_read": {
+      "summary": "Key read",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "direction": "inbound",
+          "filters": [
+            {
+              "name": "header_validate",
+              "config": {}
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_domain": {
+      "summary": "Key domain",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "direction": "inbound",
+          "filters": [
+            {
+              "name": "header_validate",
+              "config": {}
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_mailbox": {
+      "summary": "Key mailbox",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "direction": "inbound",
+          "filters": [
+            {
+              "name": "header_validate",
+              "config": {}
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_wrong_domain": {
+      "summary": "Key wrong domain",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "direction": "inbound",
+          "filters": [
+            {
+              "name": "header_validate",
+              "config": {}
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_holder_missing": {
+      "summary": "Key holder missing",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "direction": "inbound",
+          "filters": [
+            {
+              "name": "header_validate",
+              "config": {}
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "unauthenticated": {
+      "summary": "Unauthenticated",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "direction": "inbound",
+          "filters": [
+            {
+              "name": "header_validate",
+              "config": {}
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "session_unavailable": {
+      "summary": "Session unavailable",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "direction": "inbound",
+          "filters": [
+            {
+              "name": "header_validate",
+              "config": {}
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        }
+      }
+    },
+    "permission_store_unavailable": {
+      "summary": "Permission store unavailable",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "direction": "inbound",
+          "filters": [
+            {
+              "name": "header_validate",
+              "config": {}
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
+          }
+        }
+      }
+    },
+    "csrf_missing": {
+      "summary": "Csrf missing",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "direction": "inbound",
+          "filters": [
+            {
+              "name": "header_validate",
+              "config": {}
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "csrf_mismatch": {
+      "summary": "Csrf mismatch",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "direction": "inbound",
+          "filters": [
+            {
+              "name": "header_validate",
+              "config": {}
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "rate_limited": {
+      "summary": "Rate limited",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "direction": "inbound",
+          "filters": [
+            {
+              "name": "header_validate",
+              "config": {}
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        }
+      }
+    },
+    "request_too_large": {
+      "summary": "Request too large",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "direction": "inbound",
+          "filters": [
+            {
+              "name": "header_validate",
+              "config": {}
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        }
+      }
+    },
+    "malformed_json": {
+      "summary": "Malformed json",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "direction": "inbound",
+          "filters": [
+            {
+              "name": "header_validate",
+              "config": {}
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "insert_unavailable": {
+      "summary": "Insert unavailable",
+      "request": {
+        "body": {
+          "domain_id": 4,
+          "direction": "inbound",
+          "filters": [
+            {
+              "name": "header_validate",
+              "config": {}
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to create pipeline"
+          }
+        }
+      }
+    },
+    "cancelled_after_lookup": {
+      "summary": "Cancelled after lookup",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "direction": "inbound",
+          "filters": [
+            {
+              "name": "header_validate",
+              "config": {}
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to create pipeline"
+          }
+        }
+      }
+    },
+    "disabled": {
+      "summary": "Disabled",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "direction": "inbound",
+          "filters": [
+            {
+              "name": "header_validate",
+              "config": {}
+            }
+          ],
+          "active": false
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "direction": "inbound",
+            "filters": [
+              {
+                "name": "header_validate",
+                "config": {}
+              }
+            ],
+            "active": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "active_null": {
+      "summary": "Active null",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "direction": "inbound",
+          "filters": [
+            {
+              "name": "header_validate",
+              "config": {}
+            }
+          ],
+          "active": null
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "direction": "inbound",
+            "filters": [
+              {
+                "name": "header_validate",
+                "config": {}
+              }
+            ],
+            "active": true,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "outbound": {
+      "summary": "Outbound",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "direction": "outbound",
+          "filters": [
+            {
+              "name": "header_validate",
+              "config": {}
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "direction": "outbound",
+            "filters": [
+              {
+                "name": "header_validate",
+                "config": {}
+              }
+            ],
+            "active": true,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "global_pipeline": {
+      "summary": "Global pipeline",
+      "request": {
+        "body": {
+          "domain_id": 0,
+          "direction": "inbound",
+          "filters": [
+            {
+              "name": "header_validate",
+              "config": {}
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 0,
+            "direction": "inbound",
+            "filters": [
+              {
+                "name": "header_validate",
+                "config": {}
+              }
+            ],
+            "active": true,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "empty_filters": {
+      "summary": "Empty filters",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "direction": "inbound",
+          "filters": []
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "direction": "inbound",
+            "filters": [],
+            "active": true,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "sieve_valid": {
+      "summary": "Sieve valid",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "direction": "inbound",
+          "filters": [
+            {
+              "name": "sieve",
+              "config": {
+                "script": "keep;"
+              }
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "direction": "inbound",
+            "filters": [
+              {
+                "name": "sieve",
+                "config": {
+                  "script": "keep;"
+                }
+              }
+            ],
+            "active": true,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "duplicate_unsupported": {
+      "summary": "Duplicate unsupported",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "direction": "inbound",
+          "filters": [
+            {
+              "name": "duplicate",
+              "config": {
+                "queue_recipient": "owner@example.com"
+              }
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "unsupported_filter",
+            "message": "the duplicate filter's queue_recipient is not supported; use webhook_url to fork a copy"
           }
         }
       }
@@ -31738,7 +32686,9 @@
           "filters": null,
           "active": false
         },
-        "invalid": true
+        "path": {
+          "id": 1
+        }
       },
       "response": {
         "status": 422,
@@ -31764,7 +32714,9 @@
           },
           "active": false
         },
-        "invalid": true
+        "path": {
+          "id": 1
+        }
       },
       "response": {
         "status": 422,
@@ -31810,6 +32762,9 @@
             }
           ],
           "active": false
+        },
+        "path": {
+          "id": 1
         }
       },
       "response": {
@@ -31827,7 +32782,1061 @@
             ],
             "active": false,
             "created_at": "2026-01-01T00:00:00Z",
-            "updated_at": "2026-01-01T00:00:00Z"
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "write_only": {
+      "summary": "Write only",
+      "request": {
+        "body": {
+          "filters": [
+            {
+              "name": "spf_check",
+              "config": {}
+            }
+          ],
+          "active": false
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "direction": "inbound",
+            "filters": [
+              {
+                "name": "spf_check",
+                "config": {}
+              }
+            ],
+            "active": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "key_write": {
+      "summary": "Key write",
+      "request": {
+        "body": {
+          "filters": [
+            {
+              "name": "spf_check",
+              "config": {}
+            }
+          ],
+          "active": false
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "direction": "inbound",
+            "filters": [
+              {
+                "name": "spf_check",
+                "config": {}
+              }
+            ],
+            "active": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "cookie_session": {
+      "summary": "Cookie session",
+      "request": {
+        "body": {
+          "filters": [
+            {
+              "name": "spf_check",
+              "config": {}
+            }
+          ],
+          "active": false
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "direction": "inbound",
+            "filters": [
+              {
+                "name": "spf_check",
+                "config": {}
+              }
+            ],
+            "active": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "body_boundary": {
+      "summary": "Body boundary",
+      "request": {
+        "body": {
+          "filters": [
+            {
+              "name": "spf_check",
+              "config": {}
+            }
+          ],
+          "active": false
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "direction": "inbound",
+            "filters": [
+              {
+                "name": "spf_check",
+                "config": {}
+              }
+            ],
+            "active": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "read_only": {
+      "summary": "Read only",
+      "request": {
+        "body": {
+          "filters": [
+            {
+              "name": "spf_check",
+              "config": {}
+            }
+          ],
+          "active": false
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "domain_scope": {
+      "summary": "Domain scope",
+      "request": {
+        "body": {
+          "filters": [
+            {
+              "name": "spf_check",
+              "config": {}
+            }
+          ],
+          "active": false
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "mailbox_scope": {
+      "summary": "Mailbox scope",
+      "request": {
+        "body": {
+          "filters": [
+            {
+              "name": "spf_check",
+              "config": {}
+            }
+          ],
+          "active": false
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "wrong_domain": {
+      "summary": "Wrong domain",
+      "request": {
+        "body": {
+          "filters": [
+            {
+              "name": "spf_check",
+              "config": {}
+            }
+          ],
+          "active": false
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_read": {
+      "summary": "Key read",
+      "request": {
+        "body": {
+          "filters": [
+            {
+              "name": "spf_check",
+              "config": {}
+            }
+          ],
+          "active": false
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_domain": {
+      "summary": "Key domain",
+      "request": {
+        "body": {
+          "filters": [
+            {
+              "name": "spf_check",
+              "config": {}
+            }
+          ],
+          "active": false
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_mailbox": {
+      "summary": "Key mailbox",
+      "request": {
+        "body": {
+          "filters": [
+            {
+              "name": "spf_check",
+              "config": {}
+            }
+          ],
+          "active": false
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_wrong_domain": {
+      "summary": "Key wrong domain",
+      "request": {
+        "body": {
+          "filters": [
+            {
+              "name": "spf_check",
+              "config": {}
+            }
+          ],
+          "active": false
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_holder_missing": {
+      "summary": "Key holder missing",
+      "request": {
+        "body": {
+          "filters": [
+            {
+              "name": "spf_check",
+              "config": {}
+            }
+          ],
+          "active": false
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "unauthenticated": {
+      "summary": "Unauthenticated",
+      "request": {
+        "body": {
+          "filters": [
+            {
+              "name": "spf_check",
+              "config": {}
+            }
+          ],
+          "active": false
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "session_unavailable": {
+      "summary": "Session unavailable",
+      "request": {
+        "body": {
+          "filters": [
+            {
+              "name": "spf_check",
+              "config": {}
+            }
+          ],
+          "active": false
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        }
+      }
+    },
+    "permission_store_unavailable": {
+      "summary": "Permission store unavailable",
+      "request": {
+        "body": {
+          "filters": [
+            {
+              "name": "spf_check",
+              "config": {}
+            }
+          ],
+          "active": false
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
+          }
+        }
+      }
+    },
+    "csrf_missing": {
+      "summary": "Csrf missing",
+      "request": {
+        "body": {
+          "filters": [
+            {
+              "name": "spf_check",
+              "config": {}
+            }
+          ],
+          "active": false
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "csrf_mismatch": {
+      "summary": "Csrf mismatch",
+      "request": {
+        "body": {
+          "filters": [
+            {
+              "name": "spf_check",
+              "config": {}
+            }
+          ],
+          "active": false
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "rate_limited": {
+      "summary": "Rate limited",
+      "request": {
+        "body": {
+          "filters": [
+            {
+              "name": "spf_check",
+              "config": {}
+            }
+          ],
+          "active": false
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        }
+      }
+    },
+    "request_too_large": {
+      "summary": "Request too large",
+      "request": {
+        "body": {
+          "filters": [
+            {
+              "name": "spf_check",
+              "config": {}
+            }
+          ],
+          "active": false
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        }
+      }
+    },
+    "malformed_json": {
+      "summary": "Malformed json",
+      "request": {
+        "body": {
+          "filters": [
+            {
+              "name": "spf_check",
+              "config": {}
+            }
+          ],
+          "active": false
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "lookup_unavailable": {
+      "summary": "Lookup unavailable",
+      "request": {
+        "body": {
+          "filters": [
+            {
+              "name": "spf_check",
+              "config": {}
+            }
+          ],
+          "active": false
+        },
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "update_unavailable": {
+      "summary": "Update unavailable",
+      "request": {
+        "body": {
+          "filters": [
+            {
+              "name": "spf_check",
+              "config": {}
+            }
+          ],
+          "active": false
+        },
+        "path": {
+          "id": 4
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to update pipeline"
+          }
+        }
+      }
+    },
+    "concurrent": {
+      "summary": "Concurrent",
+      "request": {
+        "body": {
+          "filters": [
+            {
+              "name": "spf_check",
+              "config": {}
+            }
+          ],
+          "active": false
+        },
+        "path": {
+          "id": 6
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Pipeline not found"
+          }
+        }
+      }
+    },
+    "cancelled_after_lookup": {
+      "summary": "Cancelled after lookup",
+      "request": {
+        "body": {
+          "filters": [
+            {
+              "name": "spf_check",
+              "config": {}
+            }
+          ],
+          "active": false
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to update pipeline"
+          }
+        }
+      }
+    },
+    "empty_filters": {
+      "summary": "Empty filters",
+      "request": {
+        "body": {
+          "filters": [],
+          "active": false
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "direction": "inbound",
+            "filters": [],
+            "active": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "sieve_valid": {
+      "summary": "Sieve valid",
+      "request": {
+        "body": {
+          "filters": [
+            {
+              "name": "sieve",
+              "config": {
+                "script": "keep;"
+              }
+            }
+          ],
+          "active": false
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "direction": "inbound",
+            "filters": [
+              {
+                "name": "sieve",
+                "config": {
+                  "script": "keep;"
+                }
+              }
+            ],
+            "active": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "unchanged": {
+      "summary": "Unchanged",
+      "request": {
+        "body": {},
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "direction": "inbound",
+            "filters": [
+              {
+                "name": "header_validate",
+                "config": {}
+              }
+            ],
+            "active": true,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "active_only": {
+      "summary": "Active only",
+      "request": {
+        "body": {
+          "active": false
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "direction": "inbound",
+            "filters": [
+              {
+                "name": "header_validate",
+                "config": {}
+              }
+            ],
+            "active": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "active_null": {
+      "summary": "Active null",
+      "request": {
+        "body": {
+          "active": null
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "direction": "inbound",
+            "filters": [
+              {
+                "name": "header_validate",
+                "config": {}
+              }
+            ],
+            "active": true,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "invalid_id": {
+      "summary": "Invalid id",
+      "request": {
+        "body": {
+          "filters": [
+            {
+              "name": "spf_check",
+              "config": {}
+            }
+          ],
+          "active": false
+        },
+        "path": {
+          "id": 0
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        }
+      }
+    },
+    "invalid_format": {
+      "summary": "Invalid format",
+      "request": {
+        "body": {
+          "filters": [
+            {
+              "name": "spf_check",
+              "config": {}
+            }
+          ],
+          "active": false
+        },
+        "path": {
+          "id": "bad"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        }
+      }
+    },
+    "duplicate_unsupported": {
+      "summary": "Duplicate unsupported",
+      "request": {
+        "body": {
+          "filters": [
+            {
+              "name": "duplicate",
+              "config": {
+                "queue_recipient": "owner@example.com"
+              }
+            }
+          ],
+          "active": false
+        },
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "unsupported_filter",
+            "message": "the duplicate filter's queue_recipient is not supported; use webhook_url to fork a copy"
           }
         }
       }

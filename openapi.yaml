@@ -5254,6 +5254,17 @@ paths:
                       active: true
                       created_at: "2026-01-01T00:00:00Z"
                       updated_at: "2026-01-01T00:00:00Z"
+                      domain:
+                        id: 0
+                        name: ""
+                        server_type: ""
+                        active: false
+                        default_quota_bytes: 0
+                        dkim_selector: ""
+                        sending_policy: ""
+                        dmarc_policy: ""
+                        created_at: "0001-01-01T00:00:00Z"
+                        updated_at: "0001-01-01T00:00:00Z"
           links:
             updatePipeline:
               operationId: updatePipeline
@@ -5321,6 +5332,13 @@ paths:
                       details:
                         fields:
                           active: must be a boolean
+
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api/v1/admin/pipelines/{id}:
     parameters:
@@ -5393,6 +5411,17 @@ paths:
                       active: false
                       created_at: "2026-01-01T00:00:00Z"
                       updated_at: "2026-01-01T00:00:00Z"
+                      domain:
+                        id: 0
+                        name: ""
+                        server_type: ""
+                        active: false
+                        default_quota_bytes: 0
+                        dkim_selector: ""
+                        sending_policy: ""
+                        dmarc_policy: ""
+                        created_at: "0001-01-01T00:00:00Z"
+                        updated_at: "0001-01-01T00:00:00Z"
         "404":
           description: Pipeline not found
           content:
@@ -5428,6 +5457,13 @@ paths:
                       details:
                         fields:
                           filters: must be an array of filter objects
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
     delete:
       operationId: deletePipeline
       tags: ["Admin: Pipelines"]
