@@ -1721,7 +1721,7 @@
     "email_invalid": {
       "request": {
         "body": {
-          "email": "Refused \u003crefused@example.com\u003e",
+          "email": "Refused <refused@example.com>",
           "name": "Someone",
           "trust_level": "trusted"
         },
@@ -2537,7 +2537,7 @@
         "body": {
           "data": {
             "secret": "JBSWY3DPEHPK3PXP",
-            "otpauth_url": "otpauth://totp/REST%20Mail:user%40restmail.test?secret=JBSWY3DPEHPK3PXP\u0026issuer=REST%20Mail",
+            "otpauth_url": "otpauth://totp/REST%20Mail:user%40restmail.test?secret=JBSWY3DPEHPK3PXP&issuer=REST%20Mail",
             "recovery_codes": [
               "0123456789abcdef"
             ]
@@ -3229,7 +3229,7 @@
           "data": {
             "id": 1,
             "domain_id": 1,
-            "name": "Subject café",
+            "name": "Subject caf\u00e9",
             "description": "Add a public subject marker",
             "filter_type": "transform",
             "direction": "both",
@@ -3270,7 +3270,7 @@
           "data": {
             "id": 2,
             "domain_id": 1,
-            "name": "Subject café",
+            "name": "Subject caf\u00e9",
             "description": "Add a public subject marker",
             "filter_type": "transform",
             "direction": "both",
@@ -4666,7 +4666,7 @@
             "domain_id": 1,
             "local_part": "user",
             "address": "user@example.com",
-            "display_name": "Mailbox café",
+            "display_name": "Mailbox caf\u00e9",
             "quota_bytes": 1048576,
             "quota_used_bytes": 321,
             "active": true,
@@ -4707,7 +4707,7 @@
             "domain_id": 1,
             "local_part": "disabled",
             "address": "disabled@example.com",
-            "display_name": "Mailbox café",
+            "display_name": "Mailbox caf\u00e9",
             "quota_bytes": 1048576,
             "quota_used_bytes": 321,
             "active": false,
@@ -4748,7 +4748,7 @@
             "domain_id": 1,
             "local_part": "user",
             "address": "user@example.com",
-            "display_name": "Mailbox café",
+            "display_name": "Mailbox caf\u00e9",
             "quota_bytes": 1048576,
             "quota_used_bytes": 321,
             "active": true,
@@ -4789,7 +4789,7 @@
             "domain_id": 1,
             "local_part": "user",
             "address": "user@example.com",
-            "display_name": "Mailbox café",
+            "display_name": "Mailbox caf\u00e9",
             "quota_bytes": 1048576,
             "quota_used_bytes": 321,
             "active": true,
@@ -4830,7 +4830,7 @@
             "domain_id": 1,
             "local_part": "user",
             "address": "user@example.com",
-            "display_name": "Mailbox café",
+            "display_name": "Mailbox caf\u00e9",
             "quota_bytes": 1048576,
             "quota_used_bytes": 321,
             "active": true,
@@ -5034,7 +5034,7 @@
             "domain_id": 1,
             "local_part": "user",
             "address": "user@example.com",
-            "display_name": "Mailbox café",
+            "display_name": "Mailbox caf\u00e9",
             "quota_bytes": 1048576,
             "quota_used_bytes": 321,
             "active": true,
@@ -9324,7 +9324,7 @@
         "query": {
           "emailaddress": ""
         },
-        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e\u003cEMailAddress\u003enot-an-address\u003c/EMailAddress\u003e\u003c/Request\u003e\u003c/Autodiscover\u003e",
+        "body": "<Autodiscover><Request><EMailAddress>not-an-address</EMailAddress></Request></Autodiscover>",
         "mediaType": "application/xml"
       },
       "response": {
@@ -9339,7 +9339,7 @@
         "query": {
           "emailaddress": ""
         },
-        "body": "\u003cAutodiscover\u003e\u003cRequest/\u003e\u003c/Autodiscover\u003e",
+        "body": "<Autodiscover><Request/></Autodiscover>",
         "mediaType": "application/xml"
       },
       "response": {
@@ -9354,7 +9354,7 @@
         "query": {
           "emailaddress": ""
         },
-        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e\u003cEMailAddress\u003euser@example.com\u003c/EMailAddress\u003e\u003c/Request\u003e\u003c/Autodiscover\u003e",
+        "body": "<Autodiscover><Request><EMailAddress>user@example.com</EMailAddress></Request></Autodiscover>",
         "mediaType": "application/xml"
       },
       "response": {
@@ -9369,7 +9369,7 @@
         "query": {
           "emailaddress": ""
         },
-        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e\u003cEMailAddress\u003euser@example.com\u003c/EMailAddress\u003e\u003c/Request\u003e\u003c/Autodiscover\u003e",
+        "body": "<Autodiscover><Request><EMailAddress>user@example.com</EMailAddress></Request></Autodiscover>",
         "mediaType": "application/xml"
       },
       "response": {
@@ -9389,7 +9389,7 @@
         "query": {
           "emailaddress": ""
         },
-        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e\u003cEMailAddress\u003euser@example.com\u003c/EMailAddress\u003e\u003c/Request\u003e\u003c/Autodiscover\u003e",
+        "body": "<Autodiscover><Request><EMailAddress>user@example.com</EMailAddress></Request></Autodiscover>",
         "mediaType": "application/xml"
       },
       "response": {
@@ -9404,7 +9404,7 @@
         "query": {
           "emailaddress": ""
         },
-        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e",
+        "body": "<Autodiscover><Request>",
         "mediaType": "application/xml"
       },
       "response": {
@@ -9444,7 +9444,7 @@
       },
       "response": {
         "status": 200,
-        "body": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003cAutodiscover xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/responseschema/2006\"\u003e\n  \u003cResponse xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a\"\u003e\n    \u003cAccount\u003e\n      \u003cAccountType\u003eemail\u003c/AccountType\u003e\n      \u003cAction\u003esettings\u003c/Action\u003e\n      \u003cProtocol\u003e\n        \u003cType\u003eIMAP\u003c/Type\u003e\n        \u003cServer\u003email.example.com\u003c/Server\u003e\n        \u003cPort\u003e993\u003c/Port\u003e\n        \u003cSSL\u003eon\u003c/SSL\u003e\n        \u003cEncryption\u003eSSL\u003c/Encryption\u003e\n        \u003cLoginName\u003euser@example.com\u003c/LoginName\u003e\n      \u003c/Protocol\u003e\n      \u003cProtocol\u003e\n        \u003cType\u003eSMTP\u003c/Type\u003e\n        \u003cServer\u003email.example.com\u003c/Server\u003e\n        \u003cPort\u003e465\u003c/Port\u003e\n        \u003cSSL\u003eon\u003c/SSL\u003e\n        \u003cEncryption\u003eSSL\u003c/Encryption\u003e\n        \u003cLoginName\u003euser@example.com\u003c/LoginName\u003e\n      \u003c/Protocol\u003e\n    \u003c/Account\u003e\n  \u003c/Response\u003e\n\u003c/Autodiscover\u003e",
+        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Autodiscover xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/responseschema/2006\">\n  <Response xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a\">\n    <Account>\n      <AccountType>email</AccountType>\n      <Action>settings</Action>\n      <Protocol>\n        <Type>IMAP</Type>\n        <Server>mail.example.com</Server>\n        <Port>993</Port>\n        <SSL>on</SSL>\n        <Encryption>SSL</Encryption>\n        <LoginName>user@example.com</LoginName>\n      </Protocol>\n      <Protocol>\n        <Type>SMTP</Type>\n        <Server>mail.example.com</Server>\n        <Port>465</Port>\n        <SSL>on</SSL>\n        <Encryption>SSL</Encryption>\n        <LoginName>user@example.com</LoginName>\n      </Protocol>\n    </Account>\n  </Response>\n</Autodiscover>",
         "mediaType": "application/xml"
       }
     },
@@ -9454,12 +9454,12 @@
         "query": {
           "emailaddress": ""
         },
-        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e\u003cEMailAddress\u003euser@example.com\u003c/EMailAddress\u003e\u003c/Request\u003e\u003c/Autodiscover\u003e",
+        "body": "<Autodiscover><Request><EMailAddress>user@example.com</EMailAddress></Request></Autodiscover>",
         "mediaType": "application/xml"
       },
       "response": {
         "status": 200,
-        "body": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003cAutodiscover xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/responseschema/2006\"\u003e\n  \u003cResponse xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a\"\u003e\n    \u003cAccount\u003e\n      \u003cAccountType\u003eemail\u003c/AccountType\u003e\n      \u003cAction\u003esettings\u003c/Action\u003e\n      \u003cProtocol\u003e\n        \u003cType\u003eIMAP\u003c/Type\u003e\n        \u003cServer\u003email.example.com\u003c/Server\u003e\n        \u003cPort\u003e993\u003c/Port\u003e\n        \u003cSSL\u003eon\u003c/SSL\u003e\n        \u003cEncryption\u003eSSL\u003c/Encryption\u003e\n        \u003cLoginName\u003euser@example.com\u003c/LoginName\u003e\n      \u003c/Protocol\u003e\n      \u003cProtocol\u003e\n        \u003cType\u003eSMTP\u003c/Type\u003e\n        \u003cServer\u003email.example.com\u003c/Server\u003e\n        \u003cPort\u003e465\u003c/Port\u003e\n        \u003cSSL\u003eon\u003c/SSL\u003e\n        \u003cEncryption\u003eSSL\u003c/Encryption\u003e\n        \u003cLoginName\u003euser@example.com\u003c/LoginName\u003e\n      \u003c/Protocol\u003e\n    \u003c/Account\u003e\n  \u003c/Response\u003e\n\u003c/Autodiscover\u003e",
+        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Autodiscover xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/responseschema/2006\">\n  <Response xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a\">\n    <Account>\n      <AccountType>email</AccountType>\n      <Action>settings</Action>\n      <Protocol>\n        <Type>IMAP</Type>\n        <Server>mail.example.com</Server>\n        <Port>993</Port>\n        <SSL>on</SSL>\n        <Encryption>SSL</Encryption>\n        <LoginName>user@example.com</LoginName>\n      </Protocol>\n      <Protocol>\n        <Type>SMTP</Type>\n        <Server>mail.example.com</Server>\n        <Port>465</Port>\n        <SSL>on</SSL>\n        <Encryption>SSL</Encryption>\n        <LoginName>user@example.com</LoginName>\n      </Protocol>\n    </Account>\n  </Response>\n</Autodiscover>",
         "mediaType": "application/xml"
       }
     }
@@ -9475,7 +9475,7 @@
       },
       "response": {
         "status": 200,
-        "body": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003cclientConfig version=\"1.1\"\u003e\n  \u003cemailProvider id=\"example.com\"\u003e\n    \u003cdomain\u003eexample.com\u003c/domain\u003e\n    \u003cdisplayName\u003eexample.com Mail\u003c/displayName\u003e\n    \u003cincomingServer type=\"imap\"\u003e\n      \u003chostname\u003email.example.com\u003c/hostname\u003e\n      \u003cport\u003e993\u003c/port\u003e\n      \u003csocketType\u003eSSL\u003c/socketType\u003e\n      \u003cauthentication\u003epassword-cleartext\u003c/authentication\u003e\n      \u003cusername\u003e%EMAILADDRESS%\u003c/username\u003e\n    \u003c/incomingServer\u003e\n    \u003coutgoingServer type=\"smtp\"\u003e\n      \u003chostname\u003email.example.com\u003c/hostname\u003e\n      \u003cport\u003e465\u003c/port\u003e\n      \u003csocketType\u003eSSL\u003c/socketType\u003e\n      \u003cauthentication\u003epassword-cleartext\u003c/authentication\u003e\n      \u003cusername\u003e%EMAILADDRESS%\u003c/username\u003e\n    \u003c/outgoingServer\u003e\n  \u003c/emailProvider\u003e\n\u003c/clientConfig\u003e",
+        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<clientConfig version=\"1.1\">\n  <emailProvider id=\"example.com\">\n    <domain>example.com</domain>\n    <displayName>example.com Mail</displayName>\n    <incomingServer type=\"imap\">\n      <hostname>mail.example.com</hostname>\n      <port>993</port>\n      <socketType>SSL</socketType>\n      <authentication>password-cleartext</authentication>\n      <username>%EMAILADDRESS%</username>\n    </incomingServer>\n    <outgoingServer type=\"smtp\">\n      <hostname>mail.example.com</hostname>\n      <port>465</port>\n      <socketType>SSL</socketType>\n      <authentication>password-cleartext</authentication>\n      <username>%EMAILADDRESS%</username>\n    </outgoingServer>\n  </emailProvider>\n</clientConfig>",
         "mediaType": "application/xml"
       }
     },
@@ -9552,7 +9552,7 @@
       },
       "response": {
         "status": 200,
-        "body": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003cclientConfig version=\"1.1\"\u003e\n  \u003cemailProvider id=\"example.com\"\u003e\n    \u003cdomain\u003eexample.com\u003c/domain\u003e\n    \u003cdisplayName\u003eexample.com Mail\u003c/displayName\u003e\n    \u003cincomingServer type=\"imap\"\u003e\n      \u003chostname\u003email.example.com\u003c/hostname\u003e\n      \u003cport\u003e993\u003c/port\u003e\n      \u003csocketType\u003eSSL\u003c/socketType\u003e\n      \u003cauthentication\u003epassword-cleartext\u003c/authentication\u003e\n      \u003cusername\u003e%EMAILADDRESS%\u003c/username\u003e\n    \u003c/incomingServer\u003e\n    \u003coutgoingServer type=\"smtp\"\u003e\n      \u003chostname\u003email.example.com\u003c/hostname\u003e\n      \u003cport\u003e465\u003c/port\u003e\n      \u003csocketType\u003eSSL\u003c/socketType\u003e\n      \u003cauthentication\u003epassword-cleartext\u003c/authentication\u003e\n      \u003cusername\u003e%EMAILADDRESS%\u003c/username\u003e\n    \u003c/outgoingServer\u003e\n  \u003c/emailProvider\u003e\n\u003c/clientConfig\u003e",
+        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<clientConfig version=\"1.1\">\n  <emailProvider id=\"example.com\">\n    <domain>example.com</domain>\n    <displayName>example.com Mail</displayName>\n    <incomingServer type=\"imap\">\n      <hostname>mail.example.com</hostname>\n      <port>993</port>\n      <socketType>SSL</socketType>\n      <authentication>password-cleartext</authentication>\n      <username>%EMAILADDRESS%</username>\n    </incomingServer>\n    <outgoingServer type=\"smtp\">\n      <hostname>mail.example.com</hostname>\n      <port>465</port>\n      <socketType>SSL</socketType>\n      <authentication>password-cleartext</authentication>\n      <username>%EMAILADDRESS%</username>\n    </outgoingServer>\n  </emailProvider>\n</clientConfig>",
         "mediaType": "application/xml"
       }
     },
@@ -10829,7 +10829,7 @@
           ],
           "subject": "Delivered over RESTMAIL",
           "body_text": "Hello, Eve.",
-          "message_id": "\u003crestmail-delivery@ext-contract.test\u003e",
+          "message_id": "<restmail-delivery@ext-contract.test>",
           "date": "Sat, 17 Oct 2026 12:00:00 +0000"
         }
       },
@@ -10851,7 +10851,7 @@
           "from": "someone@ext-contract.test",
           "subject": "Delivered over RESTMAIL",
           "body_text": "Hello, Eve.",
-          "message_id": "\u003crestmail-delivery@ext-contract.test\u003e",
+          "message_id": "<restmail-delivery@ext-contract.test>",
           "date": "Sat, 17 Oct 2026 12:00:00 +0000"
         },
         "invalid": true
@@ -10908,7 +10908,7 @@
       "summary": "An internationalized domain resolves through its IDNA identity",
       "request": {
         "query": {
-          "domain": "münchen.test"
+          "domain": "m\u00fcnchen.test"
         }
       },
       "response": {
@@ -11198,7 +11198,7 @@
         "body": {
           "data": {
             "message_id": 1,
-            "msg_id": "\u003c0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d@restmail.test\u003e",
+            "msg_id": "<0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d@restmail.test>",
             "from": "postmaster@restmail.test",
             "to": "admin@restmail.test",
             "subject": "Test"
@@ -12707,7 +12707,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "\u003cfilter-test@example.com\u003e",
+              "message-id": "<filter-test@example.com>",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -12798,7 +12798,7 @@
                 }
               ],
               "subject": "A filter test",
-              "message-id": "\u003cfilter-test@example.com\u003e",
+              "message-id": "<filter-test@example.com>",
               "date": "Sat, 17 Oct 2026 12:00:00 +0000"
             },
             "body": {
@@ -13613,7 +13613,7 @@
       "summary": "NFC and IDNA normalization preserve the stored public identity",
       "request": {
         "query": {
-          "address": "café@münchen.test"
+          "address": "cafe\u0301@m\u00fcnchen.test"
         }
       },
       "response": {
@@ -13621,7 +13621,7 @@
         "mediaType": "application/json",
         "body": {
           "data": {
-            "address": "café@xn--mnchen-3ya.test",
+            "address": "caf\u00e9@xn--mnchen-3ya.test",
             "exists": true
           }
         }
@@ -13757,7 +13757,7 @@
           "data": {
             "id": 1,
             "address": "linked@example.com",
-            "display_name": "Account café",
+            "display_name": "Account caf\u00e9",
             "is_primary": false
           }
         }
@@ -13778,7 +13778,7 @@
           "data": {
             "id": 10,
             "address": "user@example.com",
-            "display_name": "Account café",
+            "display_name": "Account caf\u00e9",
             "is_primary": true
           }
         }
@@ -13798,7 +13798,7 @@
           "data": {
             "id": 1,
             "address": "linked@example.com",
-            "display_name": "Account café",
+            "display_name": "Account caf\u00e9",
             "is_primary": false
           }
         }
@@ -13837,7 +13837,7 @@
           "data": {
             "id": 1,
             "address": "linked@example.com",
-            "display_name": "Account café",
+            "display_name": "Account caf\u00e9",
             "is_primary": false
           }
         }
@@ -15410,7 +15410,7 @@
             {
               "id": 10,
               "address": "user@example.com",
-              "display_name": "Account café",
+              "display_name": "Account caf\u00e9",
               "is_primary": true
             },
             {
@@ -15422,7 +15422,7 @@
             {
               "id": 1,
               "address": "linked@example.com",
-              "display_name": "Linked café",
+              "display_name": "Linked caf\u00e9",
               "is_primary": false
             }
           ]
@@ -15441,7 +15441,7 @@
             {
               "id": 10,
               "address": "user@example.com",
-              "display_name": "Account café",
+              "display_name": "Account caf\u00e9",
               "is_primary": true
             }
           ]
@@ -15459,7 +15459,7 @@
             {
               "id": 10,
               "address": "user@example.com",
-              "display_name": "Account café",
+              "display_name": "Account caf\u00e9",
               "is_primary": true
             }
           ]
@@ -15477,7 +15477,7 @@
             {
               "id": 10,
               "address": "user@example.com",
-              "display_name": "Account café",
+              "display_name": "Account caf\u00e9",
               "is_primary": true
             }
           ]
@@ -15495,7 +15495,7 @@
             {
               "id": 10,
               "address": "user@example.com",
-              "display_name": "Account café",
+              "display_name": "Account caf\u00e9",
               "is_primary": true
             },
             {
@@ -15507,7 +15507,7 @@
             {
               "id": 1,
               "address": "linked@example.com",
-              "display_name": "Linked café",
+              "display_name": "Linked caf\u00e9",
               "is_primary": false
             }
           ]
@@ -15526,7 +15526,7 @@
             {
               "id": 1,
               "address": "linked@example.com",
-              "display_name": "Linked café",
+              "display_name": "Linked caf\u00e9",
               "is_primary": false
             }
           ]
@@ -15544,7 +15544,7 @@
             {
               "id": 10,
               "address": "user@example.com",
-              "display_name": "Account café",
+              "display_name": "Account caf\u00e9",
               "is_primary": true
             },
             {
@@ -15556,7 +15556,7 @@
             {
               "id": 1,
               "address": "linked@example.com",
-              "display_name": "Linked café",
+              "display_name": "Linked caf\u00e9",
               "is_primary": false
             }
           ]
@@ -15734,7 +15734,7 @@
           "data": [
             {
               "id": 102,
-              "name": "Phone café",
+              "name": "Phone caf\u00e9",
               "kind": "app_password",
               "public_id": "public-new",
               "created_at": "2026-10-20T00:00:00Z",
@@ -15769,7 +15769,7 @@
           "data": [
             {
               "id": 102,
-              "name": "Phone café",
+              "name": "Phone caf\u00e9",
               "kind": "app_password",
               "public_id": "public-new",
               "created_at": "2026-10-20T00:00:00Z",
@@ -15803,7 +15803,7 @@
           "data": [
             {
               "id": 102,
-              "name": "Phone café",
+              "name": "Phone caf\u00e9",
               "kind": "app_password",
               "public_id": "public-new",
               "created_at": "2026-10-20T00:00:00Z",
@@ -15837,7 +15837,7 @@
           "data": [
             {
               "id": 102,
-              "name": "Phone café",
+              "name": "Phone caf\u00e9",
               "kind": "app_password",
               "public_id": "public-new",
               "created_at": "2026-10-20T00:00:00Z",
@@ -16165,7 +16165,7 @@
           "data": [
             {
               "id": 102,
-              "name": "Phone café",
+              "name": "Phone caf\u00e9",
               "kind": "api_key",
               "public_id": "public-new",
               "created_at": "2026-10-20T00:00:00Z",
@@ -16211,7 +16211,7 @@
           "data": [
             {
               "id": 102,
-              "name": "Phone café",
+              "name": "Phone caf\u00e9",
               "kind": "api_key",
               "public_id": "public-new",
               "created_at": "2026-10-20T00:00:00Z",
@@ -16256,7 +16256,7 @@
           "data": [
             {
               "id": 102,
-              "name": "Phone café",
+              "name": "Phone caf\u00e9",
               "kind": "api_key",
               "public_id": "public-new",
               "created_at": "2026-10-20T00:00:00Z",
@@ -16301,7 +16301,7 @@
           "data": [
             {
               "id": 102,
-              "name": "Phone café",
+              "name": "Phone caf\u00e9",
               "kind": "api_key",
               "public_id": "public-new",
               "created_at": "2026-10-20T00:00:00Z",
@@ -16642,7 +16642,7 @@
               "id": 31,
               "mailbox_id": 1,
               "email": "\"a100%_\\\\\"@example.com",
-              "name": "Friend café",
+              "name": "Friend caf\u00e9",
               "trust_level": "trusted",
               "source": "manual",
               "created_at": "2026-10-20T00:00:00Z",
@@ -16682,7 +16682,7 @@
               "id": 31,
               "mailbox_id": 10,
               "email": "\"a100%_\\\\\"@example.com",
-              "name": "Friend café",
+              "name": "Friend caf\u00e9",
               "trust_level": "trusted",
               "source": "manual",
               "created_at": "2026-10-20T00:00:00Z",
@@ -16721,7 +16721,7 @@
               "id": 31,
               "mailbox_id": 1,
               "email": "\"a100%_\\\\\"@example.com",
-              "name": "Friend café",
+              "name": "Friend caf\u00e9",
               "trust_level": "trusted",
               "source": "manual",
               "created_at": "2026-10-20T00:00:00Z",
@@ -16761,7 +16761,7 @@
               "id": 31,
               "mailbox_id": 1,
               "email": "\"a100%_\\\\\"@example.com",
-              "name": "Friend café",
+              "name": "Friend caf\u00e9",
               "trust_level": "trusted",
               "source": "manual",
               "created_at": "2026-10-20T00:00:00Z",
@@ -16800,7 +16800,7 @@
               "id": 31,
               "mailbox_id": 10,
               "email": "\"a100%_\\\\\"@example.com",
-              "name": "Friend café",
+              "name": "Friend caf\u00e9",
               "trust_level": "trusted",
               "source": "manual",
               "created_at": "2026-10-20T00:00:00Z",
@@ -16840,7 +16840,7 @@
               "id": 31,
               "mailbox_id": 1,
               "email": "\"a100%_\\\\\"@example.com",
-              "name": "Friend café",
+              "name": "Friend caf\u00e9",
               "trust_level": "trusted",
               "source": "manual",
               "created_at": "2026-10-20T00:00:00Z",
@@ -16880,7 +16880,7 @@
               "id": 31,
               "mailbox_id": 1,
               "email": "\"a100%_\\\\\"@example.com",
-              "name": "Friend café",
+              "name": "Friend caf\u00e9",
               "trust_level": "trusted",
               "source": "manual",
               "created_at": "2026-10-20T00:00:00Z",
@@ -17303,7 +17303,7 @@
               "id": 31,
               "mailbox_id": 1,
               "email": "\"a100%_\\\\\"@example.com",
-              "name": "Friend café",
+              "name": "Friend caf\u00e9",
               "trust_level": "trusted",
               "source": "manual",
               "created_at": "2026-10-20T00:00:00Z",
@@ -17371,7 +17371,7 @@
               "id": 31,
               "mailbox_id": 1,
               "email": "\"a100%_\\\\\"@example.com",
-              "name": "Friend café",
+              "name": "Friend caf\u00e9",
               "trust_level": "trusted",
               "source": "manual",
               "created_at": "2026-10-20T00:00:00Z",
@@ -17414,7 +17414,7 @@
               "id": 31,
               "mailbox_id": 1,
               "email": "\"a100%_\\\\\"@example.com",
-              "name": "Friend café",
+              "name": "Friend caf\u00e9",
               "trust_level": "trusted",
               "source": "manual",
               "created_at": "2026-10-20T00:00:00Z",
@@ -17509,7 +17509,7 @@
               "id": 31,
               "mailbox_id": 1,
               "email": "\"a100%_\\\\\"@example.com",
-              "name": "Friend café",
+              "name": "Friend caf\u00e9",
               "trust_level": "trusted",
               "source": "manual",
               "created_at": "2026-10-20T00:00:00Z",
@@ -17541,7 +17541,7 @@
               "uid": "event-a",
               "method": "REQUEST",
               "status": "CONFIRMED",
-              "summary": "Latest café",
+              "summary": "Latest caf\u00e9",
               "sequence": 3,
               "is_cancelled": true,
               "message_id": 77,
@@ -17587,7 +17587,7 @@
               "uid": "event-a",
               "method": "REQUEST",
               "status": "CONFIRMED",
-              "summary": "Latest café",
+              "summary": "Latest caf\u00e9",
               "sequence": 3,
               "is_cancelled": true,
               "message_id": 77,
@@ -17631,7 +17631,7 @@
               "uid": "event-a",
               "method": "REQUEST",
               "status": "CONFIRMED",
-              "summary": "Latest café",
+              "summary": "Latest caf\u00e9",
               "sequence": 3,
               "is_cancelled": true,
               "message_id": 77,
@@ -17676,7 +17676,7 @@
               "uid": "event-a",
               "method": "REQUEST",
               "status": "CONFIRMED",
-              "summary": "Latest café",
+              "summary": "Latest caf\u00e9",
               "sequence": 3,
               "is_cancelled": true,
               "message_id": 77,
@@ -17720,7 +17720,7 @@
               "uid": "event-a",
               "method": "REQUEST",
               "status": "CONFIRMED",
-              "summary": "Latest café",
+              "summary": "Latest caf\u00e9",
               "sequence": 3,
               "is_cancelled": true,
               "message_id": 77,
@@ -17765,7 +17765,7 @@
               "uid": "event-a",
               "method": "REQUEST",
               "status": "CONFIRMED",
-              "summary": "Latest café",
+              "summary": "Latest caf\u00e9",
               "sequence": 3,
               "is_cancelled": true,
               "message_id": 77,
@@ -17810,7 +17810,7 @@
               "uid": "event-a",
               "method": "REQUEST",
               "status": "CONFIRMED",
-              "summary": "Latest café",
+              "summary": "Latest caf\u00e9",
               "sequence": 3,
               "is_cancelled": true,
               "message_id": 77,
@@ -18888,7 +18888,7 @@
               "id": 41,
               "mailbox_id": 1,
               "sender": "sender@example.net",
-              "subject": "Held café",
+              "subject": "Held caf\u00e9",
               "body_preview": "Preview only",
               "spam_score": 4.5,
               "quarantine_reason": "spam",
@@ -18932,7 +18932,7 @@
               "id": 41,
               "mailbox_id": 10,
               "sender": "sender@example.net",
-              "subject": "Held café",
+              "subject": "Held caf\u00e9",
               "body_preview": "Preview only",
               "spam_score": 4.5,
               "quarantine_reason": "spam",
@@ -18974,7 +18974,7 @@
               "id": 41,
               "mailbox_id": 1,
               "sender": "sender@example.net",
-              "subject": "Held café",
+              "subject": "Held caf\u00e9",
               "body_preview": "Preview only",
               "spam_score": 4.5,
               "quarantine_reason": "spam",
@@ -19016,7 +19016,7 @@
               "id": 41,
               "mailbox_id": 1,
               "sender": "sender@example.net",
-              "subject": "Held café",
+              "subject": "Held caf\u00e9",
               "body_preview": "Preview only",
               "spam_score": 4.5,
               "quarantine_reason": "spam",
@@ -19058,7 +19058,7 @@
               "id": 41,
               "mailbox_id": 10,
               "sender": "sender@example.net",
-              "subject": "Held café",
+              "subject": "Held caf\u00e9",
               "body_preview": "Preview only",
               "spam_score": 4.5,
               "quarantine_reason": "spam",
@@ -19100,7 +19100,7 @@
               "id": 41,
               "mailbox_id": 1,
               "sender": "sender@example.net",
-              "subject": "Held café",
+              "subject": "Held caf\u00e9",
               "body_preview": "Preview only",
               "spam_score": 4.5,
               "quarantine_reason": "spam",
@@ -19142,7 +19142,7 @@
               "id": 41,
               "mailbox_id": 1,
               "sender": "sender@example.net",
-              "subject": "Held café",
+              "subject": "Held caf\u00e9",
               "body_preview": "Preview only",
               "spam_score": 4.5,
               "quarantine_reason": "spam",
@@ -19523,7 +19523,7 @@
               "id": 41,
               "mailbox_id": 1,
               "sender": "sender@example.net",
-              "subject": "Held café",
+              "subject": "Held caf\u00e9",
               "body_preview": "Preview only",
               "spam_score": 4.5,
               "quarantine_reason": "spam",
@@ -19592,7 +19592,7 @@
               "id": 41,
               "mailbox_id": 1,
               "sender": "sender@example.net",
-              "subject": "Held café",
+              "subject": "Held caf\u00e9",
               "body_preview": "Preview only",
               "spam_score": 4.5,
               "quarantine_reason": "spam",
@@ -19678,7 +19678,7 @@
             {
               "id": 61,
               "message_id": 1,
-              "filename": "résumé.pdf",
+              "filename": "r\u00e9sum\u00e9.pdf",
               "content_type": "application/pdf",
               "size_bytes": 123,
               "checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -19713,7 +19713,7 @@
             {
               "id": 61,
               "message_id": 10,
-              "filename": "résumé.pdf",
+              "filename": "r\u00e9sum\u00e9.pdf",
               "content_type": "application/pdf",
               "size_bytes": 123,
               "checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -19746,7 +19746,7 @@
             {
               "id": 61,
               "message_id": 1,
-              "filename": "résumé.pdf",
+              "filename": "r\u00e9sum\u00e9.pdf",
               "content_type": "application/pdf",
               "size_bytes": 123,
               "checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -19779,7 +19779,7 @@
             {
               "id": 61,
               "message_id": 1,
-              "filename": "résumé.pdf",
+              "filename": "r\u00e9sum\u00e9.pdf",
               "content_type": "application/pdf",
               "size_bytes": 123,
               "checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -19812,7 +19812,7 @@
             {
               "id": 61,
               "message_id": 10,
-              "filename": "résumé.pdf",
+              "filename": "r\u00e9sum\u00e9.pdf",
               "content_type": "application/pdf",
               "size_bytes": 123,
               "checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -19845,7 +19845,7 @@
             {
               "id": 61,
               "message_id": 1,
-              "filename": "résumé.pdf",
+              "filename": "r\u00e9sum\u00e9.pdf",
               "content_type": "application/pdf",
               "size_bytes": 123,
               "checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -19878,7 +19878,7 @@
             {
               "id": 61,
               "message_id": 1,
-              "filename": "résumé.pdf",
+              "filename": "r\u00e9sum\u00e9.pdf",
               "content_type": "application/pdf",
               "size_bytes": 123,
               "checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -20263,7 +20263,7 @@
               "to": [
                 "recipient@example.net"
               ],
-              "subject": "Send café",
+              "subject": "Send caf\u00e9",
               "scheduled_at": "2026-10-27T00:00:00Z",
               "status": "pending",
               "attempts": 0,
@@ -20277,7 +20277,7 @@
               "to": [
                 "recipient@example.net"
               ],
-              "subject": "Send café",
+              "subject": "Send caf\u00e9",
               "scheduled_at": "2026-10-27T01:00:00Z",
               "status": "sending",
               "attempts": 2,
@@ -20290,7 +20290,7 @@
               "account_id": 10,
               "from": "linked@example.com",
               "to": [],
-              "subject": "Send café",
+              "subject": "Send caf\u00e9",
               "scheduled_at": "2026-10-27T02:00:00Z",
               "status": "pending",
               "attempts": 0,
@@ -20317,7 +20317,7 @@
               "to": [
                 "recipient@example.net"
               ],
-              "subject": "Send café",
+              "subject": "Send caf\u00e9",
               "scheduled_at": "2026-10-27T00:00:00Z",
               "status": "pending",
               "attempts": 0,
@@ -20331,7 +20331,7 @@
               "to": [
                 "recipient@example.net"
               ],
-              "subject": "Send café",
+              "subject": "Send caf\u00e9",
               "scheduled_at": "2026-10-27T01:00:00Z",
               "status": "sending",
               "attempts": 2,
@@ -20344,7 +20344,7 @@
               "account_id": 10,
               "from": "linked@example.com",
               "to": [],
-              "subject": "Send café",
+              "subject": "Send caf\u00e9",
               "scheduled_at": "2026-10-27T02:00:00Z",
               "status": "pending",
               "attempts": 0,
@@ -20370,7 +20370,7 @@
               "to": [
                 "recipient@example.net"
               ],
-              "subject": "Send café",
+              "subject": "Send caf\u00e9",
               "scheduled_at": "2026-10-27T00:00:00Z",
               "status": "pending",
               "attempts": 0,
@@ -20396,7 +20396,7 @@
               "to": [
                 "recipient@example.net"
               ],
-              "subject": "Send café",
+              "subject": "Send caf\u00e9",
               "scheduled_at": "2026-10-27T00:00:00Z",
               "status": "pending",
               "attempts": 0,
@@ -20422,7 +20422,7 @@
               "to": [
                 "recipient@example.net"
               ],
-              "subject": "Send café",
+              "subject": "Send caf\u00e9",
               "scheduled_at": "2026-10-27T01:00:00Z",
               "status": "sending",
               "attempts": 2,
@@ -20435,7 +20435,7 @@
               "account_id": 10,
               "from": "linked@example.com",
               "to": [],
-              "subject": "Send café",
+              "subject": "Send caf\u00e9",
               "scheduled_at": "2026-10-27T02:00:00Z",
               "status": "pending",
               "attempts": 0,
@@ -20461,7 +20461,7 @@
               "to": [
                 "recipient@example.net"
               ],
-              "subject": "Send café",
+              "subject": "Send caf\u00e9",
               "scheduled_at": "2026-10-27T00:00:00Z",
               "status": "pending",
               "attempts": 0,
@@ -20475,7 +20475,7 @@
               "to": [
                 "recipient@example.net"
               ],
-              "subject": "Send café",
+              "subject": "Send caf\u00e9",
               "scheduled_at": "2026-10-27T01:00:00Z",
               "status": "sending",
               "attempts": 2,
@@ -20488,7 +20488,7 @@
               "account_id": 10,
               "from": "linked@example.com",
               "to": [],
-              "subject": "Send café",
+              "subject": "Send caf\u00e9",
               "scheduled_at": "2026-10-27T02:00:00Z",
               "status": "pending",
               "attempts": 0,
@@ -20690,14 +20690,14 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [
                 "recipient@example.net"
               ],
               "recipients_cc": [
                 "copy@example.net"
               ],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": true,
@@ -20711,11 +20711,11 @@
               "date_header": "2026-10-20T00:00:00Z",
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
-              "body_text": "Hello café",
-              "body_html": "<p>Hello café</p>",
+              "body_text": "Hello caf\u00e9",
+              "body_html": "<p>Hello caf\u00e9</p>",
               "headers": {
                 "Subject": [
-                  "Hello café"
+                  "Hello caf\u00e9"
                 ],
                 "X-Trace": [
                   "a",
@@ -20739,10 +20739,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -20766,10 +20766,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -20817,14 +20817,14 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [
                 "recipient@example.net"
               ],
               "recipients_cc": [
                 "copy@example.net"
               ],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": true,
@@ -20838,11 +20838,11 @@
               "date_header": "2026-10-20T00:00:00Z",
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
-              "body_text": "Hello café",
-              "body_html": "<p>Hello café</p>",
+              "body_text": "Hello caf\u00e9",
+              "body_html": "<p>Hello caf\u00e9</p>",
               "headers": {
                 "Subject": [
-                  "Hello café"
+                  "Hello caf\u00e9"
                 ],
                 "X-Trace": [
                   "a",
@@ -20866,10 +20866,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -20893,10 +20893,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -20942,14 +20942,14 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [
                 "recipient@example.net"
               ],
               "recipients_cc": [
                 "copy@example.net"
               ],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": true,
@@ -20963,11 +20963,11 @@
               "date_header": "2026-10-20T00:00:00Z",
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
-              "body_text": "Hello café",
-              "body_html": "<p>Hello café</p>",
+              "body_text": "Hello caf\u00e9",
+              "body_html": "<p>Hello caf\u00e9</p>",
               "headers": {
                 "Subject": [
-                  "Hello café"
+                  "Hello caf\u00e9"
                 ],
                 "X-Trace": [
                   "a",
@@ -20991,10 +20991,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -21018,10 +21018,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -21067,14 +21067,14 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [
                 "recipient@example.net"
               ],
               "recipients_cc": [
                 "copy@example.net"
               ],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": true,
@@ -21088,11 +21088,11 @@
               "date_header": "2026-10-20T00:00:00Z",
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
-              "body_text": "Hello café",
-              "body_html": "<p>Hello café</p>",
+              "body_text": "Hello caf\u00e9",
+              "body_html": "<p>Hello caf\u00e9</p>",
               "headers": {
                 "Subject": [
-                  "Hello café"
+                  "Hello caf\u00e9"
                 ],
                 "X-Trace": [
                   "a",
@@ -21116,10 +21116,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -21143,10 +21143,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -21192,14 +21192,14 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [
                 "recipient@example.net"
               ],
               "recipients_cc": [
                 "copy@example.net"
               ],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": true,
@@ -21213,11 +21213,11 @@
               "date_header": "2026-10-20T00:00:00Z",
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
-              "body_text": "Hello café",
-              "body_html": "<p>Hello café</p>",
+              "body_text": "Hello caf\u00e9",
+              "body_html": "<p>Hello caf\u00e9</p>",
               "headers": {
                 "Subject": [
-                  "Hello café"
+                  "Hello caf\u00e9"
                 ],
                 "X-Trace": [
                   "a",
@@ -21241,10 +21241,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -21268,10 +21268,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -21317,14 +21317,14 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [
                 "recipient@example.net"
               ],
               "recipients_cc": [
                 "copy@example.net"
               ],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": true,
@@ -21338,11 +21338,11 @@
               "date_header": "2026-10-20T00:00:00Z",
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
-              "body_text": "Hello café",
-              "body_html": "<p>Hello café</p>",
+              "body_text": "Hello caf\u00e9",
+              "body_html": "<p>Hello caf\u00e9</p>",
               "headers": {
                 "Subject": [
-                  "Hello café"
+                  "Hello caf\u00e9"
                 ],
                 "X-Trace": [
                   "a",
@@ -21366,10 +21366,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -21393,10 +21393,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -21442,14 +21442,14 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [
                 "recipient@example.net"
               ],
               "recipients_cc": [
                 "copy@example.net"
               ],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": true,
@@ -21463,11 +21463,11 @@
               "date_header": "2026-10-20T00:00:00Z",
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
-              "body_text": "Hello café",
-              "body_html": "<p>Hello café</p>",
+              "body_text": "Hello caf\u00e9",
+              "body_html": "<p>Hello caf\u00e9</p>",
               "headers": {
                 "Subject": [
-                  "Hello café"
+                  "Hello caf\u00e9"
                 ],
                 "X-Trace": [
                   "a",
@@ -21491,10 +21491,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -21518,10 +21518,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -21924,14 +21924,14 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [
                 "recipient@example.net"
               ],
               "recipients_cc": [
                 "copy@example.net"
               ],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": true,
@@ -21945,11 +21945,11 @@
               "date_header": "2026-10-20T00:00:00Z",
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
-              "body_text": "Hello café",
-              "body_html": "<p>Hello café</p>",
+              "body_text": "Hello caf\u00e9",
+              "body_html": "<p>Hello caf\u00e9</p>",
               "headers": {
                 "Subject": [
-                  "Hello café"
+                  "Hello caf\u00e9"
                 ],
                 "X-Trace": [
                   "a",
@@ -21999,10 +21999,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -22051,10 +22051,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -22103,14 +22103,14 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [
                 "recipient@example.net"
               ],
               "recipients_cc": [
                 "copy@example.net"
               ],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": true,
@@ -22124,11 +22124,11 @@
               "date_header": "2026-10-20T00:00:00Z",
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
-              "body_text": "Hello café",
-              "body_html": "<p>Hello café</p>",
+              "body_text": "Hello caf\u00e9",
+              "body_html": "<p>Hello caf\u00e9</p>",
               "headers": {
                 "Subject": [
-                  "Hello café"
+                  "Hello caf\u00e9"
                 ],
                 "X-Trace": [
                   "a",
@@ -22152,10 +22152,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -22179,10 +22179,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -22231,14 +22231,14 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [
                 "recipient@example.net"
               ],
               "recipients_cc": [
                 "copy@example.net"
               ],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": true,
@@ -22252,11 +22252,11 @@
               "date_header": "2026-10-20T00:00:00Z",
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
-              "body_text": "Hello café",
-              "body_html": "<p>Hello café</p>",
+              "body_text": "Hello caf\u00e9",
+              "body_html": "<p>Hello caf\u00e9</p>",
               "headers": {
                 "Subject": [
-                  "Hello café"
+                  "Hello caf\u00e9"
                 ],
                 "X-Trace": [
                   "a",
@@ -22280,10 +22280,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -22307,10 +22307,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -22359,14 +22359,14 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [
                 "recipient@example.net"
               ],
               "recipients_cc": [
                 "copy@example.net"
               ],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": true,
@@ -22380,11 +22380,11 @@
               "date_header": "2026-10-20T00:00:00Z",
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
-              "body_text": "Hello café",
-              "body_html": "<p>Hello café</p>",
+              "body_text": "Hello caf\u00e9",
+              "body_html": "<p>Hello caf\u00e9</p>",
               "headers": {
                 "Subject": [
-                  "Hello café"
+                  "Hello caf\u00e9"
                 ],
                 "X-Trace": [
                   "a",
@@ -22408,10 +22408,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -22435,10 +22435,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -22487,14 +22487,14 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [
                 "recipient@example.net"
               ],
               "recipients_cc": [
                 "copy@example.net"
               ],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": true,
@@ -22508,11 +22508,11 @@
               "date_header": "2026-10-20T00:00:00Z",
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
-              "body_text": "Hello café",
-              "body_html": "<p>Hello café</p>",
+              "body_text": "Hello caf\u00e9",
+              "body_html": "<p>Hello caf\u00e9</p>",
               "headers": {
                 "Subject": [
-                  "Hello café"
+                  "Hello caf\u00e9"
                 ],
                 "X-Trace": [
                   "a",
@@ -22536,10 +22536,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -22563,10 +22563,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -22616,14 +22616,14 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [
                 "recipient@example.net"
               ],
               "recipients_cc": [
                 "copy@example.net"
               ],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": true,
@@ -22637,11 +22637,11 @@
               "date_header": "2026-10-20T00:00:00Z",
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
-              "body_text": "Hello café",
-              "body_html": "<p>Hello café</p>",
+              "body_text": "Hello caf\u00e9",
+              "body_html": "<p>Hello caf\u00e9</p>",
               "headers": {
                 "Subject": [
-                  "Hello café"
+                  "Hello caf\u00e9"
                 ],
                 "X-Trace": [
                   "a",
@@ -22665,10 +22665,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -22692,10 +22692,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -22724,7 +22724,7 @@
       "request": {
         "path": {
           "id": 1,
-          "folder": "Projects/2026 café"
+          "folder": "Projects/2026 caf\u00e9"
         }
       },
       "response": {
@@ -22735,20 +22735,20 @@
             {
               "id": 51,
               "mailbox_id": 1,
-              "folder": "Projects/2026 café",
+              "folder": "Projects/2026 caf\u00e9",
               "message_id": "<message-51@example.net>",
               "in_reply_to": "<parent@example.net>",
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [
                 "recipient@example.net"
               ],
               "recipients_cc": [
                 "copy@example.net"
               ],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": true,
@@ -22762,11 +22762,11 @@
               "date_header": "2026-10-20T00:00:00Z",
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
-              "body_text": "Hello café",
-              "body_html": "<p>Hello café</p>",
+              "body_text": "Hello caf\u00e9",
+              "body_html": "<p>Hello caf\u00e9</p>",
               "headers": {
                 "Subject": [
-                  "Hello café"
+                  "Hello caf\u00e9"
                 ],
                 "X-Trace": [
                   "a",
@@ -22784,16 +22784,16 @@
             {
               "id": 53,
               "mailbox_id": 1,
-              "folder": "Projects/2026 café",
+              "folder": "Projects/2026 caf\u00e9",
               "message_id": "<message-53@example.net>",
               "in_reply_to": "<parent@example.net>",
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -22811,16 +22811,16 @@
             {
               "id": 52,
               "mailbox_id": 1,
-              "folder": "Projects/2026 café",
+              "folder": "Projects/2026 caf\u00e9",
               "message_id": "<message-52@example.net>",
               "in_reply_to": "<parent@example.net>",
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -22933,10 +22933,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -22962,10 +22962,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -22989,14 +22989,14 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [
                 "recipient@example.net"
               ],
               "recipients_cc": [
                 "copy@example.net"
               ],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": true,
@@ -23010,11 +23010,11 @@
               "date_header": "2026-10-20T00:00:00Z",
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
-              "body_text": "Hello café",
-              "body_html": "<p>Hello café</p>",
+              "body_text": "Hello caf\u00e9",
+              "body_html": "<p>Hello caf\u00e9</p>",
               "headers": {
                 "Subject": [
-                  "Hello café"
+                  "Hello caf\u00e9"
                 ],
                 "X-Trace": [
                   "a",
@@ -23056,10 +23056,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -23085,10 +23085,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -23112,14 +23112,14 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [
                 "recipient@example.net"
               ],
               "recipients_cc": [
                 "copy@example.net"
               ],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": true,
@@ -23133,11 +23133,11 @@
               "date_header": "2026-10-20T00:00:00Z",
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
-              "body_text": "Hello café",
-              "body_html": "<p>Hello café</p>",
+              "body_text": "Hello caf\u00e9",
+              "body_html": "<p>Hello caf\u00e9</p>",
               "headers": {
                 "Subject": [
-                  "Hello café"
+                  "Hello caf\u00e9"
                 ],
                 "X-Trace": [
                   "a",
@@ -23177,10 +23177,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -23206,10 +23206,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -23233,14 +23233,14 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [
                 "recipient@example.net"
               ],
               "recipients_cc": [
                 "copy@example.net"
               ],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": true,
@@ -23254,11 +23254,11 @@
               "date_header": "2026-10-20T00:00:00Z",
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
-              "body_text": "Hello café",
-              "body_html": "<p>Hello café</p>",
+              "body_text": "Hello caf\u00e9",
+              "body_html": "<p>Hello caf\u00e9</p>",
               "headers": {
                 "Subject": [
-                  "Hello café"
+                  "Hello caf\u00e9"
                 ],
                 "X-Trace": [
                   "a",
@@ -23298,10 +23298,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -23327,10 +23327,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -23354,14 +23354,14 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [
                 "recipient@example.net"
               ],
               "recipients_cc": [
                 "copy@example.net"
               ],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": true,
@@ -23375,11 +23375,11 @@
               "date_header": "2026-10-20T00:00:00Z",
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
-              "body_text": "Hello café",
-              "body_html": "<p>Hello café</p>",
+              "body_text": "Hello caf\u00e9",
+              "body_html": "<p>Hello caf\u00e9</p>",
               "headers": {
                 "Subject": [
-                  "Hello café"
+                  "Hello caf\u00e9"
                 ],
                 "X-Trace": [
                   "a",
@@ -23419,10 +23419,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -23448,10 +23448,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -23475,14 +23475,14 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [
                 "recipient@example.net"
               ],
               "recipients_cc": [
                 "copy@example.net"
               ],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": true,
@@ -23496,11 +23496,11 @@
               "date_header": "2026-10-20T00:00:00Z",
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
-              "body_text": "Hello café",
-              "body_html": "<p>Hello café</p>",
+              "body_text": "Hello caf\u00e9",
+              "body_html": "<p>Hello caf\u00e9</p>",
               "headers": {
                 "Subject": [
-                  "Hello café"
+                  "Hello caf\u00e9"
                 ],
                 "X-Trace": [
                   "a",
@@ -23540,10 +23540,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -23569,10 +23569,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -23596,14 +23596,14 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [
                 "recipient@example.net"
               ],
               "recipients_cc": [
                 "copy@example.net"
               ],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": true,
@@ -23617,11 +23617,11 @@
               "date_header": "2026-10-20T00:00:00Z",
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
-              "body_text": "Hello café",
-              "body_html": "<p>Hello café</p>",
+              "body_text": "Hello caf\u00e9",
+              "body_html": "<p>Hello caf\u00e9</p>",
               "headers": {
                 "Subject": [
-                  "Hello café"
+                  "Hello caf\u00e9"
                 ],
                 "X-Trace": [
                   "a",
@@ -23661,10 +23661,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -23690,10 +23690,10 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [],
               "recipients_cc": [],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": false,
@@ -23717,14 +23717,14 @@
               "references": "<parent@example.net>",
               "thread_id": "thread/2026@example.net",
               "sender": "sender@example.net",
-              "sender_name": "Sender café",
+              "sender_name": "Sender caf\u00e9",
               "recipients_to": [
                 "recipient@example.net"
               ],
               "recipients_cc": [
                 "copy@example.net"
               ],
-              "subject": "Subject café",
+              "subject": "Subject caf\u00e9",
               "size_bytes": 80,
               "raw_size": 128,
               "has_attachments": true,
@@ -23738,11 +23738,11 @@
               "date_header": "2026-10-20T00:00:00Z",
               "created_at": "2026-10-20T00:00:00Z",
               "updated_at": "2026-10-20T00:00:00Z",
-              "body_text": "Hello café",
-              "body_html": "<p>Hello café</p>",
+              "body_text": "Hello caf\u00e9",
+              "body_html": "<p>Hello caf\u00e9</p>",
               "headers": {
                 "Subject": [
-                  "Hello café"
+                  "Hello caf\u00e9"
                 ],
                 "X-Trace": [
                   "a",
@@ -24149,14 +24149,14 @@
             "references": "",
             "thread_id": "",
             "sender": "sender@example.net",
-            "sender_name": "Sender café",
+            "sender_name": "Sender caf\u00e9",
             "recipients_to": [
               "recipient@example.com"
             ],
             "recipients_cc": [],
-            "subject": "Subject café",
-            "body_text": "Hello café",
-            "body_html": "<p>Hello café</p>",
+            "subject": "Subject caf\u00e9",
+            "body_text": "Hello caf\u00e9",
+            "body_html": "<p>Hello caf\u00e9</p>",
             "headers": {
               "X-Trace": [
                 "one",
@@ -24202,14 +24202,14 @@
             "references": "",
             "thread_id": "",
             "sender": "sender@example.net",
-            "sender_name": "Sender café",
+            "sender_name": "Sender caf\u00e9",
             "recipients_to": [
               "recipient@example.com"
             ],
             "recipients_cc": [],
-            "subject": "Subject café",
-            "body_text": "Hello café",
-            "body_html": "<p>Hello café</p>",
+            "subject": "Subject caf\u00e9",
+            "body_text": "Hello caf\u00e9",
+            "body_html": "<p>Hello caf\u00e9</p>",
             "headers": {
               "X-Trace": [
                 "one",
@@ -24254,14 +24254,14 @@
             "references": "",
             "thread_id": "",
             "sender": "sender@example.net",
-            "sender_name": "Sender café",
+            "sender_name": "Sender caf\u00e9",
             "recipients_to": [
               "recipient@example.com"
             ],
             "recipients_cc": [],
-            "subject": "Subject café",
-            "body_text": "Hello café",
-            "body_html": "<p>Hello café</p>",
+            "subject": "Subject caf\u00e9",
+            "body_text": "Hello caf\u00e9",
+            "body_html": "<p>Hello caf\u00e9</p>",
             "headers": {
               "X-Trace": [
                 "one",
@@ -24306,14 +24306,14 @@
             "references": "",
             "thread_id": "",
             "sender": "sender@example.net",
-            "sender_name": "Sender café",
+            "sender_name": "Sender caf\u00e9",
             "recipients_to": [
               "recipient@example.com"
             ],
             "recipients_cc": [],
-            "subject": "Subject café",
-            "body_text": "Hello café",
-            "body_html": "<p>Hello café</p>",
+            "subject": "Subject caf\u00e9",
+            "body_text": "Hello caf\u00e9",
+            "body_html": "<p>Hello caf\u00e9</p>",
             "headers": {
               "X-Trace": [
                 "one",
@@ -24358,14 +24358,14 @@
             "references": "",
             "thread_id": "",
             "sender": "sender@example.net",
-            "sender_name": "Sender café",
+            "sender_name": "Sender caf\u00e9",
             "recipients_to": [
               "recipient@example.com"
             ],
             "recipients_cc": [],
-            "subject": "Subject café",
-            "body_text": "Hello café",
-            "body_html": "<p>Hello café</p>",
+            "subject": "Subject caf\u00e9",
+            "body_text": "Hello caf\u00e9",
+            "body_html": "<p>Hello caf\u00e9</p>",
             "headers": {
               "X-Trace": [
                 "one",
@@ -24410,14 +24410,14 @@
             "references": "",
             "thread_id": "",
             "sender": "sender@example.net",
-            "sender_name": "Sender café",
+            "sender_name": "Sender caf\u00e9",
             "recipients_to": [
               "recipient@example.com"
             ],
             "recipients_cc": [],
-            "subject": "Subject café",
-            "body_text": "Hello café",
-            "body_html": "<p>Hello café</p>",
+            "subject": "Subject caf\u00e9",
+            "body_text": "Hello caf\u00e9",
+            "body_html": "<p>Hello caf\u00e9</p>",
             "headers": {
               "X-Trace": [
                 "one",
@@ -24462,14 +24462,14 @@
             "references": "",
             "thread_id": "",
             "sender": "sender@example.net",
-            "sender_name": "Sender café",
+            "sender_name": "Sender caf\u00e9",
             "recipients_to": [
               "recipient@example.com"
             ],
             "recipients_cc": [],
-            "subject": "Subject café",
-            "body_text": "Hello café",
-            "body_html": "<p>Hello café</p>",
+            "subject": "Subject caf\u00e9",
+            "body_text": "Hello caf\u00e9",
+            "body_html": "<p>Hello caf\u00e9</p>",
             "headers": {
               "X-Trace": [
                 "one",
@@ -24832,14 +24832,14 @@
             "references": "",
             "thread_id": "",
             "sender": "sender@example.net",
-            "sender_name": "Sender café",
+            "sender_name": "Sender caf\u00e9",
             "recipients_to": [
               "recipient@example.com"
             ],
             "recipients_cc": [],
-            "subject": "Subject café",
-            "body_text": "Hello café",
-            "body_html": "<p>Hello café</p>",
+            "subject": "Subject caf\u00e9",
+            "body_text": "Hello caf\u00e9",
+            "body_html": "<p>Hello caf\u00e9</p>",
             "headers": {
               "X-Trace": [
                 "one",
@@ -24884,14 +24884,14 @@
             "references": "",
             "thread_id": "",
             "sender": "sender@example.net",
-            "sender_name": "Sender café",
+            "sender_name": "Sender caf\u00e9",
             "recipients_to": [
               "recipient@example.com"
             ],
             "recipients_cc": [],
-            "subject": "Subject café",
-            "body_text": "Hello café",
-            "body_html": "<p>Hello café</p>",
+            "subject": "Subject caf\u00e9",
+            "body_text": "Hello caf\u00e9",
+            "body_html": "<p>Hello caf\u00e9</p>",
             "headers": {
               "X-Trace": [
                 "one",
@@ -24937,14 +24937,14 @@
             "references": "",
             "thread_id": "",
             "sender": "sender@example.net",
-            "sender_name": "Sender café",
+            "sender_name": "Sender caf\u00e9",
             "recipients_to": [
               "recipient@example.com"
             ],
             "recipients_cc": [],
-            "subject": "Subject café",
-            "body_text": "Hello café",
-            "body_html": "<p>Hello café</p>",
+            "subject": "Subject caf\u00e9",
+            "body_text": "Hello caf\u00e9",
+            "body_html": "<p>Hello caf\u00e9</p>",
             "headers": {
               "X-Trace": [
                 "one",
@@ -24982,7 +24982,7 @@
       "response": {
         "status": 200,
         "mediaType": "message/rfc822",
-        "body": "From: sender@example.net\r\nTo: recipient@example.com\r\nSubject: café\r\nX-Trace: one\r\nX-Trace: two\r\n\r\nHello café\r\n.No dot unstuffing here\r\n"
+        "body": "From: sender@example.net\r\nTo: recipient@example.com\r\nSubject: caf\u00e9\r\nX-Trace: one\r\nX-Trace: two\r\n\r\nHello caf\u00e9\r\n.No dot unstuffing here\r\n"
       },
       "description": "The production message lookup, credential verification and current holder ceilings are used. Controlled SQL proves wiring, not PostgreSQL semantics or audit persistence. JSON omits raw source and unloaded mailboxes; the source route preserves every octet, repeated headers, CRLF, UTF-8 and a leading dot."
     },
@@ -24995,7 +24995,7 @@
       "response": {
         "status": 200,
         "mediaType": "message/rfc822",
-        "body": "From: sender@example.net\r\nTo: recipient@example.com\r\nSubject: café\r\nX-Trace: one\r\nX-Trace: two\r\n\r\nHello café\r\n.No dot unstuffing here\r\n"
+        "body": "From: sender@example.net\r\nTo: recipient@example.com\r\nSubject: caf\u00e9\r\nX-Trace: one\r\nX-Trace: two\r\n\r\nHello caf\u00e9\r\n.No dot unstuffing here\r\n"
       }
     },
     "domain_grant": {
@@ -25007,7 +25007,7 @@
       "response": {
         "status": 200,
         "mediaType": "message/rfc822",
-        "body": "From: sender@example.net\r\nTo: recipient@example.com\r\nSubject: café\r\nX-Trace: one\r\nX-Trace: two\r\n\r\nHello café\r\n.No dot unstuffing here\r\n"
+        "body": "From: sender@example.net\r\nTo: recipient@example.com\r\nSubject: caf\u00e9\r\nX-Trace: one\r\nX-Trace: two\r\n\r\nHello caf\u00e9\r\n.No dot unstuffing here\r\n"
       }
     },
     "cookie_session": {
@@ -25019,7 +25019,7 @@
       "response": {
         "status": 200,
         "mediaType": "message/rfc822",
-        "body": "From: sender@example.net\r\nTo: recipient@example.com\r\nSubject: café\r\nX-Trace: one\r\nX-Trace: two\r\n\r\nHello café\r\n.No dot unstuffing here\r\n"
+        "body": "From: sender@example.net\r\nTo: recipient@example.com\r\nSubject: caf\u00e9\r\nX-Trace: one\r\nX-Trace: two\r\n\r\nHello caf\u00e9\r\n.No dot unstuffing here\r\n"
       }
     },
     "app_password": {
@@ -25031,7 +25031,7 @@
       "response": {
         "status": 200,
         "mediaType": "message/rfc822",
-        "body": "From: sender@example.net\r\nTo: recipient@example.com\r\nSubject: café\r\nX-Trace: one\r\nX-Trace: two\r\n\r\nHello café\r\n.No dot unstuffing here\r\n"
+        "body": "From: sender@example.net\r\nTo: recipient@example.com\r\nSubject: caf\u00e9\r\nX-Trace: one\r\nX-Trace: two\r\n\r\nHello caf\u00e9\r\n.No dot unstuffing here\r\n"
       }
     },
     "key_read": {
@@ -25043,7 +25043,7 @@
       "response": {
         "status": 200,
         "mediaType": "message/rfc822",
-        "body": "From: sender@example.net\r\nTo: recipient@example.com\r\nSubject: café\r\nX-Trace: one\r\nX-Trace: two\r\n\r\nHello café\r\n.No dot unstuffing here\r\n"
+        "body": "From: sender@example.net\r\nTo: recipient@example.com\r\nSubject: caf\u00e9\r\nX-Trace: one\r\nX-Trace: two\r\n\r\nHello caf\u00e9\r\n.No dot unstuffing here\r\n"
       }
     },
     "key_domain": {
@@ -25055,7 +25055,7 @@
       "response": {
         "status": 200,
         "mediaType": "message/rfc822",
-        "body": "From: sender@example.net\r\nTo: recipient@example.com\r\nSubject: café\r\nX-Trace: one\r\nX-Trace: two\r\n\r\nHello café\r\n.No dot unstuffing here\r\n"
+        "body": "From: sender@example.net\r\nTo: recipient@example.com\r\nSubject: caf\u00e9\r\nX-Trace: one\r\nX-Trace: two\r\n\r\nHello caf\u00e9\r\n.No dot unstuffing here\r\n"
       }
     },
     "unauthenticated": {
@@ -25415,7 +25415,7 @@
       "response": {
         "status": 200,
         "mediaType": "message/rfc822",
-        "body": "From: sender@example.net\r\nTo: recipient@example.com\r\nSubject: café\r\nX-Trace: one\r\nX-Trace: two\r\n\r\nHello café\r\n.No dot unstuffing here\r\n"
+        "body": "From: sender@example.net\r\nTo: recipient@example.com\r\nSubject: caf\u00e9\r\nX-Trace: one\r\nX-Trace: two\r\n\r\nHello caf\u00e9\r\n.No dot unstuffing here\r\n"
       },
       "description": "A message already marked deleted remains retrievable by ID for existing Trash and protocol flows; collection filtering is separate."
     }
@@ -25430,7 +25430,7 @@
       "response": {
         "status": 200,
         "mediaType": "application/octet-stream",
-        "body": "attachment café\r\n"
+        "body": "attachment caf\u00e9\r\n"
       },
       "description": "Production routing, real credential/holder access checks and the real signed S3 client stream bytes through a local S3 wire fixture. Controlled SQL proves lookup/authorization wiring, not PostgreSQL semantics. Sender HTML type is ignored; UTF-8/CRLF and attachment download headers are retained, with an injection-safe filename."
     },
@@ -25443,7 +25443,7 @@
       "response": {
         "status": 200,
         "mediaType": "application/octet-stream",
-        "body": "attachment café\r\n"
+        "body": "attachment caf\u00e9\r\n"
       }
     },
     "domain_grant": {
@@ -25455,7 +25455,7 @@
       "response": {
         "status": 200,
         "mediaType": "application/octet-stream",
-        "body": "attachment café\r\n"
+        "body": "attachment caf\u00e9\r\n"
       }
     },
     "cookie_session": {
@@ -25467,7 +25467,7 @@
       "response": {
         "status": 200,
         "mediaType": "application/octet-stream",
-        "body": "attachment café\r\n"
+        "body": "attachment caf\u00e9\r\n"
       }
     },
     "app_password": {
@@ -25479,7 +25479,7 @@
       "response": {
         "status": 200,
         "mediaType": "application/octet-stream",
-        "body": "attachment café\r\n"
+        "body": "attachment caf\u00e9\r\n"
       }
     },
     "key_read": {
@@ -25491,7 +25491,7 @@
       "response": {
         "status": 200,
         "mediaType": "application/octet-stream",
-        "body": "attachment café\r\n"
+        "body": "attachment caf\u00e9\r\n"
       }
     },
     "key_domain": {
@@ -25503,7 +25503,7 @@
       "response": {
         "status": 200,
         "mediaType": "application/octet-stream",
-        "body": "attachment café\r\n"
+        "body": "attachment caf\u00e9\r\n"
       }
     },
     "empty": {
