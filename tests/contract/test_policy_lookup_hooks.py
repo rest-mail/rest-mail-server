@@ -219,7 +219,7 @@ class PolicyAbsentFixture(unittest.TestCase):
         ]["policy_absent"]
         self.assertEqual(example_id, self.loaded["policy"]["POLICY_ABSENT_ID"])
         self.assertEqual(pair["request"]["path"]["id"], example_id)
-        self.assertEqual(pair["response"], {"status": 404, "body": response})
+        self.assertEqual(pair["response"], {"status": 404, "mediaType": "application/json", "body": response})
         transaction = self.transaction()
         transaction["fullPath"] = f"/api/v1/admin/domains/{example_id}/mta-sts"
         transaction["expected"] = {"statusCode": "404", "body": json.dumps(response)}
