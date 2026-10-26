@@ -5,11 +5,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
-	"runtime/debug"
 	"strings"
 	"testing"
 
 	"github.com/restmail/restmail/internal/pipeline/filters"
+	"gorm.io/gorm"
 )
 
 // createCustomFilter's config is required and is an object
@@ -18,29 +18,15 @@ import (
 // an accepted body must get as far as storing it.
 
 // createCustomFilterNoDB sends body to CreateCustomFilter on a handler with no
-// database. reached reports whether the handler got to its insert (gorm's
-// Table, which panics on the nil database), checked against the panic's own
-// stack so no other panic passes for it.
+// live database. reached reports whether validation reached the insert.
 func createCustomFilterNoDB(t *testing.T, body string) (rr *httptest.ResponseRecorder, reached bool) {
 	t.Helper()
-	h := NewPipelineHandler(nil, nil, filters.JSSidecar{})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/custom-filters", strings.NewReader(body))
 	rr = httptest.NewRecorder()
-	func() {
-		defer func() {
-			r := recover()
-			if r == nil {
-				return
-			}
-			stack := string(debug.Stack())
-			if !strings.Contains(stack, "gorm.io/gorm.(*DB).Table(") ||
-				!strings.Contains(stack, "handlers.(*PipelineHandler).createCustomFilter(") {
-				t.Fatalf("%s: panicked outside gorm's Table: %v\n%s", body, r, stack)
-			}
-			reached = true
-		}()
+	reached = runToValidationDB(t, "custom_filters", func(db *gorm.DB) {
+		h := NewPipelineHandler(db, nil, filters.JSSidecar{})
 		pipelineRoutes(h).ServeHTTP(rr, req)
-	}()
+	})
 	return rr, reached
 }
 
