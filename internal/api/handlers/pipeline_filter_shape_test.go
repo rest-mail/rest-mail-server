@@ -12,11 +12,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// createPipeline's filters are required and are an array of objects
-// (CreatePipelineRequest, #388). These tests send bodies to the real handler
-// with no database: a refusal must come before anything is stored, and an
-// accepted body must get as far as storing it.
-
 // createPipelineNoDB sends body to CreatePipeline on a handler with no
 // live database. reached reports whether validation reached the insert;
 // only the controlled callback can mark that boundary as reached.

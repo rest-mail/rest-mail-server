@@ -5,42 +5,15 @@
 #   request type does not state; state it in the type (go-oapifly#23), or, for a rule no
 #   schema can state, take the mark off the example.
 # - example-invalid on a response: the example and the response type disagree.
-example-invalid bulkBounceQueue/selection_missing
-example-invalid bulkDeleteQueue/selection_missing
-example-invalid bulkRetryQueue/selection_missing
 example-invalid createAPIKey/permissions_missing
 example-invalid createAPIKey/wildcard_capability
-example-invalid createAlias/source_invalid
 example-invalid createAppPassword/name_control
 example-invalid createAppPassword/name_empty
 example-invalid createAppPassword/name_too_long
-example-invalid createContact/email_invalid
-example-invalid createContact/trust_level_invalid
-example-invalid createFolder/name_empty
-example-invalid createPipeline/direction_missing
-example-invalid createPipeline/filters_missing
-example-invalid importContacts/contacts_empty
-example-invalid importContacts/email_invalid
-example-invalid importContacts/mixed_batch
-example-invalid probeServices/service_unknown
 example-invalid protocolSignIn/protocol_missing
-example-invalid putSieveScript/script_null
 example-invalid restmailDeliver/recipients_missing
 example-invalid sendMessage/from_missing
 example-invalid sendMessage/unsubscribe_not_allowed
 example-invalid sendMessage/unsubscribe_not_allowed 422
 example-invalid sendMessage/valid 201
-example-invalid setDKIMKey/private_key_invalid
-example-invalid setVacation/body_missing
-example-invalid setVacation/dates_reversed
-example-invalid setVacation/reply_missing
-example-invalid setVacation/subject_missing
-example-invalid testFilter/filter_name_missing
-example-invalid updateAlias/destination_invalid
-example-invalid updateCustomFilter/config_array
-example-invalid updateCustomFilter/config_null
-example-invalid updateCustomFilter/name_empty
 example-invalid updateMailbox/password_short
-example-invalid updatePipeline/filters_null
-example-invalid updatePipeline/filters_object
-example-invalid validateSieveScript/script_null

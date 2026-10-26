@@ -67,7 +67,9 @@ func authReadBatchRouters(t *testing.T) (http.Handler, http.Handler, http.Handle
 	t.Helper()
 	configureAuthReadPush(t)
 	useRealGrants(t)
-	jwt := auth.NewJWTService(routerTestSecret, time.Minute, time.Hour)
+	// Scenario tokens are minted once per test, and a Vertrag pair test can run
+	// past a minute: give them the documented 15-minute access lifetime.
+	jwt := auth.NewJWTService(routerTestSecret, 15*time.Minute, time.Hour)
 	newRouter := func(db *gorm.DB) http.Handler {
 		r := NewRouters(db, jwt, &config.Config{Environment: "test", APIMaxBodyBytes: 8}, nil)
 		t.Cleanup(r.Close)
