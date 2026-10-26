@@ -9931,8 +9931,18 @@ paths:
                       from: postmaster@restmail.test
                       to: admin@restmail.test
                       subject: Test
+        "400":
+          description: Missing, malformed or non-object JSON body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "403":
-          description: Disabled in production
+          description: Wildcard capability or cookie CSRF is missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
@@ -10109,7 +10119,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/StatusResponse"
         "403":
-          description: Disabled in production
+          description: Wildcard capability or cookie CSRF is missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/v1/admin/test/seed:
     post:
@@ -10128,7 +10142,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/StatusResponse"
         "403":
-          description: Disabled in production
+          description: Wildcard capability or cookie CSRF is missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/v1/admin/test/snapshot:
     post:
@@ -10152,7 +10170,35 @@ paths:
                     type: object
                     additionalProperties: true
         "403":
-          description: Disabled in production
+          description: Wildcard capability or cookie CSRF is missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Request exceeds the configured body cap
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: A snapshot query failed; partial data is never returned as success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Session or grants could not be verified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/v1/admin/test/snapshot/restore:
     post:
@@ -10185,7 +10231,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
-          description: Disabled in production
+          description: Wildcard capability or cookie CSRF is missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
 components:
   securitySchemes:

@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"reflect"
 	"strings"
 	"time"
 
@@ -48,69 +49,51 @@ func (h *TestHandler) productionLocked() bool {
 
 // sendTestEmail sends a test email from one mailbox to another.
 // POST /api/v1/admin/test/send
-func (h *TestHandler) sendTestEmail(_ *http.Request, req sendTestEmailRequest) (TestEmailSent, error) {
+func (h *TestHandler) sendTestEmail(r *http.Request, req sendTestEmailRequest) (TestEmailSent, error) {
 	if h.productionLocked() {
 		return TestEmailSent{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "test endpoints disabled in production")
 	}
-
 	if req.Subject == "" {
-		req.Subject = "Test email from RestMail"
+		req.Subject = "Test email from REST Mail"
 	}
 	if req.Body == "" {
 		req.Body = fmt.Sprintf("This is a test email sent at %s", time.Now().Format(time.RFC3339))
 	}
-
-	// Look up sender mailbox
-	var senderMb models.Mailbox
-	if err := h.db.Where("address = ?", req.From).First(&senderMb).Error; err != nil {
-		return TestEmailSent{}, endpoint.Refuse(http.StatusNotFound, "not_found", "sender mailbox not found")
+	var msg models.Message
+	if err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
+		var sender, recipient models.Mailbox
+		if err := tx.Where("address = ?", req.From).First(&sender).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return endpoint.Refuse(http.StatusNotFound, "not_found", "sender mailbox not found")
+			}
+			return fmt.Errorf("look up test sender: %w", err)
+		}
+		if err := tx.Where("address = ?", req.To).First(&recipient).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return endpoint.Refuse(http.StatusNotFound, "not_found", "recipient mailbox not found")
+			}
+			return fmt.Errorf("look up test recipient: %w", err)
+		}
+		messageID := rmail.GenerateMessageID(rmail.DomainFromAddress(req.From))
+		msg = models.Message{
+			MailboxID: recipient.ID, Folder: "INBOX", MsgID: messageID, ThreadID: messageID,
+			Sender: req.From, SenderName: sender.DisplayName, RecipientsTo: models.JSONB(mustJSON([]string{req.To})),
+			Subject: req.Subject, BodyText: req.Body, SizeBytes: len(req.Body), ReceivedAt: time.Now(),
+		}
+		// Prepare both copies before GORM assigns an ID to either one.
+		sent := msg
+		sent.MailboxID, sent.Folder, sent.IsRead = sender.ID, "Sent", true
+		if err := tx.Create(&msg).Error; err != nil {
+			return fmt.Errorf("store test INBOX copy: %w", err)
+		}
+		if err := tx.Create(&sent).Error; err != nil {
+			return fmt.Errorf("store test Sent copy: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return TestEmailSent{}, err
 	}
-
-	// Look up recipient mailbox
-	var recipientMb models.Mailbox
-	if err := h.db.Where("address = ?", req.To).First(&recipientMb).Error; err != nil {
-		return TestEmailSent{}, endpoint.Refuse(http.StatusNotFound, "not_found", "recipient mailbox not found")
-	}
-
-	messageID := rmail.GenerateMessageID(rmail.DomainFromAddress(req.From))
-
-	// Create the message directly in the recipient's INBOX
-	msg := models.Message{
-		MailboxID:    recipientMb.ID,
-		Folder:       "INBOX",
-		MsgID:        messageID,
-		ThreadID:     messageID,
-		Sender:       req.From,
-		SenderName:   senderMb.DisplayName,
-		RecipientsTo: models.JSONB(mustJSON([]string{req.To})),
-		Subject:      req.Subject,
-		BodyText:     req.Body,
-		SizeBytes:    len(req.Body),
-		ReceivedAt:   time.Now(),
-	}
-
-	if err := h.db.Create(&msg).Error; err != nil {
-		return TestEmailSent{}, endpoint.Refuse(http.StatusInternalServerError, "internal", "failed to create test message")
-	}
-
-	// Also save a copy in the sender's Sent folder
-	sent := models.Message{
-		MailboxID:    senderMb.ID,
-		Folder:       "Sent",
-		MsgID:        messageID,
-		ThreadID:     messageID,
-		Sender:       req.From,
-		SenderName:   senderMb.DisplayName,
-		RecipientsTo: models.JSONB(mustJSON([]string{req.To})),
-		Subject:      req.Subject,
-		BodyText:     req.Body,
-		SizeBytes:    len(req.Body),
-		IsRead:       true,
-		ReceivedAt:   time.Now(),
-	}
-	h.db.Create(&sent)
-
-	return TestEmailSent{MessageID: msg.ID, MsgID: messageID, From: req.From, To: req.To, Subject: req.Subject}, nil
+	return TestEmailSent{MessageID: msg.ID, MsgID: msg.MsgID, From: req.From, To: req.To, Subject: req.Subject}, nil
 }
 
 // verifyDelivery checks whether a message matching the given criteria was delivered.
@@ -231,75 +214,84 @@ func (h *TestHandler) probeServices(r *http.Request, req probeServicesRequest) (
 
 // resetTestData wipes all data and re-seeds with default test data.
 // POST /api/v1/admin/test/reset
-func (h *TestHandler) resetTestData(_ *http.Request, _ endpoint.Empty) (TestDataStatus, error) {
+func (h *TestHandler) resetTestData(r *http.Request, _ endpoint.Empty) (TestDataStatus, error) {
 	if h.productionLocked() {
 		return TestDataStatus{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "test endpoints disabled in production")
 	}
-
 	slog.Warn("test: resetting all data")
-
-	err := h.db.Transaction(clearTestData)
-	if err != nil {
-		return TestDataStatus{}, endpoint.Refuse(http.StatusInternalServerError, "internal", "failed to reset data: "+err.Error())
+	if err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
+		if err := clearTestData(tx); err != nil {
+			return err
+		}
+		return seedTestData(tx)
+	}); err != nil {
+		return TestDataStatus{}, fmt.Errorf("reset test data: %w", err)
 	}
-
-	// Re-seed
-	if err := seedTestData(h.db); err != nil {
-		return TestDataStatus{}, endpoint.Refuse(http.StatusInternalServerError, "internal", "failed to seed data: "+err.Error())
-	}
-
 	return TestDataStatus{Status: "reset_complete"}, nil
 }
 
 // seedTestData creates default test domains, mailboxes, aliases, and accounts.
 // POST /api/v1/admin/test/seed
-func (h *TestHandler) seedTestData(_ *http.Request, _ endpoint.Empty) (TestDataStatus, error) {
+func (h *TestHandler) seedTestData(r *http.Request, _ endpoint.Empty) (TestDataStatus, error) {
 	if h.productionLocked() {
 		return TestDataStatus{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "test endpoints disabled in production")
 	}
-
-	if err := seedTestData(h.db); err != nil {
-		return TestDataStatus{}, endpoint.Refuse(http.StatusInternalServerError, "internal", "failed to seed data: "+err.Error())
+	if err := h.db.WithContext(r.Context()).Transaction(seedTestData); err != nil {
+		return TestDataStatus{}, fmt.Errorf("seed test data: %w", err)
 	}
-
 	return TestDataStatus{Status: "seed_complete"}, nil
 }
 
 // snapshot captures the current database state as JSON.
 // POST /api/v1/admin/test/snapshot
-func (h *TestHandler) snapshot(_ *http.Request, _ endpoint.Empty) (TestSnapshot, error) {
+func (h *TestHandler) snapshot(r *http.Request, _ endpoint.Empty) (TestSnapshot, error) {
 	if h.productionLocked() {
 		return TestSnapshot{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "test endpoints disabled in production")
 	}
 
 	snap := testSnapshotModels{}
+	database := h.db.WithContext(r.Context())
 
 	var domains []models.Domain
-	h.db.Find(&domains)
+	if err := database.Find(&domains).Error; err != nil {
+		return TestSnapshot{}, fmt.Errorf("snapshot domains: %w", err)
+	}
 	snap.Domains = domains
 
 	var mailboxes []models.Mailbox
-	h.db.Find(&mailboxes)
+	if err := database.Find(&mailboxes).Error; err != nil {
+		return TestSnapshot{}, fmt.Errorf("snapshot mailboxes: %w", err)
+	}
 	snap.Mailboxes = mailboxes
 
 	var aliases []models.Alias
-	h.db.Find(&aliases)
+	if err := database.Find(&aliases).Error; err != nil {
+		return TestSnapshot{}, fmt.Errorf("snapshot aliases: %w", err)
+	}
 	snap.Aliases = aliases
 
 	var messages []models.Message
-	h.db.Find(&messages)
+	if err := database.Find(&messages).Error; err != nil {
+		return TestSnapshot{}, fmt.Errorf("snapshot messages: %w", err)
+	}
 	snap.Messages = messages
 
 	var queue []models.OutboundQueue
-	h.db.Find(&queue)
+	if err := database.Find(&queue).Error; err != nil {
+		return TestSnapshot{}, fmt.Errorf("snapshot queue: %w", err)
+	}
 	snap.Queue = queue
 
 	var pipelines []models.Pipeline
-	h.db.Find(&pipelines)
+	if err := database.Find(&pipelines).Error; err != nil {
+		return TestSnapshot{}, fmt.Errorf("snapshot pipelines: %w", err)
+	}
 	snap.Pipelines = pipelines
 
 	var bans []models.Ban
-	h.db.Find(&bans)
+	if err := database.Find(&bans).Error; err != nil {
+		return TestSnapshot{}, fmt.Errorf("snapshot bans: %w", err)
+	}
 	snap.Bans = bans
 
 	snap.SnapshotAt = time.Now()
@@ -309,7 +301,7 @@ func (h *TestHandler) snapshot(_ *http.Request, _ endpoint.Empty) (TestSnapshot,
 
 // restoreSnapshot restores database state from a previously captured snapshot.
 // POST /api/v1/admin/test/snapshot/restore
-func (h *TestHandler) restoreSnapshot(_ *http.Request, in RestoreTestSnapshot) (TestDataStatus, error) {
+func (h *TestHandler) restoreSnapshot(r *http.Request, in RestoreTestSnapshot) (TestDataStatus, error) {
 	if h.productionLocked() {
 		return TestDataStatus{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "test endpoints disabled in production")
 	}
@@ -319,7 +311,7 @@ func (h *TestHandler) restoreSnapshot(_ *http.Request, in RestoreTestSnapshot) (
 		return TestDataStatus{}, err
 	}
 
-	err = h.db.Transaction(func(tx *gorm.DB) error {
+	err = h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
 		// Clear existing data, sparing the admins.
 		if err := clearTestData(tx); err != nil {
 			return err
@@ -327,37 +319,37 @@ func (h *TestHandler) restoreSnapshot(_ *http.Request, in RestoreTestSnapshot) (
 
 		// Restore in FK-safe order
 		for i := range snap.Domains {
-			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&snap.Domains[i]).Error; err != nil {
+			if err := restoreTestRow(tx, &snap.Domains[i], true); err != nil {
 				return fmt.Errorf("restore domains: %w", err)
 			}
 		}
 		for i := range snap.Mailboxes {
-			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&snap.Mailboxes[i]).Error; err != nil {
+			if err := restoreTestRow(tx, &snap.Mailboxes[i], true); err != nil {
 				return fmt.Errorf("restore mailboxes: %w", err)
 			}
 		}
 		for i := range snap.Aliases {
-			if err := tx.Create(&snap.Aliases[i]).Error; err != nil {
+			if err := restoreTestRow(tx, &snap.Aliases[i], false); err != nil {
 				return fmt.Errorf("restore aliases: %w", err)
 			}
 		}
 		for i := range snap.Messages {
-			if err := tx.Create(&snap.Messages[i]).Error; err != nil {
+			if err := restoreTestRow(tx, &snap.Messages[i], false); err != nil {
 				return fmt.Errorf("restore messages: %w", err)
 			}
 		}
 		for i := range snap.Queue {
-			if err := tx.Create(&snap.Queue[i]).Error; err != nil {
+			if err := restoreTestRow(tx, &snap.Queue[i], false); err != nil {
 				return fmt.Errorf("restore queue: %w", err)
 			}
 		}
 		for i := range snap.Pipelines {
-			if err := tx.Create(&snap.Pipelines[i]).Error; err != nil {
+			if err := restoreTestRow(tx, &snap.Pipelines[i], false); err != nil {
 				return fmt.Errorf("restore pipelines: %w", err)
 			}
 		}
 		for i := range snap.Bans {
-			if err := tx.Create(&snap.Bans[i]).Error; err != nil {
+			if err := restoreTestRow(tx, &snap.Bans[i], false); err != nil {
 				return fmt.Errorf("restore bans: %w", err)
 			}
 		}
@@ -366,10 +358,36 @@ func (h *TestHandler) restoreSnapshot(_ *http.Request, in RestoreTestSnapshot) (
 	})
 
 	if err != nil {
-		return TestDataStatus{}, endpoint.Refuse(http.StatusInternalServerError, "internal", "restore failed: "+err.Error())
+		return TestDataStatus{}, fmt.Errorf("restore test snapshot: %w", err)
 	}
 
 	return TestDataStatus{Status: "restore_complete"}, nil
+}
+
+// Restore database columns directly: GORM's struct Create substitutes defaults
+// for false/zero fields, so a disabled account or zero quota would not round
+// trip. Associations are read views, not additional fixture table inserts.
+func restoreTestRow(tx *gorm.DB, row any, keepExisting bool) error {
+	statement := &gorm.Statement{DB: tx}
+	if err := statement.Parse(row); err != nil {
+		return err
+	}
+	values := make(map[string]any)
+	for _, field := range statement.Schema.Fields {
+		if field.DBName == "" || !field.Creatable {
+			continue
+		}
+		value, zero := field.ValueOf(tx.Statement.Context, reflect.ValueOf(row))
+		if field.PrimaryKey && zero {
+			continue // Sparse fixtures may let the database assign their ID.
+		}
+		values[field.DBName] = value
+	}
+	query := tx.Model(row).Omit(clause.Associations)
+	if keepExisting {
+		query = query.Clauses(clause.OnConflict{DoNothing: true})
+	}
+	return query.Create(values).Error
 }
 
 // testDataAdmins are the accounts the test endpoints never clear: those
@@ -381,23 +399,37 @@ const testDataAdmins = `(SELECT holder_id FROM grants WHERE holder_kind = 'accou
 // fixtures make.
 func clearTestData(tx *gorm.DB) error {
 	stmts := []string{
-		"DELETE FROM attachments", "DELETE FROM messages", "DELETE FROM outbound_queue",
-		"DELETE FROM quarantines", "DELETE FROM vacation_configs", "DELETE FROM vacation_responses",
-		"DELETE FROM contacts", "DELETE FROM sieve_scripts", "DELETE FROM quota_usages",
+		"DELETE FROM attachments", "DELETE FROM outbound_queue", "DELETE FROM messages",
+		"DELETE FROM quarantine", "DELETE FROM vacation_configs", "DELETE FROM vacation_responses",
+		"DELETE FROM contacts", "DELETE FROM sieve_scripts", "DELETE FROM quota_usage",
 		"DELETE FROM credentials WHERE account_id NOT IN " + testDataAdmins,
 		"DELETE FROM grants WHERE scope LIKE 'mailbox:%' OR holder_id NOT IN " + testDataAdmins,
 		"DELETE FROM aliases", "DELETE FROM message_traces",
 		"DELETE FROM custom_filters", "DELETE FROM bans",
 		"DELETE FROM restmail_capabilities", "DELETE FROM certificates",
-		"DELETE FROM sender_rules", "DELETE FROM greylist_entries",
+		"DELETE FROM domain_sender_rules", "DELETE FROM greylist_entries",
 		"DELETE FROM mailboxes WHERE id NOT IN " + testDataAdmins,
 		"DELETE FROM pipelines WHERE domain_id NOT IN (SELECT domain_id FROM mailboxes)",
 		"DELETE FROM domains WHERE id NOT IN (SELECT domain_id FROM mailboxes)",
 	}
-	for _, stmt := range stmts {
+	for i, stmt := range stmts {
+		// A missing optional table aborts a PostgreSQL transaction until its
+		// savepoint is rolled back. Other failures must abort the whole reset.
+		savepoint := fmt.Sprintf("clear_test_data_%d", i)
+		if err := tx.SavePoint(savepoint).Error; err != nil {
+			return fmt.Errorf("start test-data clear savepoint: %w", err)
+		}
 		if err := tx.Exec(stmt).Error; err != nil {
-			// Ignore errors for tables that may not exist
-			slog.Debug("test: clear table", "statement", stmt, "error", err)
+			if recoveryErr := tx.RollbackTo(savepoint).Error; recoveryErr != nil {
+				return fmt.Errorf("recover test-data clear: %w", recoveryErr)
+			}
+			var state interface{ SQLState() string }
+			if !errors.As(err, &state) || state.SQLState() != "42P01" {
+				return fmt.Errorf("clear test data: %w", err)
+			}
+		}
+		if err := tx.Exec("RELEASE SAVEPOINT " + savepoint).Error; err != nil {
+			return fmt.Errorf("release test-data clear savepoint: %w", err)
 		}
 	}
 	return nil
@@ -483,7 +515,9 @@ func seedTestData(database *gorm.DB) error {
 		{Name: "restmail.test", ServerType: "restmail", Active: true, DefaultQuotaBytes: 1073741824},
 	}
 	for i := range domains {
-		database.Where("name = ?", domains[i].Name).FirstOrCreate(&domains[i])
+		if err := database.Where("name = ?", domains[i].Name).FirstOrCreate(&domains[i]).Error; err != nil {
+			return fmt.Errorf("seed domain: %w", err)
+		}
 	}
 
 	mailboxes := []models.Mailbox{
@@ -500,8 +534,13 @@ func seedTestData(database *gorm.DB) error {
 	creds := repositories.NewCredentialRepository(database)
 	for i := range mailboxes {
 		res := database.Where("address = ?", mailboxes[i].Address).FirstOrCreate(&mailboxes[i])
-		database.Where("mailbox_id = ?", mailboxes[i].ID).FirstOrCreate(&models.QuotaUsage{MailboxID: mailboxes[i].ID})
-		if res.Error == nil && res.RowsAffected > 0 {
+		if res.Error != nil {
+			return fmt.Errorf("seed mailbox: %w", res.Error)
+		}
+		if err := database.Where("mailbox_id = ?", mailboxes[i].ID).FirstOrCreate(&models.QuotaUsage{MailboxID: mailboxes[i].ID}).Error; err != nil {
+			return fmt.Errorf("seed quota: %w", err)
+		}
+		if res.RowsAffected > 0 {
 			if _, err := creds.SetPassword(mailboxes[i].ID, defaultPassword, nil, time.Now()); err != nil {
 				return err
 			}
@@ -515,7 +554,9 @@ func seedTestData(database *gorm.DB) error {
 		{DomainID: domains[2].ID, SourceAddress: "admin@restmail.test", DestinationAddress: "eve@restmail.test", Active: true},
 	}
 	for i := range aliases {
-		database.Where("source_address = ? AND destination_address = ?", aliases[i].SourceAddress, aliases[i].DestinationAddress).FirstOrCreate(&aliases[i])
+		if err := database.Where("source_address = ? AND destination_address = ?", aliases[i].SourceAddress, aliases[i].DestinationAddress).FirstOrCreate(&aliases[i]).Error; err != nil {
+			return fmt.Errorf("seed alias: %w", err)
+		}
 	}
 
 	return nil
