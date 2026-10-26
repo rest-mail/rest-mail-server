@@ -834,75 +834,6 @@
     }
   },
   "checkMailboxAddress": {
-    "found": {
-      "request": {
-        "query": {
-          "address": "user@example.com"
-        }
-      },
-      "response": {
-        "status": 200,
-        "mediaType": "application/json",
-        "body": {
-          "data": {
-            "address": "user@example.com",
-            "exists": true,
-            "mailbox_id": 1
-          }
-        }
-      }
-    },
-    "inactive": {
-      "request": {
-        "query": {
-          "address": "disabled@example.com"
-        }
-      },
-      "response": {
-        "status": 200,
-        "mediaType": "application/json",
-        "body": {
-          "data": {
-            "address": "disabled@example.com",
-            "exists": false
-          }
-        }
-      }
-    },
-    "not_local": {
-      "request": {
-        "query": {
-          "address": "external@example.net"
-        }
-      },
-      "response": {
-        "status": 200,
-        "mediaType": "application/json",
-        "body": {
-          "data": {
-            "address": "external@example.net",
-            "exists": false
-          }
-        }
-      }
-    },
-    "invalid_address": {
-      "request": {
-        "query": {
-          "address": "not-an-address"
-        }
-      },
-      "response": {
-        "status": 200,
-        "mediaType": "application/json",
-        "body": {
-          "data": {
-            "address": "not-an-address",
-            "exists": false
-          }
-        }
-      }
-    },
     "address_empty": {
       "request": {
         "query": {
@@ -911,20 +842,19 @@
       },
       "response": {
         "status": 400,
-        "mediaType": "application/json",
         "body": {
           "error": {
             "code": "bad_request",
             "message": "address query parameter required"
           }
-        }
+        },
+        "mediaType": "application/json"
       }
     },
     "address_missing": {
       "request": {},
       "response": {
         "status": 422,
-        "mediaType": "application/json",
         "body": {
           "error": {
             "code": "validation_failed",
@@ -935,7 +865,8 @@
               }
             }
           }
-        }
+        },
+        "mediaType": "application/json"
       }
     },
     "address_unavailable": {
@@ -946,13 +877,82 @@
       },
       "response": {
         "status": 500,
-        "mediaType": "application/json",
         "body": {
           "error": {
             "code": "internal_error",
             "message": "Failed to check address"
           }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "found": {
+      "request": {
+        "query": {
+          "address": "user@example.com"
         }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "address": "user@example.com",
+            "exists": true,
+            "mailbox_id": 1
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "inactive": {
+      "request": {
+        "query": {
+          "address": "disabled@example.com"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "address": "disabled@example.com",
+            "exists": false
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_address": {
+      "request": {
+        "query": {
+          "address": "not-an-address"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "address": "not-an-address",
+            "exists": false
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "not_local": {
+      "request": {
+        "query": {
+          "address": "external@example.net"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "address": "external@example.net",
+            "exists": false
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },
@@ -2564,8 +2564,28 @@
     }
   },
   "getAlias": {
-    "found": {
-      "summary": "Read the full public resource",
+    "destination_mailbox_scope": {
+      "summary": "An individual destination mailbox grant cannot administer aliases",
+      "description": "Alias configuration belongs to the source domain. Holding mailboxes:read for this individual destination mailbox does not grant domain administration.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_redacted": {
+      "summary": "Mailbox-read permission does not expose domain administration",
+      "description": "The session holds mailboxes:read on example.com but no domains:read capability. The alias remains readable and its domain association is omitted instead of emitting an invalid zero record.",
       "request": {
         "path": {
           "id": 1
@@ -2573,7 +2593,29 @@
       },
       "response": {
         "status": 200,
-        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "source_address": "support@example.com",
+            "destination_address": "owned@destination.test",
+            "active": true,
+            "created_at": "2026-10-20T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_scope": {
+      "summary": "A grant on the source domain permits this lookup",
+      "description": "The production permission query resolves example.com and evaluates the session grants. Domain data is included only when domains:read also permits it.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
         "body": {
           "data": {
             "id": 1,
@@ -2595,9 +2637,63 @@
               "updated_at": "2026-10-20T00:00:00Z"
             }
           }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_unavailable": {
+      "summary": "The alias exists but the domain preload fails",
+      "description": "The real GORM preload fails. Returning a partially loaded alias or a false404 would conceal the dependency error.",
+      "request": {
+        "path": {
+          "id": 4
         }
       },
-      "description": "The global capability permits this lookup. Stored fields are mapped by the production handler; the private DKIM key has no public field."
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to get alias"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "found": {
+      "summary": "Read the full public resource",
+      "description": "The global capability permits this lookup. Stored fields are mapped by the production handler; the private DKIM key has no public field.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "source_address": "support@example.com",
+            "destination_address": "owned@destination.test",
+            "active": true,
+            "created_at": "2026-10-20T00:00:00Z",
+            "domain": {
+              "id": 1,
+              "name": "example.com",
+              "server_type": "traditional",
+              "active": true,
+              "default_quota_bytes": 1073741824,
+              "dkim_selector": "restmail",
+              "sending_policy": "bulk",
+              "dmarc_policy": "reject",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
     },
     "inactive": {
       "summary": "Inactive resources remain readable to administrators",
@@ -2608,7 +2704,6 @@
       },
       "response": {
         "status": 200,
-        "mediaType": "application/json",
         "body": {
           "data": {
             "id": 2,
@@ -2630,138 +2725,27 @@
               "updated_at": "2026-10-20T00:00:00Z"
             }
           }
-        }
-      }
-    },
-    "domain_scope": {
-      "summary": "A grant on the source domain permits this lookup",
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 200,
-        "mediaType": "application/json",
-        "body": {
-          "data": {
-            "id": 1,
-            "domain_id": 1,
-            "source_address": "support@example.com",
-            "destination_address": "owned@destination.test",
-            "active": true,
-            "created_at": "2026-10-20T00:00:00Z",
-            "domain": {
-              "id": 1,
-              "name": "example.com",
-              "server_type": "traditional",
-              "active": true,
-              "default_quota_bytes": 1073741824,
-              "dkim_selector": "restmail",
-              "sending_policy": "bulk",
-              "dmarc_policy": "reject",
-              "created_at": "2026-10-20T00:00:00Z",
-              "updated_at": "2026-10-20T00:00:00Z"
-            }
-          }
-        }
-      },
-      "description": "The production permission query resolves example.com and evaluates the session grants. Domain data is included only when domains:read also permits it."
-    },
-    "missing": {
-      "summary": "The resource does not exist",
-      "request": {
-        "path": {
-          "id": 2147483647
-        }
-      },
-      "response": {
-        "status": 404,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "not_found",
-            "message": "Alias not found"
-          }
-        }
-      }
-    },
-    "unauthenticated": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 401,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "unauthorized",
-            "message": "Missing authorization header"
-          }
-        }
-      }
-    },
-    "outside_domain": {
-      "summary": "A grant on another domain cannot read this resource",
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
-          }
-        }
-      },
-      "description": "The real scope query resolves example.com; a grant restricted to other.test does not reach it."
-    },
-    "request_too_large": {
-      "summary": "The request exceeds the transport body cap",
-      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 413,
-        "body": {
-          "error": {
-            "code": "request_too_large",
-            "message": "Request body too large"
-          }
         },
         "mediaType": "application/json"
       }
     },
-    "invalid_id": {
+    "internal_error": {
+      "summary": "A database fault is not a missing resource",
+      "description": "The production lookup encounters a controlled database error. The error writer returns a sanitized response without the dependency detail.",
       "request": {
         "path": {
-          "id": 0
-        },
-        "invalid": true
+          "id": 3
+        }
       },
       "response": {
-        "status": 422,
-        "mediaType": "application/json",
+        "status": 500,
         "body": {
           "error": {
-            "code": "validation_failed",
-            "message": "Path parameters failed validation",
-            "details": {
-              "fields": {
-                "id": "must be at least 1"
-              }
-            }
+            "code": "internal_error",
+            "message": "Failed to get alias"
           }
-        }
+        },
+        "mediaType": "application/json"
       }
     },
     "invalid_format": {
@@ -2788,24 +2772,65 @@
         "mediaType": "application/json"
       }
     },
-    "internal_error": {
-      "summary": "A database fault is not a missing resource",
+    "invalid_id": {
       "request": {
         "path": {
-          "id": 3
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "The resource does not exist",
+      "request": {
+        "path": {
+          "id": 2147483647
         }
       },
       "response": {
-        "status": 500,
-        "mediaType": "application/json",
+        "status": 404,
         "body": {
           "error": {
-            "code": "internal_error",
-            "message": "Failed to get alias"
+            "code": "not_found",
+            "message": "Alias not found"
           }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "outside_domain": {
+      "summary": "A grant on another domain cannot read this resource",
+      "description": "The real scope query resolves example.com; a grant restricted to other.test does not reach it.",
+      "request": {
+        "path": {
+          "id": 1
         }
       },
-      "description": "The production lookup encounters a controlled database error. The error writer returns a sanitized response without the dependency detail."
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
     },
     "permission_store_unavailable": {
       "request": {
@@ -2815,13 +2840,32 @@
       },
       "response": {
         "status": 503,
-        "mediaType": "application/json",
         "body": {
           "error": {
             "code": "unavailable",
             "message": "Could not verify permissions"
           }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "request": {
+        "path": {
+          "id": 1
         }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "session_unavailable": {
@@ -2843,50 +2887,9 @@
         "mediaType": "application/json"
       }
     },
-    "domain_redacted": {
-      "summary": "Mailbox-read permission does not expose domain administration",
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 200,
-        "mediaType": "application/json",
-        "body": {
-          "data": {
-            "id": 1,
-            "domain_id": 1,
-            "source_address": "support@example.com",
-            "destination_address": "owned@destination.test",
-            "active": true,
-            "created_at": "2026-10-20T00:00:00Z"
-          }
-        }
-      },
-      "description": "The session holds mailboxes:read on example.com but no domains:read capability. The alias remains readable and its domain association is omitted instead of emitting an invalid zero record."
-    },
-    "destination_mailbox_scope": {
-      "summary": "An individual destination mailbox grant cannot administer aliases",
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
-          }
-        }
-      },
-      "description": "Alias configuration belongs to the source domain. Holding mailboxes:read for this individual destination mailbox does not grant domain administration."
-    },
     "source_mailbox_scope": {
       "summary": "An individual source mailbox grant cannot administer aliases",
+      "description": "Alias configuration belongs to the source domain. Holding mailboxes:read for this individual source mailbox does not grant domain administration.",
       "request": {
         "path": {
           "id": 1
@@ -2894,34 +2897,31 @@
       },
       "response": {
         "status": 403,
-        "mediaType": "application/json",
         "body": {
           "error": {
             "code": "forbidden",
             "message": "Insufficient permissions"
           }
-        }
-      },
-      "description": "Alias configuration belongs to the source domain. Holding mailboxes:read for this individual source mailbox does not grant domain administration."
+        },
+        "mediaType": "application/json"
+      }
     },
-    "domain_unavailable": {
-      "summary": "The alias exists but the domain preload fails",
+    "unauthenticated": {
       "request": {
         "path": {
-          "id": 4
+          "id": 1
         }
       },
       "response": {
-        "status": 500,
-        "mediaType": "application/json",
+        "status": 401,
         "body": {
           "error": {
-            "code": "internal_error",
-            "message": "Failed to get alias"
+            "code": "unauthorized",
+            "message": "Missing authorization header"
           }
-        }
-      },
-      "description": "The real GORM preload fails. Returning a partially loaded alias or a false404 would conceal the dependency error."
+        },
+        "mediaType": "application/json"
+      }
     }
   },
   "getCertificate": {
@@ -4134,8 +4134,9 @@
     }
   },
   "getDomain": {
-    "found": {
-      "summary": "Read the full public resource",
+    "domain_scope": {
+      "summary": "A grant on the source domain permits this lookup",
+      "description": "The production permission query resolves example.com and evaluates the session grants. Domain data is included only when domains:read also permits it.",
       "request": {
         "path": {
           "id": 1
@@ -4143,7 +4144,6 @@
       },
       "response": {
         "status": 200,
-        "mediaType": "application/json",
         "body": {
           "data": {
             "id": 1,
@@ -4157,9 +4157,36 @@
             "created_at": "2026-10-20T00:00:00Z",
             "updated_at": "2026-10-20T00:00:00Z"
           }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "found": {
+      "summary": "Read the full public resource",
+      "description": "The global capability permits this lookup. Stored fields are mapped by the production handler; the private DKIM key has no public field.",
+      "request": {
+        "path": {
+          "id": 1
         }
       },
-      "description": "The global capability permits this lookup. Stored fields are mapped by the production handler; the private DKIM key has no public field."
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "name": "example.com",
+            "server_type": "traditional",
+            "active": true,
+            "default_quota_bytes": 1073741824,
+            "dkim_selector": "restmail",
+            "sending_policy": "bulk",
+            "dmarc_policy": "reject",
+            "created_at": "2026-10-20T00:00:00Z",
+            "updated_at": "2026-10-20T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
     },
     "inactive": {
       "summary": "Inactive resources remain readable to administrators",
@@ -4170,7 +4197,6 @@
       },
       "response": {
         "status": 200,
-        "mediaType": "application/json",
         "body": {
           "data": {
             "id": 2,
@@ -4184,130 +4210,27 @@
             "created_at": "2026-10-20T00:00:00Z",
             "updated_at": "2026-10-20T00:00:00Z"
           }
-        }
-      }
-    },
-    "domain_scope": {
-      "summary": "A grant on the source domain permits this lookup",
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 200,
-        "mediaType": "application/json",
-        "body": {
-          "data": {
-            "id": 1,
-            "name": "example.com",
-            "server_type": "traditional",
-            "active": true,
-            "default_quota_bytes": 1073741824,
-            "dkim_selector": "restmail",
-            "sending_policy": "bulk",
-            "dmarc_policy": "reject",
-            "created_at": "2026-10-20T00:00:00Z",
-            "updated_at": "2026-10-20T00:00:00Z"
-          }
-        }
-      },
-      "description": "The production permission query resolves example.com and evaluates the session grants. Domain data is included only when domains:read also permits it."
-    },
-    "missing": {
-      "summary": "The resource does not exist",
-      "request": {
-        "path": {
-          "id": 2147483647
-        }
-      },
-      "response": {
-        "status": 404,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "domain_not_found",
-            "message": "Domain not found"
-          }
-        }
-      }
-    },
-    "unauthenticated": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 401,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "unauthorized",
-            "message": "Missing authorization header"
-          }
-        }
-      }
-    },
-    "outside_domain": {
-      "summary": "A grant on another domain cannot read this resource",
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
-          }
-        }
-      },
-      "description": "The real scope query resolves example.com; a grant restricted to other.test does not reach it."
-    },
-    "request_too_large": {
-      "summary": "The request exceeds the transport body cap",
-      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 413,
-        "body": {
-          "error": {
-            "code": "request_too_large",
-            "message": "Request body too large"
-          }
         },
         "mediaType": "application/json"
       }
     },
-    "invalid_id": {
+    "internal_error": {
+      "summary": "A database fault is not a missing resource",
+      "description": "The production lookup encounters a controlled database error. The error writer returns a sanitized response without the dependency detail.",
       "request": {
         "path": {
-          "id": 0
-        },
-        "invalid": true
+          "id": 3
+        }
       },
       "response": {
-        "status": 422,
-        "mediaType": "application/json",
+        "status": 500,
         "body": {
           "error": {
-            "code": "validation_failed",
-            "message": "Path parameters failed validation",
-            "details": {
-              "fields": {
-                "id": "must be at least 1"
-              }
-            }
+            "code": "internal_error",
+            "message": "Internal server error"
           }
-        }
+        },
+        "mediaType": "application/json"
       }
     },
     "invalid_format": {
@@ -4334,24 +4257,65 @@
         "mediaType": "application/json"
       }
     },
-    "internal_error": {
-      "summary": "A database fault is not a missing resource",
+    "invalid_id": {
       "request": {
         "path": {
-          "id": 3
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "The resource does not exist",
+      "request": {
+        "path": {
+          "id": 2147483647
         }
       },
       "response": {
-        "status": 500,
-        "mediaType": "application/json",
+        "status": 404,
         "body": {
           "error": {
-            "code": "internal_error",
-            "message": "Internal server error"
+            "code": "domain_not_found",
+            "message": "Domain not found"
           }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "outside_domain": {
+      "summary": "A grant on another domain cannot read this resource",
+      "description": "The real scope query resolves example.com; a grant restricted to other.test does not reach it.",
+      "request": {
+        "path": {
+          "id": 1
         }
       },
-      "description": "The production lookup encounters a controlled database error. The error writer returns a sanitized response without the dependency detail."
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
     },
     "permission_store_unavailable": {
       "request": {
@@ -4361,13 +4325,32 @@
       },
       "response": {
         "status": 503,
-        "mediaType": "application/json",
         "body": {
           "error": {
             "code": "unavailable",
             "message": "Could not verify permissions"
           }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "request": {
+        "path": {
+          "id": 1
         }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "session_unavailable": {
@@ -4384,6 +4367,23 @@
           "error": {
             "code": "unavailable",
             "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
           }
         },
         "mediaType": "application/json"
@@ -4651,7 +4651,7 @@
     }
   },
   "getMailbox": {
-    "found": {
+    "domain_redacted": {
       "request": {
         "path": {
           "id": 1
@@ -4659,7 +4659,35 @@
       },
       "response": {
         "status": 200,
-        "mediaType": "application/json",
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "local_part": "user",
+            "address": "user@example.com",
+            "display_name": "Mailbox café",
+            "quota_bytes": 1048576,
+            "quota_used_bytes": 321,
+            "active": true,
+            "last_login_at": "2026-10-20T00:00:00Z",
+            "password_change_required": false,
+            "two_factor_required": true,
+            "last_password_change": "2026-10-20T00:00:00Z",
+            "created_at": "2026-10-20T00:00:00Z",
+            "updated_at": "2026-10-20T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_scope": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
         "body": {
           "data": {
             "id": 1,
@@ -4689,7 +4717,66 @@
               "updated_at": "2026-10-20T00:00:00Z"
             }
           }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_unavailable": {
+      "request": {
+        "path": {
+          "id": 4
         }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to get mailbox"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "found": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "local_part": "user",
+            "address": "user@example.com",
+            "display_name": "Mailbox café",
+            "quota_bytes": 1048576,
+            "quota_used_bytes": 321,
+            "active": true,
+            "last_login_at": "2026-10-20T00:00:00Z",
+            "password_change_required": false,
+            "two_factor_required": true,
+            "last_password_change": "2026-10-20T00:00:00Z",
+            "created_at": "2026-10-20T00:00:00Z",
+            "updated_at": "2026-10-20T00:00:00Z",
+            "domain": {
+              "id": 1,
+              "name": "example.com",
+              "server_type": "traditional",
+              "active": true,
+              "default_quota_bytes": 1073741824,
+              "dkim_selector": "restmail",
+              "sending_policy": "",
+              "dmarc_policy": "none",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "inactive": {
@@ -4700,7 +4787,6 @@
       },
       "response": {
         "status": 200,
-        "mediaType": "application/json",
         "body": {
           "data": {
             "id": 2,
@@ -4730,186 +4816,8 @@
               "updated_at": "2026-10-20T00:00:00Z"
             }
           }
-        }
-      }
-    },
-    "mailbox_scope": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 200,
-        "mediaType": "application/json",
-        "body": {
-          "data": {
-            "id": 1,
-            "domain_id": 1,
-            "local_part": "user",
-            "address": "user@example.com",
-            "display_name": "Mailbox café",
-            "quota_bytes": 1048576,
-            "quota_used_bytes": 321,
-            "active": true,
-            "last_login_at": "2026-10-20T00:00:00Z",
-            "password_change_required": false,
-            "two_factor_required": true,
-            "last_password_change": "2026-10-20T00:00:00Z",
-            "created_at": "2026-10-20T00:00:00Z",
-            "updated_at": "2026-10-20T00:00:00Z",
-            "domain": {
-              "id": 1,
-              "name": "example.com",
-              "server_type": "traditional",
-              "active": true,
-              "default_quota_bytes": 1073741824,
-              "dkim_selector": "restmail",
-              "sending_policy": "",
-              "dmarc_policy": "none",
-              "created_at": "2026-10-20T00:00:00Z",
-              "updated_at": "2026-10-20T00:00:00Z"
-            }
-          }
-        }
-      }
-    },
-    "domain_scope": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 200,
-        "mediaType": "application/json",
-        "body": {
-          "data": {
-            "id": 1,
-            "domain_id": 1,
-            "local_part": "user",
-            "address": "user@example.com",
-            "display_name": "Mailbox café",
-            "quota_bytes": 1048576,
-            "quota_used_bytes": 321,
-            "active": true,
-            "last_login_at": "2026-10-20T00:00:00Z",
-            "password_change_required": false,
-            "two_factor_required": true,
-            "last_password_change": "2026-10-20T00:00:00Z",
-            "created_at": "2026-10-20T00:00:00Z",
-            "updated_at": "2026-10-20T00:00:00Z",
-            "domain": {
-              "id": 1,
-              "name": "example.com",
-              "server_type": "traditional",
-              "active": true,
-              "default_quota_bytes": 1073741824,
-              "dkim_selector": "restmail",
-              "sending_policy": "",
-              "dmarc_policy": "none",
-              "created_at": "2026-10-20T00:00:00Z",
-              "updated_at": "2026-10-20T00:00:00Z"
-            }
-          }
-        }
-      }
-    },
-    "domain_redacted": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 200,
-        "mediaType": "application/json",
-        "body": {
-          "data": {
-            "id": 1,
-            "domain_id": 1,
-            "local_part": "user",
-            "address": "user@example.com",
-            "display_name": "Mailbox café",
-            "quota_bytes": 1048576,
-            "quota_used_bytes": 321,
-            "active": true,
-            "last_login_at": "2026-10-20T00:00:00Z",
-            "password_change_required": false,
-            "two_factor_required": true,
-            "last_password_change": "2026-10-20T00:00:00Z",
-            "created_at": "2026-10-20T00:00:00Z",
-            "updated_at": "2026-10-20T00:00:00Z"
-          }
-        }
-      }
-    },
-    "missing": {
-      "request": {
-        "path": {
-          "id": 2147483647
-        }
-      },
-      "response": {
-        "status": 404,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "mailbox_not_found",
-            "message": "Mailbox not found"
-          }
-        }
-      }
-    },
-    "unauthenticated": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 401,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "unauthorized",
-            "message": "Missing authorization header"
-          }
-        }
-      }
-    },
-    "outside_scope": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
-          }
-        }
-      }
-    },
-    "request_too_large": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 413,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "request_too_large",
-            "message": "Request body too large"
-          }
-        }
+        },
+        "mediaType": "application/json"
       }
     },
     "internal_error": {
@@ -4920,81 +4828,13 @@
       },
       "response": {
         "status": 500,
-        "mediaType": "application/json",
         "body": {
           "error": {
             "code": "internal_error",
             "message": "Failed to get mailbox"
           }
-        }
-      }
-    },
-    "domain_unavailable": {
-      "request": {
-        "path": {
-          "id": 4
-        }
-      },
-      "response": {
-        "status": 500,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "internal_error",
-            "message": "Failed to get mailbox"
-          }
-        }
-      }
-    },
-    "quota_unavailable": {
-      "request": {
-        "path": {
-          "id": 5
-        }
-      },
-      "response": {
-        "status": 500,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "internal_error",
-            "message": "Failed to get mailbox"
-          }
-        }
-      }
-    },
-    "permission_store_unavailable": {
-      "request": {
-        "path": {
-          "id": 8
-        }
-      },
-      "response": {
-        "status": 503,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "unavailable",
-            "message": "Could not verify permissions"
-          }
-        }
-      }
-    },
-    "session_unavailable": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 503,
-        "mediaType": "application/json",
-        "body": {
-          "error": {
-            "code": "unavailable",
-            "message": "Could not verify the session"
-          }
-        }
+        },
+        "mediaType": "application/json"
       }
     },
     "invalid_id": {
@@ -5005,7 +4845,6 @@
       },
       "response": {
         "status": 422,
-        "mediaType": "application/json",
         "body": {
           "error": {
             "code": "validation_failed",
@@ -5016,7 +4855,100 @@
               }
             }
           }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "mailbox_scope": {
+      "request": {
+        "path": {
+          "id": 1
         }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "local_part": "user",
+            "address": "user@example.com",
+            "display_name": "Mailbox café",
+            "quota_bytes": 1048576,
+            "quota_used_bytes": 321,
+            "active": true,
+            "last_login_at": "2026-10-20T00:00:00Z",
+            "password_change_required": false,
+            "two_factor_required": true,
+            "last_password_change": "2026-10-20T00:00:00Z",
+            "created_at": "2026-10-20T00:00:00Z",
+            "updated_at": "2026-10-20T00:00:00Z",
+            "domain": {
+              "id": 1,
+              "name": "example.com",
+              "server_type": "traditional",
+              "active": true,
+              "default_quota_bytes": 1073741824,
+              "dkim_selector": "restmail",
+              "sending_policy": "",
+              "dmarc_policy": "none",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "mailbox_not_found",
+            "message": "Mailbox not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "outside_scope": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "permission_store_unavailable": {
+      "request": {
+        "path": {
+          "id": 8
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "quota_present": {
@@ -5027,7 +4959,6 @@
       },
       "response": {
         "status": 200,
-        "mediaType": "application/json",
         "body": {
           "data": {
             "id": 6,
@@ -5065,7 +4996,76 @@
               "updated_at": "2026-10-20T00:00:00Z"
             }
           }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "quota_unavailable": {
+      "request": {
+        "path": {
+          "id": 5
         }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to get mailbox"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },
