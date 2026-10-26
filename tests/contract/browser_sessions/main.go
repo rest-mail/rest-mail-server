@@ -43,6 +43,15 @@ type browser struct {
 	cookies  []*http.Cookie
 }
 
+type csrfVariant string
+
+const (
+	csrfValid         csrfVariant = "cookie-with-csrf"
+	csrfMissing       csrfVariant = "cookie-without-csrf"
+	csrfMismatched    csrfVariant = "cookie-mismatched-csrf"
+	csrfCookieMissing csrfVariant = "cookie-without-csrf-cookie"
+)
+
 func main() {
 	endpoint := flag.String("endpoint", "http://10.99.0.20:8080", "disposable topology API")
 	spec := flag.String("spec", "", "saved served openapi.json")
@@ -84,18 +93,24 @@ func runFiles(endpoint, specPath, principalsPath string) (report, error) {
 	return prove(endpoint, spec, fixtures["admin"])
 }
 
-func (b *browser) call(method, path string, body []byte, csrf bool) (*http.Response, error) {
+func (b *browser) call(method, path string, body []byte, csrf csrfVariant) (*http.Response, error) {
 	req, err := http.NewRequest(method, b.endpoint+path, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	for _, c := range b.cookies {
-		if c.Path == "/" || path == c.Path || strings.HasPrefix(path, c.Path+"/") {
+		if (c.Path == "/" || path == c.Path || strings.HasPrefix(path, c.Path+"/")) &&
+			!(csrf == csrfCookieMissing && c.Name == auth.CSRFCookieName) {
 			req.AddCookie(c)
 		}
-		if csrf && c.Name == auth.CSRFCookieName {
-			req.Header.Set(auth.CSRFHeaderName, c.Value)
+		if c.Name == auth.CSRFCookieName {
+			switch csrf {
+			case csrfValid, csrfCookieMissing:
+				req.Header.Set(auth.CSRFHeaderName, c.Value)
+			case csrfMismatched:
+				req.Header.Set(auth.CSRFHeaderName, c.Value+"-mismatch")
+			}
 		}
 	}
 	return b.client.Do(req)
@@ -164,23 +179,23 @@ func prove(endpoint string, spec description, fixture principal) (result report,
 	}
 	b := &browser{endpoint: strings.TrimRight(endpoint, "/"), client: &http.Client{Timeout: 10 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
-	check := func(label, variant, method, path string, payload []byte, csrf bool, status int, code string) (*http.Response, map[string]interface{}, error) {
-		resp, callErr := b.call(method, path, payload, csrf)
+	check := func(label string, variant csrfVariant, method, path string, payload []byte, status int, code string) (*http.Response, map[string]interface{}, error) {
+		resp, callErr := b.call(method, path, payload, variant)
 		if callErr != nil {
 			return nil, nil, fmt.Errorf("%s: request failed", label)
 		}
 		body, readErr := readResponse(resp)
-		result.Checks = append(result.Checks, receipt{label, variant, resp.StatusCode})
+		result.Checks = append(result.Checks, receipt{label, string(variant), resp.StatusCode})
 		if readErr != nil {
 			return resp, body, fmt.Errorf("%s: cannot read response", label)
 		}
 		if resp.StatusCode != status || (code != "" && errorCode(body) != code) {
-			return resp, body, fmt.Errorf("%s: expected %d %s, got %d %s", label, status, code, resp.StatusCode, errorCode(body))
+			return resp, body, fmt.Errorf("%s (%s): expected %d %s, got %d %s", label, variant, status, code, resp.StatusCode, errorCode(body))
 		}
 		return resp, body, nil
 	}
 	payload, _ := json.Marshal(map[string]string{"email": fixture.Address, "password": fixture.Password})
-	login, body, err := check("login", "cookie", http.MethodPost, "/api/v1/auth/login", payload, false, 200, "")
+	login, body, err := check("login", "cookie", http.MethodPost, "/api/v1/auth/login", payload, 200, "")
 	if err != nil {
 		return result, err
 	}
@@ -190,7 +205,7 @@ func prove(endpoint string, spec description, fixture principal) (result report,
 	b.cookies = login.Cookies()
 	// Revoke this probe's session even if a later check fails.
 	defer func() {
-		resp, e := b.call(http.MethodPost, "/api/v1/auth/logout", nil, true)
+		resp, e := b.call(http.MethodPost, "/api/v1/auth/logout", nil, csrfValid)
 		if e == nil {
 			_ = resp.Body.Close()
 		}
@@ -205,11 +220,11 @@ func prove(endpoint string, spec description, fixture principal) (result report,
 		return result, errors.New("browser login has no account id")
 	}
 	account := strconv.FormatUint(uint64(id), 10)
-	if _, _, err = check("own folders", "cookie-without-csrf", http.MethodGet, "/api/v1/accounts/"+account+"/folders", nil, false, 200, ""); err != nil {
+	if _, _, err = check("own folders", csrfMissing, http.MethodGet, "/api/v1/accounts/"+account+"/folders", nil, 200, ""); err != nil {
 		return result, err
 	}
 	// This valid CSRF header reaches binding, without creating a resource.
-	if _, _, err = check("folder validation", "cookie-with-csrf", http.MethodPost, "/api/v1/accounts/"+account+"/folders", []byte(`{"name":""}`), true, 422, ""); err != nil {
+	if _, _, err = check("folder validation", csrfValid, http.MethodPost, "/api/v1/accounts/"+account+"/folders", []byte(`{"name":""}`), 422, ""); err != nil {
 		return result, err
 	}
 	paths := make([]string, 0, len(spec.Paths))
@@ -244,14 +259,16 @@ func prove(endpoint string, spec description, fixture principal) (result report,
 			safe := method == "get" || method == "head" || method == "options"
 			if !safe {
 				protectedUnsafe++
-				if _, _, err = check(op.OperationID, "cookie-without-csrf", strings.ToUpper(method), target, []byte("{"), false, 403, "csrf_failed"); err != nil {
-					return result, err
+				for _, variant := range []csrfVariant{csrfMissing, csrfMismatched, csrfCookieMissing} {
+					if _, _, err = check(op.OperationID, variant, strings.ToUpper(method), target, []byte("{"), 403, "csrf_failed"); err != nil {
+						return result, err
+					}
 				}
 				continue
 			}
 			// Safe reads must behave identically with and without the CSRF header;
 			// their domain/path validation may still refuse the deliberately invalid ID.
-			with, e := b.call(strings.ToUpper(method), target, nil, true)
+			with, e := b.call(strings.ToUpper(method), target, nil, csrfValid)
 			if e != nil {
 				return result, fmt.Errorf("%s: safe control request failed", op.OperationID)
 			}
@@ -259,7 +276,7 @@ func prove(endpoint string, spec description, fixture principal) (result report,
 			if e != nil || with.StatusCode >= 500 || with.StatusCode == 401 || errorCode(control) == "csrf_failed" {
 				return result, fmt.Errorf("%s: safe control failed (%d)", op.OperationID, with.StatusCode)
 			}
-			if _, _, err = check(op.OperationID, "cookie-without-csrf", strings.ToUpper(method), target, nil, false, with.StatusCode, errorCode(control)); err != nil {
+			if _, _, err = check(op.OperationID, csrfMissing, strings.ToUpper(method), target, nil, with.StatusCode, errorCode(control)); err != nil {
 				return result, err
 			}
 		}
@@ -267,10 +284,10 @@ func prove(endpoint string, spec description, fixture principal) (result report,
 	if protectedUnsafe == 0 {
 		return result, errors.New("description has no cookie-protected unsafe operation")
 	}
-	if _, _, err = check("account events", "cookie-without-csrf", http.MethodGet, "/api/v1/accounts/"+account+"/events", nil, false, 200, ""); err != nil {
+	if _, _, err = check("account events", csrfMissing, http.MethodGet, "/api/v1/accounts/"+account+"/events", nil, 200, ""); err != nil {
 		return result, err
 	}
-	refresh, body, err := check("refresh", "cookie-with-csrf", http.MethodPost, "/api/v1/auth/refresh", nil, true, 200, "")
+	refresh, body, err := check("refresh", csrfValid, http.MethodPost, "/api/v1/auth/refresh", nil, 200, "")
 	if err != nil {
 		return result, err
 	}
@@ -292,14 +309,14 @@ func prove(endpoint string, spec description, fixture principal) (result report,
 		}
 	}
 	b.cookies = refresh.Cookies()
-	logout, _, err := check("logout", "cookie-with-csrf", http.MethodPost, "/api/v1/auth/logout", nil, true, 204, "")
+	logout, _, err := check("logout", csrfValid, http.MethodPost, "/api/v1/auth/logout", nil, 204, "")
 	if err != nil {
 		return result, err
 	}
 	if err = sessionCookies(logout.Cookies(), true); err != nil {
 		return result, err
 	}
-	if _, _, err = check("revoked refresh", "cookie-with-csrf", http.MethodPost, "/api/v1/auth/refresh", nil, true, 401, ""); err != nil {
+	if _, _, err = check("revoked refresh", csrfValid, http.MethodPost, "/api/v1/auth/refresh", nil, 401, ""); err != nil {
 		return result, err
 	}
 	result.Passed = true

@@ -797,7 +797,8 @@ missing-resource operations in the required examples gate.
 Before examples, `chore contract` runs `tests/contract/browser_sessions` against
 that run's saved served JSON and existing `restmail.test` admin fixture. It signs
 in as a browser, validates all three cookie attributes and paths, checks every
-cookie-protected unsafe operation refuses a missing CSRF header, and compares
+cookie-protected unsafe operation refuses a missing CSRF header, a mismatched
+token, and a missing CSRF cookie even with a header present, and compares
 safe reads with and without the header. Invalid resource IDs and malformed JSON
 keep negative probes away from handler mutations. A valid-header folder request
 must reach validation, and an own-account event stream must open using cookies.
@@ -807,8 +808,10 @@ session on failure as well.
 
 Failures stop the gate. `browser-sessions.json` records operation, principal and
 status only, with `passed` true only after the whole proof. Local HTTP fixtures
-verify that removing CSRF enforcement or a cookie's Secure attribute fails this
-proof. Live topology and broader mutation workflows still run in GitHub.
+verify that removing CSRF enforcement, checking only header presence, accepting
+a missing CSRF cookie, or removing a cookie's Secure attribute fails this proof.
+Receipts name each CSRF variant without recording tokens. Live topology and
+broader mutation workflows still run in GitHub.
 
 ### Contract changes in pull requests (#653)
 
