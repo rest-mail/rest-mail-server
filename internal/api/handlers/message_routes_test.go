@@ -58,17 +58,6 @@ func TestMessageResponseJSONParity(t *testing.T) {
 	}
 }
 
-func TestMessageLoadedMailboxIsPreserved(t *testing.T) {
-	got := messageOf(models.Message{ID: 3, MailboxID: 4,
-		Mailbox: models.Mailbox{ID: 4, Address: "owner@example.com", DisplayName: "Owner", Active: true}})
-	if got.Mailbox == nil || got.Mailbox.ID != 4 || got.Mailbox.Address != "owner@example.com" || got.Mailbox.DisplayName != "Owner" || !got.Mailbox.Active {
-		t.Fatalf("loaded mailbox lost: %+v", got.Mailbox)
-	}
-	if got.Mailbox.Domain != nil {
-		t.Fatal("unloaded parent domain was invented")
-	}
-}
-
 // An attachment's answer says what it is, never where it is stored (#658): no path on the
 // server's disk or S3 key, and no storage backend.
 func TestAttachmentAnswerLeavesOutStorage(t *testing.T) {
@@ -128,5 +117,16 @@ func TestMessageBindingBeforeDatabase(t *testing.T) {
 				t.Fatalf("want 401, got %d %s", rr.Code, rr.Body)
 			}
 		})
+	}
+}
+
+func TestMessageLoadedMailboxIsPreserved(t *testing.T) {
+	got := messageOf(models.Message{ID: 3, MailboxID: 4,
+		Mailbox: models.Mailbox{ID: 4, Address: "owner@example.com", DisplayName: "Owner", Active: true}})
+	if got.Mailbox == nil || got.Mailbox.ID != 4 || got.Mailbox.Address != "owner@example.com" || got.Mailbox.DisplayName != "Owner" || !got.Mailbox.Active {
+		t.Fatalf("loaded mailbox lost: %+v", got.Mailbox)
+	}
+	if got.Mailbox.Domain != nil {
+		t.Fatal("unloaded parent domain was invented")
 	}
 }
