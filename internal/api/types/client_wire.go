@@ -253,7 +253,7 @@ type Message struct {
 	DateHeader        *time.Time      `json:"date_header"`
 	CreatedAt         time.Time       `json:"created_at"`
 	UpdatedAt         time.Time       `json:"updated_at"`
-	Mailbox           Mailbox         `json:"mailbox,omitempty" description:"Always the empty mailbox: the association is never loaded on these routes"`
+	Mailbox           *Mailbox        `json:"mailbox,omitempty" description:"Present only when the mailbox association is loaded"`
 }
 
 type Mailbox struct {

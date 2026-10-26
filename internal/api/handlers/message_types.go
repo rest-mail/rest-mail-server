@@ -10,13 +10,17 @@ import (
 
 // Message is a message in an account as the mail routes answer it: its envelope, its bodies,
 // its flags and the folder it is in. The raw source is answered by GET /messages/{id}/raw and
-// is never written here. Its fields, their order and their omissions are the model's, so the
-// bytes written are unchanged: the IMAP and POP3 gateways, webmail and the mobile app read
-// them. The recipients, headers and calendar events are the stored JSON, as stored: what a
+// is never written here. An unloaded mailbox association is omitted; a loaded one retains
+// its public fields. The recipients, headers and calendar events are the stored JSON: what a
 // gateway delivered is kept, so the API does not narrow it.
 type Message = apitypes.Message
 
 func messageOf(m models.Message) Message {
+	var mailbox *Mailbox
+	if m.Mailbox.ID != 0 {
+		loaded := mailboxOf(m.Mailbox)
+		mailbox = &loaded
+	}
 	return Message{
 		ID:                m.ID,
 		MailboxID:         m.MailboxID,
@@ -50,7 +54,7 @@ func messageOf(m models.Message) Message {
 		DateHeader:        m.DateHeader,
 		CreatedAt:         m.CreatedAt,
 		UpdatedAt:         m.UpdatedAt,
-		Mailbox:           mailboxOf(m.Mailbox),
+		Mailbox:           mailbox,
 	}
 }
 

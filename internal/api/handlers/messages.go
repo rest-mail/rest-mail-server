@@ -248,7 +248,9 @@ func (h *MessageHandler) listMessages(r *http.Request, in listMessagesRequest) (
 	}
 
 	var total int64
-	h.db.Model(&models.Message{}).Where("mailbox_id = ? AND folder = ? AND is_deleted = ?", mailboxID, folder, false).Count(&total)
+	if err := h.db.Model(&models.Message{}).Where("mailbox_id = ? AND folder = ? AND is_deleted = ?", mailboxID, folder, false).Count(&total).Error; err != nil {
+		return zero, fmt.Errorf("count messages: %w", err)
+	}
 
 	return endpoint.List[Message]{Data: messagesOf(messages), Pagination: &respond.Pagination{
 		Cursor:  nextCursor,
@@ -260,15 +262,23 @@ func (h *MessageHandler) listMessages(r *http.Request, in listMessagesRequest) (
 // ownedMessage is the message the path names, when the session may reach its account with
 // capability.
 func (h *MessageHandler) ownedMessage(r *http.Request, id uint32, capability string) (models.Message, error) {
-	if middleware.GetClaims(r) == nil {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
 		return models.Message{}, errNotSignedIn
 	}
 	var msg models.Message
-	if err := h.db.First(&msg, id).Error; err != nil {
-		return models.Message{}, errMessageNotFound
+	db := h.db.WithContext(r.Context())
+	if err := db.First(&msg, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return models.Message{}, errMessageNotFound
+		}
+		return models.Message{}, fmt.Errorf("load message: %w", err)
 	}
-	if !h.verifyMessageOwnership(nil, r, &msg, capability) {
-		return models.Message{}, errMessageAccess
+	if _, err := mayReach(db, claims, msg.MailboxID, capability); err != nil {
+		if errors.Is(err, errNoAccess) {
+			return models.Message{}, errMessageAccess
+		}
+		return models.Message{}, fmt.Errorf("check message access: %w", err)
 	}
 	return msg, nil
 }
@@ -366,33 +376,41 @@ func (h *MessageHandler) deleteMessage(r *http.Request, in deleteMessageRequest)
 	// first delete) moves to Trash as a real, visible item.
 	permanent := in.Permanent == "true"
 	hardDelete := permanent || msg.Folder == "Trash" || msg.IsDeleted
+	db := h.db.WithContext(r.Context())
 
 	if hardDelete {
 		// Only reclaim for a message that still counted toward quota. An already
 		// soft-deleted row (is_deleted=true) was already excluded from usage, so
 		// decrementing again would under-count. Match the quota reconciler's
 		// formula: message size + its attachment sizes.
-		var reclaimBytes int64
-		if !msg.IsDeleted {
-			reclaimBytes = int64(msg.SizeBytes)
-			if msg.HasAttachments {
-				var attBytes int64
-				h.db.Model(&models.Attachment{}).Where("message_id = ?", msg.ID).
-					Select("COALESCE(SUM(size_bytes), 0)").Scan(&attBytes)
-				reclaimBytes += attBytes
-			}
-		}
-
 		// Purge the row, its attachment rows, and the quota decrement together so
 		// a failure can never leave quota and rows inconsistent.
-		if err := h.db.Transaction(func(tx *gorm.DB) error {
+		if err := db.Transaction(func(tx *gorm.DB) error {
+			var reclaimBytes int64
+			if !msg.IsDeleted {
+				reclaimBytes = int64(msg.SizeBytes)
+				if msg.HasAttachments {
+					var attBytes int64
+					if err := tx.Model(&models.Attachment{}).Where("message_id = ?", msg.ID).
+						Select("COALESCE(SUM(size_bytes), 0)").Scan(&attBytes).Error; err != nil {
+						return err
+					}
+					reclaimBytes += attBytes
+				}
+			}
 			if msg.HasAttachments {
 				if err := tx.Where("message_id = ?", msg.ID).Delete(&models.Attachment{}).Error; err != nil {
 					return err
 				}
 			}
-			if err := tx.Delete(&models.Message{}, msg.ID).Error; err != nil {
-				return err
+			deleted := tx.Delete(&models.Message{}, msg.ID)
+			if deleted.Error != nil {
+				return deleted.Error
+			}
+			if deleted.RowsAffected == 0 {
+				// Another purge already removed this row and reclaimed its quota
+				// after the ownership lookup. Do not charge that reclaim twice.
+				return nil
 			}
 			if reclaimBytes > 0 {
 				if err := tx.Model(&models.Mailbox{}).Where("id = ?", msg.MailboxID).
@@ -408,7 +426,9 @@ func (h *MessageHandler) deleteMessage(r *http.Request, in deleteMessageRequest)
 		// Move to Trash as a real, visible item. is_deleted stays false so it
 		// still appears in the Trash listing and continues to count toward quota
 		// (it is still stored); it is reclaimed only when purged from Trash.
-		h.db.Model(&msg).Update("folder", "Trash")
+		if err := db.Model(&msg).Update("folder", "Trash").Error; err != nil {
+			return endpoint.Empty{}, endpoint.Refuse(http.StatusInternalServerError, "delete_failed", "Failed to delete message")
+		}
 	}
 
 	if h.broker != nil {
@@ -1091,17 +1111,19 @@ var listedFolders = []string{"INBOX", "Sent", "Drafts", "Trash"}
 
 // folderExists reports whether the mailbox has the folder: one of the listedFolders, a
 // message in it, or the marker createFolder leaves.
-func (h *MessageHandler) folderExists(mailboxID uint, folder string) bool {
+func (h *MessageHandler) folderExists(ctx context.Context, mailboxID uint, folder string) (bool, error) {
 	for _, listed := range listedFolders {
 		if folder == listed {
-			return true
+			return true, nil
 		}
 	}
 	var count int64
-	h.db.Model(&models.Message{}).
+	if err := h.db.WithContext(ctx).Model(&models.Message{}).
 		Where("mailbox_id = ? AND folder = ?", mailboxID, folder).
-		Count(&count)
-	return count > 0
+		Count(&count).Error; err != nil {
+		return false, fmt.Errorf("check folder existence: %w", err)
+	}
+	return count > 0, nil
 }
 
 // folderNameRule is what createFolder and renameFolder take as a name, as rmail.FolderNameProblem has it.
@@ -1144,7 +1166,10 @@ func (h *MessageHandler) accountMailbox(r *http.Request, accountID uint32, capab
 	}
 	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims, capability)
 	if err != nil {
-		return 0, errMailboxAccess
+		if errors.Is(err, errNoAccess) {
+			return 0, errMailboxAccess
+		}
+		return 0, err
 	}
 	return mailboxID, nil
 }
@@ -1157,12 +1182,14 @@ func (h *MessageHandler) listFolders(r *http.Request, in accountPath) (endpoint.
 	}
 
 	var folders []FolderSummary
-	h.db.Model(&models.Message{}).
+	if err := h.db.Model(&models.Message{}).
 		Select("folder, COUNT(CASE WHEN is_deleted = false THEN 1 END) as total, COUNT(CASE WHEN is_deleted = false AND is_read = false THEN 1 END) as unread").
 		Where("mailbox_id = ?", mailboxID).
 		Group("folder").
 		Order("folder ASC").
-		Scan(&folders)
+		Scan(&folders).Error; err != nil {
+		return endpoint.List[FolderSummary]{}, fmt.Errorf("list folders: %w", err)
+	}
 
 	folderMap := make(map[string]bool)
 	for _, f := range folders {
@@ -1188,7 +1215,11 @@ func (h *MessageHandler) createFolder(r *http.Request, in createFolderRequest) (
 		return FolderName{}, err
 	}
 	name := rmail.CanonicalFolder(in.Body.Name)
-	if h.folderExists(mailboxID, name) {
+	exists, err := h.folderExists(r.Context(), mailboxID, name)
+	if err != nil {
+		return FolderName{}, err
+	}
+	if exists {
 		return FolderName{}, errFolderExists
 	}
 
@@ -1202,7 +1233,9 @@ func (h *MessageHandler) createFolder(r *http.Request, in createFolderRequest) (
 		IsDeleted: true,
 		SizeBytes: 0,
 	}
-	h.db.Create(&marker)
+	if err := h.db.WithContext(r.Context()).Create(&marker).Error; err != nil {
+		return FolderName{}, fmt.Errorf("create folder marker: %w", err)
+	}
 
 	return FolderName{Name: name}, nil
 }
@@ -1226,16 +1259,27 @@ func (h *MessageHandler) renameFolder(r *http.Request, in renameFolderRequest) (
 		return FolderName{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "Cannot rename a folder to a standard folder")
 	}
 	errNoFolder := endpoint.Refuse(http.StatusNotFound, "not_found", "Folder not found or empty")
-	if !h.folderExists(mailboxID, from) {
+	exists, err := h.folderExists(r.Context(), mailboxID, from)
+	if err != nil {
+		return FolderName{}, err
+	}
+	if !exists {
 		return FolderName{}, errNoFolder
 	}
-	if h.folderExists(mailboxID, name) {
+	exists, err = h.folderExists(r.Context(), mailboxID, name)
+	if err != nil {
+		return FolderName{}, err
+	}
+	if exists {
 		return FolderName{}, errFolderExists
 	}
 
-	result := h.db.Model(&models.Message{}).
+	result := h.db.WithContext(r.Context()).Model(&models.Message{}).
 		Where("mailbox_id = ? AND folder = ?", mailboxID, from).
 		Update("folder", name)
+	if result.Error != nil {
+		return FolderName{}, fmt.Errorf("rename folder messages: %w", result.Error)
+	}
 	if result.RowsAffected == 0 {
 		return FolderName{}, errNoFolder
 	}
@@ -1256,23 +1300,35 @@ func (h *MessageHandler) deleteFolder(r *http.Request, in folderPath) (endpoint.
 		return endpoint.Empty{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "Cannot delete standard folder")
 	}
 
-	// Sum message sizes for quota adjustment
-	var totalSize int64
-	h.db.Model(&models.Message{}).
-		Where("mailbox_id = ? AND folder = ?", mailboxID, folderName).
-		Select("COALESCE(SUM(size_bytes), 0)").
-		Scan(&totalSize)
+	// Removing the folder and adjusting its mailbox quota must succeed together.
+	// In particular, a failed quota update must not leave the messages deleted.
+	if err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
+		var totalSize int64
+		if err := tx.Model(&models.Message{}).
+			Where("mailbox_id = ? AND folder = ?", mailboxID, folderName).
+			Select("COALESCE(SUM(size_bytes), 0)").
+			Scan(&totalSize).Error; err != nil {
+			return fmt.Errorf("sum folder size for deletion: %w", err)
+		}
 
-	result := h.db.Where("mailbox_id = ? AND folder = ?", mailboxID, folderName).
-		Delete(&models.Message{})
-	if result.RowsAffected == 0 {
-		return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Folder not found")
-	}
+		result := tx.Where("mailbox_id = ? AND folder = ?", mailboxID, folderName).
+			Delete(&models.Message{})
+		if result.Error != nil {
+			return fmt.Errorf("delete folder messages: %w", result.Error)
+		}
+		if result.RowsAffected == 0 {
+			return endpoint.Refuse(http.StatusNotFound, "not_found", "Folder not found")
+		}
 
-	// Update quota
-	if totalSize > 0 {
-		h.db.Model(&models.Mailbox{}).Where("id = ?", mailboxID).
-			Update("quota_used_bytes", gorm.Expr("GREATEST(quota_used_bytes - ?, 0)", totalSize))
+		if totalSize > 0 {
+			if err := tx.Model(&models.Mailbox{}).Where("id = ?", mailboxID).
+				Update("quota_used_bytes", gorm.Expr("GREATEST(quota_used_bytes - ?, 0)", totalSize)).Error; err != nil {
+				return fmt.Errorf("adjust quota after folder deletion: %w", err)
+			}
+		}
+		return nil
+	}); err != nil {
+		return endpoint.Empty{}, err
 	}
 
 	return endpoint.Empty{}, nil
@@ -1288,15 +1344,24 @@ func (h *MessageHandler) getQuota(r *http.Request, in accountPath) (Quota, error
 
 	var mailbox models.Mailbox
 	if err := h.db.First(&mailbox, mailboxID).Error; err != nil {
-		return Quota{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Mailbox not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return Quota{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Mailbox not found")
+		}
+		return Quota{}, err
 	}
 
 	var messageCount int64
-	h.db.Model(&models.Message{}).Where("mailbox_id = ?", mailboxID).Count(&messageCount)
+	if err := h.db.Model(&models.Message{}).Where("mailbox_id = ?", mailboxID).Count(&messageCount).Error; err != nil {
+		return Quota{}, err
+	}
+	percentUsed := 0.0
+	if mailbox.QuotaBytes > 0 {
+		percentUsed = float64(mailbox.QuotaUsedBytes) / float64(mailbox.QuotaBytes) * 100
+	}
 
 	return Quota{
 		MessageCount:   messageCount,
-		PercentUsed:    float64(mailbox.QuotaUsedBytes) / float64(mailbox.QuotaBytes) * 100,
+		PercentUsed:    percentUsed,
 		QuotaBytes:     mailbox.QuotaBytes,
 		QuotaUsedBytes: mailbox.QuotaUsedBytes,
 	}, nil
@@ -2334,9 +2399,11 @@ func (h *MessageHandler) listCalendarEvents(r *http.Request, in accountPath) ([]
 	}
 
 	var versions []models.CalendarEventVersion
-	h.db.Where("mailbox_id = ?", mailboxID).
+	if err := h.db.Where("mailbox_id = ?", mailboxID).
 		Order("uid, sequence DESC").
-		Find(&versions)
+		Find(&versions).Error; err != nil {
+		return nil, fmt.Errorf("list calendar events: %w", err)
+	}
 
 	seen := map[string]*CalendarEventSummary{}
 	var order []string // preserve insertion order

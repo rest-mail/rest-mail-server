@@ -310,11 +310,24 @@ func (e *Engine) runFilter(ctx context.Context, filter Filter, email *EmailJSON)
 	}
 }
 
-// TestFilter runs a single filter against an email (for testing/debugging).
+// FilterExecutionError distinguishes a running filter's failure from a refused
+// configuration. Callers can report an internal failure without exposing its cause.
+type FilterExecutionError struct {
+	Err error
+}
+
+func (e *FilterExecutionError) Error() string { return fmt.Sprintf("execute filter: %v", e.Err) }
+func (e *FilterExecutionError) Unwrap() error { return e.Err }
+
+// TestFilter runs a single filter with the same timeout and panic guard used by delivery.
 func (e *Engine) TestFilter(ctx context.Context, filterName string, config []byte, email *EmailJSON) (*FilterResult, error) {
 	filter, err := e.registry.Create(filterName, config)
 	if err != nil {
 		return nil, fmt.Errorf("create filter %s: %w", filterName, err)
 	}
-	return filter.Execute(ctx, email)
+	result, err := e.runFilter(ctx, filter, email)
+	if err != nil {
+		return nil, &FilterExecutionError{Err: err}
+	}
+	return result, nil
 }
