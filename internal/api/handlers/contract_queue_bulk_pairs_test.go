@@ -37,18 +37,26 @@ func readBulkPostSpec(t *testing.T, path string) bulkDeleteSpec {
 		t.Fatalf("read the spec: %v", err)
 	}
 	var doc struct {
-		Paths map[string]struct {
-			Post *bulkDeleteSpec `yaml:"post"`
-		} `yaml:"paths"`
+		Paths map[string]map[string]interface{} `yaml:"paths"`
 	}
 	if err := yaml.Unmarshal(served, &doc); err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	op := doc.Paths[path].Post
-	if op == nil {
+	raw := doc.Paths[path]["post"]
+	if raw == nil {
 		t.Fatalf("the spec has no POST %s", path)
 	}
-	return *op
+	// Decode only this operation: unrelated endpoints can use schema type
+	// unions that the deliberately small bulk-queue test schema does not model.
+	selected, err := yaml.Marshal(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var op bulkDeleteSpec
+	if err := yaml.Unmarshal(selected, &op); err != nil {
+		t.Fatalf("parse POST %s: %v", path, err)
+	}
+	return op
 }
 
 // bulkPostPairProblems says what is wrong with how operationID pairs its

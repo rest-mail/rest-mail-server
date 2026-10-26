@@ -168,10 +168,11 @@ func (h *PipelineHandler) Register(rs endpoint.Routes, checks PipelineRouteCheck
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/pipelines",
 		OperationID: "createPipeline", Summary: "Create pipeline", Tags: []string{"Admin: Pipelines"},
 		Status:     http.StatusCreated,
+		Errors:     []int{http.StatusTooManyRequests},
 		Middleware: []endpoint.Middleware{checks.At(middleware.CapPipelinesWrite)}}, h.createPipeline)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPatch, Path: "/api/v1/admin/pipelines/{id}",
 		OperationID: "updatePipeline", Summary: "Update pipeline", Tags: []string{"Admin: Pipelines"},
-		Errors:     []int{http.StatusNotFound},
+		Errors:     []int{http.StatusNotFound, http.StatusTooManyRequests},
 		Middleware: []endpoint.Middleware{checks.At(middleware.CapPipelinesWrite)}}, h.updatePipeline)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/admin/pipelines/{id}",
 		OperationID: "deletePipeline", Summary: "Delete pipeline", Tags: []string{"Admin: Pipelines"},

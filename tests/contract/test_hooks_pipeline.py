@@ -111,9 +111,11 @@ class TestPipeline(unittest.TestCase):
         }
         before = copy.deepcopy(transaction)
         registered = self.hooks.registered_before["testPipeline"]
-        self.assertEqual(len(registered), 1)
-        for callback in registered:
-            callback(transaction)
+        self.assertEqual(registered.count(self.hooks.test_the_created_pipeline), 1)
+        with patch.object(self.hooks.time, "sleep") as sleep:
+            for callback in registered:
+                callback(transaction)
+        sleep.assert_called_once_with(0.55)
         self.assertEqual(transaction, before)
 
     def test_nonplaceholder_and_invalid_targets_are_preserved(self):
