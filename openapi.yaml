@@ -10385,11 +10385,6 @@ paths:
               description: 'no-store: invitation secrets are never cacheable'
               schema:
                 type: string
-            Set-Cookie:
-              description: 'For a browser: restmail_access and restmail_refresh (httpOnly)
-                and restmail_csrf, set or, on logout, expired'
-              schema:
-                type: string
         '400':
           description: Bad Request
           content:
