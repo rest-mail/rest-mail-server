@@ -4744,6 +4744,12 @@ paths:
       responses:
         "204":
           description: Deleted
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: It holds grants and the session has no 2FA (`two_factor_required`), or holds less than they give (`grant_exceeds_held`)
         "404":

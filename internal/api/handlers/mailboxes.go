@@ -176,12 +176,15 @@ func (h *MailboxHandler) delete(r *http.Request, in adminAddressPath) (endpoint.
 	id := in.ID
 
 	var mailbox models.Mailbox
-	if err := h.db.First(&mailbox, id).Error; err != nil {
-		return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "mailbox_not_found", "Mailbox not found")
+	if err := h.db.WithContext(r.Context()).First(&mailbox, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "mailbox_not_found", "Mailbox not found")
+		}
+		return endpoint.Empty{}, fmt.Errorf("find mailbox for deletion: %w", err)
 	}
 	claims := middleware.GetClaims(r)
 
-	err := h.db.Transaction(func(tx *gorm.DB) error {
+	err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
 		if err := grants.Lock(tx); err != nil {
 			return err
 		}
@@ -208,7 +211,7 @@ func (h *MailboxHandler) delete(r *http.Request, in adminAddressPath) (endpoint.
 			}
 		}
 		if _, err := repositories.NewCredentialRepository(tx).RevokeKinds(mailbox.ID, time.Now(),
-			models.CredentialKindPassword, models.CredentialKindTOTP, models.CredentialKindRecoveryCode, models.CredentialKindAppPassword); err != nil {
+			models.CredentialKindPassword, models.CredentialKindTOTP, models.CredentialKindRecoveryCode, models.CredentialKindAppPassword, models.CredentialKindAPIKey); err != nil {
 			return err
 		}
 		if err := repositories.NewRefreshTokenRepository(tx).RevokeAllForAccount(mailbox.ID); err != nil {
