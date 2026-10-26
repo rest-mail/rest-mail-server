@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"mime"
 	"net/http"
@@ -86,14 +87,23 @@ func (h *AttachmentHandler) getAttachment(r *http.Request, in attachmentPath) (e
 	notFound := endpoint.Refuse(http.StatusNotFound, "not_found", "Attachment not found")
 	var att models.Attachment
 	var mailboxIDs []uint
-	if err := h.db.First(&att, in.ID).Error; err == nil {
-		h.db.Model(&models.Message{}).Where("id = ?", att.MessageID).Pluck("mailbox_id", &mailboxIDs)
+	if err := h.db.First(&att, in.ID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return endpoint.Served{}, notFound
+		}
+		return endpoint.Served{}, fmt.Errorf("load attachment: %w", err)
+	}
+	if err := h.db.Model(&models.Message{}).Where("id = ?", att.MessageID).Pluck("mailbox_id", &mailboxIDs).Error; err != nil {
+		return endpoint.Served{}, fmt.Errorf("load attachment mailbox: %w", err)
 	}
 	if len(mailboxIDs) != 1 {
 		return endpoint.Served{}, notFound
 	}
 	if _, err := mayReach(h.db, claims, mailboxIDs[0], models.CapMailRead); err != nil {
-		return endpoint.Served{}, notFound
+		if errors.Is(err, errNoAccess) {
+			return endpoint.Served{}, notFound
+		}
+		return endpoint.Served{}, fmt.Errorf("authorize attachment download: %w", err)
 	}
 
 	// Always bytes to save, never the type the sender claimed: an HTML or SVG
@@ -194,15 +204,23 @@ func (h *AttachmentHandler) listAttachments(r *http.Request, in messagePath) (en
 
 	var msg models.Message
 	if err := h.db.First(&msg, in.ID).Error; err != nil {
-		return endpoint.List[MessageAttachment]{}, notFound
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return endpoint.List[MessageAttachment]{}, notFound
+		}
+		return endpoint.List[MessageAttachment]{}, fmt.Errorf("read attachment message: %w", err)
 	}
 	// Mailbox-scoped: the message must be in a mailbox the caller may read.
 	if _, err := mayReach(h.db, claims, msg.MailboxID, models.CapMailRead); err != nil {
-		return endpoint.List[MessageAttachment]{}, notFound
+		if errors.Is(err, errNoAccess) {
+			return endpoint.List[MessageAttachment]{}, notFound
+		}
+		return endpoint.List[MessageAttachment]{}, fmt.Errorf("authorize attachment list: %w", err)
 	}
 
 	var rows []models.Attachment
-	h.db.Where("message_id = ?", in.ID).Order("id ASC").Find(&rows)
+	if err := h.db.Where("message_id = ?", in.ID).Order("id ASC").Find(&rows).Error; err != nil {
+		return endpoint.List[MessageAttachment]{}, fmt.Errorf("list attachments: %w", err)
+	}
 
 	out := make([]MessageAttachment, len(rows))
 	for i, row := range rows {

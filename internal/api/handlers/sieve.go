@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -114,7 +115,10 @@ func (h *SieveHandler) get(r *http.Request, in accountPath) (SieveScript, error)
 
 	var script models.SieveScript
 	if err := h.db.Where("mailbox_id = ?", mailboxID).First(&script).Error; err != nil {
-		return SieveScript{MailboxID: mailboxID}, nil
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return SieveScript{MailboxID: mailboxID}, nil
+		}
+		return SieveScript{}, err
 	}
 	return sieveScriptOf(script), nil
 }

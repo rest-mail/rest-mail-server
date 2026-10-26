@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/mail"
@@ -115,7 +116,10 @@ func (h *ContactHandler) resolveMailboxID(r *http.Request, accountID uint32, cap
 	}
 	mailboxID, err := resolveAccountMailbox(h.db, uint(accountID), claims, capability)
 	if err != nil {
-		return 0, errContactAccess
+		if errors.Is(err, errNoAccess) {
+			return 0, errContactAccess
+		}
+		return 0, fmt.Errorf("resolve contacts account: %w", err)
 	}
 	return mailboxID, nil
 }

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -78,7 +79,10 @@ func mailRulesMailbox(db *gorm.DB, r *http.Request, accountID uint32) (uint, err
 	}
 	mailboxID, err := resolveAccountMailbox(db, uint(accountID), claims, mailCapabilityFor(r))
 	if err != nil {
-		return 0, errMailRulesAccess
+		if errors.Is(err, errNoAccess) {
+			return 0, errMailRulesAccess
+		}
+		return 0, err
 	}
 	return mailboxID, nil
 }
@@ -93,8 +97,11 @@ func (h *VacationHandler) get(r *http.Request, in accountPath) (vacationSetting,
 
 	var config models.VacationConfig
 	if err := h.db.Where("mailbox_id = ?", mailboxID).First(&config).Error; err != nil {
-		// Return defaults when no vacation config exists yet.
-		return vacationSetting{}, nil
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// Return defaults only when no vacation config exists yet.
+			return vacationSetting{}, nil
+		}
+		return vacationSetting{}, err
 	}
 
 	return vacationSetting{
