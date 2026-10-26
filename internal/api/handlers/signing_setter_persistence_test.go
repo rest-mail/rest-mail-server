@@ -151,7 +151,8 @@ func TestSigningSetterKeyPersistence(t *testing.T) {
 			if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
 				t.Fatal(err)
 			}
-			if !reflect.DeepEqual(response.Data.CreatedAt, got.DKIMCreatedAt) {
+			if (response.Data.CreatedAt == nil) != (got.DKIMCreatedAt == nil) ||
+				(response.Data.CreatedAt != nil && !response.Data.CreatedAt.Equal(*got.DKIMCreatedAt)) {
 				t.Fatal("response timestamp differs from durable timestamp")
 			}
 			switch name {
