@@ -2925,17 +2925,186 @@
     }
   },
   "getCertificate": {
-    "found": {
+    "disabled": {
+      "summary": "Disabled configuration remains readable to administrators",
+      "request": {
+        "path": {
+          "id": 2
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 2,
+            "domain_id": 1,
+            "cert_pem": "-----BEGIN CERTIFICATE-----\npublic-fixture\n-----END CERTIFICATE-----\n",
+            "issuer": "Fixture CA",
+            "not_before": "2026-10-20T00:00:00Z",
+            "not_after": "2027-10-20T00:00:00Z",
+            "auto_renew": false,
+            "created_at": "2026-10-20T00:00:00Z",
+            "updated_at": "2026-10-20T00:00:00Z",
+            "domain": {
+              "id": 1,
+              "name": "example.com",
+              "server_type": "traditional",
+              "active": true,
+              "default_quota_bytes": 1073741824,
+              "dkim_selector": "restmail",
+              "sending_policy": "bulk",
+              "dmarc_policy": "reject",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_scope": {
+      "summary": "A domain-scoped grant cannot read an installation-wide resource",
+      "description": "The current installation-wide permission ceiling is preserved. A grant on example.com does not satisfy read access at *.",
       "request": {
         "path": {
           "id": 1
         }
       },
       "response": {
-        "status": 200
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_unavailable": {
+      "summary": "The certificate exists but its domain preload fails",
+      "request": {
+        "path": {
+          "id": 4
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to get certificate"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "found": {
+      "summary": "The full public resource is returned",
+      "description": "A current session holds the installation-wide read capability. Stored public fields pass through the production mapper; private certificate and signing keys have no response field.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "cert_pem": "-----BEGIN CERTIFICATE-----\npublic-fixture\n-----END CERTIFICATE-----\n",
+            "issuer": "Fixture CA",
+            "not_before": "2026-10-20T00:00:00Z",
+            "not_after": "2027-10-20T00:00:00Z",
+            "auto_renew": true,
+            "created_at": "2026-10-20T00:00:00Z",
+            "updated_at": "2026-10-20T00:00:00Z",
+            "domain": {
+              "id": 1,
+              "name": "example.com",
+              "server_type": "traditional",
+              "active": true,
+              "default_quota_bytes": 1073741824,
+              "dkim_selector": "restmail",
+              "sending_policy": "bulk",
+              "dmarc_policy": "reject",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a missing resource",
+      "description": "A controlled dependency error exercises the real GORM lookup. The production error writer omits internal fault detail.",
+      "request": {
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to get certificate"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_format": {
+      "summary": "The domain ID cannot bind to an integer",
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "missing": {
+      "summary": "The requested certificate does not exist",
       "request": {
         "path": {
           "id": 2147483647
@@ -2948,22 +3117,272 @@
             "code": "not_found",
             "message": "Certificate not found"
           }
-        }
+        },
+        "mediaType": "application/json"
       }
-    }
-  },
-  "getCustomFilter": {
-    "found": {
+    },
+    "outside_domain": {
+      "summary": "A grant on another domain cannot read this configuration",
       "request": {
         "path": {
           "id": 1
         }
       },
       "response": {
-        "status": 200
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "permission_store_unavailable": {
+      "summary": "The grant-store lookup fails",
+      "description": "The current session is valid, but its held grants cannot be loaded; permission middleware fails closed.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "getCustomFilter": {
+    "disabled": {
+      "summary": "Disabled configuration remains readable to administrators",
+      "request": {
+        "path": {
+          "id": 2
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 2,
+            "domain_id": 1,
+            "name": "Subject café",
+            "description": "Add a public subject marker",
+            "filter_type": "transform",
+            "direction": "both",
+            "config": {
+              "prefix": "[REST Mail] "
+            },
+            "enabled": false,
+            "created_at": "2026-10-20T00:00:00Z",
+            "updated_at": "2026-10-20T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_scope": {
+      "summary": "A domain-scoped grant cannot read an installation-wide resource",
+      "description": "The current installation-wide permission ceiling is preserved. A grant on example.com does not satisfy read access at *.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "found": {
+      "summary": "The full public resource is returned",
+      "description": "A current session holds the installation-wide read capability. Stored public fields pass through the production mapper; private certificate and signing keys have no response field.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "name": "Subject café",
+            "description": "Add a public subject marker",
+            "filter_type": "transform",
+            "direction": "both",
+            "config": {
+              "prefix": "[REST Mail] "
+            },
+            "enabled": true,
+            "created_at": "2026-10-20T00:00:00Z",
+            "updated_at": "2026-10-20T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a missing resource",
+      "description": "A controlled dependency error exercises the real GORM lookup. The production error writer omits internal fault detail.",
+      "request": {
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to get custom filter"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_format": {
+      "summary": "The domain ID cannot bind to an integer",
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "missing": {
+      "summary": "The requested custom filter does not exist",
       "request": {
         "path": {
           "id": 2147483647
@@ -2976,22 +3395,281 @@
             "code": "not_found",
             "message": "Custom filter not found"
           }
-        }
+        },
+        "mediaType": "application/json"
       }
-    }
-  },
-  "getDKIMRotation": {
-    "found": {
+    },
+    "outside_domain": {
+      "summary": "A grant on another domain cannot read this configuration",
       "request": {
         "path": {
           "id": 1
         }
       },
       "response": {
-        "status": 200
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "permission_store_unavailable": {
+      "summary": "The grant-store lookup fails",
+      "description": "The current session is valid, but its held grants cannot be loaded; permission middleware fails closed.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "getDKIMRotation": {
+    "awaiting_publication": {
+      "summary": "Rotation state: awaiting_publication",
+      "description": "A deterministic public RFC8032 test key exercises the real public-record mapping. Unreadable stored key material keeps an empty record_value; no private signing material is returned.",
+      "request": {
+        "path": {
+          "id": 5
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 5,
+            "rotation_interval_days": 90,
+            "state": "awaiting_publication",
+            "staged": {
+              "selector": "restmail-next",
+              "record_name": "restmail-next._domainkey.example.com",
+              "record_value": "v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+              "published_at": null
+            },
+            "previous": null
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "disabled": {
+      "summary": "Disabled configuration remains readable to administrators",
+      "request": {
+        "path": {
+          "id": 2
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 2,
+            "rotation_interval_days": 0,
+            "state": "stable",
+            "staged": null,
+            "previous": null
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_scope": {
+      "summary": "The domain-scoped reader can inspect rotation",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 1,
+            "rotation_interval_days": 90,
+            "state": "stable",
+            "staged": null,
+            "previous": null
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "found": {
+      "summary": "The full public resource is returned",
+      "description": "A current session holds the installation-wide read capability. Stored public fields pass through the production mapper; private certificate and signing keys have no response field.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 1,
+            "rotation_interval_days": 90,
+            "state": "stable",
+            "staged": null,
+            "previous": null
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a missing resource",
+      "description": "A controlled dependency error exercises the real GORM lookup. The production error writer omits internal fault detail.",
+      "request": {
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_format": {
+      "summary": "The domain ID cannot bind to an integer",
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "keys_unavailable": {
+      "summary": "Rotation configuration exists but its key query fails",
+      "request": {
+        "path": {
+          "id": 4
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "missing": {
+      "summary": "The requested domain does not exist",
       "request": {
         "path": {
           "id": 2147483647
@@ -3004,7 +3682,200 @@
             "code": "not_found",
             "message": "Domain not found"
           }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "outside_domain": {
+      "summary": "A grant on another domain cannot read this configuration",
+      "request": {
+        "path": {
+          "id": 1
         }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "permission_store_unavailable": {
+      "summary": "The grant-store lookup fails",
+      "description": "The current session is valid, but its held grants cannot be loaded; permission middleware fails closed.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "retiring": {
+      "summary": "Rotation state: retiring",
+      "description": "A deterministic public RFC8032 test key exercises the real public-record mapping. Unreadable stored key material keeps an empty record_value; no private signing material is returned.",
+      "request": {
+        "path": {
+          "id": 7
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 7,
+            "rotation_interval_days": 90,
+            "state": "retiring",
+            "staged": null,
+            "previous": {
+              "selector": "restmail-previous",
+              "record_name": "restmail-previous._domainkey.example.com",
+              "record_value": "v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+              "published_at": "2026-10-20T00:00:00Z",
+              "retire_after": "2026-10-21T00:00:00Z"
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "target_lookup_unavailable": {
+      "request": {
+        "path": {
+          "id": 8
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unreadable_key": {
+      "summary": "Rotation state: unreadable_key",
+      "description": "A deterministic public RFC8032 test key exercises the real public-record mapping. Unreadable stored key material keeps an empty record_value; no private signing material is returned.",
+      "request": {
+        "path": {
+          "id": 9
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 9,
+            "rotation_interval_days": 90,
+            "state": "awaiting_publication",
+            "staged": {
+              "selector": "restmail-next",
+              "record_name": "restmail-next._domainkey.example.com",
+              "record_value": "",
+              "published_at": null
+            },
+            "previous": null
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "waiting_ttl": {
+      "summary": "Rotation state: waiting_ttl",
+      "description": "A deterministic public RFC8032 test key exercises the real public-record mapping. Unreadable stored key material keeps an empty record_value; no private signing material is returned.",
+      "request": {
+        "path": {
+          "id": 6
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 6,
+            "rotation_interval_days": 90,
+            "state": "waiting_ttl",
+            "staged": {
+              "selector": "restmail-next",
+              "record_name": "restmail-next._domainkey.example.com",
+              "record_value": "v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+              "published_at": "2026-10-20T00:00:00Z",
+              "activates_at": "2026-10-20T01:00:00Z"
+            },
+            "previous": null
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },
