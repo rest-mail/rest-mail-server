@@ -7530,6 +7530,17 @@ paths:
                       auto_renew: false
                       created_at: "2026-01-01T00:00:00Z"
                       updated_at: "2026-01-01T00:00:00Z"
+                      domain:
+                        id: 1
+                        name: contract.example.org
+                        server_type: traditional
+                        active: false
+                        default_quota_bytes: 1073741824
+                        dkim_selector: ""
+                        sending_policy: ""
+                        dmarc_policy: none
+                        created_at: "2026-01-01T00:00:00Z"
+                        updated_at: "2026-01-01T00:00:00Z"
           links:
             getCertificate:
               operationId: getCertificate
@@ -7566,6 +7577,12 @@ paths:
                           domain_id: required
                           cert_pem: required
                           key_pem: required
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api/v1/admin/certificates/{id}:
     parameters:

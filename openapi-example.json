@@ -4940,7 +4940,919 @@
             "not_after": "2026-01-31T00:00:00Z",
             "auto_renew": false,
             "created_at": "2026-01-01T00:00:00Z",
-            "updated_at": "2026-01-01T00:00:00Z"
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 1,
+              "name": "contract.example.org",
+              "server_type": "traditional",
+              "active": false,
+              "default_quota_bytes": 1073741824,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "none",
+              "created_at": "2026-01-01T00:00:00Z",
+              "updated_at": "2026-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "write_only": {
+      "summary": "Write only",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": false
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "issuer": "CN=contract.example.org",
+            "not_before": "2026-01-01T00:00:00Z",
+            "not_after": "2026-01-31T00:00:00Z",
+            "auto_renew": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 1,
+              "name": "contract.example.org",
+              "server_type": "traditional",
+              "active": false,
+              "default_quota_bytes": 1073741824,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "none",
+              "created_at": "2026-01-01T00:00:00Z",
+              "updated_at": "2026-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "key_write": {
+      "summary": "Key write",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": false
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "issuer": "CN=contract.example.org",
+            "not_before": "2026-01-01T00:00:00Z",
+            "not_after": "2026-01-31T00:00:00Z",
+            "auto_renew": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 1,
+              "name": "contract.example.org",
+              "server_type": "traditional",
+              "active": false,
+              "default_quota_bytes": 1073741824,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "none",
+              "created_at": "2026-01-01T00:00:00Z",
+              "updated_at": "2026-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "cookie_session": {
+      "summary": "Cookie session",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": false
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "issuer": "CN=contract.example.org",
+            "not_before": "2026-01-01T00:00:00Z",
+            "not_after": "2026-01-31T00:00:00Z",
+            "auto_renew": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 1,
+              "name": "contract.example.org",
+              "server_type": "traditional",
+              "active": false,
+              "default_quota_bytes": 1073741824,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "none",
+              "created_at": "2026-01-01T00:00:00Z",
+              "updated_at": "2026-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "body_boundary": {
+      "summary": "Body boundary",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": false
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "issuer": "CN=contract.example.org",
+            "not_before": "2026-01-01T00:00:00Z",
+            "not_after": "2026-01-31T00:00:00Z",
+            "auto_renew": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 1,
+              "name": "contract.example.org",
+              "server_type": "traditional",
+              "active": false,
+              "default_quota_bytes": 1073741824,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "none",
+              "created_at": "2026-01-01T00:00:00Z",
+              "updated_at": "2026-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "read_only": {
+      "summary": "Read only",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": false
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "domain_scope": {
+      "summary": "Domain scope",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": false
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "mailbox_scope": {
+      "summary": "Mailbox scope",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": false
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "wrong_domain": {
+      "summary": "Wrong domain",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": false
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_read": {
+      "summary": "Key read",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": false
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_domain": {
+      "summary": "Key domain",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": false
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_mailbox": {
+      "summary": "Key mailbox",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": false
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_wrong_domain": {
+      "summary": "Key wrong domain",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": false
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_holder_missing": {
+      "summary": "Key holder missing",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": false
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "unauthenticated": {
+      "summary": "Unauthenticated",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": false
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "session_unavailable": {
+      "summary": "Session unavailable",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": false
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        }
+      }
+    },
+    "permission_store_unavailable": {
+      "summary": "Permission store unavailable",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": false
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
+          }
+        }
+      }
+    },
+    "csrf_missing": {
+      "summary": "Csrf missing",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": false
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "csrf_mismatch": {
+      "summary": "Csrf mismatch",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": false
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "rate_limited": {
+      "summary": "Rate limited",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": false
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        }
+      }
+    },
+    "request_too_large": {
+      "summary": "Request too large",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": false
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        }
+      }
+    },
+    "malformed_json": {
+      "summary": "Malformed json",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": false
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "cancelled_after_lookup": {
+      "summary": "Cancelled after lookup",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": false
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "missing": {
+      "summary": "Missing",
+      "request": {
+        "body": {
+          "domain_id": 2147483647,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": false
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Domain not found"
+          }
+        }
+      }
+    },
+    "lookup_unavailable": {
+      "summary": "Lookup unavailable",
+      "request": {
+        "body": {
+          "domain_id": 3,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": false
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "insert_unavailable": {
+      "summary": "Insert unavailable",
+      "request": {
+        "body": {
+          "domain_id": 4,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": false
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "reload_unavailable": {
+      "summary": "Reload unavailable",
+      "request": {
+        "body": {
+          "domain_id": 5,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": false
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "reload_missing": {
+      "summary": "Reload missing",
+      "request": {
+        "body": {
+          "domain_id": 6,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": false
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "association_unavailable": {
+      "summary": "Association unavailable",
+      "request": {
+        "body": {
+          "domain_id": 7,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": false
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "default_renew": {
+      "summary": "Default renew",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": "certificate",
+          "key_pem": "key"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "issuer": "CN=contract.example.org",
+            "not_before": "2026-01-01T00:00:00Z",
+            "not_after": "2026-01-31T00:00:00Z",
+            "auto_renew": true,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 1,
+              "name": "contract.example.org",
+              "server_type": "traditional",
+              "active": false,
+              "default_quota_bytes": 1073741824,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "none",
+              "created_at": "2026-01-01T00:00:00Z",
+              "updated_at": "2026-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "auto_renew_true": {
+      "summary": "Auto renew true",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": true
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "issuer": "CN=contract.example.org",
+            "not_before": "2026-01-01T00:00:00Z",
+            "not_after": "2026-01-31T00:00:00Z",
+            "auto_renew": true,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 1,
+              "name": "contract.example.org",
+              "server_type": "traditional",
+              "active": false,
+              "default_quota_bytes": 1073741824,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "none",
+              "created_at": "2026-01-01T00:00:00Z",
+              "updated_at": "2026-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "auto_renew_null": {
+      "summary": "Auto renew null",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": null
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "issuer": "CN=contract.example.org",
+            "not_before": "2026-01-01T00:00:00Z",
+            "not_after": "2026-01-31T00:00:00Z",
+            "auto_renew": true,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 1,
+              "name": "contract.example.org",
+              "server_type": "traditional",
+              "active": false,
+              "default_quota_bytes": 1073741824,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "none",
+              "created_at": "2026-01-01T00:00:00Z",
+              "updated_at": "2026-01-01T00:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "domain_zero": {
+      "summary": "Domain zero",
+      "request": {
+        "body": {
+          "domain_id": 0,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": false
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "domain_id": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "domain_wrong_type": {
+      "summary": "Domain wrong type",
+      "request": {
+        "body": {
+          "domain_id": "bad",
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": false
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "domain_id": "must be a non-negative integer"
+              }
+            }
+          }
+        }
+      }
+    },
+    "cert_empty": {
+      "summary": "Cert empty",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": "",
+          "key_pem": "key",
+          "auto_renew": false
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "cert_pem": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "key_empty": {
+      "summary": "Key empty",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": "certificate",
+          "key_pem": "",
+          "auto_renew": false
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "key_pem": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "auto_renew_wrong_type": {
+      "summary": "Auto renew wrong type",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": "certificate",
+          "key_pem": "key",
+          "auto_renew": "false"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "auto_renew": "must be a boolean"
+              }
+            }
+          }
+        }
+      }
+    },
+    "cert_invalid": {
+      "summary": "Cert invalid",
+      "request": {
+        "body": {
+          "domain_id": 1,
+          "cert_pem": "not PEM",
+          "key_pem": "key",
+          "auto_renew": false
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "cert_pem": "Invalid certificate PEM"
+              }
+            }
           }
         }
       }

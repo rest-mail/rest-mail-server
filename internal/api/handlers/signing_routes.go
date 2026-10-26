@@ -49,7 +49,7 @@ func (h *CertificateHandler) Register(rs endpoint.Routes, checks CertificateRout
 		OperationID: "getCertificate", Summary: "Get certificate details (includes cert_pem)", Tags: tags, Errors: missing,
 		Middleware: []endpoint.Middleware{checks.At(middleware.CapDomainsRead)}}, h.getCertificate)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/certificates",
-		OperationID: "createCertificate", Summary: "Upload a new TLS certificate", Tags: tags, Errors: missing, Status: http.StatusCreated,
+		OperationID: "createCertificate", Summary: "Upload a new TLS certificate", Tags: tags, Errors: []int{http.StatusNotFound, http.StatusTooManyRequests}, Status: http.StatusCreated,
 		Middleware: []endpoint.Middleware{checks.At(middleware.CapDomainsWrite)}}, h.createCertificate)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/admin/certificates/{id}",
 		OperationID: "deleteCertificate", Summary: "Delete a certificate", Tags: tags, Errors: missing, Status: http.StatusNoContent,
