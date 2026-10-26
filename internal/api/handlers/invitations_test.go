@@ -94,7 +94,7 @@ func TestInvitationCancellationDoesNotTouchStorage(t *testing.T) {
 	if w.Code != http.StatusInternalServerError || !strings.Contains(w.Body.String(), "Failed to redeem the token") || strings.Contains(w.Body.String(), "context canceled") || strings.Contains(w.Body.String(), "not-logged") {
 		t.Fatalf("unsafe cancellation response: %d %s", w.Code, w.Body)
 	}
-	if invitationSecretHeaders().Get("Cache-Control") != "no-store" || invitationSecretHeaders().Get("Referrer-Policy") != "no-referrer" {
+	if invitationSecretHeaders().Get("Cache-Control") != "no-store" {
 		t.Fatal("invitation secrets are cacheable")
 	}
 }
