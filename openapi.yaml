@@ -8723,6 +8723,12 @@ paths:
       responses:
         "204":
           description: Removed
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "422":
           $ref: "#/components/responses/ValidationError"
         "401":
