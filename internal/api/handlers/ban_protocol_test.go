@@ -5,31 +5,22 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
-	"runtime/debug"
 	"strings"
 	"testing"
+
+	"gorm.io/gorm"
 )
 
 // createBanNoDB posts body to CreateBan on a handler without a database. The
-// first thing past validation is the lookup of the IP, which panics on the nil
-// database, so reachedDB says the request was accepted as valid. A panic
-// anywhere else fails the test.
+// first thing past validation is the IP lookup. A controlled database callback
+// stops there, while an unrelated panic still fails the test.
 func createBanNoDB(t *testing.T, body string) (rr *httptest.ResponseRecorder, reachedDB bool) {
 	t.Helper()
 	rr = httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/bans", strings.NewReader(body))
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				stack := string(debug.Stack())
-				if !strings.Contains(stack, "gorm.io/gorm.(*DB).Where") {
-					t.Fatalf("%s panicked outside the lookup of the IP: %v\n%s", body, r, stack)
-				}
-				reachedDB = true
-			}
-		}()
-		banRoutes(NewBanHandler(nil)).ServeHTTP(rr, req)
-	}()
+	reachedDB = runToValidationDB(t, "bans", func(db *gorm.DB) {
+		banRoutes(NewBanHandler(db)).ServeHTTP(rr, req)
+	})
 	return rr, reachedDB
 }
 
