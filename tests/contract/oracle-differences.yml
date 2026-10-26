@@ -2041,11 +2041,6 @@
   reason: >-
     A folder is held to the folder rule in the handler, an empty one refused with 422 folder
     required as createFolder refuses an empty name; a minLength would word it differently (#759).
-- operation: deleteMessage
-  difference: "response 429: generated only"
-  reason: >-
-    The mail routes throttle refused HTTP Basic credentials at login's rate (429
-    rate_limited).
 - operation: getThread
   difference: "response 429: generated only"
   reason: >-
@@ -2324,11 +2319,6 @@
   reason: >-
     Reflection does not describe defaults; the handler keeps 50 for an absent or out-of-range
     limit (1 to 100).
-- operation: deleteMessage
-  difference: "parameter query permanent: generated only"
-  reason: >-
-    permanent=true deletes for good (the IMAP and POP3 gateways send it); anything else moves
-    the message to Trash. The oracle does not document it.
 - operation: updateMessage
   difference: "response 400: generated only"
   reason: >-

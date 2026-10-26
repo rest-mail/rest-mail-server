@@ -20,6 +20,7 @@ func (h *BanHandler) Register(rs endpoint.Routes, at func(string) endpoint.Middl
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/bans",
 		OperationID: "createBan", Summary: "Create an IP ban", Tags: []string{"Admin: Bans"},
 		Status: http.StatusCreated, SuccessStatuses: []int{http.StatusOK},
+		Errors:     []int{http.StatusTooManyRequests},
 		Middleware: []endpoint.Middleware{at(middleware.CapBansWrite)}}, h.create)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/admin/bans/{id}",
 		OperationID: "deleteBan", Summary: "Delete a ban by ID", Tags: []string{"Admin: Bans"},
