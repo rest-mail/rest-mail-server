@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -60,10 +61,14 @@ type setDKIMKeyRequest struct {
 	Body setDKIMKeyBody `body:""`
 }
 
-func (h *DKIMHandler) setKey(_ *http.Request, in setDKIMKeyRequest) (dkimEntry, error) {
+func (h *DKIMHandler) setKey(r *http.Request, in setDKIMKeyRequest) (dkimEntry, error) {
 	var domain models.Domain
-	if err := h.db.First(&domain, in.ID).Error; err != nil {
-		return dkimEntry{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Domain not found")
+	db := h.db.WithContext(r.Context())
+	if err := db.First(&domain, in.ID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return dkimEntry{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Domain not found")
+		}
+		return dkimEntry{}, fmt.Errorf("find domain for DKIM installation: %w", err)
 	}
 	req := in.Body
 
@@ -88,25 +93,29 @@ func (h *DKIMHandler) setKey(_ *http.Request, in setDKIMKeyRequest) (dkimEntry, 
 		return dkimEntry{}, err
 	}
 
+	now := db.NowFunc().UTC()
 	createdAt := domain.DKIMCreatedAt
 	// Re-saving the same key must not make it appear younger. Legacy keys
 	// re-saved unchanged still have an unknown age.
 	previous, loadErr := models.LoadDKIMPrivateKey(domain.DKIMPrivateKey, h.masterKey)
 	if loadErr != nil || previous != req.PrivateKey {
-		now := time.Now().UTC()
 		createdAt = &now
 	}
-	if err := h.db.Model(&domain).Updates(map[string]interface{}{
+	result := db.Model(&domain).Updates(map[string]interface{}{
 		"dkim_selector":    req.Selector,
 		"dkim_private_key": keyToStore,
 		"dkim_created_at":  createdAt,
-	}).Error; err != nil {
-		return dkimEntry{}, err
+	})
+	if result.Error != nil {
+		return dkimEntry{}, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return dkimEntry{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Domain not found")
 	}
 
 	domain.DKIMSelector = req.Selector
 	domain.DKIMCreatedAt = createdAt
-	return newDKIMEntry(domain, time.Now()), nil
+	return newDKIMEntry(domain, now), nil
 }
 
 // deleteKey removes the DKIM key for a domain.
@@ -114,7 +123,10 @@ func (h *DKIMHandler) setKey(_ *http.Request, in setDKIMKeyRequest) (dkimEntry, 
 func (h *DKIMHandler) deleteKey(_ *http.Request, in domainPath) (endpoint.Empty, error) {
 	var domain models.Domain
 	if err := h.db.First(&domain, in.ID).Error; err != nil {
-		return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Domain not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Domain not found")
+		}
+		return endpoint.Empty{}, fmt.Errorf("find domain for DKIM removal: %w", err)
 	}
 
 	if err := h.db.Model(&domain).Updates(map[string]interface{}{

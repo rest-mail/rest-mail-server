@@ -240,6 +240,15 @@ before the filter is looked up. Its `valid` request (`{}`, the built-in sample
 email) runs the created filter and gets the 200
 (`contract_testcustomfilter_examples_test.go`).
 
+The preview hooks pace `testPipeline`, `testFilter` and `testCustomFilter`
+without rewriting requests or expectations, so the shared 2 requests/second
+preview bucket does not turn valid contract probes into 429s. The healthy
+topology cannot provoke the new pipeline 500s or custom-filter sidecar
+408/413/500 responses. Those exact expected transactions are excluded with
+matching surface reasons; production-router/transport fault regressions cover
+them, and #1166 retains topology fault-injection acceptance. A 5xx returned for
+a normal success or client-refusal transaction still fails the gate.
+
 `updateCustomFilter` pairs `updated` with 200 and five invalid requests with
 422: `name_empty`, `filter_type_invalid`, `direction_invalid`, `config_array`
 and `config_null`. The existing create link supplies the stored filter's ID;

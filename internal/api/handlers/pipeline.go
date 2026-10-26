@@ -322,7 +322,7 @@ func (h *PipelineHandler) createPipeline(r *http.Request, in createPipelineReque
 		models.Pipeline
 		Active *bool
 	}{Pipeline: p, Active: &p.Active}
-	if err := h.db.Create(&row).Error; err != nil {
+	if err := h.db.WithContext(r.Context()).Create(&row).Error; err != nil {
 		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to create pipeline")
 	}
 
@@ -335,8 +335,12 @@ func (h *PipelineHandler) updatePipeline(r *http.Request, in updatePipelineReque
 	id := in.ID
 
 	var p models.Pipeline
-	if err := h.db.First(&p, id).Error; err != nil {
-		return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "Pipeline not found")
+	db := h.db.WithContext(r.Context())
+	if err := db.First(&p, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "Pipeline not found")
+		}
+		return zero, fmt.Errorf("load pipeline for update: %w", err)
 	}
 
 	req := in.Body
@@ -362,8 +366,14 @@ func (h *PipelineHandler) updatePipeline(r *http.Request, in updatePipelineReque
 		p.Active = *req.Active
 	}
 
-	if err := h.db.Save(&p).Error; err != nil {
+	// Save falls back to INSERT when its UPDATE finds no row. A concurrent
+	// removal must stay removed, so update only the mutable fields explicitly.
+	result := db.Model(&p).Updates(map[string]interface{}{"filters": p.Filters, "active": p.Active})
+	if result.Error != nil {
 		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to update pipeline")
+	}
+	if result.RowsAffected == 0 {
+		return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "Pipeline not found")
 	}
 
 	return pipelineOf(p), nil
@@ -397,8 +407,11 @@ func (h *PipelineHandler) testPipeline(r *http.Request, in testPipelineRequestBo
 	}
 
 	var p models.Pipeline
-	if err := h.db.First(&p, req.PipelineID).Error; err != nil {
-		return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "Pipeline not found")
+	if err := h.db.WithContext(r.Context()).First(&p, req.PipelineID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "Pipeline not found")
+		}
+		return zero, fmt.Errorf("load pipeline for preview: %w", err)
 	}
 
 	// Parse pipeline filters
@@ -442,6 +455,10 @@ func (h *PipelineHandler) testFilter(r *http.Request, in testFilterRequestBody) 
 
 	result, err := h.engine.TestFilter(r.Context(), req.FilterName, req.Config, req.Email.canonical())
 	if err != nil {
+		var execution *pipeline.FilterExecutionError
+		if errors.As(err, &execution) {
+			return zero, err
+		}
 		return zero, endpoint.Refuse(http.StatusBadRequest, "filter_error", err.Error())
 	}
 
@@ -525,7 +542,7 @@ func (h *PipelineHandler) createCustomFilter(r *http.Request, in createCustomFil
 		models.CustomFilter
 		Enabled *bool
 	}{CustomFilter: cf, Enabled: &cf.Enabled}
-	if err := h.db.Table(cf.TableName()).Create(&row).Error; err != nil {
+	if err := h.db.WithContext(r.Context()).Table(cf.TableName()).Create(&row).Error; err != nil {
 		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to create custom filter")
 	}
 
@@ -577,8 +594,11 @@ func (h *PipelineHandler) updateCustomFilter(r *http.Request, in updateCustomFil
 	id := in.ID
 
 	var cf models.CustomFilter
-	if err := h.db.First(&cf, id).Error; err != nil {
-		return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "Custom filter not found")
+	if err := h.db.WithContext(r.Context()).First(&cf, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "Custom filter not found")
+		}
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to get custom filter")
 	}
 
 	// Config is not a pointer: a pointer leaves an explicit null nil, the same
@@ -616,7 +636,7 @@ func (h *PipelineHandler) updateCustomFilter(r *http.Request, in updateCustomFil
 		return zero, endpoint.Invalid(map[string]string{"config": "must be an object"})
 	}
 
-	if err := h.db.Save(&cf).Error; err != nil {
+	if err := h.db.WithContext(r.Context()).Save(&cf).Error; err != nil {
 		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to update custom filter")
 	}
 
@@ -668,8 +688,11 @@ func (h *PipelineHandler) testCustomFilter(r *http.Request, in testCustomFilterR
 	}
 
 	var cf models.CustomFilter
-	if err := h.db.First(&cf, id).Error; err != nil {
-		return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "Custom filter not found")
+	if err := h.db.WithContext(r.Context()).First(&cf, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "Custom filter not found")
+		}
+		return zero, fmt.Errorf("load custom filter for execution: %w", err)
 	}
 
 	// Parse config to extract the script
@@ -698,7 +721,10 @@ func (h *PipelineHandler) testCustomFilter(r *http.Request, in testCustomFilterR
 		return zero, endpoint.Refuse(http.StatusServiceUnavailable, "service_unavailable", jsSidecarRefused)
 	}
 
-	respBody, _ := io.ReadAll(sidecarResp.Body)
+	respBody, err := io.ReadAll(sidecarResp.Body)
+	if err != nil || !json.Valid(respBody) {
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Invalid sidecar response")
+	}
 
 	return endpoint.Forwarded[ScriptExecution]{Status: sidecarResp.StatusCode, Body: respBody}, nil
 }
@@ -727,7 +753,10 @@ func (h *PipelineHandler) validateCustomFilter(r *http.Request, in validateCusto
 		return zero, endpoint.Refuse(http.StatusServiceUnavailable, "service_unavailable", jsSidecarRefused)
 	}
 
-	respBody, _ := io.ReadAll(sidecarResp.Body)
+	respBody, err := io.ReadAll(sidecarResp.Body)
+	if err != nil {
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Invalid sidecar response")
+	}
 
 	var result json.RawMessage
 	if err := json.Unmarshal(respBody, &result); err != nil {
@@ -884,7 +913,10 @@ func (h *PipelineHandler) quarantineMailbox(r *http.Request, accountID uint32) (
 	}
 	mailboxID, err := resolveAccountMailbox(h.db, uint(accountID), claims, mailCapabilityFor(r))
 	if err != nil {
-		return 0, errQuarantineAccess
+		if errors.Is(err, errNoAccess) {
+			return 0, errQuarantineAccess
+		}
+		return 0, fmt.Errorf("resolve quarantine account: %w", err)
 	}
 	return mailboxID, nil
 }
@@ -901,10 +933,14 @@ func (h *PipelineHandler) listQuarantine(r *http.Request, in quarantineListReque
 	query := h.db.Model(&models.Quarantine{}).Where("mailbox_id = ? AND released = false", mailboxID)
 
 	var total int64
-	query.Count(&total)
+	if err := query.Count(&total).Error; err != nil {
+		return endpoint.List[QuarantinedMessage]{}, fmt.Errorf("count quarantined messages: %w", err)
+	}
 
 	var items []models.Quarantine
-	query.Order("received_at DESC").Limit(limit).Offset(offset).Find(&items)
+	if err := query.Order("received_at DESC").Limit(limit).Offset(offset).Find(&items).Error; err != nil {
+		return endpoint.List[QuarantinedMessage]{}, fmt.Errorf("list quarantined messages: %w", err)
+	}
 
 	out := make([]QuarantinedMessage, len(items))
 	for i, item := range items {

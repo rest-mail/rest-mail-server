@@ -56,19 +56,42 @@ jobs:
         id: classify
         env:
           EVENT_NAME: ${{ github.event_name }}
+          # A pull request opts in to the heavy suite with the `run-e2e` label.
+          RUN_E2E_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'run-e2e') }}
           # A merge queue group is classified like a pull request, against the main
           # it was built on, so a group of docs-only pull requests skips the suite too.
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
           set -euo pipefail
 
-          # Any other event (push to main, manual dispatch) always runs the
-          # full suite — post-merge and on-demand validation is never gated.
-          if [ "$EVENT_NAME" != "pull_request" ] && [ "$EVENT_NAME" != "merge_group" ]; then
-            echo "event=$EVENT_NAME -> run full e2e"
-            echo "run_e2e=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+          # The heavy suite runs once per change, in the merge queue (#825): the queue
+          # tests each group on top of main, and that group's commit is what main
+          # becomes. So a pull request and the push to main skip it, and the
+          # required `E2E (full topology)` check still reports on the pull request.
+          #   pull_request  skip, unless the pull request carries `run-e2e`
+          #   push (main)   skip: the merge group already tested this commit
+          #   merge_group   docs-only groups skip, everything else runs (below)
+          #   dispatch      always runs
+          case "$EVENT_NAME" in
+            pull_request)
+              if [ "$RUN_E2E_LABEL" = "true" ]; then
+                echo "pull request labelled run-e2e -> run full e2e"
+                echo "run_e2e=true" >> "$GITHUB_OUTPUT"
+              else
+                echo "pull request -> e2e runs in the merge queue"
+                echo "run_e2e=false" >> "$GITHUB_OUTPUT"
+              fi
+              exit 0 ;;
+            push)
+              echo "push to main -> the merge group already ran e2e on this commit"
+              echo "run_e2e=false" >> "$GITHUB_OUTPUT"
+              exit 0 ;;
+            merge_group) ;;
+            *)
+              echo "event=$EVENT_NAME -> run full e2e"
+              echo "run_e2e=true" >> "$GITHUB_OUTPUT"
+              exit 0 ;;
+          esac
 
           # Changes relative to the merge-base with the target branch.
           files="$(git diff --name-only "$BASE_SHA"...HEAD)"
@@ -135,9 +158,10 @@ jobs:
           echo "run_e2e decision    : $RUN_E2E"
           echo "heavy e2e result    : $E2E_RESULT"
 
-          # Docs-only PR: classifier succeeded and chose to skip the heavy job.
+          # Classifier succeeded and chose to skip the heavy job: a pull request or
+          # push (the merge queue runs it), or a docs-only merge group.
           if [ "$CHANGES_RESULT" = "success" ] && [ "$RUN_E2E" != "true" ]; then
-            echo "docs-only change — full e2e intentionally skipped. Reporting success."
+            echo "full e2e intentionally skipped here (see the classify step). Reporting success."
             exit 0
           fi
 

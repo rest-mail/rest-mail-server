@@ -2320,9 +2320,26 @@ paths:
         - APIKeyAuth: [mail:write]
         - BasicAuth: [mail:write]
       summary: Delete a message
+      parameters:
+        - name: permanent
+          in: query
+          description: true deletes the message for good; anything else moves it to Trash
+          schema:
+            type: string
+      description: >-
+        Moves a message to Trash unless permanent is exactly true, or the message
+        is already in Trash or marked deleted. A purge removes the message and
+        attachment rows and reclaims counted quota in one transaction. Storage
+        failures return delete_failed; an already purged row is not reclaimed twice.
       responses:
         "204":
           description: Message deleted
+        "429":
+          description: Too many authentication attempts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -4177,7 +4194,7 @@ paths:
                       name: example.org
                       server_type: restmail
                       active: false
-                      default_quota_bytes: 0
+                      default_quota_bytes: 1073741824
                       sending_policy: ""
                       dmarc_policy: none
                       created_at: "2026-01-01T00:00:00Z"
@@ -4296,6 +4313,13 @@ paths:
                       details:
                         fields:
                           dmarc_policy: must be 'none', 'quarantine' or 'reject'
+
+        "429":
+          description: Authentication refusals exceeded the configured rate limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/v1/admin/domains/{id}:
     parameters:
@@ -4458,6 +4482,12 @@ paths:
                       details:
                         fields:
                           dmarc_policy: must be 'none', 'quarantine' or 'reject'
+        "429":
+          description: Authentication refusals exceeded the configured rate limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
       parameters:
         - name: id
@@ -4484,6 +4514,12 @@ paths:
       responses:
         "204":
           description: Domain deleted
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Domain not found
           content:
@@ -4725,6 +4761,12 @@ paths:
       responses:
         "204":
           description: Deleted
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: It holds grants and the session has no 2FA (`two_factor_required`), or holds less than they give (`grant_exceeds_held`)
         "404":
@@ -4765,6 +4807,12 @@ paths:
           description: Every session of the account has ended
         "404":
           $ref: "#/components/responses/NotFound"
+        "429":
+          description: Authentication refusals exceeded the configured rate limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   # ═══════════════════════════════════════════════════════════════
   # Admin: Aliases
@@ -4919,6 +4967,13 @@ paths:
                         fields:
                           source_address: must be a valid email address
 
+        "429":
+          description: Authentication refusals exceeded the configured rate limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/admin/aliases/{id}:
     parameters:
       - $ref: "#/components/parameters/ResourceId"
@@ -5053,6 +5108,12 @@ paths:
                       details:
                         fields:
                           destination_address: must be a valid email address
+        "429":
+          description: Authentication refusals exceeded the configured rate limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
       parameters:
         - name: id
@@ -5193,6 +5254,17 @@ paths:
                       active: true
                       created_at: "2026-01-01T00:00:00Z"
                       updated_at: "2026-01-01T00:00:00Z"
+                      domain:
+                        id: 0
+                        name: ""
+                        server_type: ""
+                        active: false
+                        default_quota_bytes: 0
+                        dkim_selector: ""
+                        sending_policy: ""
+                        dmarc_policy: ""
+                        created_at: "0001-01-01T00:00:00Z"
+                        updated_at: "0001-01-01T00:00:00Z"
           links:
             updatePipeline:
               operationId: updatePipeline
@@ -5260,6 +5332,13 @@ paths:
                       details:
                         fields:
                           active: must be a boolean
+
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api/v1/admin/pipelines/{id}:
     parameters:
@@ -5332,6 +5411,17 @@ paths:
                       active: false
                       created_at: "2026-01-01T00:00:00Z"
                       updated_at: "2026-01-01T00:00:00Z"
+                      domain:
+                        id: 0
+                        name: ""
+                        server_type: ""
+                        active: false
+                        default_quota_bytes: 0
+                        dkim_selector: ""
+                        sending_policy: ""
+                        dmarc_policy: ""
+                        created_at: "0001-01-01T00:00:00Z"
+                        updated_at: "0001-01-01T00:00:00Z"
         "404":
           description: Pipeline not found
           content:
@@ -5367,6 +5457,13 @@ paths:
                       details:
                         fields:
                           filters: must be an array of filter objects
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
     delete:
       operationId: deletePipeline
       tags: ["Admin: Pipelines"]
@@ -5534,6 +5631,19 @@ paths:
                         fields:
                           pipeline_id: must be a non-negative integer
 
+        "429":
+          description: Too many pipeline preview requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          description: Internal lookup, stored configuration or filter execution failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/v1/admin/pipelines/test-filter:
     post:
       operationId: testFilter
@@ -5649,7 +5759,7 @@ paths:
             An empty object also gets 422 for the missing fields before any
             filter is made. A body that decodes is also refused with a 400,
             `filter_error`, when the named filter cannot be made from its
-            config or fails on the email.
+            config. Runtime execution failures return a sanitized 500 instead.
           content:
             application/json:
               schema:
@@ -5662,6 +5772,19 @@ paths:
                     error:
                       code: bad_request
                       message: Invalid request body
+
+        "429":
+          description: Too many pipeline preview requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          description: Internal lookup, stored configuration or filter execution failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api/v1/admin/pipelines/logs:
     get:
@@ -5877,6 +6000,13 @@ paths:
                         fields:
                           enabled: must be a boolean
 
+        "429":
+          description: Authentication refusals exceeded the configured rate limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/admin/custom-filters/validate:
     post:
       operationId: validateCustomFilter
@@ -5964,6 +6094,13 @@ paths:
           description: >-
             JS filter sidecar unavailable, or it refused the API's token
             (JS_FILTER_TOKEN differs between the API and the sidecar)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+        "429":
+          description: Authentication refusals exceeded the configured rate limit
           content:
             application/json:
               schema:
@@ -6145,6 +6282,12 @@ paths:
                       message: Request body failed validation
                       details:
                         fields: {config: must be an object}
+        "429":
+          description: Authentication refusals exceeded the configured rate limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
       parameters:
         - name: id
@@ -6211,10 +6354,9 @@ paths:
         content:
           application/json:
             schema:
-              type: object
+              type: ["null", "object"]
               properties:
                 email:
-                  type: object
                   description: >-
                     Optional sample email. When omitted a minimal built-in sample
                     is used.
@@ -6228,6 +6370,8 @@ paths:
               # looked up.
               invalid_body:
                 value: []
+              unknown_field:
+                value: {surprise: true}
       responses:
         "200":
           description: >-
@@ -6237,7 +6381,14 @@ paths:
             application/json:
               schema:
                 type: object
-                additionalProperties: true
+                additionalProperties: false
+                required: [result, logs]
+                properties:
+                  result: {}
+                  logs:
+                    type: array
+                    items:
+                      type: string
               examples:
                 # The contract run's filter, which lets every email through.
                 valid:
@@ -6256,8 +6407,7 @@ paths:
             contains no script
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+              schema: {}
               examples:
                 # Refused while the body is decoded, before the filter is
                 # looked up.
@@ -6268,6 +6418,48 @@ paths:
                       message: Invalid request body
         "404":
           $ref: "#/components/responses/NotFound"
+        "408":
+          description: The sidecar's execution timeout
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [error]
+                properties:
+                  error:
+                    type: string
+        "413":
+          description: API body limit or the sidecar's bare limit error
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: Request body or path failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                unknown_field:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          surprise: not allowed
+        "429":
+          description: Pipeline preview rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: API internal error or the sidecar's bare worker failure
+          content:
+            application/json:
+              schema: {}
         "503":
           description: >-
             JS filter sidecar unavailable, or it refused the API's token
@@ -7106,6 +7298,12 @@ paths:
               interval_too_large:
                 value: {rotation_interval_days: 3651}
       responses:
+        "429":
+          description: Too many authentication attempts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "200":
           description: DKIM rotation settings saved
           content:
@@ -7240,6 +7438,12 @@ paths:
               private_key_invalid:
                 value: {selector: contract, private_key: not a key}
       responses:
+        "429":
+          description: Too many authentication attempts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "200":
           description: DKIM key set
           content:
@@ -7437,6 +7641,17 @@ paths:
                       auto_renew: false
                       created_at: "2026-01-01T00:00:00Z"
                       updated_at: "2026-01-01T00:00:00Z"
+                      domain:
+                        id: 1
+                        name: contract.example.org
+                        server_type: traditional
+                        active: false
+                        default_quota_bytes: 1073741824
+                        dkim_selector: ""
+                        sending_policy: ""
+                        dmarc_policy: none
+                        created_at: "2026-01-01T00:00:00Z"
+                        updated_at: "2026-01-01T00:00:00Z"
           links:
             getCertificate:
               operationId: getCertificate
@@ -7473,6 +7688,12 @@ paths:
                           domain_id: required
                           cert_pem: required
                           key_pem: required
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api/v1/admin/certificates/{id}:
     parameters:
@@ -7682,6 +7903,13 @@ paths:
                       details:
                         fields:
                           duration: invalid duration format (e.g. 24h, 168h)
+
+        "429":
+          description: Authentication refusals exceeded the configured rate limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/v1/admin/bans/{id}:
     parameters:
@@ -8652,6 +8880,12 @@ paths:
       responses:
         "204":
           description: Removed
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "422":
           $ref: "#/components/responses/ValidationError"
         "401":
@@ -9755,7 +9989,7 @@ paths:
         - APIKeyAuth: ["*"]
       summary: Probe connectivity to SMTP/IMAP/POP3/DNS/DB
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
@@ -9765,7 +9999,6 @@ paths:
                   type: array
                   items:
                     type: string
-                    enum: [smtp, smtp_submission, imap, pop3, dns, db]
                 host:
                   type: string
                 timeout:
@@ -9781,6 +10014,8 @@ paths:
               service_unknown:
                 value:
                   services: [ftp]
+              body_array:
+                value: []
       responses:
         "200":
           description: Per-service probe results
@@ -9788,13 +10023,11 @@ paths:
             application/json:
               schema:
                 type: object
+                additionalProperties: false
                 required: [data]
                 properties:
                   data:
-                    type: object
-                    additionalProperties:
-                      type: object
-                      additionalProperties: true
+                    $ref: "#/components/schemas/TestProbeResults"
               examples:
                 probed:
                   value:
@@ -9802,8 +10035,30 @@ paths:
                       db:
                         status: ok
                         latency: 1.2ms
+        "400":
+          description: Malformed request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                body_array:
+                  value:
+                    error:
+                      code: bad_request
+                      message: Invalid request body
         "403":
-          description: Disabled in production
+          description: Missing the required wildcard capability or CSRF proof
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "422":
           description: Request body failed validation
           content:
@@ -10312,6 +10567,56 @@ components:
       - id
       - email
       - display_name
+      type: object
+    TestProbeResult:
+      additionalProperties: false
+      properties:
+        address:
+          type: string
+        domain:
+          type: string
+        error:
+          type: string
+        latency:
+          type: string
+        mx_records:
+          items:
+            type: string
+          type:
+          - array
+          - 'null'
+        status:
+          type: string
+      required:
+      - status
+      type: object
+    TestProbeResults:
+      additionalProperties: false
+      properties:
+        db:
+          oneOf:
+          - $ref: '#/components/schemas/TestProbeResult'
+          - type: 'null'
+        dns:
+          oneOf:
+          - $ref: '#/components/schemas/TestProbeResult'
+          - type: 'null'
+        imap:
+          oneOf:
+          - $ref: '#/components/schemas/TestProbeResult'
+          - type: 'null'
+        pop3:
+          oneOf:
+          - $ref: '#/components/schemas/TestProbeResult'
+          - type: 'null'
+        smtp:
+          oneOf:
+          - $ref: '#/components/schemas/TestProbeResult'
+          - type: 'null'
+        smtp_submission:
+          oneOf:
+          - $ref: '#/components/schemas/TestProbeResult'
+          - type: 'null'
       type: object
     # ─────────────────────────────────────────────────────────────
     # Common / Wrapper schemas
@@ -10845,6 +11150,10 @@ components:
     # ─────────────────────────────────────────────────────────────
     Message:
       type: object
+      description: >-
+        Public message metadata and bodies; raw source is served separately.
+        An unloaded mailbox association is omitted rather than serialized as
+        an empty mailbox.
       required: [id, mailbox_id, folder, sender, subject, is_read, is_flagged, is_starred, is_draft, is_deleted, received_at, created_at, updated_at]
       properties:
         id:
@@ -11721,10 +12030,10 @@ components:
           type: integer
         source_address:
           type: string
-          format: email
+          format: idn-email
         destination_address:
           type: string
-          format: email
+          description: Remote address retaining its submitted display name, quoting and internationalized spelling
         active:
           type: boolean
         created_at:

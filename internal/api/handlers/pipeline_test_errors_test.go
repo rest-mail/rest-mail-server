@@ -132,7 +132,7 @@ func TestPipelineTestErrorContract_Documented(t *testing.T) {
 		statuses = append(statuses, status)
 	}
 	sort.Strings(statuses)
-	if want := []string{"200", "400", "404", "422"}; !reflect.DeepEqual(statuses, want) {
+	if want := []string{"200", "400", "404", "422", "429", "500"}; !reflect.DeepEqual(statuses, want) {
 		t.Fatalf("testPipeline documents %v, want %v", statuses, want)
 	}
 
