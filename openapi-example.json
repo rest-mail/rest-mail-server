@@ -21638,8 +21638,7 @@
           "services": [
             "ftp"
           ]
-        },
-        "invalid": true
+        }
       },
       "response": {
         "status": 422,
@@ -21650,6 +21649,666 @@
             "details": {
               "fields": {
                 "services": "unknown service \"ftp\": want smtp, smtp_submission, imap, pop3, dns or db"
+              }
+            }
+          }
+        }
+      }
+    },
+    "write_only": {
+      "summary": "Write only",
+      "request": {
+        "body": {
+          "services": [
+            "db"
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "db": {
+              "status": "ok",
+              "latency": "1.2ms"
+            }
+          }
+        }
+      }
+    },
+    "key_write": {
+      "summary": "Key write",
+      "request": {
+        "body": {
+          "services": [
+            "db"
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "db": {
+              "status": "ok",
+              "latency": "1.2ms"
+            }
+          }
+        }
+      }
+    },
+    "cookie_session": {
+      "summary": "Cookie session",
+      "request": {
+        "body": {
+          "services": [
+            "db"
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "db": {
+              "status": "ok",
+              "latency": "1.2ms"
+            }
+          }
+        }
+      }
+    },
+    "body_boundary": {
+      "summary": "Body boundary",
+      "request": {
+        "body": {
+          "services": [
+            "db"
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "db": {
+              "status": "ok",
+              "latency": "1.2ms"
+            }
+          }
+        }
+      }
+    },
+    "read_only": {
+      "summary": "Read only",
+      "request": {
+        "body": {
+          "services": [
+            "db"
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "domain_scope": {
+      "summary": "Domain scope",
+      "request": {
+        "body": {
+          "services": [
+            "db"
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "mailbox_scope": {
+      "summary": "Mailbox scope",
+      "request": {
+        "body": {
+          "services": [
+            "db"
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "wrong_domain": {
+      "summary": "Wrong domain",
+      "request": {
+        "body": {
+          "services": [
+            "db"
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_read": {
+      "summary": "Key read",
+      "request": {
+        "body": {
+          "services": [
+            "db"
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_domain": {
+      "summary": "Key domain",
+      "request": {
+        "body": {
+          "services": [
+            "db"
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_mailbox": {
+      "summary": "Key mailbox",
+      "request": {
+        "body": {
+          "services": [
+            "db"
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_wrong_domain": {
+      "summary": "Key wrong domain",
+      "request": {
+        "body": {
+          "services": [
+            "db"
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_holder_missing": {
+      "summary": "Key holder missing",
+      "request": {
+        "body": {
+          "services": [
+            "db"
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "unauthenticated": {
+      "summary": "Unauthenticated",
+      "request": {
+        "body": {
+          "services": [
+            "db"
+          ]
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "session_unavailable": {
+      "summary": "Session unavailable",
+      "request": {
+        "body": {
+          "services": [
+            "db"
+          ]
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        }
+      }
+    },
+    "permission_store_unavailable": {
+      "summary": "Permission store unavailable",
+      "request": {
+        "body": {
+          "services": [
+            "db"
+          ]
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
+          }
+        }
+      }
+    },
+    "csrf_missing": {
+      "summary": "Csrf missing",
+      "request": {
+        "body": {
+          "services": [
+            "db"
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "csrf_mismatch": {
+      "summary": "Csrf mismatch",
+      "request": {
+        "body": {
+          "services": [
+            "db"
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "rate_limited": {
+      "summary": "Rate limited",
+      "request": {
+        "body": {
+          "services": [
+            "db"
+          ]
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        }
+      }
+    },
+    "request_too_large": {
+      "summary": "Request too large",
+      "request": {
+        "body": {
+          "services": [
+            "db"
+          ]
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        }
+      }
+    },
+    "malformed_json": {
+      "summary": "Malformed json",
+      "request": {
+        "body": {
+          "services": [
+            "db"
+          ]
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "uppercase": {
+      "summary": "Uppercase",
+      "request": {
+        "body": {
+          "services": [
+            "DB"
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "db": {
+              "status": "ok",
+              "latency": "1.2ms"
+            }
+          }
+        }
+      }
+    },
+    "duplicate": {
+      "summary": "Duplicate",
+      "request": {
+        "body": {
+          "services": [
+            "db",
+            "db"
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "db": {
+              "status": "ok",
+              "latency": "1.2ms"
+            }
+          }
+        }
+      }
+    },
+    "explicit_timeout": {
+      "summary": "Explicit timeout",
+      "request": {
+        "body": {
+          "services": [
+            "db"
+          ],
+          "timeout": "1s"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "db": {
+              "status": "ok",
+              "latency": "1.2ms"
+            }
+          }
+        }
+      }
+    },
+    "invalid_timeout": {
+      "summary": "Invalid timeout",
+      "request": {
+        "body": {
+          "services": [
+            "db"
+          ],
+          "timeout": "nonsense"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "db": {
+              "status": "ok",
+              "latency": "1.2ms"
+            }
+          }
+        }
+      }
+    },
+    "host_unused": {
+      "summary": "Host unused",
+      "request": {
+        "body": {
+          "services": [
+            "db"
+          ],
+          "host": "127.0.0.1"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "db": {
+              "status": "ok",
+              "latency": "1.2ms"
+            }
+          }
+        }
+      }
+    },
+    "database_unavailable": {
+      "summary": "Database unavailable",
+      "request": {
+        "body": {
+          "services": [
+            "db"
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "db": {
+              "status": "error",
+              "error": "fixture database unavailable",
+              "latency": "1.2ms"
+            }
+          }
+        }
+      }
+    },
+    "cancelled_probe": {
+      "summary": "Cancelled probe",
+      "request": {
+        "body": {
+          "services": [
+            "db"
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "db": {
+              "status": "error",
+              "error": "context canceled",
+              "latency": "1.2ms"
+            }
+          }
+        }
+      }
+    },
+    "setup_failure": {
+      "summary": "Setup failure",
+      "request": {
+        "body": {
+          "services": [
+            "db"
+          ]
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "body_array": {
+      "summary": "Body array",
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "null_body": {
+      "summary": "Null body",
+      "request": {
+        "body": null,
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "mixed_unknown": {
+      "summary": "Mixed unknown",
+      "request": {
+        "body": {
+          "services": [
+            "db",
+            "ftp"
+          ]
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "services": "unknown service \"ftp\": want smtp, smtp_submission, imap, pop3, dns or db"
+              }
+            }
+          }
+        }
+      }
+    },
+    "empty_service": {
+      "summary": "Empty service",
+      "request": {
+        "body": {
+          "services": [
+            ""
+          ]
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "services": "unknown service \"\": want smtp, smtp_submission, imap, pop3, dns or db"
               }
             }
           }

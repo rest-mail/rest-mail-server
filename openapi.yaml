@@ -9914,7 +9914,7 @@ paths:
         - APIKeyAuth: ["*"]
       summary: Probe connectivity to SMTP/IMAP/POP3/DNS/DB
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
@@ -9924,7 +9924,6 @@ paths:
                   type: array
                   items:
                     type: string
-                    enum: [smtp, smtp_submission, imap, pop3, dns, db]
                 host:
                   type: string
                 timeout:
@@ -9947,13 +9946,11 @@ paths:
             application/json:
               schema:
                 type: object
+                additionalProperties: false
                 required: [data]
                 properties:
                   data:
-                    type: object
-                    additionalProperties:
-                      type: object
-                      additionalProperties: true
+                    $ref: "#/components/schemas/TestProbeResults"
               examples:
                 probed:
                   value:
@@ -9961,8 +9958,24 @@ paths:
                       db:
                         status: ok
                         latency: 1.2ms
+        "400":
+          description: Malformed request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "403":
-          description: Disabled in production
+          description: Missing the required wildcard capability or CSRF proof
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "422":
           description: Request body failed validation
           content:
@@ -10202,6 +10215,56 @@ components:
             $ref: "#/components/schemas/ValidationErrorResponse"
 
   schemas:
+    TestProbeResult:
+      additionalProperties: false
+      properties:
+        address:
+          type: string
+        domain:
+          type: string
+        error:
+          type: string
+        latency:
+          type: string
+        mx_records:
+          items:
+            type: string
+          type:
+          - array
+          - 'null'
+        status:
+          type: string
+      required:
+      - status
+      type: object
+    TestProbeResults:
+      additionalProperties: false
+      properties:
+        db:
+          oneOf:
+          - $ref: '#/components/schemas/TestProbeResult'
+          - type: 'null'
+        dns:
+          oneOf:
+          - $ref: '#/components/schemas/TestProbeResult'
+          - type: 'null'
+        imap:
+          oneOf:
+          - $ref: '#/components/schemas/TestProbeResult'
+          - type: 'null'
+        pop3:
+          oneOf:
+          - $ref: '#/components/schemas/TestProbeResult'
+          - type: 'null'
+        smtp:
+          oneOf:
+          - $ref: '#/components/schemas/TestProbeResult'
+          - type: 'null'
+        smtp_submission:
+          oneOf:
+          - $ref: '#/components/schemas/TestProbeResult'
+          - type: 'null'
+      type: object
     # ─────────────────────────────────────────────────────────────
     # Common / Wrapper schemas
     # ─────────────────────────────────────────────────────────────

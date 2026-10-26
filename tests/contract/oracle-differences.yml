@@ -1300,24 +1300,6 @@
 
 # Non-production test endpoints (#652)
 
-- operation: probeServices
-  difference: "request body application/json.properties.services.items.enum: openapi.yaml [\"db\",\"dns\",\"imap\",\"pop3\",\"smtp\",\"smtp_submission\"], generated absent"
-  reason: "Service names are checked case-insensitively in the handler, preserving uppercase callers and the documented unknown-service message. A literal enum would reject accepted spellings."
-- operation: probeServices
-  difference: "request body: required: openapi.yaml false, generated true"
-  reason: "Probe has always decoded a JSON body: an empty object chooses defaults, while an absent body is malformed. The oracle marks that body optional."
-- operation: probeServices
-  difference: "response 200 application/json.properties.data.additionalProperties: openapi.yaml {\"type\":\"object\"}, generated false"
-  reason: "Probe results have exactly the six declared service keys, each present only when requested; arbitrary result keys cannot be returned."
-- operation: probeServices
-  difference: "response 200 application/json.properties.data.properties: openapi.yaml absent, generated *"
-  reason: "The six service results now declare status, address, domain, error, latency and MX records. The oracle only describes an open map of open objects. Pointer fields express conditional presence."
-- operation: probeServices
-  difference: "response 400: generated only"
-  reason: "Binding refuses a missing, malformed or non-object JSON body with 400 bad_request. The oracle omits this existing malformed-body response."
-- operation: probeServices
-  difference: "response 403 application/json: generated only"
-  reason: "The shared admin middleware refuses setup, CSRF and capability failures with the JSON error envelope. The oracle only describes the production refusal without a body; production now omits these routes entirely."
 - operation: resetTestData
   difference: "response 403 application/json: generated only"
   reason: "The shared admin middleware refuses setup, CSRF and capability failures with the JSON error envelope. The oracle only describes the production refusal without a body; production now omits these routes entirely."

@@ -10,7 +10,6 @@ example-invalid createAPIKey/wildcard_capability
 example-invalid createAppPassword/name_control
 example-invalid createAppPassword/name_empty
 example-invalid createAppPassword/name_too_long
-example-invalid probeServices/service_unknown
 example-invalid protocolSignIn/protocol_missing
 example-invalid restmailDeliver/recipients_missing
 example-invalid sendMessage/from_missing
