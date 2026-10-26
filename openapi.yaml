@@ -9931,8 +9931,18 @@ paths:
                       from: postmaster@restmail.test
                       to: admin@restmail.test
                       subject: Test
+        "400":
+          description: Missing, malformed or non-object JSON body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "403":
-          description: Disabled in production
+          description: Wildcard capability or cookie CSRF is missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           $ref: "#/components/responses/NotFound"
         "422":

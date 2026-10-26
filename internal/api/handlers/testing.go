@@ -49,69 +49,51 @@ func (h *TestHandler) productionLocked() bool {
 
 // sendTestEmail sends a test email from one mailbox to another.
 // POST /api/v1/admin/test/send
-func (h *TestHandler) sendTestEmail(_ *http.Request, req sendTestEmailRequest) (TestEmailSent, error) {
+func (h *TestHandler) sendTestEmail(r *http.Request, req sendTestEmailRequest) (TestEmailSent, error) {
 	if h.productionLocked() {
 		return TestEmailSent{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "test endpoints disabled in production")
 	}
-
 	if req.Subject == "" {
-		req.Subject = "Test email from RestMail"
+		req.Subject = "Test email from REST Mail"
 	}
 	if req.Body == "" {
 		req.Body = fmt.Sprintf("This is a test email sent at %s", time.Now().Format(time.RFC3339))
 	}
-
-	// Look up sender mailbox
-	var senderMb models.Mailbox
-	if err := h.db.Where("address = ?", req.From).First(&senderMb).Error; err != nil {
-		return TestEmailSent{}, endpoint.Refuse(http.StatusNotFound, "not_found", "sender mailbox not found")
+	var msg models.Message
+	if err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
+		var sender, recipient models.Mailbox
+		if err := tx.Where("address = ?", req.From).First(&sender).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return endpoint.Refuse(http.StatusNotFound, "not_found", "sender mailbox not found")
+			}
+			return fmt.Errorf("look up test sender: %w", err)
+		}
+		if err := tx.Where("address = ?", req.To).First(&recipient).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return endpoint.Refuse(http.StatusNotFound, "not_found", "recipient mailbox not found")
+			}
+			return fmt.Errorf("look up test recipient: %w", err)
+		}
+		messageID := rmail.GenerateMessageID(rmail.DomainFromAddress(req.From))
+		msg = models.Message{
+			MailboxID: recipient.ID, Folder: "INBOX", MsgID: messageID, ThreadID: messageID,
+			Sender: req.From, SenderName: sender.DisplayName, RecipientsTo: models.JSONB(mustJSON([]string{req.To})),
+			Subject: req.Subject, BodyText: req.Body, SizeBytes: len(req.Body), ReceivedAt: time.Now(),
+		}
+		// Prepare both copies before GORM assigns an ID to either one.
+		sent := msg
+		sent.MailboxID, sent.Folder, sent.IsRead = sender.ID, "Sent", true
+		if err := tx.Create(&msg).Error; err != nil {
+			return fmt.Errorf("store test INBOX copy: %w", err)
+		}
+		if err := tx.Create(&sent).Error; err != nil {
+			return fmt.Errorf("store test Sent copy: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return TestEmailSent{}, err
 	}
-
-	// Look up recipient mailbox
-	var recipientMb models.Mailbox
-	if err := h.db.Where("address = ?", req.To).First(&recipientMb).Error; err != nil {
-		return TestEmailSent{}, endpoint.Refuse(http.StatusNotFound, "not_found", "recipient mailbox not found")
-	}
-
-	messageID := rmail.GenerateMessageID(rmail.DomainFromAddress(req.From))
-
-	// Create the message directly in the recipient's INBOX
-	msg := models.Message{
-		MailboxID:    recipientMb.ID,
-		Folder:       "INBOX",
-		MsgID:        messageID,
-		ThreadID:     messageID,
-		Sender:       req.From,
-		SenderName:   senderMb.DisplayName,
-		RecipientsTo: models.JSONB(mustJSON([]string{req.To})),
-		Subject:      req.Subject,
-		BodyText:     req.Body,
-		SizeBytes:    len(req.Body),
-		ReceivedAt:   time.Now(),
-	}
-
-	if err := h.db.Create(&msg).Error; err != nil {
-		return TestEmailSent{}, endpoint.Refuse(http.StatusInternalServerError, "internal", "failed to create test message")
-	}
-
-	// Also save a copy in the sender's Sent folder
-	sent := models.Message{
-		MailboxID:    senderMb.ID,
-		Folder:       "Sent",
-		MsgID:        messageID,
-		ThreadID:     messageID,
-		Sender:       req.From,
-		SenderName:   senderMb.DisplayName,
-		RecipientsTo: models.JSONB(mustJSON([]string{req.To})),
-		Subject:      req.Subject,
-		BodyText:     req.Body,
-		SizeBytes:    len(req.Body),
-		IsRead:       true,
-		ReceivedAt:   time.Now(),
-	}
-	h.db.Create(&sent)
-
-	return TestEmailSent{MessageID: msg.ID, MsgID: messageID, From: req.From, To: req.To, Subject: req.Subject}, nil
+	return TestEmailSent{MessageID: msg.ID, MsgID: msg.MsgID, From: req.From, To: req.To, Subject: req.Subject}, nil
 }
 
 // verifyDelivery checks whether a message matching the given criteria was delivered.

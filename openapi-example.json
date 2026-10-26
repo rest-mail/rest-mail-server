@@ -26333,6 +26333,774 @@
           }
         }
       }
+    },
+    "admin": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "message_id": 1,
+            "msg_id": "<0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d@restmail.test>",
+            "from": "postmaster@restmail.test",
+            "to": "admin@restmail.test",
+            "subject": "Test"
+          }
+        }
+      }
+    },
+    "non_admin": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "domain_scope": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "mailbox_scope": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "wrong_domain": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_admin": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "message_id": 1,
+            "msg_id": "<0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d@restmail.test>",
+            "from": "postmaster@restmail.test",
+            "to": "admin@restmail.test",
+            "subject": "Test"
+          }
+        }
+      }
+    },
+    "key_domain_read": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_domain": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_mailbox": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_wrong_domain": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_holder_missing": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "permission_store_unavailable": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
+          }
+        }
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "session_unavailable": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        }
+      }
+    },
+    "cookie_session": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "message_id": 1,
+            "msg_id": "<0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d@restmail.test>",
+            "from": "postmaster@restmail.test",
+            "to": "admin@restmail.test",
+            "subject": "Test"
+          }
+        }
+      }
+    },
+    "csrf_missing": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "csrf_mismatch": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "request_too_large": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        }
+      }
+    },
+    "default_subject": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "",
+          "body": "A test message."
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "message_id": 1,
+            "msg_id": "<0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d@restmail.test>",
+            "from": "postmaster@restmail.test",
+            "to": "admin@restmail.test",
+            "subject": "Test email from REST Mail"
+          }
+        }
+      },
+      "description": "The actual random Message-ID is validated and matched against both stored copies before normalization for replay. Default body time is checked within the actual request window."
+    },
+    "default_body": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": ""
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "message_id": 1,
+            "msg_id": "<0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d@restmail.test>",
+            "from": "postmaster@restmail.test",
+            "to": "admin@restmail.test",
+            "subject": "Test"
+          }
+        }
+      },
+      "description": "The actual random Message-ID is validated and matched against both stored copies before normalization for replay. Default body time is checked within the actual request window."
+    },
+    "defaults": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "",
+          "body": ""
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "message_id": 1,
+            "msg_id": "<0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d@restmail.test>",
+            "from": "postmaster@restmail.test",
+            "to": "admin@restmail.test",
+            "subject": "Test email from REST Mail"
+          }
+        }
+      },
+      "description": "The actual random Message-ID is validated and matched against both stored copies before normalization for replay. Default body time is checked within the actual request window."
+    },
+    "utf8": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "Fixture ✓",
+          "body": "你好 ✉️"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "message_id": 1,
+            "msg_id": "<0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d@restmail.test>",
+            "from": "postmaster@restmail.test",
+            "to": "admin@restmail.test",
+            "subject": "Fixture ✓"
+          }
+        }
+      },
+      "description": "The actual random Message-ID is validated and matched against both stored copies before normalization for replay. Default body time is checked within the actual request window."
+    },
+    "self_send": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "postmaster@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "message_id": 1,
+            "msg_id": "<0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d@restmail.test>",
+            "from": "postmaster@restmail.test",
+            "to": "postmaster@restmail.test",
+            "subject": "Test"
+          }
+        }
+      },
+      "description": "The actual random Message-ID is validated and matched against both stored copies before normalization for replay. Default body time is checked within the actual request window."
+    },
+    "sender_missing": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "sender mailbox not found"
+          }
+        }
+      }
+    },
+    "recipient_missing": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "recipient mailbox not found"
+          }
+        }
+      }
+    },
+    "sender_lookup_failure": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "recipient_lookup_failure": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "inbox_failure": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "sent_failure": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "commit_failure": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "cancelled": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "cancel_after_inbox": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "malformed_json": {
+      "request": {
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      },
+      "description": "The route and Vertrag transport hook send the raw truncated JSON byte {."
+    },
+    "non_object": {
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        }
+      }
+    },
+    "unknown_field": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": "A test message.",
+          "unexpected": true
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "unexpected": "not allowed"
+              }
+            }
+          }
+        }
+      }
+    },
+    "to_missing": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "to": "required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "from_empty": {
+      "request": {
+        "body": {
+          "from": "",
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "from": "sender address required"
+              }
+            }
+          }
+        }
+      }
+    },
+    "to_empty": {
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "",
+          "subject": "Test",
+          "body": "A test message."
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "to": "recipient address required"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "setDKIMKey": {
