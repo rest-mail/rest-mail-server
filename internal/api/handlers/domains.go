@@ -14,6 +14,7 @@ import (
 	apitypes "github.com/restmail/restmail/internal/api/types"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/dns"
+	"github.com/restmail/restmail/internal/grants"
 	rmail "github.com/restmail/restmail/internal/mail"
 	"github.com/restmail/restmail/internal/pipeline"
 	"golang.org/x/net/idna"
@@ -61,16 +62,21 @@ func validateDomainName(name string) (string, error) {
 }
 
 type DomainHandler struct {
-	db  *gorm.DB
-	dns dns.Provider
+	db    *gorm.DB
+	dns   dns.Provider
+	cache *grants.Cache
 
 	// The DNS check's lookups; tests replace them.
 	lookupMX  func(string) ([]*net.MX, error)
 	lookupTXT func(string) ([]string, error)
 }
 
-func NewDomainHandler(db *gorm.DB, dnsProvider dns.Provider) *DomainHandler {
-	return &DomainHandler{db: db, dns: dnsProvider, lookupMX: net.LookupMX, lookupTXT: net.LookupTXT}
+func NewDomainHandler(db *gorm.DB, dnsProvider dns.Provider, caches ...*grants.Cache) *DomainHandler {
+	h := &DomainHandler{db: db, dns: dnsProvider, lookupMX: net.LookupMX, lookupTXT: net.LookupTXT}
+	if len(caches) > 0 {
+		h.cache = caches[0]
+	}
+	return h
 }
 
 // Domain is a domain as the API answers with it.
@@ -122,7 +128,8 @@ func (h *DomainHandler) Register(rs endpoint.Routes, checks DomainRouteChecks) {
 		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsWrite)}}, h.update)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/admin/domains/{id}",
 		OperationID: "deleteDomain", Summary: "Delete a domain", Tags: tags,
-		Status: http.StatusNoContent, Errors: []int{http.StatusNotFound, http.StatusConflict},
+		Description: domainDeletionDescription,
+		Status:      http.StatusNoContent, Errors: []int{http.StatusNotFound, http.StatusConflict},
 		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsDelete)}}, h.delete)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/domains/{id}/dns",
 		OperationID: "domainDNSCheck", Summary: "Live DNS record check (MX, SPF, DMARC, DKIM, MTA-STS) for a domain",
@@ -300,28 +307,12 @@ func (h *DomainHandler) update(_ *http.Request, in updateDomainRequest) (Domain,
 	return h.get(nil, domainPath{ID: in.ID})
 }
 
-func (h *DomainHandler) delete(_ *http.Request, in domainPath) (endpoint.Empty, error) {
-	domain, err := h.find(in.ID)
-	if err != nil {
+func (h *DomainHandler) delete(r *http.Request, in domainPath) (endpoint.Empty, error) {
+	if err := h.deleteDomainData(r, in.ID); err != nil {
 		return endpoint.Empty{}, err
 	}
-
-	// A domain still holding accounts or aliases stays (#388): deleting it
-	// left them pointing at no domain, and every send from such an account
-	// then failed with a 500 on its domain's sending policy.
-	for _, held := range []interface{}{&models.Mailbox{}, &models.Alias{}} {
-		var n int64
-		if err := h.db.Model(held).Where("domain_id = ?", domain.ID).Count(&n).Error; err != nil {
-			return endpoint.Empty{}, fmt.Errorf("check the domain's addresses: %w", err)
-		}
-		if n > 0 {
-			return endpoint.Empty{}, endpoint.Refuse(http.StatusConflict, "domain_not_empty",
-				"The domain still has accounts or aliases: delete them first")
-		}
-	}
-
-	if err := h.db.Delete(&domain).Error; err != nil {
-		return endpoint.Empty{}, fmt.Errorf("delete domain: %w", err)
+	if h.cache != nil {
+		h.cache.Invalidate()
 	}
 	return endpoint.Empty{}, nil
 }

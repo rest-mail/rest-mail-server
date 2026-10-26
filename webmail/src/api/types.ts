@@ -1016,7 +1016,10 @@ export interface paths {
         get: operations["getDomain"];
         put?: never;
         post?: never;
-        /** Delete a domain */
+        /**
+         * Delete a domain
+         * @description A domain containing accounts or aliases is refused with 409 domain_not_empty. An empty domain and its live pipelines, custom filters, sender rules, certificates, rotation keys, MTA-STS policy, relay credentials and suppressions are removed atomically. Grants on the domain and its mailbox scopes, including eligible activations, are removed through the audited grant-change mechanism; cached permissions are invalidated only after commit. Historical TLS reports, message traces, aggregate reports and audit entries are retained under their original identities and existing retention rules. A cleanup, audit or cancellation failure rolls the deletion back.
+         */
         delete: operations["deleteDomain"];
         options?: never;
         head?: never;

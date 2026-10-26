@@ -2406,6 +2406,118 @@
     }
   },
   "deleteDomain": {
+    "accounts_remain": {
+      "request": {
+        "path": {
+          "id": 7
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "domain_not_empty",
+            "message": "The domain still has accounts or aliases: delete them first"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "aliases_remain": {
+      "request": {
+        "path": {
+          "id": 7
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "domain_not_empty",
+            "message": "The domain still has accounts or aliases: delete them first"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "cleanup_failed": {
+      "request": {
+        "path": {
+          "id": 7
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "configuration_removed": {
+      "request": {
+        "path": {
+          "id": 7
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "delete_not_allowed": {
+      "request": {
+        "path": {
+          "id": 7
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_missing": {
+      "request": {
+        "path": {
+          "id": 7
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "domain_not_found",
+            "message": "Domain not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "grant_audit_failed": {
+      "request": {
+        "path": {
+          "id": 7
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "missing": {
       "request": {
         "path": {
@@ -2420,6 +2532,23 @@
             "message": "Domain not found"
           }
         }
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 7
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },
