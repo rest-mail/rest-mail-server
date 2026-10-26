@@ -361,10 +361,15 @@ def a_fresh_signing_key(transaction):
 @hooks.before("createCertificate")
 def a_self_signed_certificate(transaction):
     body = hooks.get_json(transaction)
-    # Leave malformed and incomplete requests intact: those are the paired
-    # 400 examples, and coverage probes must keep their missing fields too.
-    if not isinstance(body, dict) or not all(
-        body.get(field) for field in ("domain_id", "cert_pem", "key_pem")
+    # Replace only the documented material placeholders. Preserve incomplete,
+    # invalid and coverage-mutated bodies and the caller's renewal policy.
+    if (
+        not isinstance(body, dict)
+        or not isinstance(body.get("domain_id"), int)
+        or isinstance(body["domain_id"], bool)
+        or body["domain_id"] < 1
+        or body.get("cert_pem") != "certificate"
+        or body.get("key_pem") != "key"
     ):
         return
     name = hooks.stash.get("domain") or "example.org"
@@ -388,12 +393,11 @@ def a_self_signed_certificate(transaction):
             cert,
         )
         with open(cert) as cert_file, open(key) as key_file:
-            on_the_created_domain(
-                transaction,
-                cert_pem=cert_file.read(),
-                key_pem=key_file.read(),
-                auto_renew=False,
-            )
+            body["cert_pem"] = cert_file.read()
+            body["key_pem"] = key_file.read()
+            if body.get("domain_id") == 1 and hooks.stash.get("domain_id") is not None:
+                body["domain_id"] = hooks.stash["domain_id"]
+            hooks.set_json(transaction, body)
 
 
 @hooks.before("updateDomain")
@@ -771,10 +775,16 @@ def list_the_sent_messages_queue_entry(transaction):
     params = urllib.parse.parse_qs(query, keep_blank_values=True)
     defaults = {"limit": ["50"], "offset": ["0"]}
     if params.get("status") != ["pending"] or any(
-            name != "status" and defaults.get(name) != value for name, value in params.items()):
+        name != "status" and defaults.get(name) != value
+        for name, value in params.items()
+    ):
         return
-    transaction["fullPath"] = path + "?" + urllib.parse.urlencode(
-        {"recipient": FIXTURE_PLAN["queue"]["retry"]["recipient"]}
+    transaction["fullPath"] = (
+        path
+        + "?"
+        + urllib.parse.urlencode(
+            {"recipient": FIXTURE_PLAN["queue"]["retry"]["recipient"]}
+        )
     )
 
 

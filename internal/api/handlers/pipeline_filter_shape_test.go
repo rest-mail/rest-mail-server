@@ -12,13 +12,8 @@ import (
 	"github.com/restmail/restmail/internal/pipeline/filters"
 )
 
-// createPipeline's filters are required and are an array of objects
-// (CreatePipelineRequest, #388). These tests send bodies to the real handler
-// with no database: a refusal must come before anything is stored, and an
-// accepted body must get as far as storing it.
-
 // createPipelineNoDB sends body to CreatePipeline on a handler with no
-// database. reached reports whether the handler got to gorm's Create (which
+// database. reached reports whether the handler got to gorm's request session (which
 // panics on the nil database), checked against the panic's own stack so no
 // other panic passes for it.
 func createPipelineNoDB(t *testing.T, body string) (rr *httptest.ResponseRecorder, reached bool) {
@@ -33,9 +28,9 @@ func createPipelineNoDB(t *testing.T, body string) (rr *httptest.ResponseRecorde
 				return
 			}
 			stack := string(debug.Stack())
-			if !strings.Contains(stack, "gorm.io/gorm.(*DB).Create(") ||
+			if !strings.Contains(stack, "gorm.io/gorm.(*DB).WithContext(") ||
 				!strings.Contains(stack, "handlers.(*PipelineHandler).createPipeline(") {
-				t.Fatalf("%s: panicked outside gorm's Create: %v\n%s", body, r, stack)
+				t.Fatalf("%s: panicked outside gorm's request session: %v\n%s", body, r, stack)
 			}
 			reached = true
 		}()
