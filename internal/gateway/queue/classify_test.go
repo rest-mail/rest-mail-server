@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/rest-mail/go-mtasts"
+	"github.com/rest-mail/go-mtasts/pkg/mtasts"
 	"github.com/restmail/restmail/internal/db/models"
 )
 

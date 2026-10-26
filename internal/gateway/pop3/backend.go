@@ -10,7 +10,7 @@ import (
 	"log/slog"
 	"strconv"
 
-	pop3srv "github.com/rest-mail/go-pop3"
+	gopop3 "github.com/rest-mail/go-pop3/pkg/pop3"
 
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 	"github.com/restmail/restmail/internal/gateway/connlimiter"
@@ -40,13 +40,13 @@ func NewBackend(api *apiclient.Client, limiter *connlimiter.Limiter) *Backend {
 }
 
 var (
-	_ pop3srv.Backend     = (*Backend)(nil)
-	_ pop3srv.UTF8Backend = (*Backend)(nil)
+	_ gopop3.Backend     = (*Backend)(nil)
+	_ gopop3.UTF8Backend = (*Backend)(nil)
 )
 
 // Authenticate signs in a client that has not sent UTF8; the library calls
 // [Backend.AuthenticateUTF8] instead, since the Backend implements it.
-func (b *Backend) Authenticate(user, pass string) (pop3srv.Mailbox, error) {
+func (b *Backend) Authenticate(user, pass string) (gopop3.Mailbox, error) {
 	return b.AuthenticateUTF8(user, pass, false)
 }
 
@@ -54,7 +54,7 @@ func (b *Backend) Authenticate(user, pass string) (pop3srv.Mailbox, error) {
 // or an app password, and returns a Mailbox scoped to the resulting token and
 // account. utf8 says whether the client sent UTF8 before logging in (RFC
 // 6856): only then does RETR serve raw UTF-8 header fields.
-func (b *Backend) AuthenticateUTF8(user, pass string, utf8 bool) (pop3srv.Mailbox, error) {
+func (b *Backend) AuthenticateUTF8(user, pass string, utf8 bool) (gopop3.Mailbox, error) {
 	// Per-account hard stop: reject a banned account WITHOUT calling the auth API,
 	// so a rotating-IP brute-force is throttled and a ban is never lifted by a
 	// lucky correct guess. The per-IP ban is enforced separately by the server.
@@ -104,18 +104,18 @@ type mailbox struct {
 	utf8 bool
 }
 
-var _ pop3srv.Mailbox = (*mailbox)(nil)
+var _ gopop3.Mailbox = (*mailbox)(nil)
 
 // Messages returns the INBOX contents oldest-first, mapped onto the library's
 // neutral Message type. The message ID doubles as the POP3 UIDL value.
-func (m *mailbox) Messages() ([]pop3srv.Message, error) {
+func (m *mailbox) Messages() ([]gopop3.Message, error) {
 	resp, err := m.api.ListMessages(m.token, m.accountID, "INBOX")
 	if err != nil {
 		return nil, err
 	}
-	out := make([]pop3srv.Message, 0, len(resp.Data))
+	out := make([]gopop3.Message, 0, len(resp.Data))
 	for _, msg := range resp.Data {
-		out = append(out, pop3srv.Message{
+		out = append(out, gopop3.Message{
 			UID: strconv.FormatUint(uint64(msg.ID), 10),
 			// WireSize: exact stored-raw octet count when the server has one
 			// (POP3 STAT/LIST must report the transmitted size exactly),

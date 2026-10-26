@@ -41,7 +41,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rest-mail/go-sieve"
+	"github.com/rest-mail/go-sieve/pkg/sieve"
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"

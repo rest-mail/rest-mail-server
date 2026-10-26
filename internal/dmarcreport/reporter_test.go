@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rest-mail/go-dmarc"
+	"github.com/rest-mail/go-dmarc/pkg/dmarc"
 )
 
 // A report goes to every mailto: rua= address, in order (RFC 9990 §3.5);

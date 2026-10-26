@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	dkim "github.com/rest-mail/go-dkim"
+	dkim "github.com/rest-mail/go-dkim/pkg/dkim"
 	restcrypto "github.com/restmail/restmail/internal/crypto"
 )
 

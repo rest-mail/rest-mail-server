@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	dkim "github.com/rest-mail/go-dkim"
+	dkim "github.com/rest-mail/go-dkim/pkg/dkim"
 )
 
 func TestNextSelector(t *testing.T) {

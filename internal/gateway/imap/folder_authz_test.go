@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	imapsrv "github.com/rest-mail/go-imap"
+	goimap "github.com/rest-mail/go-imap/pkg/imap"
 )
 
 // TestValidateFolder_Allow covers the folder names the gateway must let through:
@@ -76,7 +76,7 @@ func TestMailboxOps_RejectInvalidFolder(t *testing.T) {
 	if _, err := m.CopyUID(1, bad); err == nil {
 		t.Error("CopyUID accepted an injection destination folder")
 	}
-	if _, err := m.AppendUID(bad, imapsrv.FlagUpdate{}, []byte("From: a@b\r\n\r\nhi")); err == nil {
+	if _, err := m.AppendUID(bad, goimap.FlagUpdate{}, []byte("From: a@b\r\n\r\nhi")); err == nil {
 		t.Error("AppendUID accepted an injection destination folder")
 	}
 }

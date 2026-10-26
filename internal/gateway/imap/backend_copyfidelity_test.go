@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	imapsrv "github.com/rest-mail/go-imap"
+	goimap "github.com/rest-mail/go-imap/pkg/imap"
 )
 
 // These tests are the red-green regression for issue #190: IMAP COPY lost the
@@ -120,7 +120,7 @@ func TestAppendUID_AppliesFlagsAtCreation(t *testing.T) {
 	api.nextID = 910
 	m := newUnitMailbox(t, api)
 
-	uid, err := m.AppendUID("Archive", imapsrv.FlagUpdate{Seen: bptr(true), Flagged: bptr(true)},
+	uid, err := m.AppendUID("Archive", goimap.FlagUpdate{Seen: bptr(true), Flagged: bptr(true)},
 		[]byte("Subject: Hi\r\n\r\nbody\r\n"))
 	if err != nil {
 		t.Fatalf("AppendUID: %v", err)
@@ -156,7 +156,7 @@ func TestAppendUID_QuarantinedDeliveryReturnsError(t *testing.T) {
 	api.deliverBody = map[string]interface{}{"data": map[string]interface{}{"status": "processed"}}
 	m := newUnitMailbox(t, api)
 
-	uid, err := m.AppendUID("INBOX", imapsrv.FlagUpdate{}, []byte("Subject: Hi\r\n\r\nbody\r\n"))
+	uid, err := m.AppendUID("INBOX", goimap.FlagUpdate{}, []byte("Subject: Hi\r\n\r\nbody\r\n"))
 	if err == nil {
 		t.Fatalf("AppendUID returned nil error for a quarantined/discarded delivery; want an error")
 	}

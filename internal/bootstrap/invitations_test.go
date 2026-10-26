@@ -153,7 +153,7 @@ func TestInvitationPersistence(t *testing.T) {
 		const callback = "test:refuse-invitation-password"
 		if err := gdb.Callback().Create().Before("gorm:create").Register(callback, func(tx *gorm.DB) {
 			if tx.Statement.Table == "credentials" {
-				tx.AddError(errors.New("injected credential failure"))
+				_ = tx.AddError(errors.New("injected credential failure"))
 			}
 		}); err != nil {
 			t.Fatal(err)

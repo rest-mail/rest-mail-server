@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/rest-mail/go-arc"
+	"github.com/rest-mail/go-arc/pkg/arc"
 	"github.com/restmail/restmail/internal/pipeline"
 )
 
