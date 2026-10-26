@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
-	"github.com/rest-mail/go-mtasts"
+	"github.com/rest-mail/go-mtasts/pkg/mtasts"
 
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/metrics"

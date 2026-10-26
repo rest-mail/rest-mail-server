@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	arc "github.com/rest-mail/go-arc"
-	dkim "github.com/rest-mail/go-dkim"
+	arc "github.com/rest-mail/go-arc/pkg/arc"
+	dkim "github.com/rest-mail/go-dkim/pkg/dkim"
 	"github.com/restmail/restmail/internal/db/models"
 )
 

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/rest-mail/go-dkim"
+	"github.com/rest-mail/go-dkim/pkg/dkim"
 	"github.com/restmail/restmail/internal/pipeline"
 )
 

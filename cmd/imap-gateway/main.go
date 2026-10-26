@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	imapsrv "github.com/rest-mail/go-imap"
+	imapserver "github.com/rest-mail/go-imap/pkg/imap/server"
 
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/db"
@@ -149,9 +149,9 @@ func main() {
 	bancheck.Wire(limiter, database, "imap")
 	// The shared connlimiter satisfies the library's structural Limiter interface;
 	// the rest-mail Backend adapter maps API responses onto the library's types.
-	imapServer := imapsrv.NewServer(cfg.GatewayHostname, imap.NewBackend(api, limiter), tlsConfig, limiter)
+	imapServer := imapserver.New(cfg.GatewayHostname, imap.NewBackend(api, limiter), tlsConfig, limiter)
 	// IMAP is left zero, which the library skips: there is no cleartext listener on 143.
-	if err := imapServer.ListenAndServe(imapsrv.Ports{
+	if err := imapServer.ListenAndServe(imapserver.Ports{
 		IMAPTLS: cfg.IMAPTLSPort,
 	}); err != nil {
 		slog.Error("failed to start IMAP server", "error", err)
