@@ -20,15 +20,16 @@ func TestSendTestEmail_DocumentedRefusals(t *testing.T) {
 }
 
 // The pairs vertrag compiles for sendTestEmail: created with the 201 and
-// from_missing with the 422, nothing else. created is the request the spec
+// from_missing with the 422, and non_object with the 400. created is the request the spec
 // always documented, and from_missing is it without its sender, so the sender
 // is the only reason it is refused.
 func TestSendTestEmail_ExamplePairs(t *testing.T) {
 	requests, responses := postExamples(t, "/api/v1/admin/test/send", "sendTestEmail")
 
 	want := map[string][]string{
-		"request": {"created", "from_missing"},
+		"request": {"created", "from_missing", "non_object"},
 		"201":     {"created"},
+		"400":     {"non_object"},
 		"422":     {"from_missing"},
 	}
 	got := map[string][]string{"request": names(requests)}

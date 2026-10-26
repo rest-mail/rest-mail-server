@@ -98,6 +98,18 @@ type tlsReportStored struct {
 	Stored int `json:"stored" description:"Number of policy entries persisted"`
 }
 
+// A structurally valid report may name no hosted domain. That refusal has no
+// validation fields; binding failures carry the same typed field details as before.
+type tlsReportUnprocessable struct {
+	Error tlsReportUnprocessableError `json:"error"`
+}
+
+type tlsReportUnprocessableError struct {
+	Code    string                    `json:"code" enums:"validation_failed,no_matching_domains"`
+	Message string                    `json:"message"`
+	Details respond.ValidationDetails `json:"details,omitempty"`
+}
+
 // RegisterReceive registers report ingestion (RFC 8460 §5.4) behind the per-IP throttle.
 func (h *TLSReportHandler) RegisterReceive(rs endpoint.Routes, throttle endpoint.Middleware) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/.well-known/smtp-tlsrpt",
@@ -105,7 +117,9 @@ func (h *TLSReportHandler) RegisterReceive(rs endpoint.Routes, throttle endpoint
 		Description: "Receives TLS-RPT reports from external MTAs, as JSON or gzip-compressed. No auth by design. " +
 			"A body sent with Content-Encoding: gzip, or gzip-compressed under a JSON media type, is inflated first.",
 		Status: http.StatusCreated, Security: oapifly.Public,
-		Errors:     []int{http.StatusUnprocessableEntity},
+		Responses: []oapifly.EndpointResponse{{Status: http.StatusUnprocessableEntity,
+			Description: "Invalid report fields, or no policy domain hosted by this server",
+			Type:        oapifly.TypeOf[tlsReportUnprocessable]()}},
 		Middleware: []endpoint.Middleware{throttle, {Wrap: inflateReport}},
 	}, h.receiveReport)
 }
@@ -194,7 +208,16 @@ func (h *TLSReportHandler) receiveReport(r *http.Request, in receiveTLSReportInp
 		raw = read
 	}
 
-	return h.storeReport(report, raw)
+	var stored tlsReportStored
+	err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
+		var err error
+		stored, err = NewTLSReportHandler(tx).storeReport(report, raw)
+		return err
+	})
+	if err != nil {
+		return tlsReportStored{}, err
+	}
+	return stored, nil
 }
 
 // storeReport is shared by HTTP and authenticated MIME report ingestion.

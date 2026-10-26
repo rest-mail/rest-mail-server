@@ -19,7 +19,6 @@ import (
 	"time"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
-
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/config"
 )
@@ -181,7 +180,9 @@ func TestAPIGapReport(t *testing.T) {
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		report.Warnings = append(report.Warnings, warnings[key])
+		if gapWarningApplies(operations, warnings[key]) {
+			report.Warnings = append(report.Warnings, warnings[key])
+		}
 	}
 	for _, id := range []string{"listPushDevices", "registerPushDevice", "removePushDevice", "seedTestData", "login"} {
 		if _, ok := operations[id]; !ok {
@@ -197,6 +198,14 @@ func TestAPIGapReport(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+}
+
+// A pair is orphaned only when no supported configuration registers its
+// operation. Other warnings, including invalid pairs in enabled profiles,
+// remain visible. Reconcile after collecting every profile's operations.
+func gapWarningApplies(operations map[string]gapOperation, warning oapifly.Warning) bool {
+	_, registered := operations[warning.OperationID]
+	return warning.Kind != "example-orphaned" || !registered
 }
 
 func TestStrictAPIAreas(t *testing.T) {
