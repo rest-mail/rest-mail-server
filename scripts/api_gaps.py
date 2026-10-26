@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Reconcile go-oapifly warnings with operation issues and strict-area PRs (#666).
+"""Keep API warnings together in their substantial topic issues (#666).
 
 The input is the complete configuration-union report from TestAPIGapReport.
 Dry-run is the default. Only main's api-gaps workflow uses --apply.
 """
 
 import argparse
-import base64
 import json
 import re
 import subprocess
@@ -213,6 +212,124 @@ def plan_issues(report, areas, issues):
     return changes, clean
 
 
+def plan_area_issues(report, areas, issues, parents, topics=None):
+    """Preserve topic decisions and retire operation duplicates without claiming completion."""
+    operations, owners, grouped = validate(report, areas)
+    legacy, clean = plan_issues(report, areas, issues)
+    topics = topics if topics is not None else {area: [area] for area in areas}
+    assigned = [area for members in topics.values() for area in members]
+    if (
+        len(assigned) != len(set(assigned))
+        or set(assigned) != set(areas)
+        or any(not members for members in topics.values())
+    ):
+        raise ValueError("every area must belong to exactly one nonempty topic")
+    topic_of = {area: topic for topic, members in topics.items() for area in members}
+    parents = {str(issue["number"]): issue for issue in parents}
+    if set(parents) != set(topics):
+        raise ValueError("every mapped topic issue must be read before consolidation")
+    related = defaultdict(list)
+    for issue in issues:
+        operation = operation_of(issue)
+        if operation in owners:
+            related[topic_of[owners[operation]]].append(issue["number"])
+    changes = []
+    for area, members in sorted(topics.items()):
+        ids = [operation for member in members for operation in areas[member]]
+        parent = parents[area]
+        lines = [
+            "## Consolidated API contract work",
+            "",
+            "This topic owns the complete operation work below. Closed operation issues were consolidated, not declared implemented. Closing those subissues does not fulfill this topic's acceptance criteria. Human decisions and broader acceptance criteria elsewhere in this issue still apply.",
+            "",
+        ]
+        if related[area]:
+            lines += [
+                "Previous operation records: "
+                + ", ".join(f"#{n}" for n in sorted(set(related[area]))),
+                "",
+            ]
+        for operation in sorted(ids):
+            op = operations[operation]
+            warnings = grouped.get(operation, [])
+            lines.append(
+                f"### `{operation}` — `{op['method']} {op['path']}` (`{text(op['file'])}:{op['line']}`)"
+            )
+            if warnings:
+                missing = []
+                other = []
+                for warning in warnings:
+                    status = re.search(r"its (\d{3}) response", warning["message"])
+                    if warning["kind"] == "example-missing" and status:
+                        missing.append(status[1])
+                    else:
+                        other.append(warning)
+                if missing:
+                    lines.append(
+                        "- [ ] Add named request/response pairs and prove these responses through the real route: "
+                        + ", ".join(sorted(set(missing)))
+                        + "."
+                    )
+                for warning in other:
+                    lines.append(
+                        f"- [ ] **{text(warning['kind'])}** — {text(warning['message'])}. {text(CLEAR.get(warning['kind'], 'Correct the registered source until the warning clears.'))}"
+                    )
+            else:
+                lines.append(
+                    "No generator warnings on main. This does not establish tier-test or strict-mode acceptance."
+                )
+            lines.append("")
+        lines += [
+            "Keep implementation, examples, authorization/limits/fault coverage and strict activation together in topic-sized PRs. Do not create one issue or PR per warning or operation.",
+            "This generated section never closes or reopens the topic issue; its full acceptance criteria and owner decisions govern completion.",
+        ]
+        # Reuse the bounded-block writer, with an area identity distinct from
+        # legacy operation identities. Existing human prose is untouched.
+        body = generated_body(parent.get("body"), "area-" + area, lines)
+        body = body.replace(
+            f"<!-- restmail-api-gap:operation:area-{area} -->",
+            f"<!-- restmail-api-gap:area:{area} -->",
+        )
+        if len(body.encode("utf-8")) > 60000:
+            raise ValueError(f"topic #{area} would exceed the bounded issue size")
+        changes.append(
+            {
+                "operation": "area-" + area,
+                "issue": parent,
+                "area": None,
+                "title": parent["title"],
+                "body": body,
+                "state": parent["state"],
+            }
+        )
+    # Existing operation records keep their entire original requirements and
+    # comments. A closure means moved-to-topic, never work completed.
+    for change in legacy:
+        issue = change["issue"]
+        if issue is None or issue["state"] == "closed":
+            continue
+        owner = owners.get(change["operation"])
+        if owner is None:
+            continue
+        area = topic_of[owner]
+        footer = f"<!-- restmail-api-gap:consolidated:{area} -->\nConsolidated into #{area}. Requirements and evidence remain here for reference; this closure does not mean the work is complete. Track remaining work and related implementation together in the topic issue."
+        body = issue.get("body") or ""
+        if f"<!-- restmail-api-gap:consolidated:{area} -->" not in body:
+            body += "\n\n" + footer + "\n"
+        changes.append(
+            {
+                "operation": change["operation"],
+                "issue": issue,
+                "area": None,
+                "title": issue["title"],
+                "body": body,
+                "state": "closed",
+                "state_reason": "not_planned",
+            }
+        )
+    return changes, clean
+
+
 class GitHub:
     def __init__(self, repo):
         self.repo = repo
@@ -220,7 +337,7 @@ class GitHub:
 
     def api(self, path, method="GET", data=None):
         if method != "GET":
-            # Initial reconciliation can create many operation issues. Pace
+            # Consolidation updates topics and closes legacy duplicates. Pace
             # content writes instead of retrying secondary-rate-limit errors.
             time.sleep(max(0.0, 1.0 - (time.monotonic() - self.last_write)))
             self.last_write = time.monotonic()
@@ -253,6 +370,8 @@ def sync_issues(github, changes):
     for change in changes:
         issue = change["issue"]
         values = {key: change[key] for key in ("title", "body", "state")}
+        if change.get("state_reason"):
+            values["state_reason"] = change["state_reason"]
         if issue is None:
             issue = github.api(
                 "issues",
@@ -280,68 +399,21 @@ def sync_issues(github, changes):
 
 
 def strict_proposals(github, clean, strict, base_sha):
-    """Open one ready, single-file PR per clean area; never push a checkout."""
-    proposals = github.pages("pulls?state=open")
-    for area, ids in sorted(clean.items()):
-        if strict.get(area) == ids:
-            continue
-        stem = f"chore/api-strict-area-{area}"
-        branch = stem + "-" + base_sha[:12]
-        active = [
-            pr
-            for pr in proposals
-            if (pr["head"]["ref"] == stem or pr["head"]["ref"].startswith(stem + "-"))
-            and (pr["head"].get("repo") or {}).get("full_name") == github.repo
-        ]
-        if active:
-            # Its PR coordinator owns subsequent rebases and checks.
-            continue
-        refs = github.api(f"git/matching-refs/heads/{branch}")
-        ref = next((ref for ref in refs if ref["ref"] == f"refs/heads/{branch}"), None)
-        if ref:
-            # Respect a human closure; a later main commit can propose a new
-            # branch. Otherwise resume an interrupted run without rewriting it.
-            if github.pages(
-                f"pulls?state=closed&head={github.repo.split('/')[0]}:{branch}"
-            ):
-                continue
-        else:
-            github.api(
-                "git/refs", "POST", {"ref": f"refs/heads/{branch}", "sha": base_sha}
-            )
-        path = f"internal/api/strict_areas/{area}.json"
-        updated = {area: ids}
-        content = (json.dumps(updated, indent=2, sort_keys=True) + "\n").encode()
-        values = {
-            "branch": branch,
-            "message": f"test(api): area {area} rejects contract warnings (#{area})",
-            "content": base64.b64encode(content).decode(),
-        }
-        if area in strict:
-            values["sha"] = github.api(f"contents/{path}?ref={base_sha}")["sha"]
-        if ref and ref["object"]["sha"] != base_sha:
-            comparison = github.api(f"compare/{base_sha}...{branch}")
-            current = github.api(f"contents/{path}?ref={branch}")
-            if [file["filename"] for file in comparison["files"]] != [
-                path
-            ] or base64.b64decode(current["content"]) != content:
-                raise ValueError(
-                    f"strict proposal branch {branch} has other changes; left untouched"
-                )
-        else:
-            github.api(f"contents/{path}", "PUT", values)
-        pr = github.api(
-            "pulls",
-            "POST",
+    """Hand off all pending strict activation together; never fan out micro PRs."""
+    pending = {
+        area: ids for area, ids in sorted(clean.items()) if strict.get(area) != ids
+    }
+    print(
+        json.dumps(
             {
-                "title": f"test(api): area {area} rejects contract warnings",
-                "head": branch,
-                "base": "main",
-                "draft": False,
-                "body": f"All registered operations in area #{area} have no generator warnings, including their named examples. Enable go-oapifly strict mode for these {len(ids)} operations so TestStrictAPIAreas rejects regressions.\n\nPart of #{area}. Generated by the warning synchronization requested in #666. PR coordination owns validation and merging.",
+                "source_main": base_sha,
+                "strict_activation_topics": pending,
+                "instruction": "Enable these areas together in a substantial topic PR; area issues remain open until their full acceptance criteria pass.",
             },
+            sort_keys=True,
         )
-        print(f"strict area {area}: {pr['html_url']}")
+    )
+    return pending
 
 
 def main():
@@ -351,12 +423,16 @@ def main():
         "--areas", type=Path, default=Path("tests/contract/api-areas.json")
     )
     parser.add_argument("--strict", type=Path, default=Path(STRICT_PATH))
+    parser.add_argument(
+        "--topics", type=Path, default=Path("tests/contract/api-topics.json")
+    )
     parser.add_argument("--repo", default="rest-mail/rest-mail-server")
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args()
     report, areas, strict = (
         json.loads(path.read_text()) for path in (args.report, args.areas, args.strict)
     )
+    topics = json.loads(args.topics.read_text())
     for path in sorted(args.strict.with_suffix("").glob("*.json")):
         for area, ids in json.loads(path.read_text()).items():
             if area in strict:
@@ -366,7 +442,16 @@ def main():
     validate(report, areas)
     github = GitHub(args.repo)
     if not args.apply:
-        changes, clean = plan_issues(report, areas, [])
+        parents = [
+            {
+                "number": int(area),
+                "title": f"API contract topic #{area}",
+                "body": "",
+                "state": "open",
+            }
+            for area in topics
+        ]
+        changes, clean = plan_area_issues(report, areas, [], parents, topics)
         print(
             json.dumps(
                 {
@@ -392,7 +477,8 @@ def main():
         for issue in github.pages("issues?state=all&labels=api-gap")
         if "pull_request" not in issue
     ]
-    changes, clean = plan_issues(report, areas, issues)
+    parents = [github.api(f"issues/{area}") for area in sorted(topics)]
+    changes, clean = plan_area_issues(report, areas, issues, parents, topics)
     labels = github.pages("labels")
     if not any(label["name"] == "api-gap" for label in labels):
         github.api(
