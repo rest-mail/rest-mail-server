@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -79,7 +80,7 @@ type createBanRequest struct {
 	CreatedBy string  `json:"created_by" message:"required"`
 }
 
-func (h *BanHandler) create(_ *http.Request, req createBanRequest) (endpoint.Status[Ban], error) {
+func (h *BanHandler) create(r *http.Request, req createBanRequest) (endpoint.Status[Ban], error) {
 	ban := models.Ban{
 		IP:        req.IP,
 		Reason:    req.Reason,
@@ -92,27 +93,34 @@ func (h *BanHandler) create(_ *http.Request, req createBanRequest) (endpoint.Sta
 		if err != nil {
 			return endpoint.Status[Ban]{}, endpoint.Invalid(map[string]string{"duration": "invalid duration format (e.g. 24h, 168h)"})
 		}
-		exp := time.Now().Add(d)
+		// Use the same configured clock as the persisted creation timestamp.
+		exp := h.db.NowFunc().Add(d)
 		ban.ExpiresAt = &exp
 	}
 
 	// Upsert: update if IP already banned
 	var existing models.Ban
-	if err := h.db.Where("ip = ?", req.IP).First(&existing).Error; err == nil {
-		h.db.Model(&existing).Updates(map[string]any{
+	err := h.db.WithContext(r.Context()).Where("ip = ?", req.IP).First(&existing).Error
+	if err == nil {
+		if err := h.db.WithContext(r.Context()).Model(&existing).Updates(map[string]any{
 			"reason":     ban.Reason,
 			"protocol":   ban.Protocol,
 			"created_by": ban.CreatedBy,
 			"expires_at": ban.ExpiresAt,
-		})
+		}).Error; err != nil {
+			return endpoint.Status[Ban]{}, fmt.Errorf("update ban: %w", err)
+		}
 		existing.Reason = ban.Reason
 		existing.Protocol = ban.Protocol
 		existing.CreatedBy = ban.CreatedBy
 		existing.ExpiresAt = ban.ExpiresAt
 		return endpoint.Status[Ban]{Code: http.StatusOK, Value: banOf(existing)}, nil
 	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return endpoint.Status[Ban]{}, fmt.Errorf("find ban: %w", err)
+	}
 
-	if err := h.db.Create(&ban).Error; err != nil {
+	if err := h.db.WithContext(r.Context()).Create(&ban).Error; err != nil {
 		return endpoint.Status[Ban]{}, fmt.Errorf("create ban: %w", err)
 	}
 
@@ -145,6 +153,9 @@ func (h *BanHandler) unbanIP(_ *http.Request, in unbanIPRequest) (endpoint.Empty
 	ip := in.IP
 
 	result := h.db.Where("ip = ?", ip).Delete(&models.Ban{})
+	if result.Error != nil {
+		return endpoint.Empty{}, fmt.Errorf("unban address: %w", result.Error)
+	}
 	if result.RowsAffected == 0 {
 		return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "No ban found for this IP")
 	}

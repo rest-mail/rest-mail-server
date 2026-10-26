@@ -6,52 +6,22 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
-	"runtime"
 	"testing"
+
+	"gorm.io/gorm"
 )
 
 // postAliasSource sends raw to the alias create handler, which has no
-// database. lookedUp reports whether the request got past validation to the
-// source domain's lookup: the nil database panics there, inside gorm's
-// (*DB).Where called from Create. A panic anywhere else fails the test, so a
-// crash cannot pass for having reached the lookup.
+// live database. lookedUp reports whether validation reached the source-domain
+// query. A controlled callback stops there; an unrelated panic still fails.
 func postAliasSource(t *testing.T, raw []byte) (rr *httptest.ResponseRecorder, lookedUp bool) {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/aliases", bytes.NewReader(raw))
 	rr = httptest.NewRecorder()
-	var panicked interface{}
-	inLookup := false
-	func() {
-		defer func() {
-			if panicked = recover(); panicked != nil {
-				inLookup = panickedInAliasDomainLookup()
-			}
-		}()
-		aliasRoutes(NewAliasHandler(nil)).ServeHTTP(rr, req)
-	}()
-	if panicked != nil && !inLookup {
-		t.Fatalf("%s panicked outside the domain lookup: %v", raw, panicked)
-	}
-	return rr, panicked != nil
-}
-
-// panickedInAliasDomainLookup reports whether the panic being recovered was
-// raised inside gorm's (*DB).Where, called directly by AliasHandler.create. It
-// must be called from the deferred function that recovers, while the panicking
-// frames are still on the stack.
-func panickedInAliasDomainLookup() bool {
-	pcs := make([]uintptr, 64)
-	frames := runtime.CallersFrames(pcs[:runtime.Callers(0, pcs)])
-	for {
-		frame, more := frames.Next()
-		if frame.Function == "gorm.io/gorm.(*DB).Where" {
-			caller, _ := frames.Next()
-			return caller.Function == "github.com/restmail/restmail/internal/api/handlers.(*AliasHandler).create"
-		}
-		if !more {
-			return false
-		}
-	}
+	lookedUp = runToValidationDB(t, "domains", func(db *gorm.DB) {
+		aliasRoutes(NewAliasHandler(db)).ServeHTTP(rr, req)
+	})
+	return rr, lookedUp
 }
 
 // assertAliasSourceAnswer holds a create that is answered before the lookup to

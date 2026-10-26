@@ -309,30 +309,6 @@
   difference: "response 200 application/json.properties.pagination: openapi.yaml absent, generated {\"additionalProperties\":false,\"properties\":{\"cursor\":{\"type\":\"string\"},\"has_more\":{\"type\":\"boolean\"},\"total\":{\"format\":\"int64\",\"type\":\"integer\"}},\"required\":[\"has_more\"],\"type\":[\"null\",\"object\"]}"
   reason: >-
     The list answers respond.Pagination as it always did: has_more is present and pagination is a pointer. The oracle omits pagination or leaves its required/nullability details unspecified.
-- operation: testCustomFilter
-  difference: "request body application/json.properties.email.type: openapi.yaml \"object\", generated absent"
-  reason: >-
-    The optional sample email retains its previous null/omission semantics. The sidecar endpoints accept arbitrary sample JSON and forward it unchanged; engine previews bind a partial canonical email.
-- operation: testCustomFilter
-  difference: "request body application/json.type: openapi.yaml \"object\", generated [\"null\",\"object\"]"
-  reason: >-
-    The custom-filter test body has always been optional: no body, null or an empty object selects its built-in sample email.
-- operation: testCustomFilter
-  difference: "response 200 application/json.properties: openapi.yaml absent, generated {\"logs\":{\"items\":{\"type\":\"string\"},\"type\":\"array\"},\"result\":{}}"
-  reason: >-
-    The sidecar returns a bare JSON object, not a data envelope: execute has result/logs and validate has valid plus optional error/phase/dry_run. Script results stay arbitrary JSON and forwarding preserves exact bytes and status behavior.
-- operation: testCustomFilter
-  difference: "response 200 application/json.required: openapi.yaml absent, generated [\"logs\",\"result\"]"
-  reason: >-
-    The sidecar returns a bare JSON object, not a data envelope: execute has result/logs and validate has valid plus optional error/phase/dry_run. Script results stay arbitrary JSON and forwarding preserves exact bytes and status behavior.
-- operation: testCustomFilter
-  difference: "response 408: generated only"
-  reason: >-
-    The execute sidecar can time out; the endpoint preserves its 408 status and bare upstream JSON answer.
-- operation: testCustomFilter
-  difference: "response 429: generated only"
-  reason: >-
-    The per-IP pipeline preview throttle can refuse this operation before binding, returning rate_limited and Retry-After.
 - operation: testFilter
   difference: "request body application/json.properties.config.type: openapi.yaml \"object\", generated absent"
   reason: >-
@@ -389,10 +365,6 @@
   difference: "response 200 application/json.properties.data.required: openapi.yaml [\"action\"], generated [\"action\",\"log\",\"type\"]"
   reason: >-
     The engine emits its concrete ExecutionResult/FilterResult fields, including the structured log and final email where applicable; the oracle's required set describes a different result shape.
-- operation: testFilter
-  difference: "response 429: generated only"
-  reason: >-
-    The per-IP pipeline preview throttle can refuse this operation before binding, returning rate_limited and Retry-After.
 - operation: testPipeline
   difference: "request body application/json.properties.email.properties: openapi.yaml absent, generated *"
   reason: >-
@@ -447,10 +419,6 @@
   difference: "response 200 application/json.properties.data.required: openapi.yaml [\"duration_ms\",\"final_action\",\"steps\"], generated [\"duration_ms\",\"final_action\",\"final_email\",\"steps\"]"
   reason: >-
     The engine emits its concrete ExecutionResult/FilterResult fields, including the structured log and final email where applicable; the oracle's required set describes a different result shape.
-- operation: testPipeline
-  difference: "response 429: generated only"
-  reason: >-
-    The per-IP pipeline preview throttle can refuse this operation before binding, returning rate_limited and Retry-After.
 - operation: updateCustomFilter
   difference: "request body application/json.properties.config.type: openapi.yaml \"object\", generated absent"
   reason: >-
@@ -551,21 +519,6 @@
   difference: "response 200 application/json.properties: openapi.yaml absent, generated {\"dry_run\":{\"additionalProperties\":false,\"properties\":{\"error\":{\"type\":\"string\"},\"logs\":{\"items\":{\"type\":\"string\"},\"type\":\"array\"},\"result\":{}},\"required\":[\"logs\"],\"type\":[\"null\",\"object\"]},\"error\":{\"type\":\"string\"},\"phase\":{\"type\":\"string\"},\"valid\":{\"type\":\"boolean\"}}"
   reason: >-
     The sidecar returns a bare JSON object, not a data envelope: execute has result/logs and validate has valid plus optional error/phase/dry_run. Script results stay arbitrary JSON and forwarding preserves exact bytes and status behavior.
-
-- operation: testCustomFilter
-  difference: "response 400 application/json.properties: openapi.yaml *, generated absent"
-  reason: >-
-    Execute forwards the sidecar's bare error as well as answering its own API error envelope. The 400 response permits both shapes without rewriting either upstream bytes or API validation errors.
-
-- operation: testCustomFilter
-  difference: "response 400 application/json.required: openapi.yaml [\"error\"], generated absent"
-  reason: >-
-    Execute forwards the sidecar's bare error as well as answering its own API error envelope. The 400 response permits both shapes without rewriting either upstream bytes or API validation errors.
-
-- operation: testCustomFilter
-  difference: "response 400 application/json.type: openapi.yaml \"object\", generated absent"
-  reason: >-
-    Execute forwards the sidecar's bare error as well as answering its own API error envelope. The 400 response permits both shapes without rewriting either upstream bytes or API validation errors.
 
 # Domain mail policy (#646)
 
@@ -740,7 +693,7 @@
 - operation: createAlias
   difference: "response 201 application/json.properties.data.properties.domain: openapi.yaml absent, generated *"
   reason: >-
-    The handlers have always included the preloaded domain (a zero domain after creation or redaction). The API type preserves that JSON without the private DKIM key; the oracle omits the association.
+    The public Alias type permits a readable, loaded domain association. Creation does not preload it and omits the association; it never emits an invalid zero domain. The oracle omits this optional property.
 - operation: createAlias
   difference: "response 404: generated only"
   reason: >-
@@ -1300,24 +1253,6 @@
 
 # Non-production test endpoints (#652)
 
-- operation: probeServices
-  difference: "request body application/json.properties.services.items.enum: openapi.yaml [\"db\",\"dns\",\"imap\",\"pop3\",\"smtp\",\"smtp_submission\"], generated absent"
-  reason: "Service names are checked case-insensitively in the handler, preserving uppercase callers and the documented unknown-service message. A literal enum would reject accepted spellings."
-- operation: probeServices
-  difference: "request body: required: openapi.yaml false, generated true"
-  reason: "Probe has always decoded a JSON body: an empty object chooses defaults, while an absent body is malformed. The oracle marks that body optional."
-- operation: probeServices
-  difference: "response 200 application/json.properties.data.additionalProperties: openapi.yaml {\"type\":\"object\"}, generated false"
-  reason: "Probe results have exactly the six declared service keys, each present only when requested; arbitrary result keys cannot be returned."
-- operation: probeServices
-  difference: "response 200 application/json.properties.data.properties: openapi.yaml absent, generated *"
-  reason: "The six service results now declare status, address, domain, error, latency and MX records. The oracle only describes an open map of open objects. Pointer fields express conditional presence."
-- operation: probeServices
-  difference: "response 400: generated only"
-  reason: "Binding refuses a missing, malformed or non-object JSON body with 400 bad_request. The oracle omits this existing malformed-body response."
-- operation: probeServices
-  difference: "response 403 application/json: generated only"
-  reason: "The shared admin middleware refuses setup, CSRF and capability failures with the JSON error envelope. The oracle only describes the production refusal without a body; production now omits these routes entirely."
 - operation: resetTestData
   difference: "response 403 application/json: generated only"
   reason: "The shared admin middleware refuses setup, CSRF and capability failures with the JSON error envelope. The oracle only describes the production refusal without a body; production now omits these routes entirely."
@@ -2041,11 +1976,6 @@
   reason: >-
     A folder is held to the folder rule in the handler, an empty one refused with 422 folder
     required as createFolder refuses an empty name; a minLength would word it differently (#759).
-- operation: deleteMessage
-  difference: "response 429: generated only"
-  reason: >-
-    The mail routes throttle refused HTTP Basic credentials at login's rate (429
-    rate_limited).
 - operation: getThread
   difference: "response 429: generated only"
   reason: >-
@@ -2092,8 +2022,8 @@
 - operation: listMessages
   difference: "response 200 application/json.properties.data*.properties.mailbox: openapi.yaml absent, generated *"
   reason: >-
-    The model always wrote its unloaded mailbox association, as an empty mailbox; the API
-    keeps writing it so the bytes are unchanged. The oracle omits it.
+    Unloaded mailbox associations are omitted. A loaded association retains its public
+    fields; the generated schema describes that optional association, which the oracle omits.
 - operation: listMessages
   difference: "response 200 application/json.properties.data*.properties.recipients_to.*"
   reason: >-
@@ -2137,8 +2067,8 @@
 - operation: getMessage
   difference: "response 200 application/json.properties.data*.properties.mailbox: openapi.yaml absent, generated *"
   reason: >-
-    The model always wrote its unloaded mailbox association, as an empty mailbox; the API
-    keeps writing it so the bytes are unchanged. The oracle omits it.
+    Unloaded mailbox associations are omitted. A loaded association retains its public
+    fields; the generated schema describes that optional association, which the oracle omits.
 - operation: getMessage
   difference: "response 200 application/json.properties.data*.properties.recipients_to.*"
   reason: >-
@@ -2182,8 +2112,8 @@
 - operation: updateMessage
   difference: "response 200 application/json.properties.data*.properties.mailbox: openapi.yaml absent, generated *"
   reason: >-
-    The model always wrote its unloaded mailbox association, as an empty mailbox; the API
-    keeps writing it so the bytes are unchanged. The oracle omits it.
+    Unloaded mailbox associations are omitted. A loaded association retains its public
+    fields; the generated schema describes that optional association, which the oracle omits.
 - operation: updateMessage
   difference: "response 200 application/json.properties.data*.properties.recipients_to.*"
   reason: >-
@@ -2227,8 +2157,8 @@
 - operation: getThread
   difference: "response 200 application/json.properties.data*.properties.mailbox: openapi.yaml absent, generated *"
   reason: >-
-    The model always wrote its unloaded mailbox association, as an empty mailbox; the API
-    keeps writing it so the bytes are unchanged. The oracle omits it.
+    Unloaded mailbox associations are omitted. A loaded association retains its public
+    fields; the generated schema describes that optional association, which the oracle omits.
 - operation: getThread
   difference: "response 200 application/json.properties.data*.properties.recipients_to.*"
   reason: >-
@@ -2272,8 +2202,8 @@
 - operation: searchMessages
   difference: "response 200 application/json.properties.data*.properties.mailbox: openapi.yaml absent, generated *"
   reason: >-
-    The model always wrote its unloaded mailbox association, as an empty mailbox; the API
-    keeps writing it so the bytes are unchanged. The oracle omits it.
+    Unloaded mailbox associations are omitted. A loaded association retains its public
+    fields; the generated schema describes that optional association, which the oracle omits.
 - operation: searchMessages
   difference: "response 200 application/json.properties.data*.properties.recipients_to.*"
   reason: >-
@@ -2324,11 +2254,6 @@
   reason: >-
     Reflection does not describe defaults; the handler keeps 50 for an absent or out-of-range
     limit (1 to 100).
-- operation: deleteMessage
-  difference: "parameter query permanent: generated only"
-  reason: >-
-    permanent=true deletes for good (the IMAP and POP3 gateways send it); anything else moves
-    the message to Trash. The oracle does not document it.
 - operation: updateMessage
   difference: "response 400: generated only"
   reason: >-
@@ -2512,8 +2437,8 @@
 - operation: saveDraft
   difference: "response 201 application/json.properties.data*.properties.mailbox: openapi.yaml absent, generated *"
   reason: >-
-    The model always wrote its unloaded mailbox association, as an empty mailbox; the API
-    keeps writing it so the bytes are unchanged. The oracle omits it.
+    Unloaded mailbox associations are omitted. A loaded association retains its public
+    fields; the generated schema describes that optional association, which the oracle omits.
 - operation: saveDraft
   difference: "response 201 application/json.properties.data*.properties.recipients_to.*"
   reason: >-
@@ -2555,8 +2480,8 @@
 - operation: updateDraft
   difference: "response 200 application/json.properties.data*.properties.mailbox: openapi.yaml absent, generated *"
   reason: >-
-    The model always wrote its unloaded mailbox association, as an empty mailbox; the API
-    keeps writing it so the bytes are unchanged. The oracle omits it.
+    Unloaded mailbox associations are omitted. A loaded association retains its public
+    fields; the generated schema describes that optional association, which the oracle omits.
 - operation: updateDraft
   difference: "response 200 application/json.properties.data*.properties.recipients_to.*"
   reason: >-
@@ -2821,8 +2746,8 @@
 - operation: deliverMessage
   difference: "response 201 application/json.properties.data*.properties.mailbox: openapi.yaml absent, generated *"
   reason: >-
-    The model always wrote its unloaded mailbox association, as an empty mailbox; the API
-    keeps writing it so the bytes are unchanged. The oracle omits it.
+    Unloaded mailbox associations are omitted. A loaded association retains its public
+    fields; the generated schema describes that optional association, which the oracle omits.
 - operation: deliverMessage
   difference: "response 201 application/json.properties.data*.properties.recipients_to.*"
   reason: >-
@@ -3098,8 +3023,8 @@
 - operation: sendMessage
   difference: "response 201 application/json.properties.data*.properties.mailbox: openapi.yaml absent, generated *"
   reason: >-
-    The model always wrote its unloaded mailbox association, as an empty mailbox; the API
-    keeps writing it so the bytes are unchanged. The oracle omits it.
+    Unloaded mailbox associations are omitted. A loaded association retains its public
+    fields; the generated schema describes that optional association, which the oracle omits.
 - operation: sendMessage
   difference: "response 201 application/json.properties.data*.properties.recipients_to.*"
   reason: >-
@@ -3151,8 +3076,8 @@
 - operation: sendDraft
   difference: "response 201 application/json.properties.data*.properties.mailbox: openapi.yaml absent, generated *"
   reason: >-
-    The model always wrote its unloaded mailbox association, as an empty mailbox; the API
-    keeps writing it so the bytes are unchanged. The oracle omits it.
+    Unloaded mailbox associations are omitted. A loaded association retains its public
+    fields; the generated schema describes that optional association, which the oracle omits.
 - operation: sendDraft
   difference: "response 201 application/json.properties.data*.properties.recipients_to.*"
   reason: >-
@@ -3204,8 +3129,8 @@
 - operation: forwardMessage
   difference: "response 201 application/json.properties.data*.properties.mailbox: openapi.yaml absent, generated *"
   reason: >-
-    The model always wrote its unloaded mailbox association, as an empty mailbox; the API
-    keeps writing it so the bytes are unchanged. The oracle omits it.
+    Unloaded mailbox associations are omitted. A loaded association retains its public
+    fields; the generated schema describes that optional association, which the oracle omits.
 - operation: forwardMessage
   difference: "response 201 application/json.properties.data*.properties.recipients_to.*"
   reason: >-
