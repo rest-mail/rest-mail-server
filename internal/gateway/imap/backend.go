@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	imapsrv "github.com/rest-mail/go-imap"
+	goimap "github.com/rest-mail/go-imap/pkg/imap"
 
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 	"github.com/restmail/restmail/internal/gateway/connlimiter"
@@ -39,12 +39,12 @@ func NewBackend(api *apiclient.Client, limiter *connlimiter.Limiter) *Backend {
 	return &Backend{api: api, limiter: limiter}
 }
 
-var _ imapsrv.Backend = (*Backend)(nil)
+var _ goimap.Backend = (*Backend)(nil)
 
 // Authenticate signs the user in via the API, with the mailbox's password or
 // an app password, and returns a Mailbox scoped to the resulting token and
 // account.
-func (b *Backend) Authenticate(user, pass string) (imapsrv.Mailbox, error) {
+func (b *Backend) Authenticate(user, pass string) (goimap.Mailbox, error) {
 	// Per-account hard stop: reject a banned account WITHOUT calling the auth API,
 	// so a rotating-IP brute-force is throttled and a ban is never lifted by a
 	// lucky correct guess. The per-IP ban is enforced separately by the server.
@@ -97,15 +97,15 @@ type mailbox struct {
 	utf8 bool
 }
 
-var _ imapsrv.Mailbox = (*mailbox)(nil)
+var _ goimap.Mailbox = (*mailbox)(nil)
 
 // The mailbox also satisfies the library's optional UIDPLUS (RFC 4315) and atomic
 // MOVE (RFC 6851) interfaces, so the server advertises UIDPLUS and emits
 // APPENDUID / COPYUID response codes and honours UID EXPUNGE for rest-mail.
 var (
-	_ imapsrv.UIDPlusMailbox = (*mailbox)(nil)
-	_ imapsrv.Mover          = (*mailbox)(nil)
-	_ imapsrv.UTF8Mailbox    = (*mailbox)(nil)
+	_ goimap.UIDPlusMailbox = (*mailbox)(nil)
+	_ goimap.Mover          = (*mailbox)(nil)
+	_ goimap.UTF8Mailbox    = (*mailbox)(nil)
 )
 
 // EnableUTF8 switches this session to UTF-8 (RFC 6855 UTF8=ACCEPT). The
@@ -117,14 +117,14 @@ func (m *mailbox) EnableUTF8() error {
 }
 
 // Folders lists the account's folders.
-func (m *mailbox) Folders() ([]imapsrv.Folder, error) {
+func (m *mailbox) Folders() ([]goimap.Folder, error) {
 	resp, err := m.api.ListFolders(m.token, m.accountID)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]imapsrv.Folder, 0, len(resp.Data))
+	out := make([]goimap.Folder, 0, len(resp.Data))
 	for _, f := range resp.Data {
-		out = append(out, imapsrv.Folder{Name: f.Folder, SpecialUse: specialUse[f.Folder]})
+		out = append(out, goimap.Folder{Name: f.Folder, SpecialUse: specialUse[f.Folder]})
 	}
 	return out, nil
 }
@@ -134,16 +134,16 @@ func (m *mailbox) Folders() ([]imapsrv.Folder, error) {
 // a mail app then files junk into Spam and archives into Archive rather than
 // making folders of its own beside them. Any other folder has no role.
 var specialUse = map[string]string{
-	"Sent":    imapsrv.SpecialUseSent,
-	"Drafts":  imapsrv.SpecialUseDrafts,
-	"Trash":   imapsrv.SpecialUseTrash,
-	"Spam":    imapsrv.SpecialUseJunk,
-	"Archive": imapsrv.SpecialUseArchive,
+	"Sent":    goimap.SpecialUseSent,
+	"Drafts":  goimap.SpecialUseDrafts,
+	"Trash":   goimap.SpecialUseTrash,
+	"Spam":    goimap.SpecialUseJunk,
+	"Archive": goimap.SpecialUseArchive,
 }
 
 // Messages returns a folder's messages oldest-first, mapped onto the library's
 // neutral Message type. The message ID doubles as the IMAP UID.
-func (m *mailbox) Messages(folder string) ([]imapsrv.Message, error) {
+func (m *mailbox) Messages(folder string) ([]goimap.Message, error) {
 	if err := validateFolder(folder); err != nil {
 		return nil, err
 	}
@@ -151,7 +151,7 @@ func (m *mailbox) Messages(folder string) ([]imapsrv.Message, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := make([]imapsrv.Message, 0, len(resp.Data))
+	out := make([]goimap.Message, 0, len(resp.Data))
 	for _, msg := range resp.Data {
 		out = append(out, toMessage(msg))
 	}
@@ -165,15 +165,15 @@ func (m *mailbox) Messages(folder string) ([]imapsrv.Message, error) {
 // falling back to size_bytes for messages without a stored raw. The UID uses
 // toUID, the same 32-bit clamp APPENDUID/COPYUID apply, so an ID past the UID
 // space clamps to 0 rather than wrapping to a small, wrong UID.
-func toMessage(msg apiclient.MessageSummary) imapsrv.Message {
-	return imapsrv.Message{
+func toMessage(msg apiclient.MessageSummary) goimap.Message {
+	return goimap.Message{
 		UID:     toUID(msg.ID),
 		Size:    msg.WireSize(),
 		Seen:    msg.IsRead,
 		Flagged: msg.IsFlagged || msg.IsStarred,
 		Draft:   msg.IsDraft,
 		Subject: msg.Subject,
-		From:    imapsrv.Address{Name: msg.SenderName, Email: msg.Sender},
+		From:    goimap.Address{Name: msg.SenderName, Email: msg.Sender},
 		To:      string(msg.RecipientsTo),
 		Date:    msg.ReceivedAt,
 	}
@@ -215,7 +215,7 @@ func (m *mailbox) rawMessage(detail apiclient.MessageDetail) string {
 // STORE -FLAGS \Flagged leave a starred message still flagged on the next
 // SELECT; mirroring the flag onto both columns means what you STORE is what
 // you FETCH back.
-func (m *mailbox) Store(uid uint32, f imapsrv.FlagUpdate) error {
+func (m *mailbox) Store(uid uint32, f goimap.FlagUpdate) error {
 	updates := apiclient.MessageUpdate{IsRead: f.Seen, IsFlagged: f.Flagged, IsStarred: f.Flagged, IsDraft: f.Draft}
 	if f.Seen == nil && f.Flagged == nil && f.Draft == nil {
 		return nil
@@ -329,7 +329,7 @@ func (m *mailbox) CopyUID(uid uint32, dest string) (uint32, error) {
 
 // Append delivers raw RFC 2822 bytes into dest (base Mailbox.Append). It delegates
 // to AppendUID and discards the reported UID, so the two paths never diverge.
-func (m *mailbox) Append(dest string, f imapsrv.FlagUpdate, raw []byte) error {
+func (m *mailbox) Append(dest string, f goimap.FlagUpdate, raw []byte) error {
 	_, err := m.AppendUID(dest, f, raw)
 	return err
 }
@@ -344,7 +344,7 @@ func (m *mailbox) Append(dest string, f imapsrv.FlagUpdate, raw []byte) error {
 // step. A delivery that produces no message (pipeline quarantine/discard, or an
 // out-of-range UID) is surfaced as an error rather than reported as a bogus
 // success carrying UID 0.
-func (m *mailbox) AppendUID(dest string, f imapsrv.FlagUpdate, raw []byte) (uint32, error) {
+func (m *mailbox) AppendUID(dest string, f goimap.FlagUpdate, raw []byte) (uint32, error) {
 	if err := validateFolder(dest); err != nil {
 		return 0, err
 	}

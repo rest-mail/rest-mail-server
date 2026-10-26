@@ -5,7 +5,7 @@ import (
 	"math"
 	"testing"
 
-	imapsrv "github.com/rest-mail/go-imap"
+	goimap "github.com/rest-mail/go-imap/pkg/imap"
 
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 )
@@ -61,7 +61,7 @@ func TestAppendUID_NormalizesBareLFToCRLF(t *testing.T) {
 	m := newUnitMailbox(t, api)
 
 	raw := "Subject: Hi\nFrom: a@b.test\n\nline one\n.\nline three\n"
-	if _, err := m.AppendUID("INBOX", imapsrv.FlagUpdate{}, []byte(raw)); err != nil {
+	if _, err := m.AppendUID("INBOX", goimap.FlagUpdate{}, []byte(raw)); err != nil {
 		t.Fatalf("AppendUID: %v", err)
 	}
 

@@ -15,7 +15,8 @@ import (
 	"testing"
 	"time"
 
-	imapsrv "github.com/rest-mail/go-imap"
+	goimap "github.com/rest-mail/go-imap/pkg/imap"
+	imapserver "github.com/rest-mail/go-imap/pkg/imap/server"
 
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 )
@@ -359,7 +360,7 @@ func TestAppendUID_ReturnsDeliveredUID(t *testing.T) {
 	api.nextID = 4242 // the ID (== UID) this delivery will be assigned
 	m := newUnitMailbox(t, api)
 
-	uid, err := m.AppendUID("INBOX", imapsrv.FlagUpdate{}, []byte("Subject: Hi\r\n\r\nbody\r\n"))
+	uid, err := m.AppendUID("INBOX", goimap.FlagUpdate{}, []byte("Subject: Hi\r\n\r\nbody\r\n"))
 	if err != nil {
 		t.Fatalf("AppendUID: %v", err)
 	}
@@ -445,7 +446,7 @@ func TestBaseMethods_DelegateToUIDForms(t *testing.T) {
 	api.nextID = 600
 	m := newUnitMailbox(t, api)
 
-	if err := m.Append("INBOX", imapsrv.FlagUpdate{}, []byte("Subject: A\r\n\r\na\r\n")); err != nil {
+	if err := m.Append("INBOX", goimap.FlagUpdate{}, []byte("Subject: A\r\n\r\na\r\n")); err != nil {
 		t.Fatalf("Append: %v", err)
 	}
 	if !api.exists(600) {
@@ -472,9 +473,9 @@ func TestBaseMethods_DelegateToUIDForms(t *testing.T) {
 	}
 }
 
-// ── End-to-end transcript over a real imapsrv.Session ──────────────────────
+// ── End-to-end transcript over a real imapserver.Session ──────────────────────
 
-// transcript drives a real imapsrv.Session over net.Pipe against the rest-mail
+// transcript drives a real imapserver.Session over net.Pipe against the rest-mail
 // Backend, so the wire-level UIDPLUS / MOVE behaviour (capabilities, APPENDUID /
 // COPYUID response codes, UID EXPUNGE) is exercised through the actual server.
 type transcript struct {
@@ -485,10 +486,10 @@ type transcript struct {
 	done chan struct{}
 }
 
-func newTranscript(t *testing.T, backend imapsrv.Backend) *transcript {
+func newTranscript(t *testing.T, backend goimap.Backend) *transcript {
 	t.Helper()
 	client, server := net.Pipe()
-	sess := imapsrv.NewSession(server, backend, "imap.test", nil, imapsrv.NopLimiter{})
+	sess := imapserver.NewSession(server, backend, "imap.test", nil, goimap.NopLimiter{})
 
 	done := make(chan struct{})
 	go func() {

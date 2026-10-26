@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	dkim "github.com/rest-mail/go-dkim"
+	dkim "github.com/rest-mail/go-dkim/pkg/dkim"
 )
 
 // pkcs8PEM encodes key as a PEM "PRIVATE KEY" block, the form openssl genpkey

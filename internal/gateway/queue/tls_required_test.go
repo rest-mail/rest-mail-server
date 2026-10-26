@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rest-mail/go-mtasts"
+	"github.com/rest-mail/go-mtasts/pkg/mtasts"
 )
 
 // A message that carries "TLS-Required: No" applies no MTA-STS policy, and

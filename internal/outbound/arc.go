@@ -8,7 +8,7 @@ import (
 	"log/slog"
 	"time"
 
-	arc "github.com/rest-mail/go-arc"
+	arc "github.com/rest-mail/go-arc/pkg/arc"
 	"gorm.io/gorm"
 )
 
