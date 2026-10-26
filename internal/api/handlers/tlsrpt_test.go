@@ -142,9 +142,10 @@ func reportWith(t *testing.T, change func(map[string]any)) []byte {
 // TestReceiveReport_Refused exercises the report type's rules through the route:
 // required fields, date parsing, the non-empty rule, the shape of failure-details
 // and — the write-amplification guard — the policy count cap at its exact boundary.
-// The handler has no database; a report that passes is answered no_matching_domains.
+// A fresh scratch database permits the atomic ingestion transaction. Reports
+// without policy domains still answer no_matching_domains without storing rows.
 func TestReceiveReport_Refused(t *testing.T) {
-	h := NewTLSReportHandler(nil)
+	h := NewTLSReportHandler(openAliasUpdateScratchDB(t))
 	post := func(body []byte) *httptest.ResponseRecorder {
 		rr := httptest.NewRecorder()
 		callReceive(t, h, rr, httptest.NewRequest(http.MethodPost, "/.well-known/smtp-tlsrpt", bytes.NewReader(body)))
