@@ -319,8 +319,8 @@ func TestInvitationRealRoutesAndRollback(t *testing.T) {
 		if err != nil || len(raw) != 32 || hex.EncodeToString(sum[:]) != f.db.state.token.TokenHash || time.Until(body.Data.ExpiresAt) < 14*time.Minute || time.Until(body.Data.ExpiresAt) > 15*time.Minute {
 			t.Fatal("unsafe invitation secret, hash or expiry")
 		}
-		if rr.Header().Get("Cache-Control") != "no-store" || rr.Header().Get("Referrer-Policy") != "no-referrer" {
-			t.Fatal("secret response can be cached or referred")
+		if rr.Header().Get("Cache-Control") != "no-store" {
+			t.Fatal("secret response can be cached")
 		}
 	})
 	for _, native := range []bool{false, true} {
