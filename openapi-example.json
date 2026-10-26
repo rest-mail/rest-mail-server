@@ -64105,5 +64105,771 @@
         }
       }
     }
+  },
+  "resetTestData": {
+    "complete": {
+      "description": "Complete transaction through the registered router; controlled SQL asserts fixture selectors, cleanup targets, context, commit/rollback and password credential shape. PostgreSQL persistence is covered separately in an isolated scratch database.",
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "status": "reset_complete"
+          }
+        }
+      }
+    },
+    "admin": {
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "status": "reset_complete"
+          }
+        }
+      }
+    },
+    "non_admin": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "domain_scope": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "mailbox_scope": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "wrong_domain": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_admin": {
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "status": "reset_complete"
+          }
+        }
+      }
+    },
+    "key_domain_read": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_domain": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_mailbox": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_wrong_domain": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_holder_missing": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "permission_store_unavailable": {
+      "request": {},
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
+          }
+        }
+      }
+    },
+    "unauthenticated": {
+      "request": {},
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "session_unavailable": {
+      "request": {},
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        }
+      }
+    },
+    "cookie_session": {
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "status": "reset_complete"
+          }
+        }
+      }
+    },
+    "csrf_missing": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "csrf_mismatch": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "request_too_large": {
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        }
+      }
+    },
+    "seed_created": {
+      "description": "Fresh fixture rows receive hashed password credentials; repeated seed leaves existing credentials alone.",
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "status": "reset_complete"
+          }
+        }
+      }
+    },
+    "lookup_domains": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "lookup_mailboxes": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "lookup_quota_usage": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "lookup_aliases": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "insert_domains": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "insert_mailboxes": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "insert_quota_usage": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "insert_aliases": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "credential_failure": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "commit_failure": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "cancelled": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "clear_failure": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "missing_table": {
+      "description": "An absent optional table recovers its PostgreSQL savepoint, then completes the remaining reset transaction.",
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "status": "reset_complete"
+          }
+        }
+      }
+    }
+  },
+  "seedTestData": {
+    "complete": {
+      "description": "Complete transaction through the registered router; controlled SQL asserts fixture selectors, cleanup targets, context, commit/rollback and password credential shape. PostgreSQL persistence is covered separately in an isolated scratch database.",
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "status": "seed_complete"
+          }
+        }
+      }
+    },
+    "admin": {
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "status": "seed_complete"
+          }
+        }
+      }
+    },
+    "non_admin": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "domain_scope": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "mailbox_scope": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "wrong_domain": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_admin": {
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "status": "seed_complete"
+          }
+        }
+      }
+    },
+    "key_domain_read": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_domain": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_mailbox": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_wrong_domain": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "key_holder_missing": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        }
+      }
+    },
+    "permission_store_unavailable": {
+      "request": {},
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify permissions"
+          }
+        }
+      }
+    },
+    "unauthenticated": {
+      "request": {},
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "session_unavailable": {
+      "request": {},
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        }
+      }
+    },
+    "cookie_session": {
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "status": "seed_complete"
+          }
+        }
+      }
+    },
+    "csrf_missing": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "csrf_mismatch": {
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "request_too_large": {
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        }
+      }
+    },
+    "seed_created": {
+      "description": "Fresh fixture rows receive hashed password credentials; repeated seed leaves existing credentials alone.",
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "status": "seed_complete"
+          }
+        }
+      }
+    },
+    "lookup_domains": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "lookup_mailboxes": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "lookup_quota_usage": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "lookup_aliases": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "insert_domains": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "insert_mailboxes": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "insert_quota_usage": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "insert_aliases": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "credential_failure": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "commit_failure": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "cancelled": {
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    }
   }
 }

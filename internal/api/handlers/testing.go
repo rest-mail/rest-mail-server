@@ -231,37 +231,31 @@ func (h *TestHandler) probeServices(r *http.Request, req probeServicesRequest) (
 
 // resetTestData wipes all data and re-seeds with default test data.
 // POST /api/v1/admin/test/reset
-func (h *TestHandler) resetTestData(_ *http.Request, _ endpoint.Empty) (TestDataStatus, error) {
+func (h *TestHandler) resetTestData(r *http.Request, _ endpoint.Empty) (TestDataStatus, error) {
 	if h.productionLocked() {
 		return TestDataStatus{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "test endpoints disabled in production")
 	}
-
 	slog.Warn("test: resetting all data")
-
-	err := h.db.Transaction(clearTestData)
-	if err != nil {
-		return TestDataStatus{}, endpoint.Refuse(http.StatusInternalServerError, "internal", "failed to reset data: "+err.Error())
+	if err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
+		if err := clearTestData(tx); err != nil {
+			return err
+		}
+		return seedTestData(tx)
+	}); err != nil {
+		return TestDataStatus{}, fmt.Errorf("reset test data: %w", err)
 	}
-
-	// Re-seed
-	if err := seedTestData(h.db); err != nil {
-		return TestDataStatus{}, endpoint.Refuse(http.StatusInternalServerError, "internal", "failed to seed data: "+err.Error())
-	}
-
 	return TestDataStatus{Status: "reset_complete"}, nil
 }
 
 // seedTestData creates default test domains, mailboxes, aliases, and accounts.
 // POST /api/v1/admin/test/seed
-func (h *TestHandler) seedTestData(_ *http.Request, _ endpoint.Empty) (TestDataStatus, error) {
+func (h *TestHandler) seedTestData(r *http.Request, _ endpoint.Empty) (TestDataStatus, error) {
 	if h.productionLocked() {
 		return TestDataStatus{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "test endpoints disabled in production")
 	}
-
-	if err := seedTestData(h.db); err != nil {
-		return TestDataStatus{}, endpoint.Refuse(http.StatusInternalServerError, "internal", "failed to seed data: "+err.Error())
+	if err := h.db.WithContext(r.Context()).Transaction(seedTestData); err != nil {
+		return TestDataStatus{}, fmt.Errorf("seed test data: %w", err)
 	}
-
 	return TestDataStatus{Status: "seed_complete"}, nil
 }
 
@@ -396,23 +390,37 @@ const testDataAdmins = `(SELECT holder_id FROM grants WHERE holder_kind = 'accou
 // fixtures make.
 func clearTestData(tx *gorm.DB) error {
 	stmts := []string{
-		"DELETE FROM attachments", "DELETE FROM messages", "DELETE FROM outbound_queue",
-		"DELETE FROM quarantines", "DELETE FROM vacation_configs", "DELETE FROM vacation_responses",
-		"DELETE FROM contacts", "DELETE FROM sieve_scripts", "DELETE FROM quota_usages",
+		"DELETE FROM attachments", "DELETE FROM outbound_queue", "DELETE FROM messages",
+		"DELETE FROM quarantine", "DELETE FROM vacation_configs", "DELETE FROM vacation_responses",
+		"DELETE FROM contacts", "DELETE FROM sieve_scripts", "DELETE FROM quota_usage",
 		"DELETE FROM credentials WHERE account_id NOT IN " + testDataAdmins,
 		"DELETE FROM grants WHERE scope LIKE 'mailbox:%' OR holder_id NOT IN " + testDataAdmins,
 		"DELETE FROM aliases", "DELETE FROM message_traces",
 		"DELETE FROM custom_filters", "DELETE FROM bans",
 		"DELETE FROM restmail_capabilities", "DELETE FROM certificates",
-		"DELETE FROM sender_rules", "DELETE FROM greylist_entries",
+		"DELETE FROM domain_sender_rules", "DELETE FROM greylist_entries",
 		"DELETE FROM mailboxes WHERE id NOT IN " + testDataAdmins,
 		"DELETE FROM pipelines WHERE domain_id NOT IN (SELECT domain_id FROM mailboxes)",
 		"DELETE FROM domains WHERE id NOT IN (SELECT domain_id FROM mailboxes)",
 	}
-	for _, stmt := range stmts {
+	for i, stmt := range stmts {
+		// A missing optional table aborts a PostgreSQL transaction until its
+		// savepoint is rolled back. Other failures must abort the whole reset.
+		savepoint := fmt.Sprintf("clear_test_data_%d", i)
+		if err := tx.SavePoint(savepoint).Error; err != nil {
+			return fmt.Errorf("start test-data clear savepoint: %w", err)
+		}
 		if err := tx.Exec(stmt).Error; err != nil {
-			// Ignore errors for tables that may not exist
-			slog.Debug("test: clear table", "statement", stmt, "error", err)
+			if recoveryErr := tx.RollbackTo(savepoint).Error; recoveryErr != nil {
+				return fmt.Errorf("recover test-data clear: %w", recoveryErr)
+			}
+			var state interface{ SQLState() string }
+			if !errors.As(err, &state) || state.SQLState() != "42P01" {
+				return fmt.Errorf("clear test data: %w", err)
+			}
+		}
+		if err := tx.Exec("RELEASE SAVEPOINT " + savepoint).Error; err != nil {
+			return fmt.Errorf("release test-data clear savepoint: %w", err)
 		}
 	}
 	return nil
@@ -498,7 +506,9 @@ func seedTestData(database *gorm.DB) error {
 		{Name: "restmail.test", ServerType: "restmail", Active: true, DefaultQuotaBytes: 1073741824},
 	}
 	for i := range domains {
-		database.Where("name = ?", domains[i].Name).FirstOrCreate(&domains[i])
+		if err := database.Where("name = ?", domains[i].Name).FirstOrCreate(&domains[i]).Error; err != nil {
+			return fmt.Errorf("seed domain: %w", err)
+		}
 	}
 
 	mailboxes := []models.Mailbox{
@@ -515,8 +525,13 @@ func seedTestData(database *gorm.DB) error {
 	creds := repositories.NewCredentialRepository(database)
 	for i := range mailboxes {
 		res := database.Where("address = ?", mailboxes[i].Address).FirstOrCreate(&mailboxes[i])
-		database.Where("mailbox_id = ?", mailboxes[i].ID).FirstOrCreate(&models.QuotaUsage{MailboxID: mailboxes[i].ID})
-		if res.Error == nil && res.RowsAffected > 0 {
+		if res.Error != nil {
+			return fmt.Errorf("seed mailbox: %w", res.Error)
+		}
+		if err := database.Where("mailbox_id = ?", mailboxes[i].ID).FirstOrCreate(&models.QuotaUsage{MailboxID: mailboxes[i].ID}).Error; err != nil {
+			return fmt.Errorf("seed quota: %w", err)
+		}
+		if res.RowsAffected > 0 {
 			if _, err := creds.SetPassword(mailboxes[i].ID, defaultPassword, nil, time.Now()); err != nil {
 				return err
 			}
@@ -530,7 +545,9 @@ func seedTestData(database *gorm.DB) error {
 		{DomainID: domains[2].ID, SourceAddress: "admin@restmail.test", DestinationAddress: "eve@restmail.test", Active: true},
 	}
 	for i := range aliases {
-		database.Where("source_address = ? AND destination_address = ?", aliases[i].SourceAddress, aliases[i].DestinationAddress).FirstOrCreate(&aliases[i])
+		if err := database.Where("source_address = ? AND destination_address = ?", aliases[i].SourceAddress, aliases[i].DestinationAddress).FirstOrCreate(&aliases[i]).Error; err != nil {
+			return fmt.Errorf("seed alias: %w", err)
+		}
 	}
 
 	return nil

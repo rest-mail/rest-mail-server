@@ -10109,7 +10109,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/StatusResponse"
         "403":
-          description: Disabled in production
+          description: Wildcard capability or cookie CSRF is missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/v1/admin/test/seed:
     post:
@@ -10128,7 +10132,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/StatusResponse"
         "403":
-          description: Disabled in production
+          description: Wildcard capability or cookie CSRF is missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/v1/admin/test/snapshot:
     post:
