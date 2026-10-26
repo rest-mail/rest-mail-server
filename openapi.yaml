@@ -6354,10 +6354,9 @@ paths:
         content:
           application/json:
             schema:
-              type: object
+              type: ["null", "object"]
               properties:
                 email:
-                  type: object
                   description: >-
                     Optional sample email. When omitted a minimal built-in sample
                     is used.
@@ -6380,7 +6379,14 @@ paths:
             application/json:
               schema:
                 type: object
-                additionalProperties: true
+                additionalProperties: false
+                required: [result, logs]
+                properties:
+                  result: {}
+                  logs:
+                    type: array
+                    items:
+                      type: string
               examples:
                 # The contract run's filter, which lets every email through.
                 valid:
@@ -6399,8 +6405,7 @@ paths:
             contains no script
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+              schema: {}
               examples:
                 # Refused while the body is decoded, before the filter is
                 # looked up.
@@ -6411,6 +6416,39 @@ paths:
                       message: Invalid request body
         "404":
           $ref: "#/components/responses/NotFound"
+        "408":
+          description: The sidecar's execution timeout
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [error]
+                properties:
+                  error:
+                    type: string
+        "413":
+          description: API body limit or the sidecar's bare limit error
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: Request body or path failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+        "429":
+          description: Pipeline preview rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: API internal error or the sidecar's bare worker failure
+          content:
+            application/json:
+              schema: {}
         "503":
           description: >-
             JS filter sidecar unavailable, or it refused the API's token

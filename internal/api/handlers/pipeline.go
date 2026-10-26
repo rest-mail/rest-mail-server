@@ -688,8 +688,11 @@ func (h *PipelineHandler) testCustomFilter(r *http.Request, in testCustomFilterR
 	}
 
 	var cf models.CustomFilter
-	if err := h.db.First(&cf, id).Error; err != nil {
-		return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "Custom filter not found")
+	if err := h.db.WithContext(r.Context()).First(&cf, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "Custom filter not found")
+		}
+		return zero, fmt.Errorf("load custom filter for execution: %w", err)
 	}
 
 	// Parse config to extract the script
@@ -718,7 +721,10 @@ func (h *PipelineHandler) testCustomFilter(r *http.Request, in testCustomFilterR
 		return zero, endpoint.Refuse(http.StatusServiceUnavailable, "service_unavailable", jsSidecarRefused)
 	}
 
-	respBody, _ := io.ReadAll(sidecarResp.Body)
+	respBody, err := io.ReadAll(sidecarResp.Body)
+	if err != nil || !json.Valid(respBody) {
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Invalid sidecar response")
+	}
 
 	return endpoint.Forwarded[ScriptExecution]{Status: sidecarResp.StatusCode, Body: respBody}, nil
 }
