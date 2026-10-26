@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -153,22 +154,22 @@ func (h *SieveHandler) put(r *http.Request, in putSieveRequest) (endpoint.Status
 	// Record the "validated at install" marker: the sha256 hex of the exact stored
 	// bytes and the validation time. The delivery path re-verifies this hash before
 	// trusting the script (see filters.newSieveFilter).
-	now := time.Now()
+	now := h.db.NowFunc()
 	scriptHash := filters.HashSieveScript(*req.Script)
 
 	// Upsert
 	var script models.SieveScript
-	result := h.db.Where("mailbox_id = ?", mailboxID).First(&script)
+	result := h.db.WithContext(r.Context()).Where("mailbox_id = ?", mailboxID).First(&script)
 	if result.Error != nil {
-		// Create new
-		script = models.SieveScript{
-			MailboxID:   mailboxID,
-			Script:      *req.Script,
-			ScriptHash:  scriptHash,
-			ValidatedAt: &now,
-			Active:      active,
+		if !errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return endpoint.Status[SieveScript]{}, fmt.Errorf("look up Sieve script: %w", result.Error)
 		}
-		if err := h.db.Create(&script).Error; err != nil {
+		// Bind active explicitly: the model's default:true otherwise replaces an
+		// intentional false during GORM struct creation. Return the stored row.
+		if err := h.db.WithContext(r.Context()).Raw(`INSERT INTO "sieve_scripts"
+("mailbox_id", "script", "script_hash", "validated_at", "active", "created_at", "updated_at") VALUES (?, ?, ?, ?, ?, ?, ?)
+RETURNING "id", "mailbox_id", "script", "script_hash", "validated_at", "active", "created_at", "updated_at"`,
+			mailboxID, *req.Script, scriptHash, now, active, now, now).Scan(&script).Error; err != nil {
 			return endpoint.Status[SieveScript]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to create script")
 		}
 		return endpoint.Status[SieveScript]{Code: http.StatusCreated, Value: sieveScriptOf(script)}, nil
@@ -179,7 +180,7 @@ func (h *SieveHandler) put(r *http.Request, in putSieveRequest) (endpoint.Status
 	script.ScriptHash = scriptHash
 	script.ValidatedAt = &now
 	script.Active = active
-	if err := h.db.Save(&script).Error; err != nil {
+	if err := h.db.WithContext(r.Context()).Save(&script).Error; err != nil {
 		return endpoint.Status[SieveScript]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to update script")
 	}
 
@@ -194,7 +195,9 @@ func (h *SieveHandler) delete(r *http.Request, in accountPath) (SieveDeleted, er
 		return SieveDeleted{}, err
 	}
 
-	h.db.Where("mailbox_id = ?", mailboxID).Delete(&models.SieveScript{})
+	if err := h.db.WithContext(r.Context()).Where("mailbox_id = ?", mailboxID).Delete(&models.SieveScript{}).Error; err != nil {
+		return SieveDeleted{}, fmt.Errorf("delete Sieve script: %w", err)
+	}
 	return SieveDeleted{Status: "deleted"}, nil
 }
 

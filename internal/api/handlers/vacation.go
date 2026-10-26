@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -157,9 +158,12 @@ func (h *VacationHandler) set(r *http.Request, in setVacationRequest) (vacationS
 	}
 
 	var config models.VacationConfig
-	result := h.db.Where("mailbox_id = ?", mailboxID).First(&config)
+	result := h.db.WithContext(r.Context()).Where("mailbox_id = ?", mailboxID).First(&config)
 
 	if result.Error != nil {
+		if !errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return vacationSetting{}, fmt.Errorf("look up vacation config: %w", result.Error)
+		}
 		// Create new config.
 		config = models.VacationConfig{
 			MailboxID: mailboxID,
@@ -169,7 +173,7 @@ func (h *VacationHandler) set(r *http.Request, in setVacationRequest) (vacationS
 			StartDate: req.StartDate,
 			EndDate:   req.EndDate,
 		}
-		if err := h.db.Create(&config).Error; err != nil {
+		if err := h.db.WithContext(r.Context()).Create(&config).Error; err != nil {
 			return vacationSetting{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to create vacation config")
 		}
 	} else {
@@ -181,7 +185,7 @@ func (h *VacationHandler) set(r *http.Request, in setVacationRequest) (vacationS
 			"start_date": req.StartDate,
 			"end_date":   req.EndDate,
 		}
-		if err := h.db.Model(&config).Updates(updates).Error; err != nil {
+		if err := h.db.WithContext(r.Context()).Model(&config).Updates(updates).Error; err != nil {
 			return vacationSetting{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to update vacation config")
 		}
 	}
@@ -198,12 +202,15 @@ func (h *VacationHandler) disable(r *http.Request, in accountPath) (endpoint.Emp
 	}
 
 	var config models.VacationConfig
-	if err := h.db.Where("mailbox_id = ?", mailboxID).First(&config).Error; err != nil {
-		// Nothing to disable; return success.
-		return endpoint.Empty{}, nil
+	if err := h.db.WithContext(r.Context()).Where("mailbox_id = ?", mailboxID).First(&config).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// Nothing to disable; return success.
+			return endpoint.Empty{}, nil
+		}
+		return endpoint.Empty{}, fmt.Errorf("look up vacation config to disable: %w", err)
 	}
 
-	if err := h.db.Model(&config).Update("enabled", false).Error; err != nil {
+	if err := h.db.WithContext(r.Context()).Model(&config).Update("enabled", false).Error; err != nil {
 		return endpoint.Empty{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to disable vacation config")
 	}
 
