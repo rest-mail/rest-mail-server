@@ -63,6 +63,15 @@ def pace_auth_requests(transaction):
     time.sleep(1.1)
 
 
+@hooks.before("testPipeline")
+@hooks.before("testFilter")
+@hooks.before("testCustomFilter")
+def pace_pipeline_previews(transaction):
+    # Pipeline previews share a 2 requests/second bucket in the E2E topology.
+    # Pace every probe without changing its body, credential or expected reply.
+    time.sleep(0.55)
+
+
 def admin_token(origin):
     """Sign in for fixture setup without changing the transaction's principal.
 
