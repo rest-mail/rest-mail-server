@@ -11,7 +11,9 @@ import (
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/db/repositories"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type ContactHandler struct {
@@ -216,8 +218,11 @@ func (h *ContactHandler) create(r *http.Request, in createContactRequest) (Conta
 		Source:     "manual",
 	}
 
-	if err := h.db.Create(&contact).Error; err != nil {
-		return Contact{}, endpoint.Refuse(http.StatusConflict, "already_exists", "Contact already exists")
+	if err := h.db.WithContext(r.Context()).Create(&contact).Error; err != nil {
+		if repositories.IsUniqueViolation(err) {
+			return Contact{}, endpoint.Refuse(http.StatusConflict, "already_exists", "Contact already exists")
+		}
+		return Contact{}, fmt.Errorf("create contact: %w", err)
 	}
 
 	return contactOf(contact), nil
@@ -244,8 +249,11 @@ func (h *ContactHandler) update(r *http.Request, in updateContactRequest) (Conta
 	}
 
 	var contact models.Contact
-	if err := h.db.Where("id = ? AND mailbox_id = ?", in.CID, mailboxID).First(&contact).Error; err != nil {
-		return Contact{}, errContactNotFound
+	if err := h.db.WithContext(r.Context()).Where("id = ? AND mailbox_id = ?", in.CID, mailboxID).First(&contact).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return Contact{}, errContactNotFound
+		}
+		return Contact{}, fmt.Errorf("find contact for update: %w", err)
 	}
 
 	req := in.Body
@@ -258,12 +266,17 @@ func (h *ContactHandler) update(r *http.Request, in updateContactRequest) (Conta
 	}
 
 	if len(updates) > 0 {
-		if err := h.db.Model(&contact).Updates(updates).Error; err != nil {
+		if err := h.db.WithContext(r.Context()).Model(&contact).Updates(updates).Error; err != nil {
 			return Contact{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to update contact")
 		}
 	}
 
-	h.db.Where("id = ? AND mailbox_id = ?", in.CID, mailboxID).First(&contact)
+	if err := h.db.WithContext(r.Context()).Where("id = ? AND mailbox_id = ?", in.CID, mailboxID).First(&contact).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return Contact{}, errContactNotFound
+		}
+		return Contact{}, fmt.Errorf("reload updated contact: %w", err)
+	}
 	return contactOf(contact), nil
 }
 
@@ -313,16 +326,23 @@ func (h *ContactHandler) block(r *http.Request, in blockSenderRequest) (endpoint
 	}
 
 	var contact models.Contact
-	result := h.db.Where("mailbox_id = ? AND email = ?", mailboxID, email).First(&contact)
+	result := h.db.WithContext(r.Context()).Where("mailbox_id = ? AND email = ?", mailboxID, email).First(&contact)
 
 	if result.Error == nil {
 		// Contact exists, update to blocked
-		h.db.Model(&contact).Updates(map[string]interface{}{
+		if err := h.db.WithContext(r.Context()).Model(&contact).Updates(map[string]interface{}{
 			"trust_level": "blocked",
 			"source":      "manual",
-		})
-		h.db.First(&contact, contact.ID)
+		}).Error; err != nil {
+			return endpoint.Status[Contact]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to block sender")
+		}
+		if err := h.db.WithContext(r.Context()).Where("id = ? AND mailbox_id = ?", contact.ID, mailboxID).First(&contact).Error; err != nil {
+			return endpoint.Status[Contact]{}, fmt.Errorf("reload blocked contact: %w", err)
+		}
 		return endpoint.Status[Contact]{Code: http.StatusOK, Value: contactOf(contact)}, nil
+	}
+	if !errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		return endpoint.Status[Contact]{}, fmt.Errorf("find contact to block: %w", result.Error)
 	}
 
 	// Contact does not exist, create as blocked
@@ -333,7 +353,7 @@ func (h *ContactHandler) block(r *http.Request, in blockSenderRequest) (endpoint
 		Source:     "manual",
 	}
 
-	if err := h.db.Create(&contact).Error; err != nil {
+	if err := h.db.WithContext(r.Context()).Create(&contact).Error; err != nil {
 		return endpoint.Status[Contact]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to block sender")
 	}
 
@@ -359,11 +379,13 @@ func (h *ContactHandler) suggest(r *http.Request, in suggestContactsRequest) (en
 
 	var contacts []models.Contact
 	escaped := "%" + escapeLike(in.Q) + "%"
-	h.db.Where("mailbox_id = ? AND (email LIKE ? ESCAPE '\\' OR name LIKE ? ESCAPE '\\') AND trust_level != ?",
+	if err := h.db.WithContext(r.Context()).Where("mailbox_id = ? AND (email LIKE ? ESCAPE '\\' OR name LIKE ? ESCAPE '\\') AND trust_level != ?",
 		mailboxID, escaped, escaped, "blocked").
 		Order("name ASC, email ASC").
 		Limit(10).
-		Find(&contacts)
+		Find(&contacts).Error; err != nil {
+		return endpoint.List[Contact]{}, fmt.Errorf("suggest contacts: %w", err)
+	}
 
 	return endpoint.List[Contact]{Data: contactsOf(contacts)}, nil
 }
@@ -411,20 +433,30 @@ func (h *ContactHandler) importContacts(r *http.Request, in importContactsReques
 	}
 
 	imported := 0
-	for _, entry := range entries {
-		contact := models.Contact{
-			MailboxID:  mailboxID,
-			Email:      entry.Email,
-			Name:       entry.Name,
-			TrustLevel: "auto",
-			Source:     "import",
+	if err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
+		for _, entry := range entries {
+			contact := models.Contact{
+				MailboxID:  mailboxID,
+				Email:      entry.Email,
+				Name:       entry.Name,
+				TrustLevel: "auto",
+				Source:     "import",
+			}
+			// A duplicate must not abort PostgreSQL's batch transaction. Other
+			// failures roll back the whole batch rather than reporting a partial
+			// import as a success.
+			result := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "mailbox_id"}, {Name: "email"}},
+				DoNothing: true,
+			}).Create(&contact)
+			if result.Error != nil {
+				return fmt.Errorf("import contact: %w", result.Error)
+			}
+			imported += int(result.RowsAffected)
 		}
-
-		if err := h.db.Create(&contact).Error; err != nil {
-			// Skip duplicates, continue importing
-			continue
-		}
-		imported++
+		return nil
+	}); err != nil {
+		return ContactsImported{}, err
 	}
 
 	return ContactsImported{Imported: imported}, nil
