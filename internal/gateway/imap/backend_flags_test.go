@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	imapsrv "github.com/rest-mail/go-imap"
+	goimap "github.com/rest-mail/go-imap/pkg/imap"
 
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 )
@@ -74,7 +74,7 @@ func newFlagMockMailbox(t *testing.T, st *flagState) *mailbox {
 
 // fetchFlags SELECTs the folder and returns the single message's neutral flags
 // as the IMAP engine would see them.
-func fetchFlags(t *testing.T, m *mailbox) imapsrv.Message {
+func fetchFlags(t *testing.T, m *mailbox) goimap.Message {
 	t.Helper()
 	msgs, err := m.Messages("INBOX")
 	if err != nil {
@@ -100,7 +100,7 @@ func TestStore_FlaggedClearIsSymmetric(t *testing.T) {
 	}
 
 	// STORE -FLAGS \Flagged
-	if err := m.Store(1, imapsrv.FlagUpdate{Flagged: boolp(false)}); err != nil {
+	if err := m.Store(1, goimap.FlagUpdate{Flagged: boolp(false)}); err != nil {
 		t.Fatalf("Store: %v", err)
 	}
 
@@ -119,13 +119,13 @@ func TestStore_FlaggedSetThenClearRoundTrips(t *testing.T) {
 	if fetchFlags(t, m).Flagged {
 		t.Fatal("precondition: message starts un-flagged")
 	}
-	if err := m.Store(1, imapsrv.FlagUpdate{Flagged: boolp(true)}); err != nil {
+	if err := m.Store(1, goimap.FlagUpdate{Flagged: boolp(true)}); err != nil {
 		t.Fatalf("Store +Flagged: %v", err)
 	}
 	if !fetchFlags(t, m).Flagged {
 		t.Fatal("after STORE +FLAGS \\Flagged the message must FETCH as \\Flagged")
 	}
-	if err := m.Store(1, imapsrv.FlagUpdate{Flagged: boolp(false)}); err != nil {
+	if err := m.Store(1, goimap.FlagUpdate{Flagged: boolp(false)}); err != nil {
 		t.Fatalf("Store -Flagged: %v", err)
 	}
 	if fetchFlags(t, m).Flagged {

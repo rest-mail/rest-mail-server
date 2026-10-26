@@ -10,7 +10,8 @@ import (
 	"testing"
 	"time"
 
-	imapsrv "github.com/rest-mail/go-imap"
+	goimap "github.com/rest-mail/go-imap/pkg/imap"
+	imapserver "github.com/rest-mail/go-imap/pkg/imap/server"
 
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 )
@@ -34,7 +35,7 @@ func TestSpecialUseThroughTheSession(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	client, server := net.Pipe()
-	sess := imapsrv.NewSession(server, NewBackend(apiclient.New(srv.URL), nil), "imap.test", nil, imapsrv.NopLimiter{})
+	sess := imapserver.NewSession(server, NewBackend(apiclient.New(srv.URL), nil), "imap.test", nil, goimap.NopLimiter{})
 	done := make(chan struct{})
 	go func() {
 		defer close(done)

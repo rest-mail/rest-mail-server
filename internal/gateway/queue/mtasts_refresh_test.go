@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	mtasts "github.com/rest-mail/go-mtasts"
+	mtasts "github.com/rest-mail/go-mtasts/pkg/mtasts"
 )
 
 // A failed MTA-STS policy refresh is logged at WARN with the domain: delivery
