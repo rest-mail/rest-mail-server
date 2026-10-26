@@ -1253,18 +1253,9 @@
 
 # Non-production test endpoints (#652)
 
-- operation: resetTestData
-  difference: "response 403 application/json: generated only"
-  reason: "The shared admin middleware refuses setup, CSRF and capability failures with the JSON error envelope. The oracle only describes the production refusal without a body; production now omits these routes entirely."
 - operation: restoreTestSnapshot
   difference: "request body application/json.properties: openapi.yaml absent, generated *"
   reason: "Restore declares all seven model-derived table arrays, their model JSON fields and inert snapshot_at metadata. Sparse rows and omitted tables remain accepted; JSONB and raw JSON columns remain unconstrained JSON. The oracle describes only an open object."
-- operation: restoreTestSnapshot
-  difference: "response 403 application/json: generated only"
-  reason: "The shared admin middleware refuses setup, CSRF and capability failures with the JSON error envelope. The oracle only describes the production refusal without a body; production now omits these routes entirely."
-- operation: seedTestData
-  difference: "response 403 application/json: generated only"
-  reason: "The shared admin middleware refuses setup, CSRF and capability failures with the JSON error envelope. The oracle only describes the production refusal without a body; production now omits these routes entirely."
 - operation: sendTestEmail
   difference: "request body application/json.properties.from.format: openapi.yaml \"email\", generated absent"
   reason: "These endpoints have always used exact mailbox address lookup and required nonempty input, without email syntax validation. Preserve accepted requests rather than add an unimplemented format constraint."
@@ -1280,21 +1271,12 @@
 - operation: sendTestEmail
   difference: "response 201 application/json.properties.data.required: openapi.yaml absent, generated [\"from\",\"message_id\",\"msg_id\",\"subject\",\"to\"]"
   reason: "These fields are always written by the existing success response; the oracle leaves them optional."
-- operation: sendTestEmail
-  difference: "response 400: generated only"
-  reason: "Binding refuses a missing, malformed or non-object JSON body with 400 bad_request. The oracle omits this existing malformed-body response."
-- operation: sendTestEmail
-  difference: "response 403 application/json: generated only"
-  reason: "The shared admin middleware refuses setup, CSRF and capability failures with the JSON error envelope. The oracle only describes the production refusal without a body; production now omits these routes entirely."
 - operation: snapshotTestData
   difference: "response 200 application/json.properties.data.properties: openapi.yaml absent, generated *"
   reason: "Snapshot always returns seven table arrays and snapshot_at. Model-derived types include associations, nullable timestamps and raw JSON columns, preserving the existing model JSON without exposing fields tagged json:\"-\". The oracle leaves the whole payload open."
 - operation: snapshotTestData
   difference: "response 200 application/json.properties.data.required: openapi.yaml absent, generated [\"aliases\",\"bans\",\"domains\",\"mailboxes\",\"messages\",\"pipelines\",\"queue\",\"snapshot_at\"]"
   reason: "These fields are always written by the existing success response; the oracle leaves them optional."
-- operation: snapshotTestData
-  difference: "response 403 application/json: generated only"
-  reason: "The shared admin middleware refuses setup, CSRF and capability failures with the JSON error envelope. The oracle only describes the production refusal without a body; production now omits these routes entirely."
 - operation: verifyDelivery
   difference: "parameter query timeout schema.default: openapi.yaml \"5s\", generated absent"
   reason: "The handler retains the five-second timeout default and thirty-second cap. The generator does not describe defaults yet."
