@@ -48,10 +48,15 @@ type Alias struct {
 	DestinationAddress string    `json:"destination_address" format:"email"`
 	Active             bool      `json:"active"`
 	CreatedAt          time.Time `json:"created_at"`
-	Domain             Domain    `json:"domain,omitempty"`
+	Domain             *Domain   `json:"domain,omitempty"`
 }
 
 func aliasOf(m models.Alias) Alias {
+	var domain *Domain
+	if m.Domain.ID != 0 {
+		loaded := domainOf(m.Domain)
+		domain = &loaded
+	}
 	return Alias{
 		ID:                 m.ID,
 		DomainID:           m.DomainID,
@@ -59,7 +64,7 @@ func aliasOf(m models.Alias) Alias {
 		DestinationAddress: m.DestinationAddress,
 		Active:             m.Active,
 		CreatedAt:          m.CreatedAt,
-		Domain:             domainOf(m.Domain),
+		Domain:             domain,
 	}
 }
 

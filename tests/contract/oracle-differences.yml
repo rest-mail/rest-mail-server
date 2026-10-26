@@ -760,7 +760,7 @@
 - operation: getAlias
   difference: "response 200 application/json.properties.data.properties.domain: openapi.yaml absent, generated *"
   reason: >-
-    The handlers have always included the preloaded domain (a zero domain after creation or redaction). The API type preserves that JSON without the private DKIM key; the oracle omits the association.
+    The public API includes the loaded domain only when the session may read it. Redacted or unloaded domains are omitted, not serialized as invalid zero records; the oracle still omits this optional association.
 - operation: getMailbox
   difference: "response 200 application/json.properties.data.properties.domain: openapi.yaml absent, generated *"
   reason: >-
@@ -784,7 +784,7 @@
 - operation: listAliases
   difference: "response 200 application/json.properties.data.items.properties.domain: openapi.yaml absent, generated *"
   reason: >-
-    The handlers have always included the preloaded domain (a zero domain after creation or redaction). The API type preserves that JSON without the private DKIM key; the oracle omits the association.
+    The public API includes the loaded domain only when the session may read it. Redacted or unloaded domains are omitted, not serialized as invalid zero records; the oracle still omits this optional association.
 - operation: listAliases
   difference: "response 200 application/json.properties.pagination: openapi.yaml absent, generated *"
   reason: >-
@@ -828,7 +828,7 @@
 - operation: updateAlias
   difference: "response 200 application/json.properties.data.properties.domain: openapi.yaml absent, generated *"
   reason: >-
-    The handlers have always included the preloaded domain (a zero domain after creation or redaction). The API type preserves that JSON without the private DKIM key; the oracle omits the association.
+    The public API includes the loaded domain only when the session may read it. Redacted or unloaded domains are omitted, not serialized as invalid zero records; the oracle still omits this optional association.
 - operation: updateAlias
   difference: "response 400: generated only"
   reason: >-
