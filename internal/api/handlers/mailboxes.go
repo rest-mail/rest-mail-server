@@ -233,10 +233,13 @@ func (h *MailboxHandler) delete(r *http.Request, in adminAddressPath) (endpoint.
 func (h *MailboxHandler) endSessions(r *http.Request, in adminAddressPath) (endpoint.Empty, error) {
 	id := in.ID
 	var mailbox models.Mailbox
-	if err := h.db.Select("id").First(&mailbox, id).Error; err != nil {
-		return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "mailbox_not_found", "Mailbox not found")
+	if err := h.db.WithContext(r.Context()).Select("id").First(&mailbox, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "mailbox_not_found", "Mailbox not found")
+		}
+		return endpoint.Empty{}, fmt.Errorf("find mailbox for session ending: %w", err)
 	}
-	if err := h.db.Transaction(func(tx *gorm.DB) error { return endSessions(tx, mailbox.ID) }); err != nil {
+	if err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error { return endSessions(tx, mailbox.ID) }); err != nil {
 		return endpoint.Empty{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to end the sessions")
 	}
 	h.sessions.Forget(mailbox.ID)

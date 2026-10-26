@@ -136,7 +136,7 @@ func (h *MailboxHandler) Register(rs endpoint.Routes, checks MailboxRouteChecks)
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusForbidden}, Middleware: []endpoint.Middleware{checks.OnMailbox(middleware.CapMailboxesDel)}}, h.delete)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/admin/mailboxes/{id}/sessions",
 		OperationID: "endMailboxSessions", Summary: "Sign an account out everywhere", Tags: []string{"Admin: Mailboxes"}, Status: http.StatusNoContent,
-		Errors: []int{http.StatusNotFound}, Middleware: []endpoint.Middleware{checks.OnMailbox(middleware.CapMailboxesWrite)}}, h.endSessions)
+		Errors: []int{http.StatusNotFound, http.StatusTooManyRequests}, Middleware: []endpoint.Middleware{checks.OnMailbox(middleware.CapMailboxesWrite)}}, h.endSessions)
 }
 
 // Register mounts the five admin aliases operations with their request and response types.

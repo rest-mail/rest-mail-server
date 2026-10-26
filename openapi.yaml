@@ -4778,6 +4778,12 @@ paths:
           description: Every session of the account has ended
         "404":
           $ref: "#/components/responses/NotFound"
+        "429":
+          description: Authentication refusals exceeded the configured rate limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   # ═══════════════════════════════════════════════════════════════
   # Admin: Aliases
