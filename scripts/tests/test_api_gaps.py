@@ -1,6 +1,5 @@
 """Exercise issue lifecycle and GitHub writes without a live forge."""
 
-import copy
 import importlib.util
 import json
 import unittest
@@ -184,56 +183,26 @@ class APIWarningIssues(unittest.TestCase):
             any(method in ("POST", "PATCH") for method, _, _ in github.calls)
         )
 
-    def test_clean_area_opens_ready_single_file_strict_pr(self):
+    def test_clean_area_is_reported_without_opening_a_micro_pr(self):
         github = FakeGitHub()
-        gaps.strict_proposals(github, self.areas, {}, "a" * 40)
-        commits = [call for call in github.calls if call[0] == "PUT"]
-        self.assertEqual(len(commits), 1)
-        self.assertEqual(commits[0][1], "contents/internal/api/strict_areas/637.json")
-        self.assertIn("637", commits[0][2]["message"])
-        pr = next(
-            data
-            for method, path, data in github.calls
-            if method == "POST" and path == "pulls"
-        )
-        self.assertIs(pr["draft"], False)
-        self.assertEqual(pr["base"], "main")
+        pending = gaps.strict_proposals(github, self.areas, {}, "a" * 40)
+        self.assertEqual(pending, self.areas)
+        self.assertEqual(github.calls, [])
 
-    def test_two_clean_area_prs_do_not_overwrite_each_others_configuration(self):
-        import base64
-
+    def test_two_clean_areas_share_one_pending_activation_handoff(self):
         github = FakeGitHub()
-        gaps.strict_proposals(
-            github, {"637": ["getMail"], "638": ["sendMail"]}, {}, "a" * 40
-        )
-        commits = [call for call in github.calls if call[0] == "PUT"]
+        areas = {"637": ["getMail"], "638": ["sendMail"]}
+        self.assertEqual(gaps.strict_proposals(github, areas, {}, "a" * 40), areas)
+        self.assertEqual(github.calls, [])
+
+    def test_strict_area_does_not_need_another_activation(self):
+        github = FakeGitHub()
         self.assertEqual(
-            {call[1] for call in commits},
-            {
-                "contents/internal/api/strict_areas/637.json",
-                "contents/internal/api/strict_areas/638.json",
-            },
+            gaps.strict_proposals(github, self.areas, self.areas, "a" * 40), {}
         )
-        for _, _, values in commits:
-            self.assertEqual(len(json.loads(base64.b64decode(values["content"]))), 1)
+        self.assertEqual(github.calls, [])
 
-    def test_strict_or_already_proposed_area_does_not_open_another_pr(self):
-        github = FakeGitHub()
-        gaps.strict_proposals(github, self.areas, copy.deepcopy(self.areas), "a" * 40)
-        self.assertFalse(any(method != "GET" for method, _, _ in github.calls))
-        github = FakeGitHub()
-        github.pulls = [
-            {
-                "head": {
-                    "ref": "chore/api-strict-area-637",
-                    "repo": {"full_name": github.repo},
-                }
-            }
-        ]
-        gaps.strict_proposals(github, self.areas, {}, "a" * 40)
-        self.assertFalse(any(method != "GET" for method, _, _ in github.calls))
-
-    def test_interrupted_strict_branch_creation_resumes_without_rewriting_ref(self):
+    def test_interrupted_old_strict_branch_is_not_rewritten(self):
         github = FakeGitHub()
         github.refs = [
             {
@@ -241,55 +210,23 @@ class APIWarningIssues(unittest.TestCase):
                 "object": {"sha": "a" * 40},
             }
         ]
-        gaps.strict_proposals(github, self.areas, {}, "a" * 40)
-        self.assertFalse(
-            any(
-                method == "POST" and path == "git/refs"
-                for method, path, _ in github.calls
-            )
-        )
-        self.assertEqual(sum(method == "PUT" for method, _, _ in github.calls), 1)
         self.assertEqual(
-            sum(
-                method == "POST" and path == "pulls" for method, path, _ in github.calls
-            ),
-            1,
+            gaps.strict_proposals(github, self.areas, {}, "a" * 40), self.areas
         )
+        self.assertEqual(github.calls, [])
 
-    def test_interrupted_strict_commit_is_reused_for_the_ready_pr(self):
-        import base64
-
-        class CommittedGitHub(FakeGitHub):
-            def api(self, path, method="GET", data=None):
-                if path.startswith("compare/"):
-                    return {
-                        "files": [{"filename": "internal/api/strict_areas/637.json"}]
-                    }
-                if path.startswith("contents/") and method == "GET":
-                    return {
-                        "content": base64.b64encode(
-                            (json.dumps({"637": ["getMail"]}, indent=2) + "\n").encode()
-                        ).decode()
-                    }
-                return super().api(path, method, data)
-
-        github = CommittedGitHub()
+    def test_existing_old_strict_commit_is_left_for_consolidation(self):
+        github = FakeGitHub()
         github.refs = [
             {
                 "ref": "refs/heads/chore/api-strict-area-637-aaaaaaaaaaaa",
                 "object": {"sha": "c" * 40},
             }
         ]
-        gaps.strict_proposals(github, self.areas, {}, "a" * 40)
-        self.assertFalse(
-            any(method in ("PUT", "PATCH") for method, _, _ in github.calls)
-        )
         self.assertEqual(
-            sum(
-                method == "POST" and path == "pulls" for method, path, _ in github.calls
-            ),
-            1,
+            gaps.strict_proposals(github, self.areas, {}, "a" * 40), self.areas
         )
+        self.assertEqual(github.calls, [])
 
     def test_checked_in_area_map_assigns_each_operation_exactly_once(self):
         areas = json.loads(
