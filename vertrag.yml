@@ -51,6 +51,7 @@ auth:
     - '/api/v1/admin/audit/verify > Check the audit log''s hash chain > 401 > application/json'
     - '/api/v1/admin/grants > List grants, oldest first > 401 > application/json'
     - '/api/v1/admin/grants/mine > The caller''s own grants > 401 > application/json'
+    - '/api/v1/admin/domains/{id}/dns > Live DNS record check (MX, SPF, DMARC, DKIM, MTA-STS, TLS-RPT) for a domain > 401 > application/json'
     - '/api/v1/admin/mailboxes/{id}/invitation > Invite an account to choose its first password > 401 > application/json'
 
 checks:
@@ -190,6 +191,9 @@ exclude-matching:
   # fault injection. This never ignores a 5xx answering a normal transaction.
   - '^/api/v1/admin/pipelines/test(-filter)? > .* > 500( >|$)'
   - '^/api/v1/admin/custom-filters/\{id\}/test > .* > (408|413|500)( >|$)'
+  # A healthy fixture cannot produce the live DNS check's oversized-request and
+  # domain-lookup-failure answers; #1166 tracks topology fault injection.
+  - '^/api/v1/admin/domains/\{id\}/dns > .* > (413|500)( >|$)'
   # A healthy fixture sends no invitation request over the body cap and meets
   # no failed database or cipher; #1166 tracks topology fault injection.
   - '^/api/v1/(admin/mailboxes/\{id\}|auth)/invitation > .* > (413|500)( >|$)'
@@ -301,6 +305,12 @@ surface:
     - operation: testCustomFilter
       status: "500"
       reason: "Database or sidecar worker failure needs fault injection (#1166); production-router regression tests cover it."
+    - operation: domainDNSCheck
+      status: "413"
+      reason: "The router's body cap answers before the handler, and the check is a GET the run sends without a body (#1166)."
+    - operation: domainDNSCheck
+      status: "500"
+      reason: "A failed domain lookup needs a fault-injected database (#1166); resolver failures are reported in the 200 as missing records."
     - operation: inviteAccount
       status: "413"
       reason: "The router's body cap answers before the handler, and the invitation is a POST the run sends without a body (#1166)."

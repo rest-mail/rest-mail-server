@@ -23,7 +23,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/rest-mail/go-dkim"
+	"github.com/rest-mail/go-dkim/pkg/dkim"
 	"github.com/restmail/restmail/internal/api/endpoint"
 	apitypes "github.com/restmail/restmail/internal/api/types"
 	"github.com/restmail/restmail/internal/fleet"

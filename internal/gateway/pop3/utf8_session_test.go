@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	pop3srv "github.com/rest-mail/go-pop3"
+	pop3server "github.com/rest-mail/go-pop3/pkg/pop3/server"
 
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 )
@@ -54,7 +54,7 @@ type pop3Client struct {
 func dialUTF8(t *testing.T) *pop3Client {
 	t.Helper()
 	client, server := net.Pipe()
-	sess := pop3srv.NewSession(server, NewBackend(utf8API(t), nil), nil, nil)
+	sess := pop3server.NewSession(server, NewBackend(utf8API(t), nil), nil, nil)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
