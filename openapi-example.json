@@ -339,6 +339,200 @@
       }
     }
   },
+  "clearSuppression": {
+    "delete_unavailable": {
+      "summary": "Persistence fails while deleting the scoped entry",
+      "request": {
+        "path": {
+          "id": 1,
+          "sid": 4
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to clear suppression"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "found": {
+      "summary": "Delete the permitted domain entry",
+      "description": "The current session holds domains:write at domain:example.com. The scoped existing entry is deleted through the production handler and GORM callbacks.",
+      "request": {
+        "path": {
+          "id": 1,
+          "sid": 1
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "internal_error": {
+      "summary": "The domain-policy query fails",
+      "request": {
+        "path": {
+          "id": 1,
+          "sid": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to clear suppression"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_entry": {
+      "summary": "The entry ID cannot bind to an integer",
+      "request": {
+        "path": {
+          "id": 1,
+          "sid": "not-an-integer"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "details": {
+              "fields": {
+                "sid": "must be a non-negative integer"
+              }
+            },
+            "message": "Path parameters failed validation"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "No policy belongs to the requested domain",
+      "request": {
+        "path": {
+          "id": 1,
+          "sid": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Suppression not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "other_domain": {
+      "summary": "An entry owned by another domain is not found",
+      "request": {
+        "path": {
+          "id": 2,
+          "sid": 1
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Suppression not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "outside_domain": {
+      "summary": "A grant on another domain is refused",
+      "description": "A domains:write grant on other.test does not permit changing domain1, whose real scope is example.com.",
+      "request": {
+        "path": {
+          "id": 1,
+          "sid": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A nine-byte transport body exceeds the eight-byte fixture cap. The production limiter refuses the request; the focused replay sends actual bytes.",
+      "request": {
+        "path": {
+          "id": 1,
+          "sid": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "request": {
+        "path": {
+          "id": 1,
+          "sid": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No session credential was sent",
+      "request": {
+        "path": {
+          "id": 1,
+          "sid": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "createAPIKey": {
     "created": {
       "request": {
@@ -6812,6 +7006,432 @@
             }
           }
         }
+      }
+    }
+  },
+  "removeFromAllowlist": {
+    "delete_unavailable": {
+      "summary": "Persistence fails while deleting the scoped entry",
+      "request": {
+        "path": {
+          "eid": 4,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to delete allowlist rule"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "found": {
+      "summary": "Delete the permitted domain entry",
+      "description": "The current session holds domains:write at domain:example.com. The scoped existing entry is deleted through the production handler and GORM callbacks.",
+      "request": {
+        "path": {
+          "eid": 1,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "internal_error": {
+      "summary": "The domain-policy query fails",
+      "request": {
+        "path": {
+          "eid": 3,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_entry": {
+      "summary": "The entry ID cannot bind to an integer",
+      "request": {
+        "path": {
+          "eid": "not-an-integer",
+          "id": 1
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "details": {
+              "fields": {
+                "eid": "must be a non-negative integer"
+              }
+            },
+            "message": "Path parameters failed validation"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "No policy belongs to the requested domain",
+      "request": {
+        "path": {
+          "eid": 2147483647,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Allowlist rule not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "opposite_list": {
+      "summary": "An entry on the opposite list is not found",
+      "request": {
+        "path": {
+          "eid": 2,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Allowlist rule not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "other_domain": {
+      "summary": "An entry owned by another domain is not found",
+      "request": {
+        "path": {
+          "eid": 1,
+          "id": 2
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Allowlist rule not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "outside_domain": {
+      "summary": "A grant on another domain is refused",
+      "description": "A domains:write grant on other.test does not permit changing domain1, whose real scope is example.com.",
+      "request": {
+        "path": {
+          "eid": 1,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A nine-byte transport body exceeds the eight-byte fixture cap. The production limiter refuses the request; the focused replay sends actual bytes.",
+      "request": {
+        "path": {
+          "eid": 1,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "request": {
+        "path": {
+          "eid": 1,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No session credential was sent",
+      "request": {
+        "path": {
+          "eid": 1,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "removeFromBlocklist": {
+    "delete_unavailable": {
+      "summary": "Persistence fails while deleting the scoped entry",
+      "request": {
+        "path": {
+          "eid": 4,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to delete blocklist rule"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "found": {
+      "summary": "Delete the permitted domain entry",
+      "description": "The current session holds domains:write at domain:example.com. The scoped existing entry is deleted through the production handler and GORM callbacks.",
+      "request": {
+        "path": {
+          "eid": 1,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "internal_error": {
+      "summary": "The domain-policy query fails",
+      "request": {
+        "path": {
+          "eid": 3,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_entry": {
+      "summary": "The entry ID cannot bind to an integer",
+      "request": {
+        "path": {
+          "eid": "not-an-integer",
+          "id": 1
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "details": {
+              "fields": {
+                "eid": "must be a non-negative integer"
+              }
+            },
+            "message": "Path parameters failed validation"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "No policy belongs to the requested domain",
+      "request": {
+        "path": {
+          "eid": 2147483647,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Blocklist rule not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "opposite_list": {
+      "summary": "An entry on the opposite list is not found",
+      "request": {
+        "path": {
+          "eid": 2,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Blocklist rule not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "other_domain": {
+      "summary": "An entry owned by another domain is not found",
+      "request": {
+        "path": {
+          "eid": 1,
+          "id": 2
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Blocklist rule not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "outside_domain": {
+      "summary": "A grant on another domain is refused",
+      "description": "A domains:write grant on other.test does not permit changing domain1, whose real scope is example.com.",
+      "request": {
+        "path": {
+          "eid": 1,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "description": "A nine-byte transport body exceeds the eight-byte fixture cap. The production limiter refuses the request; the focused replay sends actual bytes.",
+      "request": {
+        "path": {
+          "eid": 1,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "request": {
+        "path": {
+          "eid": 1,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No session credential was sent",
+      "request": {
+        "path": {
+          "eid": 1,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },
