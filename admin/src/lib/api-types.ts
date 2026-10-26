@@ -4784,7 +4784,10 @@ export interface operations {
   mtaStsPolicyFile: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        /** @description Authority naming mta-sts.<domain>, normally supplied by the request URL */
+        Host?: string;
+      };
       path?: never;
       cookie?: never;
     };
@@ -11734,7 +11737,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -11811,7 +11813,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -11919,9 +11920,7 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
-        /** @example 1 */
         eid: number;
       };
       cookie?: never;
@@ -12005,7 +12004,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -12082,7 +12080,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -12190,9 +12187,7 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
-        /** @example 1 */
         eid: number;
       };
       cookie?: never;
@@ -12446,7 +12441,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -12554,7 +12548,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -12723,7 +12716,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -12831,7 +12823,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -12908,9 +12899,7 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
-        /** @example 1 */
         sid: number;
       };
       cookie?: never;
