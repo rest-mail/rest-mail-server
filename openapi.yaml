@@ -2320,9 +2320,26 @@ paths:
         - APIKeyAuth: [mail:write]
         - BasicAuth: [mail:write]
       summary: Delete a message
+      parameters:
+        - name: permanent
+          in: query
+          description: true deletes the message for good; anything else moves it to Trash
+          schema:
+            type: string
+      description: >-
+        Moves a message to Trash unless permanent is exactly true, or the message
+        is already in Trash or marked deleted. A purge removes the message and
+        attachment rows and reclaims counted quota in one transaction. Storage
+        failures return delete_failed; an already purged row is not reclaimed twice.
       responses:
         "204":
           description: Message deleted
+        "429":
+          description: Too many authentication attempts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           $ref: "#/components/responses/NotFound"
 

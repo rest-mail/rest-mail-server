@@ -53631,5 +53631,672 @@
         "status": 204
       }
     }
+  },
+  "deleteMessage": {
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        }
+      }
+    },
+    "setup_required": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        }
+      }
+    },
+    "session_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        }
+      }
+    },
+    "inaccessible": {
+      "request": {
+        "path": {
+          "id": 8
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "grant_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "ownership_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        }
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        }
+      }
+    },
+    "invalid_format": {
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        }
+      },
+      "response": {
+        "status": 422,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        }
+      }
+    },
+    "csrf_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "csrf_mismatch": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        }
+      }
+    },
+    "rate_limited": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        }
+      }
+    },
+    "request_too_large": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        }
+      },
+      "description": "The route and Vertrag transport hook send exactly513 bytes against the configured512-byte cap."
+    },
+    "moved": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "write_only": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "key_write": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "key_write_domain": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "cookie_session": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "body_boundary": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "permanent": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "permanent": "true"
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "no_attachments": {
+      "request": {
+        "path": {
+          "id": 33
+        },
+        "query": {
+          "permanent": "true"
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "zero_size": {
+      "request": {
+        "path": {
+          "id": 34
+        },
+        "query": {
+          "permanent": "true"
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "attachments_zero": {
+      "request": {
+        "path": {
+          "id": 41
+        },
+        "query": {
+          "permanent": "true"
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "concurrent": {
+      "request": {
+        "path": {
+          "id": 40
+        },
+        "query": {
+          "permanent": "true"
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "trash": {
+      "request": {
+        "path": {
+          "id": 31
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "already_deleted": {
+      "request": {
+        "path": {
+          "id": 32
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "permanent_false": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "permanent": "false"
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "permanent_uppercase": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "permanent": "True"
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "permanent_1": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "permanent": "1"
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "permanent_garbage": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "permanent": "garbage"
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "move_unavailable": {
+      "request": {
+        "path": {
+          "id": 35
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "delete_failed",
+            "message": "Failed to delete message"
+          }
+        }
+      }
+    },
+    "attachment_sum_unavailable": {
+      "request": {
+        "path": {
+          "id": 36
+        },
+        "query": {
+          "permanent": "true"
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "delete_failed",
+            "message": "Failed to delete message"
+          }
+        }
+      }
+    },
+    "attachments_delete_unavailable": {
+      "request": {
+        "path": {
+          "id": 37
+        },
+        "query": {
+          "permanent": "true"
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "delete_failed",
+            "message": "Failed to delete message"
+          }
+        }
+      }
+    },
+    "message_delete_unavailable": {
+      "request": {
+        "path": {
+          "id": 38
+        },
+        "query": {
+          "permanent": "true"
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "delete_failed",
+            "message": "Failed to delete message"
+          }
+        }
+      }
+    },
+    "quota_unavailable": {
+      "request": {
+        "path": {
+          "id": 39
+        },
+        "query": {
+          "permanent": "true"
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "delete_failed",
+            "message": "Failed to delete message"
+          }
+        }
+      }
+    },
+    "lookup_unavailable": {
+      "request": {
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "mailbox_unavailable": {
+      "request": {
+        "path": {
+          "id": 5
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "cancelled": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        }
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "message_not_found",
+            "message": "Message not found"
+          }
+        }
+      }
+    },
+    "key_read": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "key_wrong_scope": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "key_write_holder_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "app_password_other": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "mediaType": "application/json",
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        }
+      }
+    },
+    "app_password": {
+      "request": {
+        "path": {
+          "id": 51
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "primary": {
+      "request": {
+        "path": {
+          "id": 51
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    }
   }
 }
