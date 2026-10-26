@@ -1615,18 +1615,18 @@ def an_account_without_credentials(origin):
 
 @hooks.before("inviteAccount")
 def invite_an_account_without_credentials(transaction):
-    # Only the created example needs an invitable account; the fixture admin
-    # (existing_credentials) has a password, and missing and invalid_id keep
-    # their ids so their refusals are reachable.
-    if " > 201 > " not in transaction["name"]:
+    # Only the created example's placeholder id (12) needs an invitable account.
+    # The fixture admin (existing_credentials) has a password, and missing and
+    # every coverage probe keep their ids so their refusals are reachable.
+    path, _, query = transaction["fullPath"].partition("?")
+    mailboxes, placeholder, _ = path.rstrip("/").rsplit("/", 2)
+    if placeholder != "12":
         return
     origin = "{}//{}:{}".format(
         transaction["protocol"],
         transaction["host"],
         transaction["port"],
     )
-    path, _, query = transaction["fullPath"].partition("?")
-    mailboxes, _, _ = path.rstrip("/").rsplit("/", 2)
     account_id = an_account_without_credentials(origin)
     transaction["fullPath"] = (
         "{}/{:d}/invitation".format(mailboxes, account_id)
