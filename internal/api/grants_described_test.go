@@ -45,7 +45,7 @@ func TestGrantsDescribeTheirAuthorization(t *testing.T) {
 				}
 			}
 			_, throttled := op.Responses["429"]
-			if throttled != (tc.id == "activateGrant" || tc.id == "makeGrantEligible") {
+			if throttled != (tc.id == "activateGrant" || tc.id == "makeGrantEligible" || tc.id == "deleteGrant") {
 				t.Errorf("unexpected throttle description: %v", throttled)
 			}
 		})
