@@ -7,7 +7,7 @@ chmod 755 "$tmp"
 name="restmail-dane-test-${GITHUB_RUN_ID:-$$}-${GITHUB_RUN_ATTEMPT:-1}"
 trap 'docker rm -f "$name" >/dev/null 2>&1 || true' EXIT
 helm template restmail "$CHART_DIR" --set mailserver.hostname=mx.example.com \
-  --set mailserver.domain=example.com --set api.bootstrapAdminPassword=dane-test-only \
+  --set mailserver.domain=example.com --set api.bootstrapAdminPassword=dane-test-only-password \
   --set smtp.dane.enabled=true > "$tmp/render.yaml"
 yq -r 'select(.kind == "ConfigMap" and .metadata.name == "restmail-smtp-dane") | .data."unbound.conf"' \
   "$tmp/render.yaml" > "$tmp/unbound.conf"
