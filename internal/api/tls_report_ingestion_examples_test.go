@@ -144,9 +144,26 @@ func tlsIngestionRequest(s bulkQueueExampleScenario, body []byte, media string) 
 	return rr
 }
 
+func tlsIngestionRolledBack(calls []bulkQueueExampleMutation) bool {
+	for _, call := range calls {
+		if call.query == "ROLLBACK" {
+			return true
+		}
+	}
+	return false
+}
+
 func assertTLSIngestionSQL(t *testing.T, s bulkQueueExampleScenario, name string, body []byte, status int, start, end time.Time) {
 	t.Helper()
 	calls := s.store.snapshot()
+	// database/sql rolls a cancelled transaction back from its own goroutine,
+	// which can finish after the handler has answered: wait for that ROLLBACK.
+	if strings.HasPrefix(name, "cancelled") {
+		for deadline := time.Now().Add(2 * time.Second); !tlsIngestionRolledBack(calls) && time.Now().Before(deadline); {
+			time.Sleep(5 * time.Millisecond)
+			calls = s.store.snapshot()
+		}
+	}
 	var begin, commit, rollback, failed int
 	var inserted []map[string]driver.Value
 	var domains []string
