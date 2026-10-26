@@ -267,13 +267,14 @@ func (h *MessageHandler) ownedMessage(r *http.Request, id uint32, capability str
 		return models.Message{}, errNotSignedIn
 	}
 	var msg models.Message
-	if err := h.db.First(&msg, id).Error; err != nil {
+	db := h.db.WithContext(r.Context())
+	if err := db.First(&msg, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return models.Message{}, errMessageNotFound
 		}
 		return models.Message{}, fmt.Errorf("load message: %w", err)
 	}
-	if _, err := mayReach(h.db, claims, msg.MailboxID, capability); err != nil {
+	if _, err := mayReach(db, claims, msg.MailboxID, capability); err != nil {
 		if errors.Is(err, errNoAccess) {
 			return models.Message{}, errMessageAccess
 		}
@@ -372,33 +373,41 @@ func (h *MessageHandler) deleteMessage(r *http.Request, in deleteMessageRequest)
 	// first delete) moves to Trash as a real, visible item.
 	permanent := in.Permanent == "true"
 	hardDelete := permanent || msg.Folder == "Trash" || msg.IsDeleted
+	db := h.db.WithContext(r.Context())
 
 	if hardDelete {
 		// Only reclaim for a message that still counted toward quota. An already
 		// soft-deleted row (is_deleted=true) was already excluded from usage, so
 		// decrementing again would under-count. Match the quota reconciler's
 		// formula: message size + its attachment sizes.
-		var reclaimBytes int64
-		if !msg.IsDeleted {
-			reclaimBytes = int64(msg.SizeBytes)
-			if msg.HasAttachments {
-				var attBytes int64
-				h.db.Model(&models.Attachment{}).Where("message_id = ?", msg.ID).
-					Select("COALESCE(SUM(size_bytes), 0)").Scan(&attBytes)
-				reclaimBytes += attBytes
-			}
-		}
-
 		// Purge the row, its attachment rows, and the quota decrement together so
 		// a failure can never leave quota and rows inconsistent.
-		if err := h.db.Transaction(func(tx *gorm.DB) error {
+		if err := db.Transaction(func(tx *gorm.DB) error {
+			var reclaimBytes int64
+			if !msg.IsDeleted {
+				reclaimBytes = int64(msg.SizeBytes)
+				if msg.HasAttachments {
+					var attBytes int64
+					if err := tx.Model(&models.Attachment{}).Where("message_id = ?", msg.ID).
+						Select("COALESCE(SUM(size_bytes), 0)").Scan(&attBytes).Error; err != nil {
+						return err
+					}
+					reclaimBytes += attBytes
+				}
+			}
 			if msg.HasAttachments {
 				if err := tx.Where("message_id = ?", msg.ID).Delete(&models.Attachment{}).Error; err != nil {
 					return err
 				}
 			}
-			if err := tx.Delete(&models.Message{}, msg.ID).Error; err != nil {
-				return err
+			deleted := tx.Delete(&models.Message{}, msg.ID)
+			if deleted.Error != nil {
+				return deleted.Error
+			}
+			if deleted.RowsAffected == 0 {
+				// Another purge already removed this row and reclaimed its quota
+				// after the ownership lookup. Do not charge that reclaim twice.
+				return nil
 			}
 			if reclaimBytes > 0 {
 				if err := tx.Model(&models.Mailbox{}).Where("id = ?", msg.MailboxID).
@@ -414,7 +423,9 @@ func (h *MessageHandler) deleteMessage(r *http.Request, in deleteMessageRequest)
 		// Move to Trash as a real, visible item. is_deleted stays false so it
 		// still appears in the Trash listing and continues to count toward quota
 		// (it is still stored); it is reclaimed only when purged from Trash.
-		h.db.Model(&msg).Update("folder", "Trash")
+		if err := db.Model(&msg).Update("folder", "Trash").Error; err != nil {
+			return endpoint.Empty{}, endpoint.Refuse(http.StatusInternalServerError, "delete_failed", "Failed to delete message")
+		}
 	}
 
 	if h.broker != nil {

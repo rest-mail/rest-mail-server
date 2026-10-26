@@ -77,7 +77,7 @@ func TestDomainCreate_ExamplePairs(t *testing.T) {
 			"name":                "example.org",
 			"server_type":         "restmail",
 			"active":              false,
-			"default_quota_bytes": float64(0),
+			"default_quota_bytes": float64(1073741824),
 			"sending_policy":      "",
 			"dmarc_policy":        "none",
 			"created_at":          "2026-01-01T00:00:00Z",

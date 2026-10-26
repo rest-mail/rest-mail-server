@@ -59,7 +59,7 @@ func (h *GrantHandler) Register(rs endpoint.Routes, checks GrantRouteChecks) {
 		Middleware: []endpoint.Middleware{checks.SessionOnly, checks.At(middleware.CapUsersWrite), twoFactor}}, h.create)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/admin/grants/{id}",
 		OperationID: "deleteGrant", Summary: "Remove a grant", Tags: tags,
-		Status: http.StatusNoContent, Errors: []int{http.StatusForbidden, http.StatusNotFound, http.StatusConflict},
+		Status: http.StatusNoContent, Errors: []int{http.StatusForbidden, http.StatusNotFound, http.StatusConflict, http.StatusTooManyRequests},
 		Middleware: write}, h.delete)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/grants/mine",
 		OperationID: "listMyGrants", Summary: "The caller's own grants", Tags: tags,
