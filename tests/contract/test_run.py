@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -154,20 +155,48 @@ class Summary(unittest.TestCase):
 
 
 class ContractCommand(unittest.TestCase):
-    def run_command(self, principals=True, **settings):
+    def run_command(
+        self, principals=True, stale_reports=False, artifacts=None, **settings
+    ):
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)
             (work / "tests/contract").mkdir(parents=True)
+            for name in ("report_files.py", "summary.py"):
+                shutil.copyfile(
+                    ROOT / "tests/contract" / name, work / "tests/contract" / name
+                )
+            if stale_reports:
+                reports_dir = work / ".cache/contract"
+                reports_dir.mkdir(parents=True)
+                for name in (
+                    "examples",
+                    "coverage",
+                    "authorization",
+                    "fuzz",
+                    "browser-sessions",
+                ):
+                    (reports_dir / (name + ".xml")).write_text(
+                        '<testsuite><testcase name="previous-success"/></testsuite>'
+                    )
+                for name in (
+                    "openapi.json",
+                    "vertrag-run.yml",
+                    "summary.md",
+                    "api-key-fixture.json",
+                ):
+                    (reports_dir / name).write_text("previous green verdict")
             if principals:
-                (work / ".cache").mkdir()
+                (work / ".cache").mkdir(exist_ok=True)
                 (work / ".cache/contract-principals.json").write_text("{}")
             scripts = {
                 "chore": 'echo "chore:$*" >> "$CALLS"\n'
                 'if [ "$1" = test:e2e ]; then '
                 '[ "$API_BASE_URL" = "${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}" ] || exit 98; fi\n'
                 'exit "${FIXTURE_EXIT:-0}"\n',
-                "python3": 'case "$1" in *summary.py) echo "summary:$*" >> "$CALLS"; '
-                'exit "${SUMMARY_EXIT:-0}";; esac\n'
+                "python3": 'case "$1" in *report_files.py) exec "$REAL_PYTHON" "$@";; '
+                '*summary.py) echo "summary:$*" >> "$CALLS"; '
+                '[ "${SUMMARY_EXIT:-0}" = 0 ] || exit "$SUMMARY_EXIT"; '
+                'exec "$REAL_PYTHON" "$@";; esac\n'
                 'echo scan >> "$CALLS"\nexit "${SCAN_EXIT:-0}"\n',
                 "tests/contract/run.sh": 'echo "run:$*" >> "$CALLS"\n'
                 '[ "$CONTRACT_DEFER_SUMMARY" = 1 ] || exit 99\n'
@@ -184,6 +213,7 @@ class ContractCommand(unittest.TestCase):
                 PATH=str(work) + os.pathsep + os.environ["PATH"],
                 CALLS=str(calls),
                 CONTRACT_ENDPOINT="http://fixture.test:8080",
+                REAL_PYTHON=sys.executable,
             )
             env.update(settings)
             command = yaml.safe_load((ROOT / "chores.yml").read_text())["tasks"][
@@ -199,7 +229,34 @@ class ContractCommand(unittest.TestCase):
                 timeout=5,
                 check=False,
             )
+            if artifacts is not None:
+                artifacts.update(
+                    (path.name, path.read_text())
+                    for path in (work / ".cache/contract").iterdir()
+                    if path.is_file()
+                )
             return result, calls.read_text().splitlines()
+
+    def test_setup_failure_replaces_stale_reports_with_this_invocations_summary(self):
+        for principals, endpoint in (
+            (True, "http://fixture.test:8080"),
+            (False, "http://fixture.test:8080"),
+            (False, ""),
+        ):
+            with self.subTest(principals=principals, endpoint=endpoint):
+                artifacts = {}
+                result, _ = self.run_command(
+                    principals=principals,
+                    stale_reports=True,
+                    artifacts=artifacts,
+                    CONTRACT_ENDPOINT=endpoint,
+                    FIXTURE_EXIT="1",
+                )
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertEqual(set(artifacts), {"summary.md", "api-key-fixture.json"})
+                self.assertIn("| Phase | Transactions |", result.stdout)
+                self.assertNotIn("| examples |", artifacts["summary.md"])
+                self.assertNotIn("previous", artifacts["summary.md"])
 
     def test_failed_gate_still_scans_and_reports_without_losing_the_failure(self):
         result, calls = self.run_command(GATE_EXIT="3", AUTH_EXIT="1")
@@ -225,7 +282,13 @@ class ContractCommand(unittest.TestCase):
     def test_fixture_failure_prevents_contract_checks(self):
         result, calls = self.run_command(FIXTURE_EXIT="1")
         self.assertEqual(result.returncode, 1, result.stderr)
-        self.assertEqual(calls, ["chore:test:contract-fixtures"])
+        self.assertEqual(
+            calls,
+            [
+                "chore:test:contract-fixtures",
+                "summary:tests/contract/summary.py .cache/contract examples coverage authorization",
+            ],
+        )
 
     def test_a_fresh_topology_prepares_only_the_principal_fixture_first(self):
         result, calls = self.run_command(principals=False)
@@ -243,7 +306,11 @@ class ContractCommand(unittest.TestCase):
 
 class PhaseCommand(unittest.TestCase):
     def test_real_runner_early_failure_does_not_summarize_stale_phases(self):
-        for phase, stale in (("gate", "fuzz"), ("fuzz", "examples")):
+        for phase, stale in (
+            ("gate", "fuzz"),
+            ("fuzz", "examples"),
+            ("authorization", "authorization"),
+        ):
             for deferred in (False, True):
                 with (
                     self.subTest(phase=phase, deferred=deferred),
@@ -252,7 +319,7 @@ class PhaseCommand(unittest.TestCase):
                     work = Path(directory)
                     helpers = work / "tests/contract"
                     helpers.mkdir(parents=True)
-                    for name in ("run.sh", "summary.py"):
+                    for name in ("run.sh", "summary.py", "report_files.py"):
                         shutil.copyfile(ROOT / "tests/contract" / name, helpers / name)
                     reports_dir = work / ".cache/contract"
                     reports_dir.mkdir(parents=True)
