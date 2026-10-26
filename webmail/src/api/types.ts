@@ -14221,8 +14221,6 @@ export interface operations {
                 headers: {
                     /** @description no-store: invitation secrets are never cacheable */
                     "Cache-Control"?: string;
-                    /** @description no-referrer */
-                    "Referrer-Policy"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -17146,8 +17144,6 @@ export interface operations {
                 headers: {
                     /** @description no-store: invitation secrets are never cacheable */
                     "Cache-Control"?: string;
-                    /** @description no-referrer */
-                    "Referrer-Policy"?: string;
                     /** @description For a browser: restmail_access and restmail_refresh (httpOnly) and restmail_csrf, set or, on logout, expired */
                     "Set-Cookie"?: string;
                     [name: string]: unknown;

@@ -32,15 +32,15 @@ type invitationResponse struct {
 	ExpiresAt time.Time `json:"expires_at" format:"date-time"`
 }
 
+// Referrer-Policy comes from the security headers middleware, as on every
+// other response.
 var invitationHeaders = map[string]oapifly.ResponseHeader{
-	"Cache-Control":   {Description: "no-store: invitation secrets are never cacheable"},
-	"Referrer-Policy": {Description: "no-referrer"},
+	"Cache-Control": {Description: "no-store: invitation secrets are never cacheable"},
 }
 
 var invitationSessionHeaders = map[string]oapifly.ResponseHeader{
-	"Cache-Control":   invitationHeaders["Cache-Control"],
-	"Referrer-Policy": invitationHeaders["Referrer-Policy"],
-	"Set-Cookie":      sessionCookies["Set-Cookie"],
+	"Cache-Control": invitationHeaders["Cache-Control"],
+	"Set-Cookie":    sessionCookies["Set-Cookie"],
 }
 
 // RegisterAdmin keeps invitation issuance behind the same live, scoped
@@ -64,7 +64,7 @@ func (h *InvitationHandler) RegisterPublic(rs endpoint.Routes, checks SessionRou
 }
 
 func invitationSecretHeaders() http.Header {
-	return http.Header{"Cache-Control": {"no-store"}, "Referrer-Policy": {"no-referrer"}}
+	return http.Header{"Cache-Control": {"no-store"}}
 }
 
 var errInvitationUnavailable = endpoint.Refuse(http.StatusServiceUnavailable, "unavailable", "Invitations require authenticator enrollment and server encryption to be enabled")
