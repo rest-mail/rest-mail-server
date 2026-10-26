@@ -29,15 +29,16 @@ func sendProbe(t *testing.T, h *TestHandler, request interface{}) (rr *httptest.
 }
 
 // The pairs vertrag compiles for probeServices: probed with the 200 and
-// service_unknown with the 422, nothing else. service_unknown is probed with
+// service_unknown with the 422, and body_array with the 400. service_unknown is probed with
 // a service the handler cannot probe, so that is the only reason it is
 // refused.
 func TestProbeServices_ExamplePairs(t *testing.T) {
 	requests, responses := postExamples(t, "/api/v1/admin/test/probe", "probeServices")
 
 	want := map[string][]string{
-		"request": {"probed", "service_unknown"},
+		"request": {"body_array", "probed", "service_unknown"},
 		"200":     {"probed"},
+		"400":     {"body_array"},
 		"422":     {"service_unknown"},
 	}
 	got := map[string][]string{"request": names(requests)}
