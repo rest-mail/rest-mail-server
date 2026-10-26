@@ -64,7 +64,7 @@ func TestMailboxRemovalPersistenceAndRollback(t *testing.T) {
 			}
 			otherCredential := models.Credential{AccountID: actor.ID, Kind: models.CredentialKindAPIKey, PublicID: "other-key", Name: "Other fixture"}
 			create(&otherCredential)
-			for _, row := range []models.RefreshToken{{Jti: "target-active", AccountID: target.ID, Status: models.RefreshTokenActive, ExpiresAt: time.Now().Add(time.Hour)}, {Jti: "target-rotated", AccountID: target.ID, Status: models.RefreshTokenRotated, ExpiresAt: time.Now().Add(time.Hour)}, {Jti: "other-active", AccountID: actor.ID, Status: models.RefreshTokenActive, ExpiresAt: time.Now().Add(time.Hour)}} {
+			for _, row := range []models.RefreshToken{{Jti: "target-active", SessionID: "target-session", AccountID: target.ID, Status: models.RefreshTokenActive, ExpiresAt: time.Now().Add(time.Hour)}, {Jti: "target-rotated", SessionID: "target-session", AccountID: target.ID, Status: models.RefreshTokenRotated, ExpiresAt: time.Now().Add(time.Hour)}, {Jti: "other-active", SessionID: "other-session", AccountID: actor.ID, Status: models.RefreshTokenActive, ExpiresAt: time.Now().Add(time.Hour)}} {
 				row := row
 				create(&row)
 			}

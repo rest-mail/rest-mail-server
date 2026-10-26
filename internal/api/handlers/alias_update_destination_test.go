@@ -65,6 +65,11 @@ func openAliasUpdateScratchDB(t *testing.T) *gorm.DB {
 	if err := scratch.AutoMigrate(&models.Domain{}, &models.Alias{}); err != nil {
 		t.Fatal(err)
 	}
+	// Match the production migration, which creates this composite index
+	// separately from the model's field tags.
+	if err := scratch.Exec("CREATE UNIQUE INDEX idx_aliases_source_dest ON aliases(source_address, destination_address)").Error; err != nil {
+		t.Fatal(err)
+	}
 	return scratch
 }
 
