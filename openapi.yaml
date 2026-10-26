@@ -6370,6 +6370,8 @@ paths:
               # looked up.
               invalid_body:
                 value: []
+              unknown_field:
+                value: {surprise: true}
       responses:
         "200":
           description: >-
@@ -6438,6 +6440,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                unknown_field:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          surprise: not allowed
         "429":
           description: Pipeline preview rate limit exceeded
           content:
@@ -9912,6 +9923,8 @@ paths:
                   to: admin@restmail.test
                   subject: Test
                   body: A test message.
+              non_object:
+                value: []
               # No sender: refused before any mailbox is looked up. The
               # refusal names only the missing sender.
               from_missing:
@@ -9956,6 +9969,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                non_object:
+                  value:
+                    error:
+                      code: bad_request
+                      message: Invalid request body
         "403":
           description: Wildcard capability or cookie CSRF is missing
           content:
@@ -10068,6 +10087,8 @@ paths:
               service_unknown:
                 value:
                   services: [ftp]
+              body_array:
+                value: []
       responses:
         "200":
           description: Per-service probe results
@@ -10093,6 +10114,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                body_array:
+                  value:
+                    error:
+                      code: bad_request
+                      message: Invalid request body
         "403":
           description: Missing the required wildcard capability or CSRF proof
           content:
