@@ -15,12 +15,11 @@ import (
 	"gorm.io/gorm"
 )
 
-// Single-use tokens reach only the server's owner — `restmail-api mint-token`
-// run on the server, or a request signed with an owner key — and are redeemed
-// once over the public API. Possession of one therefore proves the redeemer was
-// handed it by whoever controls the deployment, which is what "owning this
-// server" means. The only one there is lets an account back in (reset_admin):
-// the first account comes from the bootstrap password the installer chose.
+// Single-use tokens are redeemed once over the public API. Owner recovery
+// tokens come from the server CLI or an owner key. Invitation tokens come from
+// an administrator with authority over the new account and can only install
+// its first password; their purpose cannot be exchanged for owner recovery.
+// The first administrator still comes from the installer's bootstrap password.
 
 // DefaultTokenLifetime is how long a minted token can be redeemed. Long enough
 // to scan a QR code or for an agent to finish a plan; short enough that a token

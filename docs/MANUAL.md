@@ -980,6 +980,14 @@ With no owner keys listed this does not work over the API (exit 6, `no_owner_key
 
 That makes it the hand-over too. Someone — or an agent — who set the server up and holds its admin's credentials runs `reset-admin` and gives the link to the owner; once the owner redeems it, nothing the first holder knew works. The first holder could still mint another link while their key is listed in `RESTMAIL_OWNER_KEYS`, which is what owning it means: take their key off the list (and replace it with yours) to finish the hand-over.
 
+#### Invite another account owner
+
+Create an active account with its password left blank. In Admin, open its mailbox details, enter the full HTTPS address of your Webmail, and choose **Create invitation**. Share the private link directly with its recipient. It expires after 15 minutes; creating another invitation invalidates the previous link. An account that has already held credentials cannot be invited: use the separate recovery process for it.
+
+The recipient opens Webmail, chooses a password of 12–72 bytes, enrolls an authenticator, and saves the recovery codes before signing in again. Their initial session can only finish setup; it cannot read mail. The administrator never chooses or receives that password. Both `TOTP_2FA_ENABLED` and `MASTER_KEY` must be configured, otherwise issuance and redemption return `503 unavailable`.
+
+For API clients, `POST /api/v1/admin/mailboxes/{id}/invitation` requires `mailboxes:write` on that mailbox and returns the single-use `token` and `expires_at` with status 201. Only the token's hash is stored. Pass the token privately as `<webmail URL>#invite_token=<token>`; the web app removes the fragment from browser history immediately and keeps it only in memory. Do not put it in a query string, logs or persistent browser storage. `POST /api/v1/auth/invitation` accepts `{ "token": "…", "password": "…" }`; native clients also send `"client": "native"`. Browsers receive session cookies; native clients receive tokens. Issuance and redemption do not change account grants. Owner recovery tokens and invitations have separate purposes and cannot be exchanged.
+
 #### For agents and scripts
 
 Every `restmail` subcommand takes `--json`: one object on stdout, an error as one object on stderr, nothing else on either, and an exit status that says what happened — 0 ok, 2 usage, 4 no such account, 5 the server not reachable (or not rest-mail), 6 no key offered is an owner key (for `status --key`, a status or owner key), or none is listed, 1 anything else. Nothing prompts. The link grants admin, so `--json` leaves it out (`"link_redacted": true`) unless `--show-secret` is given. `restmail-api mint-token` itself follows the same contract on the server; `RESTMAIL_OPERATOR_DEBUG=1` adds its logs to stderr.

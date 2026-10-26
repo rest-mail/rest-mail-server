@@ -1,4 +1,161 @@
 {
+  "acceptInvitation": {
+    "accepted": {
+      "request": {
+        "body": {
+          "password": "the recipient chooses this password",
+          "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "expires_in": 900,
+            "setup_required": [
+              "two_factor"
+            ],
+            "user": {
+              "display_name": "",
+              "email": "invited@example.test",
+              "id": 12
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "body_array": {
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "request": {
+        "body": {
+          "password": "the recipient chooses this password",
+          "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to redeem the token"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_field": {
+      "request": {
+        "body": {
+          "password": "the recipient chooses this password",
+          "token": 3
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "details": {
+              "fields": {
+                "token": "must be a string"
+              }
+            },
+            "message": "Request body failed validation"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_token": {
+      "request": {
+        "body": {
+          "password": "the recipient chooses this password",
+          "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "invalid_token",
+            "message": "the token is not valid: unknown, already used, or expired"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "request": {
+        "body": {
+          "password": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unavailable": {
+      "request": {
+        "body": {
+          "password": "the recipient chooses this password",
+          "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Invitations require authenticator enrollment and server encryption to be enabled"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "wrong_purpose": {
+      "request": {
+        "body": {
+          "password": "the recipient chooses this password",
+          "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "invalid_token",
+            "message": "the token is not valid: unknown, already used, or expired"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "addToAllowlist": {
     "already_exists": {
       "description": "The SQL driver returns PostgreSQL23505. GORM and the production repository conflict mapping produce409, without exposing database details.",
@@ -6529,6 +6686,167 @@
             }
           }
         }
+      }
+    }
+  },
+  "inviteAccount": {
+    "created": {
+      "request": {
+        "path": {
+          "id": 12
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "expires_at": "2030-01-01T00:15:00Z",
+            "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "existing_credentials": {
+      "request": {
+        "path": {
+          "id": 12
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "account_not_invitable",
+            "message": "only an active account that has never held credentials can be invited"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "insufficient_permissions": {
+      "request": {
+        "path": {
+          "id": 12
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "request": {
+        "path": {
+          "id": 12
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            },
+            "message": "Path parameters failed validation"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 12
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "mailbox_not_found",
+            "message": "Mailbox not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "request": {
+        "path": {
+          "id": 12
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 12
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unavailable": {
+      "request": {
+        "path": {
+          "id": 12
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Invitations require authenticator enrollment and server encryption to be enabled"
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },

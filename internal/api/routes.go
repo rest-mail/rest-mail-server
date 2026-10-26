@@ -178,6 +178,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 
 	healthH := handlers.NewHealthHandler(db, jwtService)
 	authH := handlers.NewAuthHandler(db, jwtService, cfg.MasterKey, sessions)
+	invitationH := handlers.NewInvitationHandler(db, authH, cfg.TOTP2FAEnabled && cfg.MasterKey != "")
 	twofaH := handlers.NewTwoFactorHandler(db, cfg.MasterKey, cfg.TOTP2FAEnabled, sessions)
 	domainH := handlers.NewDomainHandler(db, dnsProvider)
 	mailboxH := handlers.NewMailboxHandler(db, grantCache, sessions)
@@ -431,6 +432,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		}))
 	}
 	authH.RegisterSignIn(publicRoutes(r), signInChecks)
+	invitationH.RegisterPublic(publicRoutes(r.With(middleware.MaxBodyBytes(cfg.APIMaxBodyBytes))).Describing(describedBodyCap), signInChecks)
 	// Owners prove themselves with a key registered in PostgreSQL: sign a
 	// challenge, get a reset-admin token to redeem above. Throttled at
 	// login's rate, but in a bucket of its own: the CLI's requests must not use
@@ -735,6 +737,9 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		// for everyone; deleting one removes its grants under the grants rules.
 		mailboxH.Register(admin, handlers.MailboxRouteChecks{
 			OnList: describedCapability(needsOnList), OnMailbox: describedMailboxCapability(needsOnMailbox),
+		})
+		invitationH.RegisterAdmin(admin, handlers.MailboxRouteChecks{
+			OnMailbox: describedMailboxCapability(needsOnMailbox),
 		})
 		aliasH.Register(admin, handlers.AliasRouteChecks{
 			OnList: describedCapability(needsOnList), OnAlias: describedAliasCapability(needsOnAlias),

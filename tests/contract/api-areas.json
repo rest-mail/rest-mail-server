@@ -16,6 +16,7 @@
     "receiveTlsReport"
   ],
   "632": [
+    "acceptInvitation",
     "login",
     "logout",
     "protocolSignIn",
@@ -161,6 +162,7 @@
     "setDKIMRotation"
   ],
   "648": [
+    "inviteAccount",
     "createAlias",
     "deleteAlias",
     "deleteMailbox",

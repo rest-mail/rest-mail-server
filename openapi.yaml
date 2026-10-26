@@ -9915,6 +9915,184 @@ paths:
         "403":
           description: Disabled in production
 
+  /api/v1/admin/mailboxes/{id}/invitation:
+    post:
+      summary: Invite an account to choose its first password
+      description: For an active account created without credentials. The invitation
+        lasts 15 minutes; issuing another invalidates the previous one. Only a hash
+        is stored. Authenticator enrollment and server encryption must be enabled before
+        invitations can be issued.
+      operationId: inviteAccount
+      tags:
+      - 'Admin: Mailboxes'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+        example: 1
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Data-invitationResponse'
+          headers:
+            Cache-Control:
+              description: 'no-store: invitation secrets are never cacheable'
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              schema:
+                type: string
+        '401':
+          description: 'unauthorized: no token, a bad one, or a session that has ended'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 'Refused before the handler runs: setup_required (the account
+            has not finished setup), csrf_failed (a cookie session''s unsafe request
+            without the CSRF header) or forbidden (the session lacks the capability)'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: 'request_too_large: the body is over the API''s size cap'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Service Unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - CookieAuth:
+        - mailboxes:write
+      - BearerAuth:
+        - mailboxes:write
+      - APIKeyAuth:
+        - mailboxes:write
+  /api/v1/auth/invitation:
+    post:
+      summary: Choose your first password with an invitation
+      description: 'Redeems an invitation once, chooses a password of 12–72 bytes and
+        signs in. The session can only finish authenticator enrollment until it is confirmed.
+        Owner reset tokens cannot be used here. Native clients send client: native;
+        browsers receive httpOnly session cookies.'
+      operationId: acceptInvitation
+      tags:
+      - Auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/resetRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Data-loginResponse'
+          headers:
+            Cache-Control:
+              description: 'no-store: invitation secrets are never cacheable'
+              schema:
+                type: string
+            Referrer-Policy:
+              description: no-referrer
+              schema:
+                type: string
+            Set-Cookie:
+              description: 'For a browser: restmail_access and restmail_refresh (httpOnly)
+                and restmail_csrf, set or, on logout, expired'
+              schema:
+                type: string
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: Request Entity Too Large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '429':
+          description: 'rate_limited: too many requests to the shared authentication
+            throttle'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Retry-After:
+              description: Seconds until a request may be made again
+              required: true
+              schema:
+                type: integer
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Service Unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security: []
 components:
   securitySchemes:
     CookieAuth:
@@ -10043,6 +10221,98 @@ components:
             $ref: "#/components/schemas/ValidationErrorResponse"
 
   schemas:
+    Data-invitationResponse:
+      additionalProperties: false
+      properties:
+        data:
+          $ref: '#/components/schemas/invitationResponse'
+      required:
+      - data
+      type: object
+    invitationResponse:
+      additionalProperties: false
+      properties:
+        expires_at:
+          format: date-time
+          type: string
+        token:
+          type: string
+      required:
+      - token
+      - expires_at
+      type: object
+    resetRequest:
+      additionalProperties: false
+      properties:
+        client:
+          type: string
+        password:
+          type: string
+        token:
+          type: string
+      type: object
+    Data-loginResponse:
+      additionalProperties: false
+      properties:
+        data:
+          $ref: '#/components/schemas/loginResponse'
+      required:
+      - data
+      type: object
+    loginResponse:
+      additionalProperties: false
+      properties:
+        access_token:
+          type: string
+        capabilities:
+          items:
+            type: string
+          type: array
+        expires_in:
+          type: integer
+        refresh_expires_in:
+          type: integer
+        refresh_token:
+          type: string
+        scoped_capabilities:
+          items:
+            $ref: '#/components/schemas/Entry'
+          type: array
+        setup_required:
+          items:
+            type: string
+          type: array
+        user:
+          $ref: '#/components/schemas/userInfo'
+      required:
+      - expires_in
+      - user
+      type: object
+    Entry:
+      additionalProperties: false
+      properties:
+        capability:
+          type: string
+        scope:
+          type: string
+      required:
+      - scope
+      - capability
+      type: object
+    userInfo:
+      additionalProperties: false
+      properties:
+        display_name:
+          type: string
+        email:
+          type: string
+        id:
+          type: integer
+      required:
+      - id
+      - email
+      - display_name
+      type: object
     # ─────────────────────────────────────────────────────────────
     # Common / Wrapper schemas
     # ─────────────────────────────────────────────────────────────
