@@ -175,10 +175,10 @@ jobs:
         # dependency: vertrag needs Go 1.26 and this module is on 1.25. Verified
         # the same way as chore above, never piped from the network.
         env:
-          VERTRAG_VERSION: 0.36.0
+          VERTRAG_VERSION: 0.37.0
           # sha256 of vertrag-${VERTRAG_VERSION}-linux-x86_64.tar.gz, from that
           # release's checksums.txt. Bump both together when upgrading.
-          VERTRAG_SHA256: 118f496390e0e5290f0b4d249eff8969d1011ad803550a2ae7cab2d2cde80aed
+          VERTRAG_SHA256: b59fcdd2121fff68ea82a177330b20b2ccc5525a939e9352fd459181dbec7efa
         run: |
           set -euo pipefail
           selected="$(python3 -B scripts/vertrag_pin.py ensure .cache/bin)"
@@ -235,7 +235,7 @@ jobs:
           cp "$RUNNER_TEMP/e2e.log" "$out/e2e-test-output.log" 2>/dev/null || true
           cp "$RUNNER_TEMP/limits.log" "$out/limits-test-output.log" 2>/dev/null || true
           cp "$RUNNER_TEMP"/contract*.log "$out/" 2>/dev/null || true
-          cp .cache/contract/openapi.json .cache/contract/examples.json .cache/contract/coverage.json .cache/contract/authorization.json .cache/contract/fuzz.json "$out/" 2>/dev/null || true
+          cp .cache/contract/openapi.json .cache/contract/examples.json .cache/contract/coverage.json .cache/contract/authorization.json .cache/contract/ownership.json .cache/contract/fuzz.json "$out/" 2>/dev/null || true
           cp .cache/contract/*.xml .cache/contract/*.html .cache/contract/*.md "$out/" 2>/dev/null || true
           docker ps -a > "$out/docker-ps.txt" 2>&1 || true
           docker network inspect testbed_mailnet > "$out/network.txt" 2>&1 || true

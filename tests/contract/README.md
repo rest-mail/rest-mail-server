@@ -18,6 +18,7 @@ In the `E2E (full topology)` job (`.github/workflows/e2e-suite.yml`), after the
 | `coverage` | Every boundary each schema implies (the maximum, one past it, a required property missing) gets a 4xx, never a 2xx or a 5xx. | Gate, as a ratchet (below) |
 | `ignored-auth` check | Every authenticated request, sent again with no credential, is refused. | Gate |
 | `authorization` | Every selected operation as each configured principal, checked against the spec's security roles. | Report only, after the gates |
+| `ownership` | Each account tenant's principals sent the other tenant's account id, on the operations they are entitled to; every answer must be 403 or 404. | Report only, after authorization |
 | `fuzz` | Values drawn from each schema, shrunk to the smallest failing input, with a replayable seed. | Nightly (`contract-fuzz.yml`), never blocks |
 
 ### Attachment download contract
@@ -554,6 +555,10 @@ a hosted domain and mailbox for each address a test send probe uses, and,
   for the report-only authorization phase. Its JUnit report and log are
   included in `e2e-container-logs`; the generated credential-bearing YAML is
   removed after the run and is never uploaded.
+- `ownership.py`: builds the private configuration of the report-only
+  ownership phase (#657) from the same principals, as two account tenants.
+  Its reports are uploaded like the authorization phase's; its generated YAML
+  holds the app passwords and is never uploaded.
 - `secret_scan.py`: the secret scan (#673, continued under #1165/#658). The
   examples phase records traffic as `.cache/contract/examples.har` (Vertrag's
   `har` reporter). The scan collects JSON passwords/private keys/recovery codes
@@ -631,6 +636,7 @@ authorization matrix with them (`TestContractPrincipals`):
 | ordinary account | `contract-ordinary@restmail.test`: a password, no grants |
 | owned account, no password | `contract-owned@restmail.test`: reached only through its owner, the admin |
 | app password | one for the ordinary account; what it holds is fixed: read, write and send on its own mailbox |
+| other account | `contract-other@restmail.test`, made like the ordinary one, with an app password of its own: the second tenant of the ownership phase |
 | agent | none: the account model has no agents yet (#341) |
 | no credentials | every request without one, and vertrag's `ignored-auth` check |
 
@@ -667,6 +673,29 @@ python3 tests/contract/authorization.py openapi.yaml vertrag.yml \
   .cache/contract/authorization.xml
 vertrag run --config .cache/contract/vertrag-authorization.yml --sequence --phases authorization
 rm -f .cache/contract/vertrag-authorization.yml
+```
+
+The ownership phase (vertrag 0.37.0 and later) asks a different question: not
+whether a principal may use an operation, but whether it may use it on another
+tenant's objects (OWASP API1). `ownership.py` groups the principals into two
+tenants: `a` is `ordinary` and `app-password`, and `b` is `other` and
+`other-app-password`. Each holds `mail:read`, `mail:write` and `mail:send` on
+its own mailbox, and the password sessions also hold `mailbox:manage`. No
+operation makes an account, so each tenant declares its own account id, and
+the phase sends tenant `b`'s principals tenant `a`'s id and the other way
+round. Every answer must be 403 or 404 (#656); a success is an ownership
+bypass. Resources the description's links make, such as a folder or a contact,
+are made again for each cell as their owner. Only the `/api/v1/accounts/{id}`
+operations are selected, because the declared id is an account's. The
+domain-scoped administrators and the domain and administration operations
+follow with their fixture.
+
+```sh
+python3 tests/contract/ownership.py openapi.yaml vertrag.yml \
+  .cache/contract-principals.json .cache/contract/vertrag-ownership.yml \
+  .cache/contract/ownership.xml
+vertrag run --config .cache/contract/vertrag-ownership.yml --sequence --phases ownership
+rm -f .cache/contract/vertrag-ownership.yml
 ```
 
 `python3 -m unittest discover -s tests/contract -p 'test_*.py'` checks the

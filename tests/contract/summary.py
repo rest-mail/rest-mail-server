@@ -5,7 +5,7 @@ One line per phase that ran: transactions, passed, failed and skipped, read from
 .cache/contract/<phase>.xml; the same table goes to .cache/contract/summary.md
 beside the HTML and Markdown reports.
 
-Usage: summary.py [report directory] [examples coverage authorization fuzz ...]
+Usage: summary.py [report directory] [examples coverage authorization ownership fuzz ...]
 """
 
 import json
@@ -17,6 +17,7 @@ PHASES = (
     ("examples", "examples"),
     ("coverage", "coverage"),
     ("authorization", "authorization (report only)"),
+    ("ownership", "ownership (report only)"),
     ("fuzz", "fuzz (report only)"),
 )
 
