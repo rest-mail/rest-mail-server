@@ -937,7 +937,7 @@ func (h *PipelineHandler) listQuarantine(r *http.Request, in quarantineListReque
 
 	limit, offset := pagination(in.Limit, in.Offset, defaultListLimit, maxListLimit)
 
-	query := h.db.Model(&models.Quarantine{}).Where("mailbox_id = ? AND released = false", mailboxID)
+	query := h.db.WithContext(r.Context()).Model(&models.Quarantine{}).Where("mailbox_id = ? AND released = false", mailboxID)
 
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
@@ -1029,7 +1029,7 @@ func (h *PipelineHandler) deleteQuarantine(r *http.Request, in quarantinePath) (
 
 	// Delete only when the row belongs to the caller's mailbox; a mismatch
 	// affects zero rows and returns 404 rather than deleting another user's mail.
-	res := h.db.Where("id = ? AND mailbox_id = ?", in.MID, mailboxID).Delete(&models.Quarantine{})
+	res := h.db.WithContext(r.Context()).Where("id = ? AND mailbox_id = ?", in.MID, mailboxID).Delete(&models.Quarantine{})
 	if res.Error != nil {
 		return QuarantineDeleted{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to delete")
 	}

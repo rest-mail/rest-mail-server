@@ -98,7 +98,7 @@ func (h *TestHandler) sendTestEmail(r *http.Request, req sendTestEmailRequest) (
 
 // verifyDelivery checks whether a message matching the given criteria was delivered.
 // GET /api/v1/admin/test/verify?to=alice@mail1.test&subject=Test&timeout=5s
-func (h *TestHandler) verifyDelivery(_ *http.Request, in verifyDeliveryRequest) (TestDelivery, error) {
+func (h *TestHandler) verifyDelivery(r *http.Request, in verifyDeliveryRequest) (TestDelivery, error) {
 	if h.productionLocked() {
 		return TestDelivery{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "test endpoints disabled in production")
 	}
@@ -117,8 +117,12 @@ func (h *TestHandler) verifyDelivery(_ *http.Request, in verifyDeliveryRequest) 
 
 	// No mailbox at the address means nothing was delivered to it: that is an
 	// answer (found: false), not a missing resource (#388).
+	// The poll runs for up to 30 seconds: it stops when the caller goes away
+	// rather than querying on for nobody.
+	ctx := r.Context()
+	db := h.db.WithContext(ctx)
 	var mailbox models.Mailbox
-	if err := h.db.Where("address = ?", to).First(&mailbox).Error; err != nil {
+	if err := db.Where("address = ?", to).First(&mailbox).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return TestDelivery{Message: "no mailbox at that address"}, nil
 		}
@@ -127,7 +131,7 @@ func (h *TestHandler) verifyDelivery(_ *http.Request, in verifyDeliveryRequest) 
 
 	deadline := time.Now().Add(timeout)
 	for {
-		query := h.db.Where("mailbox_id = ? AND folder = ?", mailbox.ID, "INBOX")
+		query := db.Where("mailbox_id = ? AND folder = ?", mailbox.ID, "INBOX")
 		if subject != "" {
 			query = query.Where("subject LIKE ? ESCAPE '\\'", "%"+escapeLike(subject)+"%")
 		}
@@ -145,7 +149,11 @@ func (h *TestHandler) verifyDelivery(_ *http.Request, in verifyDeliveryRequest) 
 		if time.Now().After(deadline) {
 			return TestDelivery{Message: "no matching message found within timeout"}, nil
 		}
-		time.Sleep(500 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			return TestDelivery{}, fmt.Errorf("verify delivered message: %w", ctx.Err())
+		case <-time.After(500 * time.Millisecond):
+		}
 	}
 }
 
