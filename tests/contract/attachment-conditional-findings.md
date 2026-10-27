@@ -1,5 +1,18 @@
 # Attachment range and conditional response contract
 
+## Follow-up, 2026-10-27
+
+Vertrag 0.31.3 is pinned with its published archive checksum. Named topology
+examples now select whole-file 200, single-range 206 and unsatisfiable-range 416
+requests. Optional validators no longer become required header expectations.
+The bodyless 304/412, multipart response and dependency/writer faults retain
+explicit, narrow topology exclusions and their dedicated real-handler tests.
+Four Python regression checks keep request/response names, header optionality
+and exclusions aligned. Fresh GitHub CI/E2E results are pending; these changes
+are not a claim that the complete topology matrix has passed.
+
+## Original findings
+
 This is partial #1166/#674 evidence against main
 `aced5b62c68696720303e23eb1827fa040da502f` on 2026-10-27.
 The existing download writer and ordinary 200 header work are retained.
