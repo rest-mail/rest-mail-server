@@ -16,6 +16,7 @@ import (
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/auth"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -253,13 +254,15 @@ func TestCredentialAbsenceMetadataAndRefusalsStayStable(t *testing.T) {
 	}
 }
 func TestCredentialCreationPasswordAndGrantStagesFollowRequest(t *testing.T) {
-	hash, err := auth.HashPassword("fixture-password")
+	// Minimum bcrypt cost: the race detector makes cost 10 slow enough to
+	// miss the one-second stage deadlines on a busy runner.
+	hash, err := bcrypt.GenerateFromPassword([]byte("fixture-password"), bcrypt.MinCost)
 	if err != nil {
 		t.Fatal(err)
 	}
 	password := []credentialSQLStep{
 		{sql: `FROM "mailboxes"`, columns: []string{"id"}, values: []driver.Value{int64(7)}},
-		{sql: `FROM "credentials"`, columns: []string{"id", "secret_hash"}, values: []driver.Value{int64(11), hash}},
+		{sql: `FROM "credentials"`, columns: []string{"id", "secret_hash"}, values: []driver.Value{int64(11), string(hash)}},
 	}
 	for _, index := range []int{2, 3} {
 		base := append(credentialAccessSteps(), password...)
@@ -351,13 +354,15 @@ func TestCredentialRequestIsolationAndAccessControls(t *testing.T) {
 }
 
 func TestCredentialSuccessfulWritesAndAuditUseRequestContext(t *testing.T) {
-	hash, err := auth.HashPassword("fixture-password")
+	// Minimum bcrypt cost: the race detector makes cost 10 slow enough to
+	// miss the one-second stage deadlines on a busy runner.
+	hash, err := bcrypt.GenerateFromPassword([]byte("fixture-password"), bcrypt.MinCost)
 	if err != nil {
 		t.Fatal(err)
 	}
 	password := []credentialSQLStep{
 		{sql: `FROM "mailboxes"`, columns: []string{"id"}, values: []driver.Value{int64(7)}},
-		{sql: `FROM "credentials"`, columns: []string{"id", "secret_hash"}, values: []driver.Value{int64(11), hash}},
+		{sql: `FROM "credentials"`, columns: []string{"id", "secret_hash"}, values: []driver.Value{int64(11), string(hash)}},
 	}
 	for _, index := range []int{2, 3, 4, 5, 6} {
 		base := credentialAccessSteps()
