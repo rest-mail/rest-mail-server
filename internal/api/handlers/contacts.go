@@ -116,7 +116,7 @@ func (h *ContactHandler) resolveMailboxID(r *http.Request, accountID uint32, cap
 	if claims == nil {
 		return 0, errContactAccess
 	}
-	mailboxID, err := resolveAccountMailbox(h.db, uint(accountID), claims, capability)
+	mailboxID, err := resolveAccountMailbox(h.db.WithContext(r.Context()), uint(accountID), claims, capability)
 	if err != nil {
 		if errors.Is(err, errNoAccess) {
 			return 0, errContactAccess
@@ -142,7 +142,7 @@ func (h *ContactHandler) list(r *http.Request, in listContactsRequest) (endpoint
 		return endpoint.List[Contact]{}, err
 	}
 
-	query := h.db.Model(&models.Contact{}).Where("mailbox_id = ?", mailboxID)
+	query := h.db.WithContext(r.Context()).Model(&models.Contact{}).Where("mailbox_id = ?", mailboxID)
 
 	if in.TrustLevel != nil {
 		query = query.Where("trust_level = ?", *in.TrustLevel)
@@ -157,7 +157,9 @@ func (h *ContactHandler) list(r *http.Request, in listContactsRequest) (endpoint
 	limit, offset := pagination(in.Limit, in.Offset, defaultListLimit, maxListLimit)
 
 	var total int64
-	query.Count(&total)
+	if err := query.Count(&total).Error; err != nil {
+		return endpoint.List[Contact]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to list contacts")
+	}
 
 	var contacts []models.Contact
 	if err := query.Order("email ASC").Limit(limit).Offset(offset).Find(&contacts).Error; err != nil {
@@ -248,14 +250,6 @@ func (h *ContactHandler) update(r *http.Request, in updateContactRequest) (Conta
 		return Contact{}, err
 	}
 
-	var contact models.Contact
-	if err := h.db.WithContext(r.Context()).Where("id = ? AND mailbox_id = ?", in.CID, mailboxID).First(&contact).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return Contact{}, errContactNotFound
-		}
-		return Contact{}, fmt.Errorf("find contact for update: %w", err)
-	}
-
 	req := in.Body
 	updates := map[string]interface{}{}
 	if req.Name != nil {
@@ -265,17 +259,33 @@ func (h *ContactHandler) update(r *http.Request, in updateContactRequest) (Conta
 		updates["trust_level"] = *req.TrustLevel
 	}
 
-	if len(updates) > 0 {
-		if err := h.db.WithContext(r.Context()).Model(&contact).Updates(updates).Error; err != nil {
-			return Contact{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to update contact")
+	var contact models.Contact
+	err = h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND mailbox_id = ?", in.CID, mailboxID).First(&contact).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errContactNotFound
+			}
+			return fmt.Errorf("find contact for update: %w", err)
 		}
-	}
-
-	if err := h.db.WithContext(r.Context()).Where("id = ? AND mailbox_id = ?", in.CID, mailboxID).First(&contact).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return Contact{}, errContactNotFound
+		if len(updates) > 0 {
+			result := tx.Model(&models.Contact{}).Where("id = ? AND mailbox_id = ?", in.CID, mailboxID).Updates(updates)
+			if result.Error != nil {
+				return endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to update contact")
+			}
+			if result.RowsAffected == 0 {
+				return errContactNotFound
+			}
 		}
-		return Contact{}, fmt.Errorf("reload updated contact: %w", err)
+		if err := tx.Where("id = ? AND mailbox_id = ?", in.CID, mailboxID).First(&contact).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errContactNotFound
+			}
+			return fmt.Errorf("reload updated contact: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return Contact{}, err
 	}
 	return contactOf(contact), nil
 }
@@ -288,18 +298,26 @@ func (h *ContactHandler) delete(r *http.Request, in contactPath) (endpoint.Empty
 		return endpoint.Empty{}, err
 	}
 
-	var contact models.Contact
-	if err := h.db.Where("id = ? AND mailbox_id = ?", in.CID, mailboxID).First(&contact).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return endpoint.Empty{}, errContactNotFound
+	err = h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
+		var contact models.Contact
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND mailbox_id = ?", in.CID, mailboxID).First(&contact).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errContactNotFound
+			}
+			return fmt.Errorf("find contact for deletion: %w", err)
 		}
-		return endpoint.Empty{}, fmt.Errorf("find contact for deletion: %w", err)
+		result := tx.Where("id = ? AND mailbox_id = ?", in.CID, mailboxID).Delete(&models.Contact{})
+		if result.Error != nil {
+			return endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to delete contact")
+		}
+		if result.RowsAffected == 0 {
+			return errContactNotFound
+		}
+		return nil
+	})
+	if err != nil {
+		return endpoint.Empty{}, err
 	}
-
-	if err := h.db.Delete(&contact).Error; err != nil {
-		return endpoint.Empty{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to delete contact")
-	}
-
 	return endpoint.Empty{}, nil
 }
 
@@ -326,38 +344,44 @@ func (h *ContactHandler) block(r *http.Request, in blockSenderRequest) (endpoint
 	}
 
 	var contact models.Contact
-	result := h.db.WithContext(r.Context()).Where("mailbox_id = ? AND email = ?", mailboxID, email).First(&contact)
-
-	if result.Error == nil {
-		// Contact exists, update to blocked
-		if err := h.db.WithContext(r.Context()).Model(&contact).Updates(map[string]interface{}{
-			"trust_level": "blocked",
-			"source":      "manual",
-		}).Error; err != nil {
-			return endpoint.Status[Contact]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to block sender")
+	status := http.StatusCreated
+	err = h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
+		result := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("mailbox_id = ? AND email = ?", mailboxID, email).First(&contact)
+		if result.Error == nil {
+			result := tx.Model(&models.Contact{}).Where("id = ? AND mailbox_id = ?", contact.ID, mailboxID).Updates(map[string]interface{}{
+				"trust_level": "blocked",
+				"source":      "manual",
+			})
+			if result.Error != nil {
+				return endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to block sender")
+			}
+			if result.RowsAffected == 0 {
+				return fmt.Errorf("contact disappeared while blocking sender")
+			}
+			if err := tx.Where("id = ? AND mailbox_id = ?", contact.ID, mailboxID).First(&contact).Error; err != nil {
+				return fmt.Errorf("reload blocked contact: %w", err)
+			}
+			status = http.StatusOK
+			return nil
 		}
-		if err := h.db.WithContext(r.Context()).Where("id = ? AND mailbox_id = ?", contact.ID, mailboxID).First(&contact).Error; err != nil {
-			return endpoint.Status[Contact]{}, fmt.Errorf("reload blocked contact: %w", err)
+		if !errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("find contact to block: %w", result.Error)
 		}
-		return endpoint.Status[Contact]{Code: http.StatusOK, Value: contactOf(contact)}, nil
+		contact = models.Contact{
+			MailboxID:  mailboxID,
+			Email:      email,
+			TrustLevel: "blocked",
+			Source:     "manual",
+		}
+		if err := tx.Create(&contact).Error; err != nil {
+			return endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to block sender")
+		}
+		return nil
+	})
+	if err != nil {
+		return endpoint.Status[Contact]{}, err
 	}
-	if !errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		return endpoint.Status[Contact]{}, fmt.Errorf("find contact to block: %w", result.Error)
-	}
-
-	// Contact does not exist, create as blocked
-	contact = models.Contact{
-		MailboxID:  mailboxID,
-		Email:      email,
-		TrustLevel: "blocked",
-		Source:     "manual",
-	}
-
-	if err := h.db.WithContext(r.Context()).Create(&contact).Error; err != nil {
-		return endpoint.Status[Contact]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to block sender")
-	}
-
-	return endpoint.Status[Contact]{Code: http.StatusCreated, Value: contactOf(contact)}, nil
+	return endpoint.Status[Contact]{Code: status, Value: contactOf(contact)}, nil
 }
 
 type suggestContactsRequest struct {
