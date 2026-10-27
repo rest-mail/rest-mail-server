@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -151,7 +152,7 @@ func TestQueueTraceReadDatabaseFailuresAreNotMissing(t *testing.T) {
 
 func TestQueueTraceReadExamples(t *testing.T) {
 	routers, jwt := queueTraceReadRouters(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

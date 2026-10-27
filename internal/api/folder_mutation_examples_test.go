@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,7 +19,7 @@ var folderMutationPaths = map[string]string{"createFolder": "/api/v1/accounts/{i
 
 func TestFolderMutationExamples(t *testing.T) {
 	f := newFolderMutationScenarios(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

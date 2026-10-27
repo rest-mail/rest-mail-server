@@ -4,6 +4,7 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -71,7 +72,7 @@ func newCredentialRevocationScenarios(t *testing.T) mailRemovalScenarios {
 
 func TestCredentialRevocationExamples(t *testing.T) {
 	f := newCredentialRevocationScenarios(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

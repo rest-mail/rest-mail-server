@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,7 +19,7 @@ var contactImportSuggestPaths = map[string]string{"importContacts": "/api/v1/acc
 
 func TestContactImportSuggestExamples(t *testing.T) {
 	f := newContactImportSuggestScenarios(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

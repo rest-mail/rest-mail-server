@@ -10,6 +10,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -194,7 +195,7 @@ func TestAdminResourceReadDatabaseFailuresAreNotMissing(t *testing.T) {
 
 func TestAdminResourceReadExamples(t *testing.T) {
 	routers, jwt := adminResourceReadRouters(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

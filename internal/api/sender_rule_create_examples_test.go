@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -151,7 +152,7 @@ func TestSenderRuleCreateLookupFailuresAreNotMissingDomains(t *testing.T) {
 }
 
 func TestSenderRuleCreateExamples(t *testing.T) {
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

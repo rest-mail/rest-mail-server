@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -17,7 +18,7 @@ const domainRemovalPath = "/api/v1/admin/domains/{id}"
 
 func TestDomainRemovalExamples(t *testing.T) {
 	f := newDomainRemovalScenarios(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

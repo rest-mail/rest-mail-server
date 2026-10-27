@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -19,7 +20,7 @@ var domainMutationPaths = map[string]string{"createDomain": "/api/v1/admin/domai
 
 func TestDomainMutationExamples(t *testing.T) {
 	f := newDomainMutationScenarios(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

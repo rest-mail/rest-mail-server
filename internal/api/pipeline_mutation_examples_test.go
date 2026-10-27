@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -16,7 +17,7 @@ var pipelineMutationPaths = map[string]string{"createPipeline": "/api/v1/admin/p
 
 func TestPipelineMutationExamples(t *testing.T) {
 	f := newPipelineMutationScenarios(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

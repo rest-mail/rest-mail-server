@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql/driver"
 	"encoding/json"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -19,7 +20,7 @@ var aliasMutationPaths = map[string]string{"createAlias": "/api/v1/admin/aliases
 
 func TestAliasMutationExamples(t *testing.T) {
 	f := newAliasMutationScenarios(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

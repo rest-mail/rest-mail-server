@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,13 +17,11 @@ import (
 	"testing"
 	"time"
 
-	oapifly "github.com/antimatter-studios/go-oapifly"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 	"gorm.io/gorm/schema"
 
-	"github.com/restmail/restmail"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/config"
@@ -224,7 +223,7 @@ func TestMtaStsGetReturnsItsQueriedDomain(t *testing.T) {
 func TestDomainPolicyGetExamples(t *testing.T) {
 	routers, jwt := domainPolicyGetRouters(t)
 	token := mailboxToken(t, jwt)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

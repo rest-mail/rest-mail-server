@@ -1,0 +1,4508 @@
+{
+  "blockSender": {
+    "app_password": {
+      "request": {
+        "path": {
+          "id": 10
+        },
+        "body": {
+          "email": "existing@example.com"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 10,
+            "email": "existing@example.com",
+            "name": "Before",
+            "trust_level": "blocked",
+            "source": "manual",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "app_password_other": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "existing@example.com"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "cookie_session": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "existing@example.com"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 1,
+            "email": "existing@example.com",
+            "name": "Before",
+            "trust_level": "blocked",
+            "source": "manual",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "create_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "create-failure@example.com"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to block sender"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "csrf_mismatch": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "existing@example.com"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "csrf_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "existing@example.com"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_grant": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "existing@example.com"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 1,
+            "email": "existing@example.com",
+            "name": "Before",
+            "trust_level": "blocked",
+            "source": "manual",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "email_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {},
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "email": "required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "example": {
+      "summary": "The operation's example",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "spam@example.org"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 1,
+            "email": "spam@example.org",
+            "name": "Before",
+            "trust_level": "blocked",
+            "source": "manual",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "grant_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "existing@example.com"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "inaccessible": {
+      "request": {
+        "path": {
+          "id": 20
+        },
+        "body": {
+          "email": "existing@example.com"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_format": {
+      "description": "The JSON body is valid. The real path binder refuses the malformed account identifier; a body-invalid marker would not describe path binding.",
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "body": {
+          "email": "existing@example.com"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_read": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "existing@example.com"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_write_domain": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "existing@example.com"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 1,
+            "email": "existing@example.com",
+            "name": "Before",
+            "trust_level": "blocked",
+            "source": "manual",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_write_holder_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "existing@example.com"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_write_only": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "existing@example.com"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 1,
+            "email": "existing@example.com",
+            "name": "Before",
+            "trust_level": "blocked",
+            "source": "manual",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_wrong_scope": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "existing@example.com"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "ownership_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "existing@example.com"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "primary": {
+      "request": {
+        "path": {
+          "id": 10
+        },
+        "body": {
+          "email": "existing@example.com"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 10,
+            "email": "existing@example.com",
+            "name": "Before",
+            "trust_level": "blocked",
+            "source": "manual",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "primary_only": {
+      "request": {
+        "path": {
+          "id": 10
+        },
+        "body": {
+          "email": "existing@example.com"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 10,
+            "email": "existing@example.com",
+            "name": "Before",
+            "trust_level": "blocked",
+            "source": "manual",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "reload_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "reload-missing@example.com"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "reload_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "reload-failure@example.com"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "setup_required": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "existing@example.com"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "target_unavailable": {
+      "request": {
+        "path": {
+          "id": 3
+        },
+        "body": {
+          "email": "existing@example.com"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "write_only": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "existing@example.com"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 1,
+            "email": "existing@example.com",
+            "name": "Before",
+            "trust_level": "blocked",
+            "source": "manual",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "write_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "update-failure@example.com"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to block sender"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "createContact": {
+    "app_password": {
+      "request": {
+        "path": {
+          "id": 10
+        },
+        "body": {
+          "email": "new@example.com"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 10,
+            "email": "new@example.com",
+            "name": "",
+            "trust_level": "trusted",
+            "source": "manual",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "app_password_other": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "new@example.com"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "cookie_session": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "new@example.com"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 1,
+            "email": "new@example.com",
+            "name": "",
+            "trust_level": "trusted",
+            "source": "manual",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "created": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "someone@example.com",
+          "name": "Someone",
+          "trust_level": "trusted"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 1,
+            "email": "someone@example.com",
+            "name": "Someone",
+            "trust_level": "trusted",
+            "source": "manual",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "csrf_mismatch": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "new@example.com"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "csrf_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "new@example.com"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_grant": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "new@example.com"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 1,
+            "email": "new@example.com",
+            "name": "",
+            "trust_level": "trusted",
+            "source": "manual",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "email_invalid": {
+      "description": "The request matches its published field types but violates runtime address/trust rules. Keep its exact 422 answer without marking a schema-valid business-rule refusal invalid.",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "Refused \u003crefused@example.com\u003e",
+          "name": "Someone",
+          "trust_level": "trusted"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "email": "must be an email address"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "email_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Someone",
+          "trust_level": "trusted"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "email": "required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "grant_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "new@example.com"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "inaccessible": {
+      "request": {
+        "path": {
+          "id": 20
+        },
+        "body": {
+          "email": "new@example.com"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_format": {
+      "description": "The JSON body is valid. The real path binder refuses the malformed account identifier; a body-invalid marker would not describe path binding.",
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "body": {
+          "email": "new@example.com"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_read": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "new@example.com"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_write_domain": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "new@example.com"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 1,
+            "email": "new@example.com",
+            "name": "",
+            "trust_level": "trusted",
+            "source": "manual",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_write_holder_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "new@example.com"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_write_only": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "new@example.com"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 1,
+            "email": "new@example.com",
+            "name": "",
+            "trust_level": "trusted",
+            "source": "manual",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_wrong_scope": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "new@example.com"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "ownership_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "new@example.com"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "primary": {
+      "request": {
+        "path": {
+          "id": 10
+        },
+        "body": {
+          "email": "new@example.com"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 10,
+            "email": "new@example.com",
+            "name": "",
+            "trust_level": "trusted",
+            "source": "manual",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "primary_only": {
+      "request": {
+        "path": {
+          "id": 10
+        },
+        "body": {
+          "email": "new@example.com"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 10,
+            "email": "new@example.com",
+            "name": "",
+            "trust_level": "trusted",
+            "source": "manual",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "setup_required": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "new@example.com"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "target_unavailable": {
+      "request": {
+        "path": {
+          "id": 3
+        },
+        "body": {
+          "email": "new@example.com"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "trust_auto": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "new@example.com",
+          "trust_level": "auto"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 1,
+            "email": "new@example.com",
+            "name": "",
+            "trust_level": "auto",
+            "source": "manual",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "trust_blocked": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "new@example.com",
+          "trust_level": "blocked"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 1,
+            "email": "new@example.com",
+            "name": "",
+            "trust_level": "blocked",
+            "source": "manual",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "trust_default": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "new@example.com"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 1,
+            "email": "new@example.com",
+            "name": "",
+            "trust_level": "trusted",
+            "source": "manual",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "trust_level_invalid": {
+      "description": "The request matches its published field types but violates runtime address/trust rules. Keep its exact 422 answer without marking a schema-valid business-rule refusal invalid.",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "refused@example.com",
+          "name": "Someone",
+          "trust_level": "friend"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "trust_level": "must be auto, trusted, or blocked"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "trust_null": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "new@example.com",
+          "trust_level": null
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 1,
+            "email": "new@example.com",
+            "name": "",
+            "trust_level": "trusted",
+            "source": "manual",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "write_only": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "new@example.com"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 1,
+            "email": "new@example.com",
+            "name": "",
+            "trust_level": "trusted",
+            "source": "manual",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "deleteContact": {
+    "app_password": {
+      "request": {
+        "path": {
+          "cid": 41,
+          "id": 10
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "app_password_other": {
+      "request": {
+        "path": {
+          "cid": 41,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "cookie_session": {
+      "request": {
+        "path": {
+          "cid": 41,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "csrf_mismatch": {
+      "request": {
+        "path": {
+          "cid": 41,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "csrf_missing": {
+      "request": {
+        "path": {
+          "cid": 41,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_grant": {
+      "request": {
+        "path": {
+          "cid": 41,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "grant_unavailable": {
+      "request": {
+        "path": {
+          "cid": 41,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "inaccessible": {
+      "request": {
+        "path": {
+          "cid": 41,
+          "id": 20
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_cid": {
+      "request": {
+        "path": {
+          "cid": 0,
+          "id": 1
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "cid": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_cid_format": {
+      "request": {
+        "path": {
+          "cid": "not-an-integer",
+          "id": 1
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "cid": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_format": {
+      "request": {
+        "path": {
+          "cid": 41,
+          "id": "not-an-integer"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_read": {
+      "request": {
+        "path": {
+          "cid": 41,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_send": {
+      "request": {
+        "path": {
+          "cid": 41,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_write": {
+      "request": {
+        "path": {
+          "cid": 41,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "key_write_domain": {
+      "request": {
+        "path": {
+          "cid": 41,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "key_write_holder_missing": {
+      "request": {
+        "path": {
+          "cid": 41,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_wrong_scope": {
+      "request": {
+        "path": {
+          "cid": 41,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing_account": {
+      "request": {
+        "path": {
+          "cid": 41,
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "ownership_unavailable": {
+      "request": {
+        "path": {
+          "cid": 41,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "primary": {
+      "request": {
+        "path": {
+          "cid": 41,
+          "id": 10
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "setup_required": {
+      "request": {
+        "path": {
+          "cid": 41,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "target_unavailable": {
+      "request": {
+        "path": {
+          "cid": 41,
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "write_unavailable": {
+      "request": {
+        "path": {
+          "cid": 43,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to delete contact"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "wrong_mailbox": {
+      "request": {
+        "path": {
+          "cid": 42,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Contact not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "importContacts": {
+    "all_duplicate": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "contacts": [
+            {
+              "email": "duplicate@example.com"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "imported": 0
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "app_password": {
+      "request": {
+        "path": {
+          "id": 10
+        },
+        "body": {
+          "contacts": [
+            {
+              "email": "new@example.com",
+              "name": "New"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "imported": 1
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "app_password_other": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "contacts": [
+            {
+              "email": "new@example.com",
+              "name": "New"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "batch_failure": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "contacts": [
+            {
+              "email": "first@example.com"
+            },
+            {
+              "email": "fail@example.com"
+            },
+            {
+              "email": "last@example.com"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "body_array": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "contacts_empty": {
+      "description": "The request matches the published field types but is refused by runtime batch/address validation. Preserve its exact 422 answer without marking the schema-valid request invalid.",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "contacts": []
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "contacts": "required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "contacts_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {},
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "contacts": "required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "cookie_session": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "contacts": [
+            {
+              "email": "new@example.com",
+              "name": "New"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "imported": 1
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "csrf_mismatch": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "contacts": [
+            {
+              "email": "new@example.com"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "csrf_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "contacts": [
+            {
+              "email": "new@example.com"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_grant": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "contacts": [
+            {
+              "email": "new@example.com",
+              "name": "New"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "imported": 1
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "duplicates": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "contacts": [
+            {
+              "email": "new@example.com"
+            },
+            {
+              "email": "duplicate@example.com"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "imported": 1
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "email_invalid": {
+      "description": "The request matches the published field types but is refused by runtime batch/address validation. Preserve its exact 422 answer without marking the schema-valid request invalid.",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "contacts": [
+            {
+              "email": "not-an-email"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "contacts[0].email": "must be an email address"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "email_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "contacts": [
+            {}
+          ]
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "contacts[0].email": "required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "grant_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "contacts": [
+            {
+              "email": "new@example.com",
+              "name": "New"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "imported": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "contacts": [
+            {
+              "email": "carol@example.org",
+              "name": "Carol"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "imported": 1
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "inaccessible": {
+      "request": {
+        "path": {
+          "id": 20
+        },
+        "body": {
+          "contacts": [
+            {
+              "email": "new@example.com",
+              "name": "New"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_format": {
+      "description": "A valid request body/query reaches the real path binder; the malformed path value is refused without storage access.",
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "body": {
+          "contacts": [
+            {
+              "email": "new@example.com",
+              "name": "New"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_read": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "contacts": [
+            {
+              "email": "new@example.com",
+              "name": "New"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_write_domain": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "contacts": [
+            {
+              "email": "new@example.com",
+              "name": "New"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "imported": 1
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_write_holder_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "contacts": [
+            {
+              "email": "new@example.com",
+              "name": "New"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_write_only": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "contacts": [
+            {
+              "email": "new@example.com",
+              "name": "New"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "imported": 1
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_wrong_scope": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "contacts": [
+            {
+              "email": "new@example.com",
+              "name": "New"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "mixed_batch": {
+      "description": "The request matches the published field types but is refused by runtime batch/address validation. Preserve its exact 422 answer without marking the schema-valid request invalid.",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "contacts": [
+            {
+              "email": "valid-import@example.org",
+              "name": "Must not be imported"
+            },
+            {
+              "email": "not-an-email"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "contacts[1].email": "must be an email address"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "ownership_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "contacts": [
+            {
+              "email": "new@example.com",
+              "name": "New"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "primary": {
+      "request": {
+        "path": {
+          "id": 10
+        },
+        "body": {
+          "contacts": [
+            {
+              "email": "new@example.com",
+              "name": "New"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "imported": 1
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "primary_only": {
+      "request": {
+        "path": {
+          "id": 10
+        },
+        "body": {
+          "contacts": [
+            {
+              "email": "new@example.com",
+              "name": "New"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "imported": 1
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "repeat_batch": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "contacts": [
+            {
+              "email": "repeat@example.com"
+            },
+            {
+              "email": "repeat@example.com"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "imported": 1
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "setup_required": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "contacts": [
+            {
+              "email": "new@example.com",
+              "name": "New"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "write_only": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "contacts": [
+            {
+              "email": "new@example.com",
+              "name": "New"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "imported": 1
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "listContacts": {
+    "app_password": {
+      "summary": "An actual HTTP Basic app password reads its own account",
+      "request": {
+        "path": {
+          "id": 10
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "id": 31,
+              "mailbox_id": 10,
+              "email": "\"a100%_\\\\\"@example.com",
+              "name": "Friend café",
+              "trust_level": "trusted",
+              "source": "manual",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 32,
+              "mailbox_id": 10,
+              "email": "z@example.com",
+              "name": "Blocked",
+              "trust_level": "blocked",
+              "source": "import",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          ],
+          "pagination": {
+            "total": 2,
+            "has_more": false
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "app_password_other": {
+      "summary": "An app password cannot read a linked account",
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "blank_search": {
+      "summary": "An explicit blank search does not add a LIKE filter",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "search": ""
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "id": 31,
+              "mailbox_id": 1,
+              "email": "\"a100%_\\\\\"@example.com",
+              "name": "Friend café",
+              "trust_level": "trusted",
+              "source": "manual",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 32,
+              "mailbox_id": 1,
+              "email": "z@example.com",
+              "name": "Blocked",
+              "trust_level": "blocked",
+              "source": "import",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          ],
+          "pagination": {
+            "total": 2,
+            "has_more": false
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "clamped": {
+      "summary": "An excessive limit is capped and a negative offset becomes zero",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "limit": 10000,
+          "offset": -10
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "id": 31,
+              "mailbox_id": 1,
+              "email": "\"a100%_\\\\\"@example.com",
+              "name": "Friend café",
+              "trust_level": "trusted",
+              "source": "manual",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 32,
+              "mailbox_id": 1,
+              "email": "z@example.com",
+              "name": "Blocked",
+              "trust_level": "blocked",
+              "source": "import",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          ],
+          "pagination": {
+            "total": 2,
+            "has_more": false
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "content_unavailable": {
+      "summary": "A dependency fault is an internal error, not an empty result or a permission decision",
+      "request": {
+        "path": {
+          "id": 4
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to list contacts"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "cookie_session": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "id": 31,
+              "mailbox_id": 1,
+              "email": "\"a100%_\\\\\"@example.com",
+              "name": "Friend café",
+              "trust_level": "trusted",
+              "source": "manual",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 32,
+              "mailbox_id": 1,
+              "email": "z@example.com",
+              "name": "Blocked",
+              "trust_level": "blocked",
+              "source": "import",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          ],
+          "pagination": {
+            "total": 2,
+            "has_more": false
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_grant": {
+      "summary": "A domain-scoped mail-read grant reaches this account",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "id": 31,
+              "mailbox_id": 1,
+              "email": "\"a100%_\\\\\"@example.com",
+              "name": "Friend café",
+              "trust_level": "trusted",
+              "source": "manual",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 32,
+              "mailbox_id": 1,
+              "email": "z@example.com",
+              "name": "Blocked",
+              "trust_level": "blocked",
+              "source": "import",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          ],
+          "pagination": {
+            "total": 2,
+            "has_more": false
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "empty": {
+      "summary": "An accessible account without rows returns an empty array",
+      "request": {
+        "path": {
+          "id": 2
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [],
+          "pagination": {
+            "has_more": false
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "filtered": {
+      "summary": "Trust and literal search filters reach both the count and row queries",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "search": "100%_\\",
+          "trust_level": "trusted"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "id": 31,
+              "mailbox_id": 1,
+              "email": "\"a100%_\\\\\"@example.com",
+              "name": "Friend café",
+              "trust_level": "trusted",
+              "source": "manual",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          ],
+          "pagination": {
+            "total": 1,
+            "has_more": false
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "first_page": {
+      "summary": "The first page retains the total and reports more results",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "limit": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "id": 31,
+              "mailbox_id": 1,
+              "email": "\"a100%_\\\\\"@example.com",
+              "name": "Friend café",
+              "trust_level": "trusted",
+              "source": "manual",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          ],
+          "pagination": {
+            "total": 2,
+            "has_more": true
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "grant_unavailable": {
+      "summary": "A dependency fault is an internal error, not an empty result or a permission decision",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "inaccessible": {
+      "summary": "An inaccessible account and a missing one have the same refusal",
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller.",
+      "request": {
+        "path": {
+          "id": 20
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_format": {
+      "summary": "The domain ID cannot bind to an integer",
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_limit": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "limit": "bad"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Query parameters failed validation",
+            "details": {
+              "fields": {
+                "limit": "must be an integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_trust": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "trust_level": "unknown"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Query parameters failed validation",
+            "details": {
+              "fields": {
+                "trust_level": "must be one of auto, trusted, blocked"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_domain": {
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "id": 31,
+              "mailbox_id": 1,
+              "email": "\"a100%_\\\\\"@example.com",
+              "name": "Friend café",
+              "trust_level": "trusted",
+              "source": "manual",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 32,
+              "mailbox_id": 1,
+              "email": "z@example.com",
+              "name": "Blocked",
+              "trust_level": "blocked",
+              "source": "import",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          ],
+          "pagination": {
+            "total": 2,
+            "has_more": false
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_holder_missing": {
+      "summary": "A valid key cannot exceed its holder's current grants",
+      "description": "The production verifier accepts the scoped key, but the actual grant loader supplies only mail:write for its holder on this account. The old key permission cannot supply the missing mail:read capability.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_read": {
+      "summary": "A real API key and its holder both permit this mailbox read",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "id": 31,
+              "mailbox_id": 1,
+              "email": "\"a100%_\\\\\"@example.com",
+              "name": "Friend café",
+              "trust_level": "trusted",
+              "source": "manual",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 32,
+              "mailbox_id": 1,
+              "email": "z@example.com",
+              "name": "Blocked",
+              "trust_level": "blocked",
+              "source": "import",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          ],
+          "pagination": {
+            "total": 2,
+            "has_more": false
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_write_only": {
+      "summary": "A valid API key with only mail-write permission cannot read",
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "A missing account retains the existing privacy refusal",
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller.",
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "ownership_unavailable": {
+      "summary": "A dependency fault is an internal error, not an empty result or a permission decision",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "paged": {
+      "summary": "Offset pagination retains the total count",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "limit": 1,
+          "offset": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "id": 32,
+              "mailbox_id": 1,
+              "email": "z@example.com",
+              "name": "Blocked",
+              "trust_level": "blocked",
+              "source": "import",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          ],
+          "pagination": {
+            "total": 2,
+            "has_more": false
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "primary": {
+      "request": {
+        "path": {
+          "id": 10
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "id": 31,
+              "mailbox_id": 10,
+              "email": "\"a100%_\\\\\"@example.com",
+              "name": "Friend café",
+              "trust_level": "trusted",
+              "source": "manual",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            },
+            {
+              "id": 32,
+              "mailbox_id": 10,
+              "email": "z@example.com",
+              "name": "Blocked",
+              "trust_level": "blocked",
+              "source": "import",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          ],
+          "pagination": {
+            "total": 2,
+            "has_more": false
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "setup_required": {
+      "summary": "A session still in setup cannot use account reads",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "target_unavailable": {
+      "summary": "A dependency fault is an internal error, not an empty result or a permission decision",
+      "request": {
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "write_only": {
+      "summary": "A mail-write grant alone does not permit a read",
+      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "suggestContacts": {
+    "app_password": {
+      "request": {
+        "path": {
+          "id": 10
+        },
+        "query": {
+          "q": "example"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "id": 1,
+              "mailbox_id": 10,
+              "email": "alpha@example.com",
+              "name": "Alpha",
+              "trust_level": "auto",
+              "source": "sent",
+              "created_at": "2026-01-01T00:00:00Z",
+              "updated_at": "2026-01-01T00:00:00Z"
+            },
+            {
+              "id": 2,
+              "mailbox_id": 10,
+              "email": "beta@example.com",
+              "name": "Beta",
+              "trust_level": "trusted",
+              "source": "manual",
+              "created_at": "2026-01-01T00:00:00Z",
+              "updated_at": "2026-01-01T00:00:00Z"
+            }
+          ]
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "app_password_other": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "q": "example"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "cookie_session": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "q": "example"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "id": 1,
+              "mailbox_id": 1,
+              "email": "alpha@example.com",
+              "name": "Alpha",
+              "trust_level": "auto",
+              "source": "sent",
+              "created_at": "2026-01-01T00:00:00Z",
+              "updated_at": "2026-01-01T00:00:00Z"
+            },
+            {
+              "id": 2,
+              "mailbox_id": 1,
+              "email": "beta@example.com",
+              "name": "Beta",
+              "trust_level": "trusted",
+              "source": "manual",
+              "created_at": "2026-01-01T00:00:00Z",
+              "updated_at": "2026-01-01T00:00:00Z"
+            }
+          ]
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_grant": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "q": "example"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "id": 1,
+              "mailbox_id": 1,
+              "email": "alpha@example.com",
+              "name": "Alpha",
+              "trust_level": "auto",
+              "source": "sent",
+              "created_at": "2026-01-01T00:00:00Z",
+              "updated_at": "2026-01-01T00:00:00Z"
+            },
+            {
+              "id": 2,
+              "mailbox_id": 1,
+              "email": "beta@example.com",
+              "name": "Beta",
+              "trust_level": "trusted",
+              "source": "manual",
+              "created_at": "2026-01-01T00:00:00Z",
+              "updated_at": "2026-01-01T00:00:00Z"
+            }
+          ]
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "empty_query": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "q": ""
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": []
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "grant_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "q": "example"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "inaccessible": {
+      "request": {
+        "path": {
+          "id": 20
+        },
+        "query": {
+          "q": "example"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_format": {
+      "description": "A valid request body/query reaches the real path binder; the malformed path value is refused without storage access.",
+      "request": {
+        "path": {
+          "id": "not-an-integer"
+        },
+        "query": {
+          "q": "example"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_read": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "q": "example"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "id": 1,
+              "mailbox_id": 1,
+              "email": "alpha@example.com",
+              "name": "Alpha",
+              "trust_level": "auto",
+              "source": "sent",
+              "created_at": "2026-01-01T00:00:00Z",
+              "updated_at": "2026-01-01T00:00:00Z"
+            },
+            {
+              "id": 2,
+              "mailbox_id": 1,
+              "email": "beta@example.com",
+              "name": "Beta",
+              "trust_level": "trusted",
+              "source": "manual",
+              "created_at": "2026-01-01T00:00:00Z",
+              "updated_at": "2026-01-01T00:00:00Z"
+            }
+          ]
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_write_domain": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "q": "example"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_write_holder_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "q": "example"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_write_only": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "q": "example"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_wrong_scope": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "q": "example"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "literal_backslash": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "q": "\\"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "id": 5,
+              "mailbox_id": 1,
+              "email": "backslash@example.com",
+              "name": "path\\name",
+              "trust_level": "auto",
+              "source": "sent",
+              "created_at": "2026-01-01T00:00:00Z",
+              "updated_at": "2026-01-01T00:00:00Z"
+            }
+          ]
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "literal_percent": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "q": "%"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "id": 3,
+              "mailbox_id": 1,
+              "email": "percent@example.com",
+              "name": "50% offer",
+              "trust_level": "auto",
+              "source": "sent",
+              "created_at": "2026-01-01T00:00:00Z",
+              "updated_at": "2026-01-01T00:00:00Z"
+            }
+          ]
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "literal_underscore": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "q": "_"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "id": 4,
+              "mailbox_id": 1,
+              "email": "underscore@example.com",
+              "name": "part_one",
+              "trust_level": "auto",
+              "source": "sent",
+              "created_at": "2026-01-01T00:00:00Z",
+              "updated_at": "2026-01-01T00:00:00Z"
+            }
+          ]
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "q": "missing"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": []
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "ownership_unavailable": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "q": "example"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "primary": {
+      "request": {
+        "path": {
+          "id": 10
+        },
+        "query": {
+          "q": "example"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "id": 1,
+              "mailbox_id": 10,
+              "email": "alpha@example.com",
+              "name": "Alpha",
+              "trust_level": "auto",
+              "source": "sent",
+              "created_at": "2026-01-01T00:00:00Z",
+              "updated_at": "2026-01-01T00:00:00Z"
+            },
+            {
+              "id": 2,
+              "mailbox_id": 10,
+              "email": "beta@example.com",
+              "name": "Beta",
+              "trust_level": "trusted",
+              "source": "manual",
+              "created_at": "2026-01-01T00:00:00Z",
+              "updated_at": "2026-01-01T00:00:00Z"
+            }
+          ]
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "primary_only": {
+      "request": {
+        "path": {
+          "id": 10
+        },
+        "query": {
+          "q": "example"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "id": 1,
+              "mailbox_id": 10,
+              "email": "alpha@example.com",
+              "name": "Alpha",
+              "trust_level": "auto",
+              "source": "sent",
+              "created_at": "2026-01-01T00:00:00Z",
+              "updated_at": "2026-01-01T00:00:00Z"
+            },
+            {
+              "id": 2,
+              "mailbox_id": 10,
+              "email": "beta@example.com",
+              "name": "Beta",
+              "trust_level": "trusted",
+              "source": "manual",
+              "created_at": "2026-01-01T00:00:00Z",
+              "updated_at": "2026-01-01T00:00:00Z"
+            }
+          ]
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "setup_required": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "q": "example"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "target_unavailable": {
+      "request": {
+        "path": {
+          "id": 3
+        },
+        "query": {
+          "q": "example"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unicode": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "q": "Élodie"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "id": 6,
+              "mailbox_id": 1,
+              "email": "unicode@example.com",
+              "name": "Élodie",
+              "trust_level": "auto",
+              "source": "sent",
+              "created_at": "2026-01-01T00:00:00Z",
+              "updated_at": "2026-01-01T00:00:00Z"
+            }
+          ]
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "write_only": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "q": "example"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "updateContact": {
+    "app_password": {
+      "request": {
+        "path": {
+          "cid": 1,
+          "id": 10
+        },
+        "body": {
+          "name": "Changed"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 10,
+            "email": "before@example.com",
+            "name": "Changed",
+            "trust_level": "auto",
+            "source": "sent",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "app_password_other": {
+      "request": {
+        "path": {
+          "cid": 1,
+          "id": 1
+        },
+        "body": {
+          "name": "Changed"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "clear_name": {
+      "request": {
+        "path": {
+          "cid": 1,
+          "id": 1
+        },
+        "body": {
+          "name": ""
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 1,
+            "email": "before@example.com",
+            "name": "",
+            "trust_level": "auto",
+            "source": "sent",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "cookie_session": {
+      "request": {
+        "path": {
+          "cid": 1,
+          "id": 1
+        },
+        "body": {
+          "name": "Changed"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 1,
+            "email": "before@example.com",
+            "name": "Changed",
+            "trust_level": "auto",
+            "source": "sent",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "csrf_mismatch": {
+      "request": {
+        "path": {
+          "cid": 1,
+          "id": 1
+        },
+        "body": {
+          "name": "Changed"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "csrf_missing": {
+      "request": {
+        "path": {
+          "cid": 1,
+          "id": 1
+        },
+        "body": {
+          "name": "Changed"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_grant": {
+      "request": {
+        "path": {
+          "cid": 1,
+          "id": 1
+        },
+        "body": {
+          "name": "Changed"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 1,
+            "email": "before@example.com",
+            "name": "Changed",
+            "trust_level": "auto",
+            "source": "sent",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "grant_unavailable": {
+      "request": {
+        "path": {
+          "cid": 1,
+          "id": 1
+        },
+        "body": {
+          "name": "Changed"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "inaccessible": {
+      "request": {
+        "path": {
+          "cid": 1,
+          "id": 20
+        },
+        "body": {
+          "name": "Changed"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_cid": {
+      "request": {
+        "path": {
+          "cid": 0,
+          "id": 1
+        },
+        "body": {
+          "name": "Changed"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "cid": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_cid_format": {
+      "request": {
+        "path": {
+          "cid": "not-an-integer",
+          "id": 1
+        },
+        "body": {
+          "name": "Changed"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "cid": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_format": {
+      "description": "The JSON body is valid. The real path binder refuses the malformed account identifier; a body-invalid marker would not describe path binding.",
+      "request": {
+        "path": {
+          "cid": 1,
+          "id": "not-an-integer"
+        },
+        "body": {
+          "name": "Changed"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be a non-negative integer"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_read": {
+      "request": {
+        "path": {
+          "cid": 1,
+          "id": 1
+        },
+        "body": {
+          "name": "Changed"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_write_domain": {
+      "request": {
+        "path": {
+          "cid": 1,
+          "id": 1
+        },
+        "body": {
+          "name": "Changed"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 1,
+            "email": "before@example.com",
+            "name": "Changed",
+            "trust_level": "auto",
+            "source": "sent",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_write_holder_missing": {
+      "request": {
+        "path": {
+          "cid": 1,
+          "id": 1
+        },
+        "body": {
+          "name": "Changed"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_write_only": {
+      "request": {
+        "path": {
+          "cid": 1,
+          "id": 1
+        },
+        "body": {
+          "name": "Changed"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 1,
+            "email": "before@example.com",
+            "name": "Changed",
+            "trust_level": "auto",
+            "source": "sent",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_wrong_scope": {
+      "request": {
+        "path": {
+          "cid": 1,
+          "id": 1
+        },
+        "body": {
+          "name": "Changed"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "null_fields": {
+      "request": {
+        "path": {
+          "cid": 1,
+          "id": 1
+        },
+        "body": {
+          "name": null,
+          "trust_level": null
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 1,
+            "email": "before@example.com",
+            "name": "Before",
+            "trust_level": "auto",
+            "source": "sent",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "ownership_unavailable": {
+      "request": {
+        "path": {
+          "cid": 1,
+          "id": 1
+        },
+        "body": {
+          "name": "Changed"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "primary": {
+      "request": {
+        "path": {
+          "cid": 1,
+          "id": 10
+        },
+        "body": {
+          "name": "Changed"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 10,
+            "email": "before@example.com",
+            "name": "Changed",
+            "trust_level": "auto",
+            "source": "sent",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "primary_only": {
+      "request": {
+        "path": {
+          "cid": 1,
+          "id": 10
+        },
+        "body": {
+          "name": "Changed"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 10,
+            "email": "before@example.com",
+            "name": "Changed",
+            "trust_level": "auto",
+            "source": "sent",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "reload_missing": {
+      "request": {
+        "path": {
+          "cid": 6,
+          "id": 1
+        },
+        "body": {
+          "name": "Changed"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Contact not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "reload_unavailable": {
+      "request": {
+        "path": {
+          "cid": 5,
+          "id": 1
+        },
+        "body": {
+          "name": "Changed"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "setup_required": {
+      "request": {
+        "path": {
+          "cid": 1,
+          "id": 1
+        },
+        "body": {
+          "name": "Changed"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "target_unavailable": {
+      "request": {
+        "path": {
+          "cid": 1,
+          "id": 3
+        },
+        "body": {
+          "name": "Changed"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "trust_invalid": {
+      "request": {
+        "path": {
+          "cid": 1,
+          "id": 1
+        },
+        "body": {
+          "trust_level": "friend"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "trust_level": "must be auto, trusted, or blocked"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "trust_only": {
+      "request": {
+        "path": {
+          "cid": 1,
+          "id": 1
+        },
+        "body": {
+          "trust_level": "trusted"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 1,
+            "email": "before@example.com",
+            "name": "Before",
+            "trust_level": "trusted",
+            "source": "sent",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unchanged": {
+      "request": {
+        "path": {
+          "cid": 1,
+          "id": 1
+        },
+        "body": {}
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 1,
+            "email": "before@example.com",
+            "name": "Before",
+            "trust_level": "auto",
+            "source": "sent",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "write_only": {
+      "request": {
+        "path": {
+          "cid": 1,
+          "id": 1
+        },
+        "body": {
+          "name": "Changed"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 1,
+            "email": "before@example.com",
+            "name": "Changed",
+            "trust_level": "auto",
+            "source": "sent",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "write_unavailable": {
+      "request": {
+        "path": {
+          "cid": 1,
+          "id": 1
+        },
+        "body": {
+          "name": "update unavailable"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to update contact"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  }
+}

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -21,7 +22,7 @@ var mailRemovalPaths = map[string]string{
 
 func TestMailRemovalExamples(t *testing.T) {
 	fixture := newMailRemovalScenarios(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

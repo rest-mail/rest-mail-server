@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -147,7 +148,7 @@ func TestSenderRuleDeleteLookupFailuresAreNotMissingRows(t *testing.T) {
 }
 
 func TestDomainPolicyDeleteExamples(t *testing.T) {
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

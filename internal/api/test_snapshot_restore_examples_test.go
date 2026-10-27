@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql/driver"
 	"encoding/json"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -84,7 +85,7 @@ func assertTestSnapshotRestoredColumns(t *testing.T, calls []bulkQueueExampleMut
 
 func TestSnapshotRestoreExamples(t *testing.T) {
 	f := newTestSnapshotRestoreScenarios(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

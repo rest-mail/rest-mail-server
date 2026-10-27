@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -161,7 +162,7 @@ func TestMailboxLookupDatabaseFailuresAreNotMissingResources(t *testing.T) {
 func TestMailboxLookupExamples(t *testing.T) {
 	routers, jwt := mailboxLookupRouters(t)
 	token := mailboxToken(t, jwt)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -16,7 +17,7 @@ const messageRemovalPath = "/api/v1/messages/{id}"
 
 func TestMessageRemovalExamples(t *testing.T) {
 	f := newMessageRemovalScenarios(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

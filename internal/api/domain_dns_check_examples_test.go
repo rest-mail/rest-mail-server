@@ -7,6 +7,7 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net"
 	"net/http"
 	"os"
@@ -256,7 +257,7 @@ func newDomainDNSCheckRouters(t *testing.T, resolver *net.Resolver) map[string]b
 	wild := []grants.Entry{{Capability: grants.Wildcard, Scope: grants.All}}
 	normal := makeRouter(wild, false, false)
 	out := map[string]bulkQueueExampleScenario{}
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -304,7 +305,7 @@ func newDomainDNSCheckRouters(t *testing.T, resolver *net.Resolver) map[string]b
 
 func TestDomainDNSCheckExamples(t *testing.T) {
 	f, calls := newDomainDNSCheckScenarios(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

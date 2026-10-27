@@ -2,12 +2,12 @@ package api
 
 import (
 	"encoding/json"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"os"
 	"testing"
 	"time"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
-	"github.com/restmail/restmail"
 	rmime "github.com/restmail/restmail/internal/mime"
 )
 
@@ -65,7 +65,7 @@ func normalizeForwardExample(t *testing.T, f *forwardFixture, status int, raw []
 
 func TestForwardAttachmentsCanonicalExamples(t *testing.T) {
 	useRealGrants(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

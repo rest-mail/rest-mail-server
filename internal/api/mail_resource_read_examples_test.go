@@ -1,6 +1,7 @@
 package api
 
 import (
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,7 +17,7 @@ var mailResourceReadPaths = map[string]string{"listAttachments": "/api/v1/messag
 
 func TestMailResourceReadExamples(t *testing.T) {
 	scenarios := mailResourceReadScenarios(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

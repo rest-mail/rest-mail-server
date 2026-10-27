@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -186,7 +187,7 @@ func TestDraftLifecycleNamedExamples(t *testing.T) {
 		t.Skip("set DB_HOST for private PostgreSQL production-router draft proofs")
 	}
 	useRealGrants(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

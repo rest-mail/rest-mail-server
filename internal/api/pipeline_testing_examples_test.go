@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -65,7 +66,7 @@ func assertPipelineTestingBody(t *testing.T, wantRaw json.RawMessage, gotRaw []b
 
 func TestPipelineTestingExamples(t *testing.T) {
 	f := newPipelineTestingScenarios(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -279,7 +280,7 @@ func TestPipelineTestingExecutionReceivesHTTPContext(t *testing.T) {
 		return pipelineTestingObservedFilter{Filter: filter, seen: seen}, err
 	})
 	defer pipeline.DefaultRegistry.Register("header_validate", filters.NewHeaderValidate)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

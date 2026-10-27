@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"mime"
 	"net/http"
 	"net/http/httptest"
@@ -10,13 +11,11 @@ import (
 	"strings"
 	"testing"
 
-	oapifly "github.com/antimatter-studios/go-oapifly"
 	"github.com/go-chi/chi/v5"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	yaml "go.yaml.in/yaml/v2"
 
-	"github.com/restmail/restmail"
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/version"
 )
@@ -36,7 +35,7 @@ var publicExamplePaths = map[string]string{
 // of the description that embeds the examples themselves (#1015, #1016, #1021,
 // #1036, #1058).
 func TestPublicReadExamplesMatchRegisteredResponses(t *testing.T) {
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +117,7 @@ func TestPublicReadExamplesMatchRegisteredResponses(t *testing.T) {
 // metrics case also reaches it through a real failed scrape. No fault switch is
 // exposed by the production API.
 func TestPublicReadFailureExamplesMatchErrorAdapter(t *testing.T) {
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -175,9 +175,22 @@ func describe(registry *endpoint.Registry, version string) *oapifly.Generator {
 		Examples:        restmail.Examples,
 		ExamplesFile:    "openapi-example.json",
 		Strict:          strictAreaScope(),
+
+		ExampleRequirements: exampleRequirements,
 	})
 	g.Register(registry.Endpoints()...)
 	return g
+}
+
+// exampleRequirements is what an example pair may say proving it needs (#1236): the
+// principal it is sent as, a body the description cannot hold, a limit spent, or a
+// dependency fault. A pair that requires none of these runs as the fixture admin
+// against the seeded data, which is what the live contract run provides.
+var exampleRequirements = map[string][]string{
+	"principal": {"anonymous", "without_capability"},
+	"body":      {"over_cap", "malformed"},
+	"limit":     {"rate"},
+	"fault":     {"database", "session_store", "permission_store"},
 }
 
 // The preview limit applies per IP before binding or running the engine.

@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -55,7 +56,7 @@ func assertServiceProbeBody(t *testing.T, wantRaw json.RawMessage, gotRaw []byte
 
 func TestServiceProbeExamples(t *testing.T) {
 	f := newServiceProbeScenarios(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +140,7 @@ func TestServiceProbeExamplesWithVertrag(t *testing.T) {
 
 func TestServiceProbeProductionBoundary(t *testing.T) {
 	f := newServiceProbeScenarios(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

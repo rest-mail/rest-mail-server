@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"errors"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"mime"
 	"net/http"
 	"net/http/httptest"
@@ -17,12 +18,10 @@ import (
 	"testing"
 	"time"
 
-	oapifly "github.com/antimatter-studios/go-oapifly"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	"github.com/restmail/restmail"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/config"
 )
@@ -76,7 +75,7 @@ func autoconfigExampleRouters(t *testing.T) map[string]http.Handler {
 
 func TestMozillaExamplesMatchRegisteredResponses(t *testing.T) {
 	routers := autoconfigExampleRouters(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

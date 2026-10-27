@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -127,7 +128,7 @@ func queueEntryActionScenarios(t *testing.T) map[string]queueEntryActionScenario
 
 func TestQueueEntryActionExamples(t *testing.T) {
 	scenarios := queueEntryActionScenarios(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

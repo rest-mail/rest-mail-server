@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"mime"
 	"net/http"
 	"net/http/httptest"
@@ -12,8 +13,6 @@ import (
 	"strings"
 	"testing"
 
-	oapifly "github.com/antimatter-studios/go-oapifly"
-	"github.com/restmail/restmail"
 	"github.com/restmail/restmail/internal/api/handlers"
 )
 
@@ -31,7 +30,7 @@ var autodiscoverExampleCases = map[string]struct {
 
 func TestAutodiscoverExamplesMatchRegisteredResponses(t *testing.T) {
 	routers := autoconfigExampleRouters(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}
