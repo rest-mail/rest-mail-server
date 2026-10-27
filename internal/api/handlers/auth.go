@@ -669,12 +669,21 @@ func (h *AuthHandler) changePassword(r *http.Request, req changePasswordRequest)
 		})
 	}
 
+	// The request's budget and cancellation reach every statement, the
+	// transaction included.
+	db := h.db.WithContext(r.Context())
 	var account models.Mailbox
-	if err := h.db.First(&account, claims.AccountID).Error; err != nil || !account.Active {
+	err := db.First(&account, claims.AccountID).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		// A read that failed says nothing about the session, and a 401 would
+		// tell the client to sign out.
+		return passwordChanged{}, fmt.Errorf("read the account: %w", err)
+	}
+	if err != nil || !account.Active {
 		return passwordChanged{}, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Invalid or expired session")
 	}
 	now := time.Now()
-	cred, err := repositories.NewCredentialRepository(h.db).MatchPassword(account.ID, req.CurrentPassword, now)
+	cred, err := repositories.NewCredentialRepository(db).MatchPassword(account.ID, req.CurrentPassword, now)
 	if err != nil {
 		return passwordChanged{}, fmt.Errorf("verify the password: %w", err)
 	}
@@ -696,7 +705,7 @@ func (h *AuthHandler) changePassword(r *http.Request, req changePasswordRequest)
 	if err != nil {
 		return passwordChanged{}, fmt.Errorf("hash the password: %w", err)
 	}
-	err = h.db.Transaction(func(tx *gorm.DB) error {
+	err = db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&models.Mailbox{}).Where("id = ?", account.ID).Updates(map[string]interface{}{
 			"last_password_change":     now,
 			"password_change_required": false,
