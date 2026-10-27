@@ -160,10 +160,12 @@ func (h *MessageHandler) RegisterCompose(rs endpoint.Routes) {
 	}
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/draft",
 		OperationID: "saveDraft", Summary: "Save a new draft", Tags: []string{"Drafts"}, Status: http.StatusCreated,
-		Errors: []int{http.StatusUnauthorized, http.StatusForbidden}, Security: writes}, h.saveDraft)
+		Description: "Sender lookup and storage follow request cancellation; dependency failures return 500, not forbidden.",
+		Errors:      []int{http.StatusUnauthorized, http.StatusForbidden}, Security: writes}, h.saveDraft)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPut, Path: "/api/v1/messages/draft/{id}",
 		OperationID: "updateDraft", Summary: "Update an existing draft", Tags: []string{"Drafts"},
-		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.updateDraft)
+		Description: "Update and reload commit together. A failed write/reload returns 500 and rolls back; an absent or no-longer-draft row is 404. Declared in_reply_to and references fields are persisted; omitted/null fields stay unchanged. Dependency errors are distinct from denied access, and SQL follows request cancellation.",
+		Errors:      []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.updateDraft)
 	// A scheduled send is seen and called back with what sending it takes: mail:send as its
 	// from address, checked in the handler (#743).
 	sends := handlerChecked(models.CapMailSend, folderSchemes...)
@@ -173,7 +175,7 @@ func (h *MessageHandler) RegisterCompose(rs endpoint.Routes) {
 		Errors:      []int{http.StatusUnauthorized}, Security: sends}, h.listScheduledSends)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/messages/scheduled/{id}",
 		OperationID: "cancelScheduledMessage", Summary: "Cancel a scheduled message", Tags: []string{"Messages"},
-		Description: "A waiting send from an address the session may not send as (mail:send) is not found, as the list leaves it out.",
+		Description: "A waiting send from an address the session may not send as (mail:send) is not found, as the list leaves it out. Lookup, authorization and cancellation update follow request cancellation.",
 		Status:      http.StatusNoContent, Errors: []int{http.StatusUnauthorized, http.StatusNotFound}, Security: sends}, h.cancelScheduledSend)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/{id}/calendar-reply",
 		OperationID: "respondToCalendar", Summary: "Reply to a calendar invitation", Tags: []string{"Calendar"},
@@ -193,7 +195,7 @@ func (h *MessageHandler) RegisterCompose(rs endpoint.Routes) {
 		Errors:    sendRefusals, Security: sends}, h.sendMessage)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/draft/{id}/send",
 		OperationID: "sendDraft", Summary: "Send a draft", Tags: []string{"Drafts"},
-		Description: "The draft (mail:write) is sent as sendMessage sends, and deleted once it is; a refused send keeps it.",
+		Description: "The draft (mail:write) is sent as sendMessage sends, and deleted once it is; a refused send keeps it. Draft lookup/access dependency failures return 500 and follow request cancellation.",
 		Status:      http.StatusCreated, SuccessStatuses: []int{http.StatusOK}, Responses: sentOrDiscarded,
 		Errors: append([]int{http.StatusNotFound}, sendRefusals...), Security: writeAndSend}, h.sendDraft)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/{id}/forward",

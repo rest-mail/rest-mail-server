@@ -2498,6 +2498,7 @@ paths:
       description: >-
         The pending and in-flight scheduled sends for this account, soonest
         first. A message that has been sent or cancelled is no longer listed.
+        Lookup and authorization SQL follow request cancellation.
       responses:
         "200":
           description: Scheduled messages, soonest first
@@ -2527,6 +2528,7 @@ paths:
       description: >-
         Only a message still waiting can be called back. One already being
         sent is not in the list and cannot be cancelled.
+        Lookup, authorization and the cancellation update follow request cancellation.
       responses:
         "204":
           description: Cancelled
@@ -2624,6 +2626,7 @@ paths:
         All draft fields are optional. Without `from`, the draft is saved in
         the signed-in account's mailbox with an empty sender. When `from` is
         supplied, the caller needs mail:write on that mailbox.
+        Sender lookup and storage follow request cancellation; dependency failures return 500 rather than forbidden.
       requestBody:
         required: true
         content:
@@ -2674,6 +2677,8 @@ paths:
       - $ref: "#/components/parameters/MessageId"
     put:
       operationId: updateDraft
+      description: >-
+        Update and reload commit together; a failed write/reload returns 500 and rolls back. An absent or no-longer-draft row is 404. Declared in_reply_to and references fields are persisted, with omitted/null fields unchanged. Lookup/access errors remain distinct from denial and follow request cancellation.
       tags: [Drafts]
       security:
         - CookieAuth: [mail:write]
@@ -2728,6 +2733,8 @@ paths:
       - $ref: "#/components/parameters/MessageId"
     post:
       operationId: sendDraft
+      description: >-
+        Draft lookup/access dependency failures return 500 and follow request cancellation. The broader send and post-send cleanup behavior is unchanged.
       tags: [Drafts]
       security:
         - CookieAuth: [mail:write, mail:send]
