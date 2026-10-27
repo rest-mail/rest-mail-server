@@ -210,13 +210,11 @@ func attachmentConditionalResponses() []oapifly.EndpointResponse {
 	rangeError := maps.Clone(conditional)
 	rangeError["Content-Range"] = oapifly.ResponseHeader{Description: "bytes */length for a non-overlapping range; omitted for a malformed range."}
 	rangeError["Content-Length"] = oapifly.ResponseHeader{Description: "The error body's byte length, when emitted.", Type: oapifly.TypeOf[int64]()}
-	rangeError["X-Content-Type-Options"] = oapifly.ResponseHeader{Description: "Prevents MIME type sniffing for the plain-text range refusal.", Required: true}
 	streamError := maps.Clone(conditional)
 	disposition := streamError["Content-Disposition"]
 	disposition.Required = false // A handler failure happens before the writer sets it.
 	streamError["Content-Disposition"] = disposition
 	streamError["Content-Length"] = rangeError["Content-Length"]
-	streamError["X-Content-Type-Options"] = oapifly.ResponseHeader{Description: "nosniff on the plain-text streaming failure, or when security headers are enabled."}
 	return []oapifly.EndpointResponse{
 		{Status: http.StatusPartialContent, Description: "Selected bytes, or multiple byte ranges with a Content-Range on each binary part.", Type: oapifly.TypeOf[[]byte](), MediaType: "application/octet-stream", Headers: ranges},
 		{Status: http.StatusPartialContent, Description: "Selected bytes, or multiple byte ranges with a Content-Range on each binary part.", Type: oapifly.TypeOf[[]byte](), MediaType: "multipart/byteranges", Headers: ranges},
