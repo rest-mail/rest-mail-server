@@ -677,9 +677,19 @@ tasks:
           -v rest-mail-e2e-gocache:/root/.cache/go-build \
           -e GOFLAGS=-buildvcs=false \
           -e E2E_REQUIRE_STACK \
+          -e E2E_LIMITS \
           -e API_BASE_URL="${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}" \
           golang:1.25 \
           go test -race -count=1 -v -timeout 8m ./tests/e2e/... {{.CLI_ARGS}}
+
+  test:limits:
+    desc: 'Spend every limit the API declares (#660) on a freshly restarted API; it changes the topology, so run it last'
+    cmds:
+      # The buckets live in the API's memory, and the stages and contract
+      # phases spend them; a restart gives the suite buckets of its own.
+      - docker restart "{{.RESTMAIL_PROJECT}}-api" >/dev/null
+      - task: health:wait
+      - E2E_LIMITS=1 E2E_REQUIRE_STACK=1 "${CHORE_BIN:-chore}" test:e2e -- -run '^TestLimits$'
 
   e2e:
     desc: 'Full e2e run: bring up the topology, run the tests, tear it down'

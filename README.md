@@ -447,6 +447,9 @@ chore e2e
 # e2e against an already-running topology
 chore test:e2e
 
+# Spend every limit the API declares, on a restarted API (run it last)
+chore test:limits
+
 # All tests
 chore test:all
 ```

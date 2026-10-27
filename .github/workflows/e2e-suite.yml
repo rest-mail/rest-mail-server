@@ -208,6 +208,16 @@ jobs:
           CONTRACT_LOGS: ${{ runner.temp }}
         run: chore contract
 
+      - name: Limits suite (report)
+        # Every limit the API declares, spent on a restarted API so its buckets
+        # are the suite's own (#660). A report until a run has shown every
+        # declaration answering as declared; then drop continue-on-error.
+        if: inputs.contract-phases == 'gate'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          chore test:limits 2>&1 | tee "$RUNNER_TEMP/limits.log"
+
       - name: Contract tests (fuzz)
         # Values drawn from each schema, with shrinking and a replayable seed
         # (in the log). Exploratory, so it reports and never fails the run:
@@ -223,6 +233,7 @@ jobs:
           out="$RUNNER_TEMP/e2e-logs"
           mkdir -p "$out"
           cp "$RUNNER_TEMP/e2e.log" "$out/e2e-test-output.log" 2>/dev/null || true
+          cp "$RUNNER_TEMP/limits.log" "$out/limits-test-output.log" 2>/dev/null || true
           cp "$RUNNER_TEMP"/contract*.log "$out/" 2>/dev/null || true
           cp .cache/contract/openapi.json .cache/contract/examples.json .cache/contract/coverage.json .cache/contract/authorization.json .cache/contract/fuzz.json "$out/" 2>/dev/null || true
           cp .cache/contract/*.xml .cache/contract/*.html .cache/contract/*.md "$out/" 2>/dev/null || true

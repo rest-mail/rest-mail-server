@@ -450,6 +450,8 @@ Prometheus metrics at `/metrics`. Grafana dashboards under [monitoring/](../moni
 
 13-stage test suite under [tests/e2e/](../tests/e2e/) covering infrastructure through cross-domain round-trip delivery. Run with `chore test:e2e` (requires stack up). `chore test:all` combines unit + integration + e2e.
 
+`chore test:limits` restarts the API, so that its in-memory buckets are fresh, and spends every limit the served description declares: the sign-in, owner, TLS-RPT and pipeline preview throttles, refused API keys and HTTP Basic credentials, recovery failures, sends per account, recipients per message, event streams per account, page sizes and body caps. Each must answer as declared, come back after `Retry-After`, and leave the other buckets alone. CI runs it after the contract phases.
+
 ---
 
 ## 5. Outstanding Work
@@ -827,6 +829,7 @@ chore build:tools                    # migrate, seed, website
 chore test                # unit
 chore test:coverage
 chore test:e2e            # requires stack up
+chore test:limits         # restarts the API; run last
 chore test:all
 chore fmt / vet / lint / tidy
 ```
