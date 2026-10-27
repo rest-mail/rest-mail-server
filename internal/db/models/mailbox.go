@@ -32,6 +32,10 @@ type Mailbox struct {
 	// then the account is reachable by anyone who can read the deployment's
 	// Secret, so an install nobody finishes must not stay that way forever.
 	BootstrapExpiresAt *time.Time `json:"-"`
+	// OwnerID makes this an owned account (an agent's, or a sub account): the
+	// account that created it. What it holds is cut down, live, to what its
+	// owner holds (grants.Load; #341, Decided 12). Nil for an ordinary account.
+	OwnerID            *uint      `gorm:"index" json:"-"`
 	LastPasswordChange *time.Time `json:"last_password_change,omitempty"`
 	CreatedAt          time.Time  `json:"created_at"`
 	UpdatedAt          time.Time  `json:"updated_at"`

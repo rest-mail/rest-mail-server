@@ -115,6 +115,41 @@ func (h Held) Scopes(capability string) []string {
 	return out
 }
 
+// Within is what h holds that ceiling also holds: each capability both hold,
+// at the narrower of two scopes where one covers the other. A wildcard on
+// either side stands for the other side's capability. It bounds an owned
+// account by its owner (#341, Decided 12).
+func (h Held) Within(ceiling Held) Held {
+	seen := map[Entry]bool{}
+	var out Held
+	for _, e := range h.entries {
+		for _, c := range ceiling.entries {
+			capability := ""
+			switch {
+			case e.Capability == c.Capability || c.Capability == Wildcard:
+				capability = e.Capability
+			case e.Capability == Wildcard:
+				capability = c.Capability
+			default:
+				continue
+			}
+			scope := ""
+			if Covers(c.Scope, e.Scope) {
+				scope = e.Scope
+			} else if Covers(e.Scope, c.Scope) {
+				scope = c.Scope
+			} else {
+				continue
+			}
+			if entry := (Entry{Scope: scope, Capability: capability}); !seen[entry] {
+				seen[entry] = true
+				out.entries = append(out.entries, entry)
+			}
+		}
+	}
+	return out
+}
+
 // IntersectScopes keeps only the narrower scopes shared by both sets. Scopes
 // form a hierarchy: two scopes overlap only when one covers the other.
 func IntersectScopes(a, b []string) []string {
@@ -143,6 +178,10 @@ func IntersectScopes(a, b []string) []string {
 // which every active account holds without a grant. An inactive or missing
 // account holds nothing on its own mailbox, but its grants are still read:
 // whoever acts for it is refused elsewhere.
+//
+// An owned account (models.Mailbox.OwnerID) holds only what its owner holds
+// too, read live the same way: narrowing the owner narrows it at once, and an
+// inactive owner leaves it holding nothing (#341, Decided 12).
 func Load(db *gorm.DB, accountID uint, now time.Time) (Held, error) {
 	held, _, err := load(db, accountID, now)
 	return held, err
@@ -152,6 +191,22 @@ func Load(db *gorm.DB, accountID uint, now time.Time) (Held, error) {
 // it read expires (zero when none does), after which what it read is out of
 // date.
 func load(db *gorm.DB, accountID uint, now time.Time) (Held, time.Time, error) {
+	return loadBounded(db, accountID, now, map[uint]bool{})
+}
+
+// maxOwnerDepth bounds a chain of owners: an owned account's owner may itself
+// be owned, but never this deep.
+const maxOwnerDepth = 8
+
+// loadBounded is load for an account reached through the owners in visited.
+// An owned account holds only what its owner holds (Within), read the same
+// way; an inactive or missing owner, a loop or too long a chain leaves it
+// holding nothing.
+func loadBounded(db *gorm.DB, accountID uint, now time.Time, visited map[uint]bool) (Held, time.Time, error) {
+	if visited[accountID] || len(visited) >= maxOwnerDepth {
+		return Held{}, time.Time{}, nil
+	}
+	visited[accountID] = true
 	var rows []struct {
 		Scope               string
 		Capability          string
@@ -172,13 +227,16 @@ func load(db *gorm.DB, accountID uint, now time.Time) (Held, time.Time, error) {
 		return Held{}, time.Time{}, err
 	}
 	var held Held
-	var own []string
-	if err := db.Model(&models.Mailbox{}).Where("id = ? AND active", accountID).Pluck("address", &own).Error; err != nil {
+	var own []struct {
+		Address string
+		OwnerID *uint
+	}
+	if err := db.Model(&models.Mailbox{}).Select("address", "owner_id").Where("id = ? AND active", accountID).Scan(&own).Error; err != nil {
 		return Held{}, time.Time{}, err
 	}
 	if len(own) == 1 {
 		for _, c := range models.OwnerCapabilities {
-			held.entries = append(held.entries, Entry{Scope: Mailbox(own[0]), Capability: c})
+			held.entries = append(held.entries, Entry{Scope: Mailbox(own[0].Address), Capability: c})
 		}
 	}
 	var expires time.Time
@@ -188,6 +246,25 @@ func load(db *gorm.DB, accountID uint, now time.Time) (Held, time.Time, error) {
 			if at != nil && (expires.IsZero() || at.Before(expires)) {
 				expires = *at
 			}
+		}
+	}
+	if len(own) == 1 && own[0].OwnerID != nil {
+		// An inactive owner's grants are still read for itself (refused
+		// elsewhere), but bound nothing: its owned accounts hold nothing.
+		var active int64
+		if err := db.Model(&models.Mailbox{}).Where("id = ? AND active", *own[0].OwnerID).Count(&active).Error; err != nil {
+			return Held{}, time.Time{}, err
+		}
+		if active == 0 {
+			return Held{}, time.Time{}, nil
+		}
+		ceiling, ceilingExpires, err := loadBounded(db, *own[0].OwnerID, now, visited)
+		if err != nil {
+			return Held{}, time.Time{}, err
+		}
+		held = held.Within(ceiling)
+		if !ceilingExpires.IsZero() && (expires.IsZero() || ceilingExpires.Before(expires)) {
+			expires = ceilingExpires
 		}
 	}
 	return held, expires, nil
