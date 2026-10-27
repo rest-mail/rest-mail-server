@@ -35,9 +35,9 @@ const organizerAddress = "organizer@remote.example"
 
 type messageStorageDB struct {
 	serviceProbeTestDB
-	failUpdate, failReload  bool
-	failOrganizer, notLocal bool
-	failQueue               bool
+	failUpdate, failReload bool
+	failOrganizer          bool
+	failQueue              bool
 
 	mu                 sync.Mutex
 	messageReads       int

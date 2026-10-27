@@ -682,9 +682,10 @@ func refreshWithCookie(router http.Handler, refreshToken string) *httptest.Respo
 }
 
 // The router harness runs against a deliberately-failing DB, so the OSI-10
-// rotation ledger is unreachable here. Refresh is now ledger-gated: it must fail
-// CLOSED (401) rather than mint tokens without checking rotation/revocation, and
-// the route must still be wired (not a chi 404). The happy-path rotation,
+// rotation ledger is unreachable here. Refresh is ledger-gated: it must fail
+// CLOSED rather than mint tokens without checking rotation/revocation, and since
+// the ledger could not be read, not because the token is bad, it answers 500, not
+// 401 (#1247). The route must still be wired (not a chi 404). The happy-path rotation,
 // revocation, and session-type-preservation behavior is covered DB-free by the
 // handler tests (handlers.TestRefresh_RotationInvalidatesOldToken,
 // TestRefresh_RevokedTokenBlocked, TestRefresh_PreservesTypeWithRotation) and by
@@ -698,8 +699,8 @@ func TestRefresh_MailboxTokenFailsClosedWithoutLedger(t *testing.T) {
 	}
 
 	rr := refreshWithCookie(router, pair.RefreshToken)
-	if rr.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401 fail-closed, got %d (body %s)", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusInternalServerError || strings.Contains(rr.Body.String(), "access_token") || len(rr.Result().Cookies()) != 0 {
+		t.Fatalf("expected a 500 that mints nothing, got %d (body %s)", rr.Code, rr.Body.String())
 	}
 	if strings.Contains(rr.Body.String(), "404 page not found") {
 		t.Fatal("refresh route not wired (chi 404)")
@@ -714,8 +715,8 @@ func TestRefresh_AdminTokenFailsClosedWithoutLedger(t *testing.T) {
 	}
 
 	rr := refreshWithCookie(router, pair.RefreshToken)
-	if rr.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401 fail-closed, got %d (body %s)", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusInternalServerError || strings.Contains(rr.Body.String(), "access_token") || len(rr.Result().Cookies()) != 0 {
+		t.Fatalf("expected a 500 that mints nothing, got %d (body %s)", rr.Code, rr.Body.String())
 	}
 }
 
