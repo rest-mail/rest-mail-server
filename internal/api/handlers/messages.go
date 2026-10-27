@@ -1425,9 +1425,12 @@ func (h *MessageHandler) saveDraft(r *http.Request, req saveDraftBody) (Message,
 	// Without a from, the caller's own.
 	mailboxID := claims.AccountID
 	if req.From != "" {
-		mb, err := mayActAs(h.db, claims, req.From, models.CapMailWrite)
-		if err != nil {
+		mb, err := mayActAs(h.db.WithContext(r.Context()), claims, req.From, models.CapMailWrite)
+		if errors.Is(err, errNoAccess) {
 			return Message{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "You are not authorized to send from this address")
+		}
+		if err != nil {
+			return Message{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to check the sender")
 		}
 		mailboxID = mb.ID
 	}
@@ -1458,7 +1461,7 @@ func (h *MessageHandler) saveDraft(r *http.Request, req saveDraftBody) (Message,
 		ReceivedAt:   time.Now(),
 	}
 
-	if err := h.db.Create(&draft).Error; err != nil {
+	if err := h.db.WithContext(r.Context()).Create(&draft).Error; err != nil {
 		return Message{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to save draft")
 	}
 
@@ -1474,12 +1477,11 @@ func (h *MessageHandler) updateDraft(r *http.Request, in updateDraftRequest) (Me
 	}
 
 	var draft models.Message
-	if err := h.db.Where("id = ? AND is_draft = ?", in.ID, true).First(&draft).Error; err != nil {
-		return Message{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Draft not found")
+	if err := h.db.WithContext(r.Context()).Where("id = ? AND is_draft = ?", in.ID, true).First(&draft).Error; err != nil {
+		return Message{}, draftLookupRefusal(err)
 	}
-
-	if !h.verifyMessageOwnership(nil, r, &draft, models.CapMailWrite) {
-		return Message{}, errMessageAccess
+	if err := h.draftAccess(r, &draft); err != nil {
+		return Message{}, err
 	}
 
 	req := in.Body
@@ -1501,7 +1503,7 @@ func (h *MessageHandler) updateDraft(r *http.Request, in updateDraftRequest) (Me
 	// able to act as it. Without this, a draft saved from the caller's own
 	// address could be turned into one from anyone's (#610).
 	if req.From != nil && *req.From != "" {
-		if _, err := mayActAs(h.db, claims, *req.From, models.CapMailWrite); err != nil {
+		if _, err := mayActAs(h.db.WithContext(r.Context()), claims, *req.From, models.CapMailWrite); err != nil {
 			if errors.Is(err, errNoAccess) {
 				return Message{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "You are not authorized to send from this address")
 			}
@@ -1531,12 +1533,34 @@ func (h *MessageHandler) updateDraft(r *http.Request, in updateDraftRequest) (Me
 		updates["body_html"] = *req.BodyHTML
 	}
 
-	if len(updates) > 0 {
-		h.db.Model(&draft).Updates(updates)
+	if req.InReplyTo != nil {
+		updates["in_reply_to"] = *req.InReplyTo
+	}
+	if req.References != nil {
+		updates["references"] = *req.References
 	}
 
-	h.db.First(&draft, in.ID)
-	return messageOf(draft), nil
+	var updated models.Message
+	err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
+		if len(updates) > 0 {
+			result := tx.Model(&models.Message{}).
+				Where("id = ? AND is_draft = ? AND mailbox_id = ?", draft.ID, true, draft.MailboxID).Updates(updates)
+			if result.Error != nil {
+				return endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to update draft")
+			}
+			if result.RowsAffected == 0 {
+				return draftLookupRefusal(gorm.ErrRecordNotFound)
+			}
+		}
+		if err := tx.Where("id = ? AND is_draft = ? AND mailbox_id = ?", draft.ID, true, draft.MailboxID).First(&updated).Error; err != nil {
+			return draftLookupRefusal(err)
+		}
+		return nil
+	})
+	if err != nil {
+		return Message{}, err
+	}
+	return messageOf(updated), nil
 }
 
 // sendDraft sends a draft through sendMessage, and deletes the draft once it is sent.
@@ -1548,11 +1572,11 @@ func (h *MessageHandler) sendDraft(r *http.Request, in messagePath) (endpoint.St
 	}
 
 	var draft models.Message
-	if err := h.db.Where("id = ? AND is_draft = ?", in.ID, true).First(&draft).Error; err != nil {
-		return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "Draft not found")
+	if err := h.db.WithContext(r.Context()).Where("id = ? AND is_draft = ?", in.ID, true).First(&draft).Error; err != nil {
+		return zero, draftLookupRefusal(err)
 	}
-	if !h.verifyMessageOwnership(nil, r, &draft, models.CapMailWrite) {
-		return zero, errMessageAccess
+	if err := h.draftAccess(r, &draft); err != nil {
+		return zero, err
 	}
 
 	var toList []string
@@ -1578,6 +1602,26 @@ func (h *MessageHandler) sendDraft(r *http.Request, in messagePath) (endpoint.St
 	// Only a sent draft is deleted: a refused send keeps it to try again.
 	h.db.Delete(&draft)
 	return sent, nil
+}
+
+// Preserve the existing missing/denied policy while keeping dependency errors
+// distinct. The sender's mail:send check still runs separately when sending.
+func draftLookupRefusal(err error) error {
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return endpoint.Refuse(http.StatusNotFound, "not_found", "Draft not found")
+	}
+	return endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to read draft")
+}
+
+func (h *MessageHandler) draftAccess(r *http.Request, draft *models.Message) error {
+	_, err := mayReach(h.db.WithContext(r.Context()), middleware.GetClaims(r), draft.MailboxID, models.CapMailWrite)
+	if errors.Is(err, errNoAccess) {
+		return errMessageAccess
+	}
+	if err != nil {
+		return endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to check draft access")
+	}
+	return nil
 }
 
 // GetThread returns all messages sharing the same thread_id.
@@ -1875,18 +1919,6 @@ func (h *MessageHandler) respondToCalendar(r *http.Request, in calendarReplyRequ
 	}
 
 	return CalendarReplied{Response: response, Status: "sent"}, nil
-}
-
-// verifyMessageOwnership checks that the caller may act on the message with
-// capability: that it is in a mailbox the caller holds the capability on (its
-// own, or one it owns or has linked; an app password, only its own).
-func (h *MessageHandler) verifyMessageOwnership(w http.ResponseWriter, r *http.Request, msg *models.Message, capability string) bool {
-	claims := middleware.GetClaims(r)
-	if claims == nil {
-		return false
-	}
-	_, err := mayReach(h.db, claims, msg.MailboxID, capability)
-	return err == nil
 }
 
 // localDeliveryParams holds the information needed for local message delivery with

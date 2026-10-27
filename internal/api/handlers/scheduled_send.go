@@ -190,8 +190,8 @@ var errNoScheduledSend = endpoint.Refuse(http.StatusNotFound, "not_found", "No s
 // mayCallBack reports whether the request may see and cancel a scheduled message from
 // address: what sending it takes, mail:send as that address (#743). A credential scoped
 // elsewhere, an API key without mail:send or an app password of another mailbox, may not.
-func (h *MessageHandler) mayCallBack(claims *auth.Claims, address string) (bool, error) {
-	_, err := mayActAs(h.db, claims, address, models.CapMailSend)
+func (h *MessageHandler) mayCallBack(ctx context.Context, claims *auth.Claims, address string) (bool, error) {
+	_, err := mayActAs(h.db.WithContext(ctx), claims, address, models.CapMailSend)
 	if errors.Is(err, errNoAccess) {
 		return false, nil
 	}
@@ -206,7 +206,7 @@ func (h *MessageHandler) listScheduledSends(r *http.Request, _ struct{}) ([]Sche
 		return nil, errNotSignedIn
 	}
 	var rows []models.ScheduledSend
-	if err := h.db.
+	if err := h.db.WithContext(r.Context()).
 		Where("account_id = ? AND status IN ?", claims.AccountID, []string{"pending", "sending"}).
 		Order("send_at").
 		Find(&rows).Error; err != nil {
@@ -218,7 +218,7 @@ func (h *MessageHandler) listScheduledSends(r *http.Request, _ struct{}) ([]Sche
 		may, seen := allowed[row.From]
 		if !seen {
 			var err error
-			if may, err = h.mayCallBack(claims, row.From); err != nil {
+			if may, err = h.mayCallBack(r.Context(), claims, row.From); err != nil {
 				return nil, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to list scheduled messages")
 			}
 			allowed[row.From] = may
@@ -238,21 +238,21 @@ func (h *MessageHandler) cancelScheduledSend(r *http.Request, in scheduledPath) 
 		return endpoint.Empty{}, errNotSignedIn
 	}
 	var row models.ScheduledSend
-	err := h.db.Where("id = ? AND account_id = ? AND status = ?", in.ID, claims.AccountID, "pending").Take(&row).Error
+	err := h.db.WithContext(r.Context()).Where("id = ? AND account_id = ? AND status = ?", in.ID, claims.AccountID, "pending").Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return endpoint.Empty{}, errNoScheduledSend
 	}
 	if err != nil {
 		return endpoint.Empty{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to cancel the scheduled message")
 	}
-	may, err := h.mayCallBack(claims, row.From)
+	may, err := h.mayCallBack(r.Context(), claims, row.From)
 	if err != nil {
 		return endpoint.Empty{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to cancel the scheduled message")
 	}
 	if !may {
 		return endpoint.Empty{}, errNoScheduledSend
 	}
-	result := h.db.Model(&models.ScheduledSend{}).
+	result := h.db.WithContext(r.Context()).Model(&models.ScheduledSend{}).
 		Where("id = ? AND status = ?", row.ID, "pending").
 		Update("status", "cancelled")
 	if result.Error != nil {
