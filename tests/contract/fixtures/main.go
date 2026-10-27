@@ -119,6 +119,9 @@ var domainTenantDomains = []struct{ tenant, name string }{{"a", "restmail.test"}
 type domainTenant struct {
 	Address  string `json:"address"`
 	DomainID uint   `json:"domain_id"`
+	// MailboxID is the administrator's own mailbox, a mailbox of its domain
+	// the other tenant's administrator must not reach.
+	MailboxID uint `json:"mailbox_id"`
 }
 
 func prepareDomainTenants(database *gorm.DB, domain string) (map[string]domainTenant, error) {
@@ -162,7 +165,7 @@ func prepareDomainTenants(database *gorm.DB, domain string) (map[string]domainTe
 			if _, err := grants.EnsureSystem(tx, account.ID, role.ID, "domain:"+d.name, models.GrantActive); err != nil {
 				return err
 			}
-			tenants[d.tenant] = domainTenant{Address: account.Address, DomainID: hosted.ID}
+			tenants[d.tenant] = domainTenant{Address: account.Address, DomainID: hosted.ID, MailboxID: account.ID}
 		}
 		return nil
 	})

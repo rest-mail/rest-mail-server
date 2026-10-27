@@ -242,6 +242,9 @@ func TestDomainTenantsAdministerOnlyTheirOwnDomain(t *testing.T) {
 	if first["a"].DomainID == first["b"].DomainID {
 		t.Fatal("the tenants share a domain")
 	}
+	if first["a"].MailboxID == 0 || first["a"].MailboxID == first["b"].MailboxID {
+		t.Fatal("the tenants do not each name a mailbox of their own:", first)
+	}
 	for tenant, want := range map[string]string{"a": "restmail.test", "b": "contract-other.test"} {
 		var account models.Mailbox
 		if err := db.Where("address = ?", first[tenant].Address).First(&account).Error; err != nil {

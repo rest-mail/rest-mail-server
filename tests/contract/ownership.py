@@ -27,7 +27,11 @@ domain, sent the other's domain id on the /api/v1/admin/domains/{id} operations.
 Tenant ids are keyed by parameter name, and the account run already declares
 path.id, so the domains need a run of their own.
 
-Usage: ownership.py [--domains] <openapi.yaml> <vertrag.yml> <tenants.json> <out.yml> <report.xml>
+With --mailboxes it writes the third: the same administrators, each declaring
+its own mailbox, sent on the /api/v1/admin/mailboxes/{id} operations and the
+mailbox list.
+
+Usage: ownership.py [--domains|--mailboxes] <openapi.yaml> <vertrag.yml> <tenants.json> <out.yml> <report.xml>
 """
 
 import base64
@@ -49,12 +53,16 @@ ACCOUNT_OPERATIONS = r"^/api/v1/accounts(/\{id\}| > )"
 # The domain run also sends the DKIM routes, whose id is the domain's, and the
 # admin resources a create links to (aliases, filters, pipelines,
 # certificates), made again for each cell by the victim tenant's administrator.
-# Mailboxes, the queue, grants and bans take ids no link makes and that are not
-# a domain's, so the declared id would name nothing there.
+# The queue, grants and bans take ids no link makes and that are not a
+# domain's, so the declared id would name nothing there; the mailboxes have a
+# run of their own (MAILBOX_OPERATIONS).
 DOMAIN_OPERATIONS = (
     r"^/api/v1/admin/(domains(/\{id\}| > )|dkim/\{id\}"
     r"|(aliases|custom-filters|pipelines|certificates)(/\{id\}| > ))"
 )
+# The mailbox run: the admin mailbox routes and their list, with each tenant's
+# administrator's own mailbox as the declared id.
+MAILBOX_OPERATIONS = r"^/api/v1/admin/mailboxes(/\{id\}| > )"
 # What the admin role holds on its own domain (internal/bootstrap).
 DOMAIN_ROLES = [
     "domains:read",
@@ -103,10 +111,38 @@ def write_private(config, out_path):
 
 
 def domains(spec_path, config_path, tenants_path, out_path, report_path):
+    return administrators(
+        spec_path,
+        config_path,
+        tenants_path,
+        out_path,
+        report_path,
+        DOMAIN_OPERATIONS,
+        "domain_id",
+    )
+
+
+def mailboxes(spec_path, config_path, tenants_path, out_path, report_path):
+    return administrators(
+        spec_path,
+        config_path,
+        tenants_path,
+        out_path,
+        report_path,
+        MAILBOX_OPERATIONS,
+        "mailbox_id",
+    )
+
+
+def administrators(
+    spec_path, config_path, tenants_path, out_path, report_path, operations, id_key
+):
+    """A run of the domain administrators: operations selected, each tenant
+    declaring the fixture's id_key as path.id."""
     with open(tenants_path) as source:
         fixture = json.load(source)
     config = run_config(spec_path, config_path, report_path)
-    config["only-matching"] = [DOMAIN_OPERATIONS]
+    config["only-matching"] = [operations]
     config["principals"] = [
         {
             "name": "domain-admin-" + tenant,
@@ -123,7 +159,7 @@ def domains(spec_path, config_path, tenants_path, out_path, report_path):
     config["tenants"] = {
         tenant: {
             "principals": ["domain-admin-" + tenant],
-            "ids": {"path.id": str(fixture[tenant]["domain_id"])},
+            "ids": {"path.id": str(fixture[tenant][id_key])},
         }
         for tenant in ("a", "b")
     }
@@ -175,8 +211,10 @@ if __name__ == "__main__":
     run = main
     if arguments[:1] == ["--domains"]:
         run, arguments = domains, arguments[1:]
+    elif arguments[:1] == ["--mailboxes"]:
+        run, arguments = mailboxes, arguments[1:]
     if len(arguments) != 5:
         sys.exit(
-            "usage: ownership.py [--domains] <spec> <config> <tenants> <out.yml> <report.xml>"
+            "usage: ownership.py [--domains|--mailboxes] <spec> <config> <tenants> <out.yml> <report.xml>"
         )
     sys.exit(run(*arguments))

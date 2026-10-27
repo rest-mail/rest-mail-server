@@ -700,8 +700,11 @@ through the API takes a two-factor session, which no contract principal has.
 show the other tenant's domain. It also sends the DKIM routes, whose id is the
 domain's, and the aliases, custom filters, pipelines and certificates a create
 links to, which the victim tenant's administrator makes again for each cell.
-Mailboxes, the queue, grants and bans take ids that no link makes and that are
-not a domain's, so they are not sent. Its report is `ownership-domains`.
+The queue, grants and bans take ids that no link makes and that are not a
+domain's, so they are not sent. The admin mailbox routes have a third run,
+`ownership-mailboxes` (`ownership.py --mailboxes`): the same administrators,
+each declaring its own mailbox, which the fixture prints beside its domain, are
+sent on `/api/v1/admin/mailboxes/{id}` and the mailbox list. Its report is `ownership-domains`.
 Tenant ids are keyed by parameter name, and the account run already declares
 `path.id`, so the domains need a run of their own.
 
