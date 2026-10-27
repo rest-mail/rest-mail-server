@@ -3877,6 +3877,7 @@ paths:
         is served ONLY on the dedicated internal listener (verified gateway client
         certificate required) and is absent from the public listener; when disabled
         it is unauthenticated on the public listener. Never accepts a user JWT.
+        A missing mailbox is 404; a failed mailbox lookup is 500, never a missing recipient.
       security: []
       x-internal-mtls: true
       parameters:
@@ -4047,9 +4048,13 @@ paths:
       tags: [RESTMAIL]
       summary: Deliver a message via RESTMAIL protocol
       description: >-
-        Server-to-server delivery. Unauthenticated at the HTTP layer; the message's
-        authenticity is verified out-of-band from its DKIM signature and the SPF
-        result of the sending host.
+        Server-to-server delivery. Unauthenticated at the HTTP layer; a delivery must
+        come from a trusted peer network or carry a DKIM signature aligned with its
+        From domain, unless it is external mail accepted by non-strict mode. A failed
+        sender-domain lookup cannot establish an external sender. Failed sender,
+        recipient or inbound-policy lookups and corrupt stored policy defer with 503.
+        Recipient lookups finish before delivery side effects. A genuine absent
+        recipient remains a permanent failure.
       security: []
       requestBody:
         required: true

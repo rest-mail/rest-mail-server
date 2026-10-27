@@ -237,7 +237,11 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 		if ascii, err := rmail.DomainASCII(fromDomain); err == nil {
 			fromDomain = strings.TrimSuffix(ascii, ".")
 			var d models.Domain
-			fromLocal = h.db.Where("name = ?", fromDomain).First(&d).Error == nil
+			err := h.db.WithContext(r.Context()).Where("name = ?", fromDomain).First(&d).Error
+			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+				return RestmailDelivery{}, restmailReadRefusal("sender domain")
+			}
+			fromLocal = err == nil
 		}
 	}
 	// DKIM verification does DNS lookups, so only pay for it when the decision
@@ -257,6 +261,24 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 		return RestmailDelivery{}, endpoint.Refuse(http.StatusForbidden, "unauthorized", "Delivery not authenticated")
 	}
 
+	// Resolve every recipient before reports, filtering or storage can have
+	// side effects. An unavailable database is not an absent mailbox, and a
+	// later recipient lookup must not leave an earlier recipient accepted.
+	recipients := make(map[string]restmailRecipient, len(to))
+	for _, rcpt := range to {
+		if _, exists := recipients[rcpt]; exists {
+			continue
+		}
+		mailbox, deliveredTo, err := h.resolveRecipientMailbox(r.Context(), rcpt)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			continue
+		}
+		if err != nil {
+			return RestmailDelivery{}, restmailReadRefusal("recipient identity")
+		}
+		recipients[rcpt] = restmailRecipient{mailbox: mailbox, deliveredTo: deliveredTo}
+	}
+
 	delivered := []string{}
 	failed := []string{}
 	// Report signatures may use a tlsrpt-only key. Consume reports before the
@@ -265,9 +287,8 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 	if h.tlsReports != nil && h.tlsReports.address != "" {
 		remaining := make([]string, 0, len(to))
 		for _, rcpt := range to {
-			mailbox, _, ok := h.resolveRecipientMailbox(rcpt)
-			if ok {
-				consumed, err := h.tlsReports.receive(r.Context(), mailbox.Address, req.RawMessage)
+			if recipient, ok := recipients[rcpt]; ok {
+				consumed, err := h.tlsReports.receive(r.Context(), recipient.mailbox.Address, req.RawMessage)
 				if err != nil {
 					return RestmailDelivery{}, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
 				}
@@ -304,27 +325,9 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 		}
 	}
 
-	var pipelineCfg *pipeline.PipelineConfig
-	if domainName != "" {
-		var domain models.Domain
-		if err := h.db.Where("name = ?", domainName).First(&domain).Error; err == nil {
-			var dbPipeline models.Pipeline
-			if err := h.db.Where("domain_id = ? AND direction = ? AND active = ?", domain.ID, "inbound", true).
-				First(&dbPipeline).Error; err == nil {
-				var filterConfigs []pipeline.FilterConfig
-				if jsonErr := json.Unmarshal(dbPipeline.Filters, &filterConfigs); jsonErr == nil {
-					pipelineCfg = &pipeline.PipelineConfig{
-						ID:        dbPipeline.ID,
-						DomainID:  dbPipeline.DomainID,
-						Direction: dbPipeline.Direction,
-						Filters:   filterConfigs,
-						Active:    dbPipeline.Active,
-					}
-				}
-			} else {
-				pipelineCfg = pipeline.DefaultInboundPipeline(domain.ID)
-			}
-		}
+	pipelineCfg, err := h.inboundPipeline(r.Context(), domainName)
+	if err != nil {
+		return RestmailDelivery{}, restmailReadRefusal("inbound pipeline")
 	}
 
 	// Run the inbound pipeline.
@@ -377,8 +380,8 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 				return RestmailDelivery{Delivered: to, Failed: []string{}}, nil
 			case pipeline.ActionQuarantine:
 				for _, rcpt := range to {
-					if mailbox, _, ok := h.resolveRecipientMailbox(rcpt); ok {
-						h.quarantineFor(mailbox.ID, req.From, req.Subject, req.BodyText, result)
+					if recipient, ok := recipients[rcpt]; ok {
+						h.quarantineFor(recipient.mailbox.ID, req.From, req.Subject, req.BodyText, result)
 					}
 				}
 				rmTrace.Outcome = outcomeQuarantined
@@ -440,18 +443,20 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 	// pipeline ran once for all of them (#787). Every script runs before anything is stored,
 	// so one that cannot run defers the whole message, as a failed domain pipeline does, and
 	// no recipient gets the message twice when the peer retries.
-	sieved, err := h.runRecipientScripts(r.Context(), pipelineCfg, sharedEmail, to)
+	sieved, err := h.runRecipientScripts(r.Context(), pipelineCfg, sharedEmail, to, recipients)
 	if err != nil {
 		slog.Error("restmail: a recipient's Sieve script could not run, deferring delivery", "error", err)
 		return RestmailDelivery{}, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
 	}
 
 	for _, rcpt := range to {
-		mailbox, deliveredTo, ok := h.resolveRecipientMailbox(rcpt)
+		recipient, ok := recipients[rcpt]
 		if !ok {
 			failed = append(failed, rcpt)
 			continue
 		}
+
+		mailbox, deliveredTo := recipient.mailbox, recipient.deliveredTo
 
 		// The recipient's own script decides for this recipient alone: refused, dropped,
 		// held, forwarded instead, or kept, with its folder and flags. Without one, the
@@ -571,17 +576,17 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 // runRecipientScripts runs each recipient's own Sieve script, the ones that have one, on its
 // copy of email, and returns their results by recipient. An error, or a script that defers,
 // stops them all: the caller defers the message.
-func (h *RestmailHandler) runRecipientScripts(ctx context.Context, cfg *pipeline.PipelineConfig, email *pipeline.EmailJSON, to []string) (map[string]*pipeline.ExecutionResult, error) {
+func (h *RestmailHandler) runRecipientScripts(ctx context.Context, cfg *pipeline.PipelineConfig, email *pipeline.EmailJSON, to []string, recipients map[string]restmailRecipient) (map[string]*pipeline.ExecutionResult, error) {
 	sieved := map[string]*pipeline.ExecutionResult{}
 	if cfg == nil || h.engine == nil {
 		return sieved, nil
 	}
 	for _, rcpt := range to {
-		mailbox, _, ok := h.resolveRecipientMailbox(rcpt)
+		recipient, ok := recipients[rcpt]
 		if !ok {
 			continue
 		}
-		own, err := accountSieveOnly(h.db, cfg, mailbox.ID)
+		own, err := accountSieveOnly(h.db.WithContext(ctx), cfg, recipient.mailbox.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -709,33 +714,75 @@ func buildInboundEmail(parsed *pipeline.EmailJSON, envelopeFrom, from string, to
 // fallback). deliveredTo is the original recipient when a "+detail" tag was
 // stripped (so the caller can record a Delivered-To header preserving the tag
 // for downstream Sieve filters), and "" otherwise.
-func (h *RestmailHandler) resolveRecipientMailbox(rcpt string) (mailbox models.Mailbox, deliveredTo string, ok bool) {
-	_, err := rmail.CanonicalMailboxAddress(rcpt)
+func (h *RestmailHandler) resolveRecipientMailbox(ctx context.Context, rcpt string) (mailbox models.Mailbox, deliveredTo string, err error) {
+	_, err = rmail.CanonicalMailboxAddress(rcpt)
 	if err != nil || rmail.ContainsControlChar(rcpt) {
-		return models.Mailbox{}, "", false
+		return models.Mailbox{}, "", gorm.ErrRecordNotFound
 	}
-	if err := repositories.FindActiveMailboxByAddress(h.db, rcpt, &mailbox); err == nil {
-		return mailbox, "", true
+	db := h.db.WithContext(ctx)
+	if err := repositories.FindActiveMailboxByAddress(db, rcpt, &mailbox); err == nil {
+		return mailbox, "", nil
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) || errors.Is(err, repositories.ErrMailboxUnavailable) {
-		return models.Mailbox{}, "", false
+		return models.Mailbox{}, "", err
 	}
 
 	base, _, tagged := rmail.StripSubaddress(rcpt)
 	if !tagged {
-		return models.Mailbox{}, "", false
+		return models.Mailbox{}, "", gorm.ErrRecordNotFound
 	}
 
-	// An explicit alias for the full "+detail" address claims it — do not fall
-	// back to the base mailbox (explicit alias wins over subaddressing).
-	aliasClaims, err := repositories.AliasClaimsAddress(h.db, rcpt, false)
-	if err != nil || aliasClaims {
-		return models.Mailbox{}, "", false
+	// Even an inactive explicit alias reserves this full address. A failed
+	// reservation check must not redirect it into the base account.
+	aliasClaims, err := repositories.AliasClaimsAddress(db, rcpt, false)
+	if err != nil {
+		return models.Mailbox{}, "", err
 	}
+	if aliasClaims {
+		return models.Mailbox{}, "", gorm.ErrRecordNotFound
+	}
+	if err := repositories.FindActiveMailboxByAddress(db, base, &mailbox); err != nil {
+		return models.Mailbox{}, "", err
+	}
+	return mailbox, rcpt, nil
+}
 
-	if err := repositories.FindActiveMailboxByAddress(h.db, base, &mailbox); err == nil {
-		return mailbox, rcpt, true
+type restmailRecipient struct {
+	mailbox     models.Mailbox
+	deliveredTo string
+}
+
+// Only absence selects the default pipeline. Dependency failures and corrupt
+// stored policy defer delivery rather than silently bypassing that policy.
+func (h *RestmailHandler) inboundPipeline(ctx context.Context, domainName string) (*pipeline.PipelineConfig, error) {
+	if domainName == "" {
+		return nil, nil
 	}
-	return models.Mailbox{}, "", false
+	db := h.db.WithContext(ctx)
+	var domain models.Domain
+	if err := db.Where("name = ?", domainName).First(&domain).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var stored models.Pipeline
+	if err := db.Where("domain_id = ? AND direction = ? AND active = ?", domain.ID, "inbound", true).First(&stored).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return pipeline.DefaultInboundPipeline(domain.ID), nil
+		}
+		return nil, err
+	}
+	var filters []pipeline.FilterConfig
+	if err := json.Unmarshal(stored.Filters, &filters); err != nil {
+		return nil, fmt.Errorf("decode inbound pipeline: %w", err)
+	}
+	return &pipeline.PipelineConfig{ID: stored.ID, DomainID: stored.DomainID,
+		Direction: stored.Direction, Filters: filters, Active: stored.Active}, nil
+}
+
+func restmailReadRefusal(stage string) error {
+	slog.Error("restmail: delivery lookup failed, deferring message", "stage", stage)
+	return endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
 }
 
 // mediaType returns the lower-cased media type of a Content-Type value with any

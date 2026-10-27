@@ -70,7 +70,7 @@ func TestAliasCreate_EAIIdentity(t *testing.T) {
 				t.Fatalf("alias did not claim equivalent recipient before quota fallback: %+v, %v", result, err)
 			}
 			rest := NewRestmailHandler(db, nil, nil, RestmailTarpitConfig{}, RestmailDeliverAuthConfig{})
-			if _, _, ok := rest.resolveRecipientMailbox(email.Envelope.RcptTo[0]); ok {
+			if _, _, resolveErr := rest.resolveRecipientMailbox(t.Context(), email.Envelope.RcptTo[0]); resolveErr == nil {
 				t.Fatal("RESTMAIL plus-address fallback bypassed created alias")
 			}
 			if err := db.Delete(&alias).Error; err != nil {
