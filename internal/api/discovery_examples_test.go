@@ -21,6 +21,7 @@ func TestDiscoveryRateLimitExampleMatchesRegisteredResponse(t *testing.T) {
 		t.Fatal(err)
 	}
 	pair, ok := pairs["describeServer"]["rate_limited"]
+	examplepairs.Proven(t, "describeServer", "rate_limited")
 	if !ok {
 		t.Fatal("the named rate-limit pair is missing")
 	}

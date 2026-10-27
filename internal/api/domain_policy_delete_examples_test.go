@@ -155,6 +155,7 @@ func TestDomainPolicyDeleteExamples(t *testing.T) {
 	for operation, path := range domainPolicyDeletePaths {
 		for name, pair := range pairs[operation] {
 			t.Run(operation+"/"+name, func(t *testing.T) {
+				examplepairs.Proven(t, operation, name)
 				routers, jwt, store := domainPolicyDeleteRouters(t, operation)
 				requestPath := path
 				for key, value := range pair.Request.Path {

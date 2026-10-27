@@ -29,6 +29,7 @@ func TestAttachmentDownloadExamples(t *testing.T) {
 	}
 	for name, pair := range pairs["getAttachment"] {
 		t.Run(name, func(t *testing.T) {
+			examplepairs.Proven(t, "getAttachment", name)
 			s, ok := scenarios[name]
 			if !ok {
 				t.Fatalf("missing scenario %s", name)

@@ -44,6 +44,7 @@ func TestSendMessageResponseExamplesUseProductionRouter(t *testing.T) {
 	for _, name := range []string{"valid", "from_missing", "unsubscribe_not_allowed"} {
 		t.Run(name, func(t *testing.T) {
 			pair := pairs["sendMessage"][name]
+			examplepairs.Proven(t, "sendMessage", name)
 			rr := f.do(http.MethodPost, "/api/v1/messages/send", f.session, string(pair.Request.Body))
 			if rr.Code != pair.Response.Status || rr.Header().Get("Content-Type") != "application/json" {
 				t.Fatalf("got %d %s, want %d JSON", rr.Code, rr.Body, pair.Response.Status)

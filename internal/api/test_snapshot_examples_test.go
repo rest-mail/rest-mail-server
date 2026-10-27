@@ -47,6 +47,7 @@ func TestTestSnapshotExamples(t *testing.T) {
 	}
 	for name, pair := range pairs["snapshotTestData"] {
 		t.Run(name, func(t *testing.T) {
+			examplepairs.Proven(t, "snapshotTestData", name)
 			s, ok := f[name]
 			if !ok {
 				t.Fatalf("missing snapshot scenario%s", name)

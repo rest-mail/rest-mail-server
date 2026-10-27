@@ -27,6 +27,7 @@ func TestMailboxSessionEndingExamples(t *testing.T) {
 	}
 	for name, pair := range pairs["endMailboxSessions"] {
 		t.Run(name, func(t *testing.T) {
+			examplepairs.Proven(t, "endMailboxSessions", name)
 			s, ok := f[name]
 			if !ok {
 				t.Fatalf("missing scenario%s", name)

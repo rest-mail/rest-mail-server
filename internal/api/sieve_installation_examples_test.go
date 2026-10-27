@@ -29,6 +29,7 @@ func TestSieveInstallationExamples(t *testing.T) {
 	}
 	for name, pair := range pairs["putSieveScript"] {
 		t.Run(name, func(t *testing.T) {
+			examplepairs.Proven(t, "putSieveScript", name)
 			s, ok := f.scenarios[name]
 			if !ok {
 				t.Fatalf("missing scenario %s", name)

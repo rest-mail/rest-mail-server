@@ -30,6 +30,7 @@ func TestPersonalDataReadExamples(t *testing.T) {
 		}
 		for name, pair := range pairs[operation] {
 			t.Run(operation+"/"+name, func(t *testing.T) {
+				examplepairs.Proven(t, operation, name)
 				scenario, ok := scenarios[name]
 				if !ok {
 					t.Fatalf("no scenario for %s", name)

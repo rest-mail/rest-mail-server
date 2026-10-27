@@ -85,6 +85,7 @@ func TestDomainCleanupCanonicalExamples(t *testing.T) {
 			recorded["deleteDomain"][tc.example] = pair
 			if os.Getenv("RESTMAIL_DOMAIN_CLEANUP_RECORD") == "" {
 				want, ok := pairs["deleteDomain"][tc.example]
+				examplepairs.Proven(t, "deleteDomain", tc.example)
 				if !ok {
 					t.Fatal("canonical cleanup pair missing")
 				}

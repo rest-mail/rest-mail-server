@@ -44,6 +44,7 @@ func TestMessageCollectionReadExamples(t *testing.T) {
 		}
 		for name, pair := range pairs[operation] {
 			t.Run(operation+"/"+name, func(t *testing.T) {
+				examplepairs.Proven(t, operation, name)
 				s, ok := scenarios[name]
 				if !ok {
 					t.Fatalf("missing scenario %s", name)

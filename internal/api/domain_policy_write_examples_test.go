@@ -264,6 +264,7 @@ func TestDomainPolicyWriteExamples(t *testing.T) {
 	for operation, path := range domainPolicyWritePaths {
 		for name, pair := range pairs[operation] {
 			t.Run(operation+"/"+name, func(t *testing.T) {
+				examplepairs.Proven(t, operation, name)
 				routers, jwt, stores := domainPolicyWriteRouters(t)
 				precondition := domainPolicyWritePrecondition(name)
 				id := "1"

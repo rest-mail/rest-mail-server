@@ -315,6 +315,7 @@ func TestDomainDNSCheckExamples(t *testing.T) {
 	}
 	for name, pair := range pairs["domainDNSCheck"] {
 		t.Run(name, func(t *testing.T) {
+			examplepairs.Proven(t, "domainDNSCheck", name)
 			s, ok := f[name]
 			if !ok {
 				t.Fatalf("missing DNS scenario%s", name)

@@ -134,6 +134,7 @@ func TestMessageImportCanonicalExamples(t *testing.T) {
 			recorded["importMessage"][tc.name] = pair
 			if os.Getenv("RESTMAIL_IMPORT_RECORD") == "" {
 				want, ok := pairs["importMessage"][tc.name]
+				examplepairs.Proven(t, "importMessage", tc.name)
 				if !ok {
 					t.Fatal("canonical pair missing")
 				}

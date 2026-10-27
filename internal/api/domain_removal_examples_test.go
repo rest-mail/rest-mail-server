@@ -27,6 +27,7 @@ func TestDomainRemovalExamples(t *testing.T) {
 	}
 	for name, pair := range pairs["deleteDomain"] {
 		t.Run(name, func(t *testing.T) {
+			examplepairs.Proven(t, "deleteDomain", name)
 			s, ok := f[name]
 			if !ok {
 				t.Fatalf("missing scenario:%s", name)

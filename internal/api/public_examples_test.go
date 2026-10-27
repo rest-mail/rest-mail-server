@@ -50,6 +50,7 @@ func TestPublicReadExamplesMatchRegisteredResponses(t *testing.T) {
 	for id, path := range publicExamplePaths {
 		t.Run(id, func(t *testing.T) {
 			pair, ok := pairs[id]["available"]
+			examplepairs.Proven(t, id, "available")
 			if !ok {
 				t.Fatal("the named success pair is missing")
 			}
@@ -124,6 +125,7 @@ func TestPublicReadFailureExamplesMatchErrorAdapter(t *testing.T) {
 	for id := range publicExamplePaths {
 		t.Run(id, func(t *testing.T) {
 			pair, ok := pairs[id]["internal_error"]
+			examplepairs.Proven(t, id, "internal_error")
 			if !ok {
 				t.Fatal("the named fault pair is missing")
 			}

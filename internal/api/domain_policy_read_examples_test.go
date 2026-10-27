@@ -96,6 +96,7 @@ func TestDomainPolicyReadExamples(t *testing.T) {
 		for name, router := range routers {
 			t.Run(operation+"/"+name, func(t *testing.T) {
 				pair, ok := pairs[operation][name]
+				examplepairs.Proven(t, operation, name)
 				if !ok {
 					t.Fatal("named domain-policy pair missing")
 				}

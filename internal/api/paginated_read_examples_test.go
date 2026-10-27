@@ -105,6 +105,7 @@ func TestPaginatedReadExamples(t *testing.T) {
 		} {
 			t.Run(operation+"/"+tc.name, func(t *testing.T) {
 				pair, ok := pairs[operation][tc.name]
+				examplepairs.Proven(t, operation, tc.name)
 				if !ok {
 					t.Fatal("named list pair is missing")
 				}

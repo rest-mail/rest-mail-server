@@ -128,6 +128,7 @@ func TestPublicDiscoveryExamples(t *testing.T) {
 		}
 		for name, pair := range pairs[operation] {
 			t.Run(operation+"/"+name, func(t *testing.T) {
+				examplepairs.Proven(t, operation, name)
 				req := httptest.NewRequest(http.MethodGet, publicDiscoveryURI(path, pair), nil)
 				req.Host = "attacker.test"
 				req.Header.Set("X-Forwarded-Host", "attacker.test")

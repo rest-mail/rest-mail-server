@@ -85,6 +85,7 @@ func TestForwardAttachmentsCanonicalExamples(t *testing.T) {
 			recorded["forwardMessage"][tc.name] = pair
 			if os.Getenv("RESTMAIL_FORWARD_RECORD") == "" {
 				want, ok := pairs["forwardMessage"][tc.name]
+				examplepairs.Proven(t, "forwardMessage", tc.name)
 				if !ok {
 					t.Fatal("canonical forward pair missing")
 				}

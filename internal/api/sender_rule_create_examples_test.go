@@ -159,6 +159,7 @@ func TestSenderRuleCreateExamples(t *testing.T) {
 	for operation, path := range senderRuleCreatePaths {
 		for name, pair := range pairs[operation] {
 			t.Run(operation+"/"+name, func(t *testing.T) {
+				examplepairs.Proven(t, operation, name)
 				routers, jwt, store := senderRuleCreateRouters(t, operation)
 				id := "1"
 				if value, ok := pair.Request.Path["id"]; ok {

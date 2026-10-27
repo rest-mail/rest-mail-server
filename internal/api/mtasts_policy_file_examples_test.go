@@ -112,6 +112,7 @@ func TestMtaStsPolicyFileExamples(t *testing.T) {
 	}
 	for name, pair := range pairs["mtaStsPolicyFile"] {
 		t.Run(name, func(t *testing.T) {
+			examplepairs.Proven(t, "mtaStsPolicyFile", name)
 			req := httptest.NewRequest(http.MethodGet, policyFilePath, nil)
 			req.Host = fmt.Sprint(pair.Request.Header["Host"])
 			rr := httptest.NewRecorder()
