@@ -2106,30 +2106,10 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	// authResults are the pipeline's verdicts, written onto the stored message.
 	var authResults []pipeline.AuthResult
 	if h.engine != nil {
-		var pipelineCfg *pipeline.PipelineConfig
-		var dbPipeline models.Pipeline
-		if err := h.db.Where("domain_id = ? AND direction = ? AND active = ?", mailbox.DomainID, "inbound", true).
-			First(&dbPipeline).Error; err == nil {
-			var filterConfigs []pipeline.FilterConfig
-			if jsonErr := json.Unmarshal(dbPipeline.Filters, &filterConfigs); jsonErr == nil {
-				pipelineCfg = &pipeline.PipelineConfig{
-					ID:        dbPipeline.ID,
-					DomainID:  dbPipeline.DomainID,
-					Direction: dbPipeline.Direction,
-					Filters:   filterConfigs,
-					Active:    dbPipeline.Active,
-				}
-			}
-		}
-		if pipelineCfg == nil {
-			pipelineCfg = pipeline.DefaultInboundPipeline(mailbox.DomainID)
-		}
-		// The account's own Sieve script runs in the pipeline's sieve step (#787).
-		withScript, err := withAccountSieve(h.db, pipelineCfg, mailbox.ID)
+		pipelineCfg, err := h.localInboundPolicy(ctx, mailbox)
 		if err != nil {
 			return nil, err
 		}
-		pipelineCfg = withScript
 
 		pipelineCtx := pipeline.WithDB(ctx, h.db)
 		pipelineResult, pipeErr := h.engine.Execute(pipelineCtx, pipelineCfg, emailJSON)
