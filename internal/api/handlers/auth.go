@@ -191,6 +191,29 @@ func NewAuthHandler(db *gorm.DB, jwtService *auth.JWTService, masterKey string, 
 	return &AuthHandler{db: db, jwtService: jwtService, refreshStore: refreshStore, accountState: accountState, twoFactorStore: tfStore, masterKey: masterKey, sessions: sessions}
 }
 
+// forRequest gives the sign-in routes' SQL work the HTTP request's budget and
+// cancellation without changing the shared handler. Injected stores (unit
+// tests) are kept; the production repositories and account-state reader are
+// rebuilt on the scoped connection. The push-device store keeps its own
+// connection: it takes no context.
+func (h *AuthHandler) forRequest(r *http.Request) *AuthHandler {
+	if h.db == nil {
+		return h
+	}
+	scoped := *h
+	scoped.db = h.db.WithContext(r.Context())
+	if _, ok := h.refreshStore.(*repositories.RefreshTokenRepository); ok {
+		scoped.refreshStore = repositories.NewRefreshTokenRepository(scoped.db)
+	}
+	if _, ok := h.accountState.(dbAccountState); ok {
+		scoped.accountState = dbAccountState{db: scoped.db}
+	}
+	if _, ok := h.twoFactorStore.(*repositories.TwoFactorRepository); ok {
+		scoped.twoFactorStore = repositories.NewTwoFactorRepository(scoped.db)
+	}
+	return &scoped
+}
+
 // persistRefreshToken records a freshly issued refresh token in the rotation
 // ledger (status active). A nil store (no database, e.g. some unit tests) is a
 // no-op — production always wires the DB-backed store via NewAuthHandler.
@@ -369,6 +392,7 @@ type userInfo = apitypes.UserInfo
 // password credentials, and a code from one of its TOTP credentials when it
 // has one.
 func (h *AuthHandler) login(r *http.Request, req loginRequest) (endpoint.Headed[loginResponse], error) {
+	h = h.forRequest(r)
 	var zero endpoint.Headed[loginResponse]
 
 	// Find the account. A miss does NOT short-circuit: MatchPassword still runs
@@ -448,6 +472,7 @@ func signInMethods(verified bool) []string {
 }
 
 func (h *AuthHandler) logout(r *http.Request, in sessionTokenRequest) (endpoint.Headed[endpoint.Empty], error) {
+	h = h.forRequest(r)
 	// Revoke the presented refresh token server-side so it can no longer be
 	// exchanged (OSI-10: logout was previously client-side only). The token is
 	// the cookie, or for a native client the body. A missing or invalid token
@@ -487,6 +512,7 @@ func (h *AuthHandler) logout(r *http.Request, in sessionTokenRequest) (endpoint.
 }
 
 func (h *AuthHandler) refresh(r *http.Request, in sessionTokenRequest) (endpoint.Headed[loginResponse], error) {
+	h = h.forRequest(r)
 	var zero endpoint.Headed[loginResponse]
 	token, native := presentedRefreshToken(r, in.Body)
 	if token == "" {
@@ -793,7 +819,8 @@ type resetRequest = apitypes.ResetRequest
 // password the redeemer chose, loses its authenticator and must enroll a new
 // one, and every session and app password it had ends: whoever held the old
 // credentials, a person or an agent that set the server up, is locked out.
-func (h *AuthHandler) reset(_ *http.Request, req resetRequest) (endpoint.Headed[loginResponse], error) {
+func (h *AuthHandler) reset(r *http.Request, req resetRequest) (endpoint.Headed[loginResponse], error) {
+	h = h.forRequest(r)
 	var zero endpoint.Headed[loginResponse]
 	if req.Client != "" && req.Client != clientNative {
 		return zero, endpoint.Invalid(map[string]string{"client": `must be "native" or omitted`})
@@ -856,6 +883,7 @@ type recoverRequest struct {
 // admin resets it. Every refusal looks the same, so it says nothing about
 // which addresses exist or have 2FA.
 func (h *AuthHandler) recoverAccount(r *http.Request, req recoverRequest) (endpoint.Headed[loginResponse], error) {
+	h = h.forRequest(r)
 	var zero endpoint.Headed[loginResponse]
 	problems := map[string]string{}
 	if strings.TrimSpace(req.Email) == "" {
