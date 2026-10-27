@@ -67,7 +67,7 @@ func (h *DeviceHandler) list(r *http.Request, _ struct{}) (deviceListResponse, e
 	if pushSession(claims) {
 		platforms = append(platforms, models.PushPlatformAPNs)
 	}
-	registered, err := h.store.List(claims.SessionID)
+	registered, err := h.store.WithContext(r.Context()).List(claims.SessionID)
 	if err != nil {
 		return deviceListResponse{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to list devices")
 	}
@@ -116,15 +116,16 @@ func (h *DeviceHandler) register(r *http.Request, req registerDeviceRequest) (en
 		return endpoint.Status[deviceResponse]{}, endpoint.Invalid(fields)
 	}
 
+	store := h.store.WithContext(r.Context())
 	now := h.now()
-	alive, err := h.store.SessionAlive(claims.SessionID, now)
+	alive, err := store.SessionAlive(claims.SessionID, now)
 	if err != nil {
 		return endpoint.Status[deviceResponse]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to register the device")
 	}
 	if !alive {
 		return endpoint.Status[deviceResponse]{}, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "This session has ended; sign in again")
 	}
-	device, created, err := h.store.Register(&models.PushDevice{
+	device, created, err := store.Register(&models.PushDevice{
 		SessionID:   claims.SessionID,
 		MailboxID:   claims.AccountID,
 		Platform:    req.Platform,
@@ -158,7 +159,7 @@ func (h *DeviceHandler) remove(r *http.Request, req devicePath) (endpoint.Empty,
 	if err != nil || id == 0 {
 		return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Device not found")
 	}
-	ok, err := h.store.Remove(claims.SessionID, uint(id))
+	ok, err := h.store.WithContext(r.Context()).Remove(claims.SessionID, uint(id))
 	if err != nil {
 		return endpoint.Empty{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to remove the device")
 	}
@@ -173,16 +174,19 @@ func (h *DeviceHandler) RegisterRoutes(rs endpoint.Routes, audit func(string, ..
 	tags := []string{"Push"}
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/devices",
 		OperationID: "listPushDevices", Summary: "List push services and this session's devices", Tags: tags,
-		Errors: []int{http.StatusUnauthorized}}, h.list)
+		Description: "List lookup follows request cancellation; dependency failures return 500.",
+		Errors:      []int{http.StatusUnauthorized}}, h.list)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/devices",
 		OperationID: "registerPushDevice", Summary: "Register a push device for this session", Tags: tags,
-		Status: http.StatusCreated, SuccessStatuses: []int{http.StatusOK},
+		Description: "Session lookup and the registration transaction follow request cancellation; dependency failures return 500.",
+		Status:      http.StatusCreated, SuccessStatuses: []int{http.StatusOK},
 		Errors: []int{http.StatusUnauthorized, http.StatusUnprocessableEntity},
 		Middleware: []endpoint.Middleware{audit(push.ActionDeviceRegister, middleware.AuditBodyFields("platform", "environment"),
 			middleware.AuditResponseField("id", "device_id"))}}, h.register)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/devices/{device_id}",
 		OperationID: "removePushDevice", Summary: "Remove a push device registered by this session", Tags: tags,
-		Status: http.StatusNoContent, Errors: []int{http.StatusUnauthorized, http.StatusNotFound},
+		Description: "Removal follows request cancellation; dependency failures return 500 and absent devices retain 404.",
+		Status:      http.StatusNoContent, Errors: []int{http.StatusUnauthorized, http.StatusNotFound},
 		Middleware: []endpoint.Middleware{audit(push.ActionDeviceRemove)}}, h.remove)
 }
 

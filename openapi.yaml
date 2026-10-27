@@ -1422,7 +1422,8 @@ paths:
       description: >
         Removes the session's own grants on the account (`grants.delete` for
         each, in one transaction): giving up access needs nothing more. Its
-        own account cannot be unlinked (`409 own_account`).
+        own account cannot be unlinked (`409 own_account`). Account lookup and grant-removal
+        failures return 500, not a missing link. The lookup and transaction follow request cancellation.
       responses:
         "204":
           description: Unlinked
@@ -1846,6 +1847,7 @@ paths:
         a client reads as "no push here". `platforms` lists the services this
         session can register a device with: empty for an administrator's
         session, which has no mailbox. A device's token is never returned.
+        Device lookup follows request cancellation; dependency failures return 500.
       responses:
         "200":
           description: The services and the devices
@@ -1865,6 +1867,8 @@ paths:
       tags: [Push devices]
       summary: Register this phone with this session
       description: >
+        The session lookup and registration transaction follow request cancellation;
+        dependency failures return 500.
         The device belongs to the session that registers it and is removed
         when the session ends: at logout, when it is revoked (a password
         change, a disabled mailbox), or when its refresh token expires. From
@@ -2032,7 +2036,8 @@ paths:
       description: >
         Recorded in the audit log as `devices.remove`. A device the server
         removes itself (its session ended, or APNs said it is gone) is
-        recorded the same way, by the system, with the reason.
+        recorded the same way, by the system, with the reason. Removal follows request
+        cancellation; dependency failures return 500 and absent devices retain 404.
       responses:
         "204":
           description: Removed
@@ -3846,7 +3851,8 @@ paths:
         checked when the stream opens, and again before every event and
         keepalive: once the account's sessions end, the stream ends without
         sending anything more, and opening it again with the same token
-        answers 401.
+        answers 401. Access lookup failures return 500 before any stream opens;
+        missing or inaccessible accounts retain 403.
       responses:
         "200":
           description: SSE event stream
