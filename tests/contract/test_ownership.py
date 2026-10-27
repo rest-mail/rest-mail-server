@@ -127,5 +127,61 @@ class OwnershipConfig(unittest.TestCase):
         self.assertEqual(stat.S_IMODE(self.output.stat().st_mode), 0o600)
 
 
+class DomainOwnershipConfig(unittest.TestCase):
+    def test_each_domain_administrator_is_sent_the_other_domain(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            spec = root / "openapi.yaml"
+            spec.write_text(yaml.safe_dump({"paths": {}}))
+            config = root / "vertrag.yml"
+            config.write_text(
+                yaml.safe_dump({"hookfiles": "./hooks.py", "surface": {"require": 100}})
+            )
+            tenants = root / "domain-tenants.json"
+            tenants.write_text(
+                json.dumps(
+                    {
+                        "a": {
+                            "address": "contract-domain-admin@restmail.test",
+                            "domain_id": 1,
+                        },
+                        "b": {
+                            "address": "contract-domain-admin@contract-other.test",
+                            "domain_id": 6,
+                        },
+                    }
+                )
+            )
+            out = root / "generated.yml"
+            report = root / "ownership-domains.xml"
+            self.assertEqual(
+                ownership.domains(
+                    str(spec), str(config), str(tenants), str(out), str(report)
+                ),
+                0,
+            )
+            generated = yaml.safe_load(out.read_text())
+            self.assertEqual(stat.S_IMODE(out.stat().st_mode), 0o600)
+        self.assertEqual(generated["only-matching"], [r"^/api/v1/admin/domains/\{id\}"])
+        self.assertEqual(
+            generated["tenants"],
+            {
+                "a": {"principals": ["domain-admin-a"], "ids": {"path.id": "1"}},
+                "b": {"principals": ["domain-admin-b"], "ids": {"path.id": "6"}},
+            },
+        )
+        principals = {p["name"]: p for p in generated["principals"]}
+        self.assertEqual(
+            principals["domain-admin-b"]["auth"]["login"]["body"]["email"],
+            "contract-domain-admin@contract-other.test",
+        )
+        self.assertEqual(
+            principals["domain-admin-a"]["roles"],
+            ["domains:read", "domains:write", "domains:delete"],
+        )
+        self.assertNotIn("surface", generated)
+        self.assertEqual(generated["output"], ["", os.path.abspath(report)])
+
+
 if __name__ == "__main__":
     unittest.main()

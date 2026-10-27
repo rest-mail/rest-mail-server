@@ -23,8 +23,15 @@ func main() {
 	domain := flag.String("test-domain", "", "confirm the disposable restmail.test topology")
 	linkOnly := flag.Bool("link-account-only", false, "prepare the generated account-link proof after account-creation probes")
 	apiKeys := flag.Bool("api-keys", false, "prepare a fresh account for real-MFA API key checks")
+	domainTenants := flag.Bool("domain-tenants", false, "prepare the domain administrators of the ownership phase")
 	flag.Parse()
-	if *domain != "restmail.test" || flag.NArg() != 0 || (*linkOnly && *apiKeys) {
+	modes := 0
+	for _, on := range []bool{*linkOnly, *apiKeys, *domainTenants} {
+		if on {
+			modes++
+		}
+	}
+	if *domain != "restmail.test" || flag.NArg() != 0 || modes > 1 {
 		fmt.Fprintln(os.Stderr, "contract fixtures require --test-domain=restmail.test")
 		os.Exit(1)
 	}
@@ -41,6 +48,13 @@ func main() {
 			if err == nil {
 				body, _ := json.Marshal(map[string]interface{}{"email": account.Address, "domain_id": account.DomainID})
 				fmt.Printf("API_KEY_FIXTURE=%s\n", body)
+			}
+		} else if *domainTenants {
+			var tenants map[string]domainTenant
+			tenants, err = prepareDomainTenants(database, *domain)
+			if err == nil {
+				body, _ := json.Marshal(tenants)
+				fmt.Printf("DOMAIN_TENANTS=%s\n", body)
 			}
 		} else if *linkOnly {
 			_, err = prepareLinkFixture(database, *domain)
@@ -90,6 +104,69 @@ func prepareAPIKeyFixture(database *gorm.DB, domain string) (*models.Mailbox, er
 		return err
 	})
 	return &account, err
+}
+
+// The domain tenants of the ownership phase (#657): an administrator of
+// restmail.test and one of a second disposable domain, each holding the admin
+// role on its own domain only. Changing grants through the API takes a
+// two-factor session, which no contract principal has, so they are made here.
+// The password is disposable test state; it is not printed.
+const domainTenantPassword = "contract-domain-admin123!@"
+
+// domainTenantDomains is each tenant's domain.
+var domainTenantDomains = []struct{ tenant, name string }{{"a", "restmail.test"}, {"b", "contract-other.test"}}
+
+type domainTenant struct {
+	Address  string `json:"address"`
+	DomainID uint   `json:"domain_id"`
+}
+
+func prepareDomainTenants(database *gorm.DB, domain string) (map[string]domainTenant, error) {
+	if domain != "restmail.test" {
+		return nil, errors.New("contract fixtures require restmail.test")
+	}
+	var role models.Role
+	if err := database.Where("name = ?", "admin").First(&role).Error; err != nil {
+		return nil, err
+	}
+	tenants := map[string]domainTenant{}
+	err := database.Transaction(func(tx *gorm.DB) error {
+		for _, d := range domainTenantDomains {
+			hosted := models.Domain{Name: d.name, ServerType: "restmail", Active: true}
+			if err := tx.Where("name = ?", d.name).FirstOrCreate(&hosted).Error; err != nil {
+				return err
+			}
+			account := models.Mailbox{DomainID: hosted.ID, LocalPart: "contract-domain-admin",
+				Address: "contract-domain-admin@" + d.name, DisplayName: "Contract domain admin", Active: true,
+				QuotaBytes: hosted.DefaultQuotaBytes}
+			if err := tx.Where("address = ?", account.Address).FirstOrCreate(&account).Error; err != nil {
+				return err
+			}
+			creds := repositories.NewCredentialRepository(tx)
+			current, err := creds.MatchPassword(account.ID, domainTenantPassword, time.Now())
+			if err != nil {
+				return err
+			}
+			if current == nil {
+				hash, err := auth.HashPassword(domainTenantPassword)
+				if err != nil {
+					return err
+				}
+				if _, err := creds.SetPassword(account.ID, hash, nil, time.Now()); err != nil {
+					return err
+				}
+			}
+			if err := tx.Where("mailbox_id = ?", account.ID).FirstOrCreate(&models.QuotaUsage{MailboxID: account.ID}).Error; err != nil {
+				return err
+			}
+			if _, err := grants.EnsureSystem(tx, account.ID, role.ID, "domain:"+d.name, models.GrantActive); err != nil {
+				return err
+			}
+			tenants[d.tenant] = domainTenant{Address: account.Address, DomainID: hosted.ID}
+		}
+		return nil
+	})
+	return tenants, err
 }
 
 // Vertrag v0.29 generates this email and password for LinkAccountRequest's

@@ -213,3 +213,50 @@ func TestLinkFixtureSupportsUnmodifiedGeneratedProof(t *testing.T) {
 		t.Fatal("repeat setup changed credentials:", passwords, err)
 	}
 }
+
+func TestDomainTenantFixtureRequiresTheDisposableDomain(t *testing.T) {
+	if _, err := prepareDomainTenants(nil, "production.example"); err == nil {
+		t.Fatal("domain tenant fixture accepted a different domain")
+	}
+}
+
+func TestDomainTenantsAdministerOnlyTheirOwnDomain(t *testing.T) {
+	db := fixtureDB(t)
+	if err := db.AutoMigrate(&models.Mailbox{}, &models.Credential{}, &models.QuotaUsage{}, &models.Role{}, &models.Grant{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&models.Domain{Name: "restmail.test", ServerType: "restmail", Active: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&models.Role{Name: "admin"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	first, err := prepareDomainTenants(db, "restmail.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := prepareDomainTenants(db, "restmail.test")
+	if err != nil || first["a"] != second["a"] || first["b"] != second["b"] {
+		t.Fatal("fixture was not idempotent:", first, second, err)
+	}
+	if first["a"].DomainID == first["b"].DomainID {
+		t.Fatal("the tenants share a domain")
+	}
+	for tenant, want := range map[string]string{"a": "restmail.test", "b": "contract-other.test"} {
+		var account models.Mailbox
+		if err := db.Where("address = ?", first[tenant].Address).First(&account).Error; err != nil {
+			t.Fatal(err)
+		}
+		var scopes []string
+		if err := db.Model(&models.Grant{}).Where("holder_id = ?", account.ID).Pluck("scope", &scopes).Error; err != nil {
+			t.Fatal(err)
+		}
+		if len(scopes) != 1 || scopes[0] != "domain:"+want {
+			t.Fatalf("tenant %s holds %v, want the admin role on %s only", tenant, scopes, want)
+		}
+		credential, err := repositories.NewCredentialRepository(db).MatchPassword(account.ID, domainTenantPassword, time.Now())
+		if err != nil || credential == nil {
+			t.Fatalf("tenant %s cannot sign in with the fixture password: %v", tenant, err)
+		}
+	}
+}

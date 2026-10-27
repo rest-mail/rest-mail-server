@@ -8,8 +8,9 @@
 #   gate           the examples phase, then the coverage phase held to
 #                  tests/contract/coverage-baseline.txt (the default)
 #   authorization  the authorization matrix, a report and not a gate (#376)
-#   ownership      each account tenant sent the other's ids, a report and not
-#                  a gate (#657)
+#   ownership      each account tenant sent the other's ids, then each domain
+#                  administrator the other's domain, a report and not a gate
+#                  (#657)
 #   fuzz           values drawn from each schema, a report and not a gate; a
 #                  finding replays with --seed from its log line
 #
@@ -46,11 +47,12 @@ mkdir -p "$out" "$logs"
 served="$PWD/$out/openapi.json"
 export CONTRACT_SPEC="$PWD/openapi.yaml"
 names=("$phase")
+if [ "$phase" = ownership ]; then names=(ownership ownership-domains); fi
 reset_run=()
 if [ "$phase" != authorization ] && [ "$phase" != ownership ]; then
   reset_run=(--reset-run)
   names=(fuzz)
-  if [ "$phase" = gate ]; then names=(examples coverage authorization ownership browser-sessions); fi
+  if [ "$phase" = gate ]; then names=(examples coverage authorization ownership ownership-domains browser-sessions); fi
 fi
 # Clear this invocation's reports before dependencies or tools can fail. An
 # authorization or ownership run keeps the gate's saved inputs, but not an old
@@ -138,6 +140,22 @@ ownership)
     >"$logs/contract-ownership.log" 2>&1 || code=$?
   cat "$logs/contract-ownership.log"
   echo "vertrag ownership exited $code (report only)"
+  # The domain administrators, in a run of their own: tenant ids are keyed by
+  # parameter name, and the account run already declares path.id.
+  domains=.cache/contract/domain-tenants.json
+  if [ -s "$domains" ]; then
+    python3 -B tests/contract/ownership.py --domains "$CONTRACT_SPEC" "$out/vertrag-run.yml" \
+      "$domains" "$out/vertrag-ownership-domains.yml" "$out/ownership-domains.xml"
+    python3 -B tests/contract/reports.py "$out/vertrag-ownership-domains.yml" "$out/vertrag-ownership-domains.yml" "$out/ownership-domains" "${narrowed[@]}"
+    domain_code=0
+    "$CONTRACT_VERTRAG" run --config "$out/vertrag-ownership-domains.yml" --sequence --phases ownership "${select[@]}" \
+      >"$logs/contract-ownership-domains.log" 2>&1 || domain_code=$?
+    cat "$logs/contract-ownership-domains.log"
+    echo "vertrag ownership of domains exited $domain_code (report only)"
+    if [ "$code" -eq 0 ]; then code=$domain_code; fi
+  else
+    echo "no domain tenants in $domains (chore test:contract-domain-tenants): the domain run is not sent"
+  fi
   exit "$code"
   ;;
 fuzz)

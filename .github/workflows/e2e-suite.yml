@@ -235,7 +235,7 @@ jobs:
           cp "$RUNNER_TEMP/e2e.log" "$out/e2e-test-output.log" 2>/dev/null || true
           cp "$RUNNER_TEMP/limits.log" "$out/limits-test-output.log" 2>/dev/null || true
           cp "$RUNNER_TEMP"/contract*.log "$out/" 2>/dev/null || true
-          cp .cache/contract/openapi.json .cache/contract/examples.json .cache/contract/coverage.json .cache/contract/authorization.json .cache/contract/ownership.json .cache/contract/fuzz.json "$out/" 2>/dev/null || true
+          cp .cache/contract/openapi.json .cache/contract/examples.json .cache/contract/coverage.json .cache/contract/authorization.json .cache/contract/ownership.json .cache/contract/ownership-domains.json .cache/contract/fuzz.json "$out/" 2>/dev/null || true
           cp .cache/contract/*.xml .cache/contract/*.html .cache/contract/*.md "$out/" 2>/dev/null || true
           docker ps -a > "$out/docker-ps.txt" 2>&1 || true
           docker network inspect testbed_mailnet > "$out/network.txt" 2>&1 || true
