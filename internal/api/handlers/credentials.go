@@ -49,6 +49,22 @@ func NewCredentialHandler(db *gorm.DB) *CredentialHandler {
 	}
 }
 
+// forRequest gives SQL work the HTTP budget without changing the shared handler.
+// Keep an injected in-memory two-factor store; the production repository uses
+// the same scoped connection as password checks, grants and credential writes.
+func (h *CredentialHandler) forRequest(r *http.Request) *CredentialHandler {
+	if h.db == nil {
+		return h
+	}
+	scoped := *h
+	scoped.db = h.db.WithContext(r.Context())
+	scoped.repo = repositories.NewCredentialRepository(scoped.db)
+	if _, ok := h.twoFactor.(*repositories.TwoFactorRepository); ok {
+		scoped.twoFactor = repositories.NewTwoFactorRepository(scoped.db)
+	}
+	return &scoped
+}
+
 // Register registers an account's app password and API key routes, which need a signed-in
 // person. checks are login's throttle, for the routes that check the current password, and
 // the audit log.
@@ -155,6 +171,7 @@ func (h *CredentialHandler) managedAccount(r *http.Request, id uint32) (*auth.Cl
 // list returns the mailbox's app passwords that are not revoked.
 // GET /api/v1/accounts/{id}/credentials
 func (h *CredentialHandler) list(r *http.Request, in accountPath) (endpoint.List[credentialResponse], error) {
+	h = h.forRequest(r)
 	_, accountID, err := h.managedAccount(r, in.ID)
 	if err != nil {
 		return endpoint.List[credentialResponse]{}, err
@@ -189,6 +206,7 @@ type createCredentialRequest struct {
 // create makes an app password and answers with it, once.
 // POST /api/v1/accounts/{id}/credentials
 func (h *CredentialHandler) create(r *http.Request, in createCredentialRequest) (createdAppPassword, error) {
+	h = h.forRequest(r)
 	claims, accountID, err := h.managedAccount(r, in.ID)
 	if err != nil {
 		return createdAppPassword{}, err
@@ -263,6 +281,7 @@ func (h *CredentialHandler) checkCurrentPassword(accountID uint, password string
 // for the audit trail; the next request made with it is refused.
 // DELETE /api/v1/accounts/{id}/credentials/{credential_id}
 func (h *CredentialHandler) revoke(r *http.Request, in credentialPath) (endpoint.Empty, error) {
+	h = h.forRequest(r)
 	_, accountID, err := h.managedAccount(r, in.ID)
 	if err != nil {
 		return endpoint.Empty{}, err
@@ -336,6 +355,7 @@ func (h *CredentialHandler) RegisterProtocolSignIn(rs endpoint.Routes, checks Se
 // use it.
 // POST /api/v1/auth/protocol-sign-in
 func (h *CredentialHandler) protocolSignIn(r *http.Request, req protocolSignInRequest) (ProtocolSignedIn, error) {
+	h = h.forRequest(r)
 	claims := middleware.GetClaims(r)
 	if claims == nil || claims.CredentialID == 0 || claims.IsAPIKey() {
 		return ProtocolSignedIn{}, endpoint.Refuse(http.StatusBadRequest, "basic_required",

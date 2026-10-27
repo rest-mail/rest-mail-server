@@ -38,6 +38,7 @@ func toAPIKeyResponse(c *models.Credential) apiKeyResponse {
 
 // listAPIKeys lists metadata only. A key's secret is returned once, at creation.
 func (h *CredentialHandler) listAPIKeys(r *http.Request, in accountPath) (endpoint.List[apiKeyResponse], error) {
+	h = h.forRequest(r)
 	_, accountID, err := h.managedAccount(r, in.ID)
 	if err != nil {
 		return endpoint.List[apiKeyResponse]{}, err
@@ -96,6 +97,7 @@ func apiKeyWithinGrants(creator, owner grants.Held, permissions []auth.ScopedPer
 // createAPIKey needs a password-authenticated, two-factor session and the
 // creator's current password. Machine credentials never satisfy this check.
 func (h *CredentialHandler) createAPIKey(r *http.Request, in createAPIKeyRequest) (createdAPIKey, error) {
+	h = h.forRequest(r)
 	claims, accountID, err := h.managedAccount(r, in.ID)
 	if err != nil {
 		return createdAPIKey{}, err
@@ -186,6 +188,7 @@ func (h *CredentialHandler) createAPIKey(r *http.Request, in createAPIKeyRequest
 // revokeAPIKey preserves the credential and its audit history. It stops being
 // accepted on the next request because the credential is checked every time.
 func (h *CredentialHandler) revokeAPIKey(r *http.Request, in credentialPath) (endpoint.Empty, error) {
+	h = h.forRequest(r)
 	claims, accountID, err := h.managedAccount(r, in.ID)
 	if err != nil {
 		return endpoint.Empty{}, err
