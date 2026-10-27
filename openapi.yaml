@@ -11487,6 +11487,11 @@ components:
         is_primary:
           type: boolean
           description: The session's own account.
+        owner_id:
+          type: [integer, "null"]
+          description: >
+            The owning account of an owned account (an agent's, or a sub
+            account), which never holds more than its owner; absent otherwise.
 
     CreateAccountRequest:
       type: object
@@ -11504,6 +11509,13 @@ components:
           description: >
             Optional. With one, the account can be signed in to; without one
             it has no credentials, and is reached only through its owners.
+        owned:
+          type: boolean
+          description: >
+            Make an owned account (an agent's, or a sub account), owned by the
+            creator and never holding more than it does, checked live. Needs
+            agents:create on the domain and a session that signed in with a
+            second factor; otherwise 403.
         password_hash:
           type: string
           maxLength: 256

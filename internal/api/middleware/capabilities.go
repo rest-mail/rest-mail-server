@@ -33,6 +33,7 @@ package middleware
 //	messages:read delivery log (read)
 //	observability:read  pipeline analytics funnel + per-message trace read
 //	audit:read   the audit log and its verification (read)
+//	agents:create creating an owned account (POST /api/v1/accounts with owned)
 //
 // The dashboard stats endpoint needs domains:read, which every admin role
 // holds; the non-production test endpoints need "*" itself, and refuse to run
@@ -73,4 +74,10 @@ const (
 	// its chain (GET /admin/audit/verify). Seeded into the admin role, not
 	// readonly; superadmin's "*" satisfies it. Reading is itself audited.
 	CapAuditRead = "audit:read"
+
+	// CapAgentsCreate gates creating an owned account (an agent's, or a sub
+	// account) on a domain, from a session that signed in with a second
+	// factor (#341, Decided 12). Seeded into the admin role; superadmin's "*"
+	// satisfies it.
+	CapAgentsCreate = "agents:create"
 )

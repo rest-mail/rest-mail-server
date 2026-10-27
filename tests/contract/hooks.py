@@ -1467,6 +1467,12 @@ def host_the_account_probe_domain(transaction):
     from urllib.error import HTTPError
 
     body = hooks.get_json(transaction)
+    # An owned account needs a session that signed in with a second factor
+    # (#341, Decided 12), and the fixture admin has none: its refusal is the
+    # rule, not a disagreement. TestCreateOwnedAccount proves both sides.
+    if isinstance(body, dict) and body.get("owned") is True:
+        transaction["skip"] = True
+        return
     address = body.get("address") if isinstance(body, dict) else None
     if not isinstance(address, str) or address.count("@") != 1:
         return

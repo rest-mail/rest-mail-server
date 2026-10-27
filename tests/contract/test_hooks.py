@@ -247,6 +247,21 @@ class CreateAccountProbes(AdminAPITestCase):
             1,
         )
 
+    def test_skips_an_owned_account_the_fixture_admin_cannot_make(self):
+        # Owned accounts need a two-factor session (#341); the fixture admin
+        # has none, so the probe is skipped before it touches any fixture.
+        transaction = {
+            "protocol": "http:",
+            "host": "127.0.0.1",
+            "port": self.server.server_port,
+            "request": {"body": json.dumps({"address": "someone@example.com", "owned": True})},
+        }
+        hooks.host_the_account_probe_domain(transaction)
+        self.assertTrue(transaction.get("skip"))
+        self.assertEqual(
+            [d["name"] for d in self.server.state["domains"]], ["restmail.test"]
+        )
+
     def test_leaves_an_account_it_did_not_create(self):
         self.probe({"address": "admin@restmail.test"})
         self.assertEqual(self.server.state["deleted"], [])

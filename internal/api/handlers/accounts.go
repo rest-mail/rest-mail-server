@@ -123,7 +123,7 @@ var errAuthenticationRequired = endpoint.Refuse(http.StatusUnauthorized, "unauth
 type accountResponse = apitypes.AccountResponse
 
 func toAccountResponse(mb *models.Mailbox, ownID uint) accountResponse {
-	return accountResponse{ID: mb.ID, Address: mb.Address, DisplayName: mb.DisplayName, IsPrimary: mb.ID == ownID}
+	return accountResponse{ID: mb.ID, Address: mb.Address, DisplayName: mb.DisplayName, IsPrimary: mb.ID == ownID, OwnerID: mb.OwnerID}
 }
 
 // mailCapabilities are the capabilities that make a grant on a mailbox a mail
@@ -220,10 +220,13 @@ const ActionAccountsCreate = "accounts.create"
 
 // CreateAccount creates an account, the same for everyone: it needs
 // mailboxes:write covering the address's domain, and the creator gets the
-// owner grant on it. With a password the account gets a password credential;
+// owner grant on it. With owned it is an owned account instead (an agent's, or
+// a sub account): that needs agents:create on the domain and a session that
+// signed in with a second factor, and it never holds more than its creator
+// (grants.Load). With a password the account gets a password credential;
 // without one it has none. The account, its credential, the grant and their
 // audit entries commit together.
-// POST /api/v1/accounts {"address", "display_name"?, "password"?}
+// POST /api/v1/accounts {"address", "display_name"?, "password"?, "owned"?}
 func (h *AccountHandler) create(r *http.Request, req createAccountRequest) (accountResponse, error) {
 	h = h.forRequest(r)
 	claims := middleware.GetClaims(r)
@@ -263,9 +266,19 @@ func (h *AccountHandler) create(r *http.Request, req createAccountRequest) (acco
 	if err != nil {
 		return accountResponse{}, errPermissionsUnverified
 	}
-	if !held.Allows(middleware.CapMailboxesWrite, grants.Domain(domainName)) ||
-		!middleware.CredentialAllows(claims, middleware.CapMailboxesWrite, grants.Domain(domainName)) {
+	need := middleware.CapMailboxesWrite
+	if req.Owned {
+		need = middleware.CapAgentsCreate
+	}
+	if !held.Allows(need, grants.Domain(domainName)) ||
+		!middleware.CredentialAllows(claims, need, grants.Domain(domainName)) {
 		return accountResponse{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "You cannot create accounts on "+domainName)
+	}
+	// An owned account is made by a person: a session that signed in with a
+	// second factor, which no machine credential ever is.
+	if req.Owned && !claims.TwoFactor {
+		return accountResponse{}, endpoint.Refuse(http.StatusForbidden, "two_factor_required",
+			"Creating an owned account needs a session that signed in with a second factor")
 	}
 
 	var domain models.Domain
@@ -295,6 +308,10 @@ func (h *AccountHandler) create(r *http.Request, req createAccountRequest) (acco
 		DisplayName: strings.TrimSpace(req.DisplayName),
 		QuotaBytes:  domain.DefaultQuotaBytes,
 		Active:      true,
+	}
+	if req.Owned {
+		owner := claims.AccountID
+		account.OwnerID = &owner
 	}
 	errExists := errors.New("exists")
 	err = h.db.Transaction(func(tx *gorm.DB) error {
@@ -328,6 +345,9 @@ func (h *AccountHandler) create(r *http.Request, req createAccountRequest) (acco
 		e.Target["account_id"] = strconv.FormatUint(uint64(account.ID), 10)
 		e.Target["address"] = account.Address
 		e.Target["password"] = strconv.FormatBool(hash != "")
+		if account.OwnerID != nil {
+			e.Target["owner_id"] = strconv.FormatUint(uint64(*account.OwnerID), 10)
+		}
 		if err := audit.Append(tx, e); err != nil {
 			return err
 		}

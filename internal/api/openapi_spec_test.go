@@ -10,11 +10,13 @@ import (
 )
 
 // The spec documents an account as the server sends it, in GET and POST
-// /api/v1/accounts (#347): exactly the fields it has, all of them required.
+// /api/v1/accounts (#347): exactly the fields it has, all of them required
+// except owner_id, which only an owned account carries (#341, Decided 12).
 // There is no webmail account any more, and the spec says so by not having
 // one.
 func TestOpenAPI_AccountMatchesTheServer(t *testing.T) {
 	want := []string{"address", "display_name", "id", "is_primary"}
+	wantProps := append([]string{}, "address", "display_name", "id", "is_primary", "owner_id")
 	served, err := restmail.OpenAPI.ReadFile("openapi.yaml")
 	if err != nil {
 		t.Fatalf("read the spec: %v", err)
@@ -46,7 +48,7 @@ func TestOpenAPI_AccountMatchesTheServer(t *testing.T) {
 	sort.Strings(props)
 	required := append([]string(nil), schema.Required...)
 	sort.Strings(required)
-	if !reflect.DeepEqual(props, want) || !reflect.DeepEqual(required, want) {
-		t.Errorf("Account: properties %v, required %v; want %v for both", props, required, want)
+	if !reflect.DeepEqual(props, wantProps) || !reflect.DeepEqual(required, want) {
+		t.Errorf("Account: properties %v, required %v; want properties %v, required %v", props, required, wantProps, want)
 	}
 }
