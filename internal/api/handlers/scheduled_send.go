@@ -148,13 +148,19 @@ func (h *MessageHandler) deliverScheduled(ctx context.Context, row models.Schedu
 	reason := rec.Body.String()
 	if rec.Code == http.StatusTooManyRequests || rec.Code >= http.StatusInternalServerError {
 		if row.Attempts+1 < scheduledSendMaxAttempts {
-			h.db.Model(&models.ScheduledSend{}).Where("id = ?", row.ID).Updates(map[string]any{
+			err := h.db.Model(&models.ScheduledSend{}).Where("id = ?", row.ID).Updates(map[string]any{
 				"status":     "pending",
 				"attempts":   row.Attempts + 1,
 				"send_at":    time.Now().Add(scheduledSendRetry),
 				"last_error": truncateForStore(reason),
-			})
-			return
+			}).Error
+			if err == nil {
+				return
+			}
+			// Only pending rows are picked up, so a row left as sending would
+			// never be sent, failed or cancelled: fail it, so the account sees
+			// the send did not go.
+			slog.Warn("scheduled send: could not record the retry", "id", row.ID, "error", err)
 		}
 	}
 	h.finishScheduled(row.ID, "failed", 0, reason)
