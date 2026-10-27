@@ -137,6 +137,10 @@ func TestImportIMAPDryRunAndPartialFailure(t *testing.T) {
 func TestImportIMAPRejectsUnsafeSettings(t *testing.T) {
 	for _, extra := range [][]string{
 		{"--source", "imap://old.example.test"},
+		{"--starttls", "--source", "imaps://old.example.test"},
+		{"--starttls", "--source", "https://old.example.test"},
+		{"--starttls", "--source", "imap://alice:source-password-never-log@old.example.test"},
+		{"--starttls", "--source", "imap://old.example.test:0"},
 		{"--source", "imaps://alice:source-password-never-log@old.example.test"},
 		{"--source", "imaps://old.example.test?password=source-password-never-log"},
 		{"--source", "imaps://old.example.test:70000"},
@@ -163,7 +167,7 @@ func TestImportIMAPSubcommandHelp(t *testing.T) {
 	t.Setenv("RESTMAIL_API_KEY", "destination-key-never-log")
 	var out, stderr bytes.Buffer
 	code, handled := runSubcommand([]string{"restmail", "import-imap", "--help"}, &out, &stderr)
-	if !handled || code != exitOK || stderr.Len() != 0 || !strings.Contains(out.String(), "BODY.PEEK") || strings.Contains(out.String(), "source-password-never-log") || strings.Contains(out.String(), "destination-key-never-log") {
+	if !handled || code != exitOK || stderr.Len() != 0 || !strings.Contains(out.String(), "BODY.PEEK") || !strings.Contains(out.String(), "--starttls") || strings.Contains(out.String(), "source-password-never-log") || strings.Contains(out.String(), "destination-key-never-log") {
 		t.Fatalf("subcommand/help wiring: handled=%t code=%d out=%s err=%s", handled, code, &out, &stderr)
 	}
 }

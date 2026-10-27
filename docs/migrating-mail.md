@@ -14,21 +14,28 @@ for the migration; neither the key nor message contents appear in command output
 ## Read-only IMAP source
 
 `import-imap` copies one source account, including all selectable folders, over
-implicit TLS. Set `RESTMAIL_IMAP_PASSWORD` from your secret manager without
+implicit TLS by default, or an explicitly required STARTTLS upgrade. Set
+`RESTMAIL_IMAP_PASSWORD` from your secret manager without
 putting its value in a command argument, URL or shell history. For the destination,
 set `RESTMAIL_API_KEY` as described above. A source master-user login can be given
 in `--source-user` using that source server's own syntax.
 
 ```sh
 restmail import-imap --source imaps://old.example.com --source-user alice@example.com --account-id 12 --dry-run
+restmail import-imap --source imap://old.example.com --starttls --source-user alice@example.com --account-id 12 --dry-run
 restmail import-imap --source imaps://old.example.com --source-user alice@example.com --server https://mail.example.com --account-id 12
 ```
 
 The default source port is 993; an explicit `:port` is allowed. Certificate and
 hostname verification are mandatory, with TLS 1.2 or newer and the system trust
 store. Plaintext IMAP, URL credentials and disabling TLS verification are refused.
-This command currently uses a source password/app password; OAuth and STARTTLS
-sources are not supported. It does not upload source credentials to REST Mail.
+For a source that requires STARTTLS, use `--source imap://old.example.com --starttls`
+(default port 143, or an explicit port). STARTTLS must succeed with
+certificate/hostname verification before any credentials are sent. A refusal,
+invalid certificate, untrusted issuer or canceled upgrade stops the import; the
+command never falls back to unprotected authentication. Do not combine
+`--starttls` with an `imaps://` source. OAuth sources are not supported. This
+command does not upload source credentials to REST Mail.
 
 The source is opened with EXAMINE and fetched by UID with BODY.PEEK, so importing
 never marks source messages read, edits their flags, expunges or deletes them.
@@ -157,7 +164,7 @@ may leave an unreferenced content-addressed object; it does not leave a message
 or attachment reference, and a rerun reuses the same object content.
 
 Direct IMAP source import is available alongside Maildir/mbox. Persistent Deleted
-and keyword restoration, OAuth/STARTTLS source support and the separate imapsync
+and keyword restoration, OAuth source support and the separate imapsync
 cutover proof remain outside this implementation. The wider migration outcome
 stays tracked in [#734](https://github.com/rest-mail/rest-mail-server/issues/734);
 this does not claim its full acceptance criteria are complete.

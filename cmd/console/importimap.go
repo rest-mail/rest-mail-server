@@ -19,14 +19,17 @@ import (
 const importIMAPUsage = `restmail import-imap — copy an IMAP account through the public import API
 
   restmail import-imap --source imaps://old.example.com --source-user alice@example.com --account-id 12 --dry-run
+  restmail import-imap --source imap://old.example.com --starttls --source-user alice@example.com --account-id 12 --dry-run
   restmail import-imap --source imaps://old.example.com --source-user alice@example.com --server https://mail.example.com --account-id 12
 
 Set RESTMAIL_IMAP_PASSWORD to the source password or app password. Set
 RESTMAIL_API_KEY for the destination with mailboxes:write on its account/domain.
-No password argument, URL credentials, plaintext IMAP or insecure TLS option is
-accepted. The source is examined read-only; BODY.PEEK never marks mail read.
+No password argument, URL credentials, unprotected IMAP or insecure TLS option
+is accepted. An imap:// source requires --starttls; credentials follow verified
+TLS. The source is examined read-only; BODY.PEEK never marks mail read.
 
-  --source URL           imaps://hostname[:993], verified TLS only
+  --source URL           imaps://hostname[:993], or imap://hostname[:143] with --starttls
+  --starttls             require a verified STARTTLS upgrade; never fall back to plaintext
   --source-user NAME     source IMAP username (master-user syntax is allowed)
   --server URL           destination https; http only for localhost
   --account-id ID        existing destination account
@@ -38,8 +41,8 @@ All selectable folders, original octets, supported flags and INTERNALDATE are
 copied. Deleted and keyword flags are refused rather than dropped. Rerun to
 resume: destination account/folder/Message-ID deduplication skips existing mail.
 Later source edits, moves and deletes are not synchronized. Empty source folders
-cannot be created by message import. OAuth and STARTTLS sources are not supported
-by this command; use an IMAP app password and an implicit-TLS endpoint.
+cannot be created by message import. OAuth sources are not supported by this
+command; use a source password/app password over implicit TLS or required STARTTLS.
 See docs/migrating-mail.md for cutover and verification limits.
 `
 
@@ -53,6 +56,7 @@ func runImportIMAPSource(ctx context.Context, args []string, token, password str
 	fs := flag.NewFlagSet("import-imap", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	source := fs.String("source", "", "IMAP source URL")
+	startTLS := fs.Bool("starttls", false, "require a verified STARTTLS upgrade")
 	user := fs.String("source-user", "", "IMAP source username")
 	server := fs.String("server", "", "destination URL")
 	account := fs.Uint64("account-id", 0, "destination account")
@@ -71,12 +75,15 @@ func runImportIMAPSource(ctx context.Context, args []string, token, password str
 		return exitOK
 	}
 	u, err := url.Parse(*source)
-	if err != nil || u.Scheme != "imaps" || u.Hostname() == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" {
-		return o.fail(exitUsage, "bad_flag", "source must be imaps://hostname[:port] without credentials, path, query or fragment")
+	if err != nil || (!*startTLS && u.Scheme != "imaps") || (*startTLS && u.Scheme != "imap") || u.Hostname() == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" {
+		return o.fail(exitUsage, "bad_flag", "source must be imaps://hostname[:port], or imap://hostname[:port] with --starttls, without credentials, path, query or fragment")
 	}
 	port := u.Port()
 	if port == "" {
 		port = "993"
+		if *startTLS {
+			port = "143"
+		}
 	}
 	number, err := strconv.Atoi(port)
 	if err != nil || number < 1 || number > 65535 || fs.NArg() != 0 || *user == "" || *account == 0 || *account > 1<<32-1 || *limit < 1 || *limit > 1<<30 {
@@ -124,7 +131,7 @@ func runImportIMAPSource(ctx context.Context, args []string, token, password str
 		}
 		return nil
 	}
-	err = readSource(ctx, mailimport.IMAPOptions{Address: net.JoinHostPort(u.Hostname(), port), Username: *user, Password: password}, *limit, visit)
+	err = readSource(ctx, mailimport.IMAPOptions{Address: net.JoinHostPort(u.Hostname(), port), Username: *user, Password: password, StartTLS: *startTLS}, *limit, visit)
 	if err != nil {
 		return o.fail(exitFailed, "import_failed", fmt.Sprintf("%s (completed %d imports, skipped %d existing copies; rerun to resume)", err, imported, skipped))
 	}

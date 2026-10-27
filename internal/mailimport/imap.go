@@ -22,11 +22,13 @@ import (
 // verified TLS connection, never returned in errors or written to disk.
 type IMAPOptions struct {
 	Address, Username, Password string
+	StartTLS                    bool // Require a verified upgrade before any credentials.
 	TLSConfig                   *tls.Config
 }
 
-// IMAP reads all selectable source folders over implicit TLS. EXAMINE and
-// BODY.PEEK keep flags and source messages unchanged. The visitor receives one
+// IMAP reads all selectable source folders over implicit TLS or an explicitly
+// requested, mandatory STARTTLS upgrade. EXAMINE and BODY.PEEK keep flags and
+// source messages unchanged. The visitor receives one
 // bounded original message; rerun deduplication belongs to the destination API.
 func IMAP(ctx context.Context, options IMAPOptions, maxBytes int64, visit Visit) error {
 	if maxBytes < 1 || maxBytes > 1<<30 {
@@ -48,14 +50,30 @@ func IMAP(ctx context.Context, options IMAPOptions, maxBytes int64, visit Visit)
 		tlsConfig.MinVersion = tls.VersionTLS12
 	}
 	dialer := tls.Dialer{NetDialer: &net.Dialer{Timeout: 30 * time.Second}, Config: tlsConfig}
-	conn, err := dialer.DialContext(ctx, "tcp", options.Address)
+	var conn net.Conn
+	if options.StartTLS {
+		conn, err = dialer.NetDialer.DialContext(ctx, "tcp", options.Address)
+	} else {
+		conn, err = dialer.DialContext(ctx, "tcp", options.Address)
+	}
 	if err != nil {
 		return errors.New("could not connect to the IMAP source with verified TLS")
 	}
 	defer conn.Close()
 	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
 	defer stop()
-	c := imapclient.New(conn, nil)
+	var c *imapclient.Client
+	if options.StartTLS {
+		c, err = imapclient.NewStartTLS(conn, &imapclient.Options{TLSConfig: tlsConfig})
+		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return errors.New("could not secure the IMAP source with verified STARTTLS")
+		}
+	} else {
+		c = imapclient.New(conn, nil)
+	}
 	defer func() { _ = c.Close() }()
 	if err := c.WaitGreeting(); err != nil {
 		return errors.New("IMAP source greeting failed")
