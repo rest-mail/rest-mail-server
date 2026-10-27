@@ -535,18 +535,27 @@ a hosted domain and mailbox for each address a test send probe uses, and,
   for the report-only authorization phase. Its JUnit report and log are
   included in `e2e-container-logs`; the generated credential-bearing YAML is
   removed after the run and is never uploaded.
-- `secret_scan.py`: the secret scan (#673). The examples phase records its
-  traffic as `.cache/contract/examples.har` (vertrag's `har` reporter); the scan
-  collects every password, private key and recovery code the run sent and every
-  app password, enrollment secret, recovery code, session token and API key the
-  server issued, and fails when any of them appears in another answer or in the
-  audit log, read through the API at the end. JSON strings and object keys are
-  decoded before matching, so multiline private keys, Unicode and escaped
-  passwords cannot evade the scan; non-JSON bodies are checked as plain text.
-  vertrag writes its own credentials
-  as `<redacted>`, so that string in any answer but sign-in and refresh is a
-  finding too. Its tests are `test_secret_scan.py`. The HAR holds fixture
-  passwords and is not uploaded with the logs.
+- `secret_scan.py`: the secret scan (#673, continued under #1165/#658). The
+  examples phase records traffic as `.cache/contract/examples.har` (Vertrag's
+  `har` reporter). The scan collects JSON passwords/private keys/recovery codes
+  and refresh tokens, Basic/Bearer authorization, and the server's access/refresh
+  cookies from headers or HAR cookie arrays. It also collects credentials issued
+  in successful JSON or session-cookie responses, allowing their creation answer.
+  It fails when a collected value appears in another response body, header or
+  cookie, or in the audit log read through the API after the run. JSON strings
+  and keys, base64 HAR bodies, Basic credentials, cookie quoting and redirect URL
+  escaping are decoded before matching. Push device tokens and CSRF/preferences
+  are not collected as credentials; push responses are still scanned for known
+  credentials. API-document example bodies are neither issuance nor leak evidence;
+  their response headers and cookies remain checked. Findings identify the route,
+  transport and JSON path while redacting all collected values, including prefixes
+  and metadata, and omit URL userinfo/query/fragment values.
+  Vertrag redacts its own login values as `<redacted>`, which cannot distinguish
+  the fixture email from a credential and is not judged. The configured fixture
+  password is searched separately in the unredacted audit log. This limitation
+  remains; a redacted recording does not prove that password was never answered.
+  Controls are in `test_secret_scan.py` and `test_secret_transports.py`. The HAR
+  contains fixture credentials and is not uploaded with the logs.
 - `coverage-baseline.txt`: the coverage ratchet's baseline.
 - `test_gate.py`: `gate.py`'s own tests (`python3 -m unittest discover -s tests/contract -p test_gate.py`).
 - `test_hooks_save_draft.py`: the saveDraft sender hook's tests, against a stub admin API.

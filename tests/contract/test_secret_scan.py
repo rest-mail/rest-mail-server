@@ -94,7 +94,7 @@ class SecretScanTest(unittest.TestCase):
         findings = secret_scan.scan(har(APP_PASSWORD, listed))
         self.assertEqual(len(findings), 1)
         self.assertIn("[list] answers the password issued by", findings[0])
-        self.assertIn("rm_a…(59) at $.data[0].note", findings[0])
+        self.assertIn("<secret> (59 chars) at $.data[0].note", findings[0])
 
     def test_a_redacted_value_is_not_judged(self):
         # vertrag redacts its whole login body, so the admin's own address reads
