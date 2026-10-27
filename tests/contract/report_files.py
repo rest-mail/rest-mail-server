@@ -8,6 +8,7 @@ PHASES = (
     "coverage",
     "authorization",
     "ownership",
+    "ownership-domains",
     "fuzz",
     "browser-sessions",
 )
@@ -19,6 +20,7 @@ RUN_FILES = (
     "vertrag-probes.yml",
     "vertrag-authorization.yml",
     "vertrag-ownership.yml",
+    "vertrag-ownership-domains.yml",
 )
 
 

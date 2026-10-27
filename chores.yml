@@ -581,7 +581,7 @@ tasks:
         set -eu
         python3 -B tests/contract/report_files.py --reset-run .cache/contract
         export CONTRACT_DEFER_SUMMARY=1
-        trap 'python3 -B tests/contract/summary.py .cache/contract examples coverage authorization ownership' EXIT
+        trap 'python3 -B tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains' EXIT
         CONTRACT_VERTRAG="$(python3 -B scripts/vertrag_pin.py ensure .cache/bin)"
         export CONTRACT_VERTRAG
         export RESTMAIL_VERTRAG_BINARY="$CONTRACT_VERTRAG"
@@ -597,6 +597,7 @@ tasks:
         scan=0
         python3 -B tests/contract/secret_scan.py .cache/contract/examples.har --audit-from .cache/contract/vertrag-run.yml || scan=$?
         tests/contract/run.sh authorization {{.CLI_ARGS}} || echo "the authorization phase is a report, not a gate"
+        chore test:contract-domain-tenants || echo "the domain tenants could not be prepared; the ownership run of domains is not sent"
         tests/contract/run.sh ownership {{.CLI_ARGS}} || echo "the ownership phase is a report, not a gate"
         if [ "$code" -ne 0 ]; then exit "$code"; fi
         exit "$scan"
@@ -628,6 +629,23 @@ tasks:
           exit 1
         fi
         docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test
+
+  test:contract-domain-tenants:
+    desc: Prepare the domain administrators of the ownership phase on the disposable topology
+    env:
+      CONTRACT_FIXTURE_CONFIG: '{{.CONFIG}}'
+      CONTRACT_FIXTURE_PROJECT: '{{.RESTMAIL_PROJECT}}'
+    cmds:
+      - |
+        set -eu
+        if [ "$CONTRACT_FIXTURE_CONFIG" != "restmail.test" ] || [ -z "$CONTRACT_FIXTURE_PROJECT" ]; then
+          echo "contract fixtures require the disposable restmail.test config" >&2
+          exit 1
+        fi
+        mkdir -p .cache/contract
+        docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test --domain-tenants > .cache/contract/domain-tenants.log
+        sed -n 's/^DOMAIN_TENANTS=//p' .cache/contract/domain-tenants.log > .cache/contract/domain-tenants.json
+        test -s .cache/contract/domain-tenants.json
 
   test:contract-api-keys:
     desc: Prove API key lifecycle with real MFA on the disposable topology
