@@ -408,6 +408,11 @@
       "request": {
         "path": {
           "id": 1
+        },
+        "body": {
+          "reason": "Rotate the DKIM key",
+          "minutes": 60,
+          "totp_code": "123456"
         }
       },
       "response": {
@@ -504,6 +509,11 @@
       "request": {
         "path": {
           "id": 1
+        },
+        "body": {
+          "reason": "Rotate the DKIM key",
+          "minutes": 60,
+          "totp_code": "123456"
         }
       },
       "response": {
@@ -546,6 +556,11 @@
       "request": {
         "path": {
           "id": 1
+        },
+        "body": {
+          "reason": "Rotate the DKIM key",
+          "minutes": 60,
+          "totp_code": "123456"
         }
       },
       "response": {
@@ -567,6 +582,11 @@
       "request": {
         "path": {
           "id": 1
+        },
+        "body": {
+          "reason": "Rotate the DKIM key",
+          "minutes": 60,
+          "totp_code": "123456"
         }
       },
       "response": {
@@ -2348,7 +2368,12 @@
       "requires": {
         "fault": "database"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "current_password": "the current password",
+          "new_password": "a new password of my own"
+        }
+      },
       "response": {
         "status": 500,
         "body": {
@@ -2365,7 +2390,12 @@
       "requires": {
         "limit": "rate"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "current_password": "the current password",
+          "new_password": "a new password of my own"
+        }
+      },
       "response": {
         "status": 429,
         "body": {
@@ -2426,7 +2456,12 @@
       "requires": {
         "fault": "session_store"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "current_password": "the current password",
+          "new_password": "a new password of my own"
+        }
+      },
       "response": {
         "status": 503,
         "body": {
@@ -2443,7 +2478,12 @@
       "requires": {
         "principal": "anonymous"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "current_password": "the current password",
+          "new_password": "a new password of my own"
+        }
+      },
       "response": {
         "status": 401,
         "body": {
@@ -2824,7 +2864,11 @@
       "requires": {
         "fault": "database"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "totp_code": "123456"
+        }
+      },
       "response": {
         "status": 500,
         "body": {
@@ -2862,7 +2906,11 @@
       "requires": {
         "limit": "rate"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "totp_code": "123456"
+        }
+      },
       "response": {
         "status": 429,
         "body": {
@@ -2896,7 +2944,11 @@
       "requires": {
         "fault": "session_store"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "totp_code": "123456"
+        }
+      },
       "response": {
         "status": 503,
         "body": {
@@ -2913,7 +2965,11 @@
       "requires": {
         "principal": "anonymous"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "totp_code": "123456"
+        }
+      },
       "response": {
         "status": 401,
         "body": {
@@ -5483,7 +5539,17 @@
       "requires": {
         "fault": "database"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "holder": {
+            "kind": "account",
+            "id": 2
+          },
+          "role": "admin",
+          "scope": "domain:example.com",
+          "mode": "eligible"
+        }
+      },
       "response": {
         "status": 500,
         "body": {
@@ -5575,7 +5641,17 @@
       "requires": {
         "fault": "session_store"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "holder": {
+            "kind": "account",
+            "id": 2
+          },
+          "role": "admin",
+          "scope": "domain:example.com",
+          "mode": "eligible"
+        }
+      },
       "response": {
         "status": 503,
         "body": {
@@ -5592,7 +5668,17 @@
       "requires": {
         "principal": "anonymous"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "holder": {
+            "kind": "account",
+            "id": 2
+          },
+          "role": "admin",
+          "scope": "domain:example.com",
+          "mode": "eligible"
+        }
+      },
       "response": {
         "status": 401,
         "body": {
@@ -9098,7 +9184,14 @@
       "requires": {
         "fault": "database"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "address": "admin@restmail.test",
+          "sender": "sender@example.net",
+          "subject": "Subject",
+          "body_text": "Hello"
+        }
+      },
       "response": {
         "status": 500,
         "body": {
@@ -9308,7 +9401,11 @@
       "requires": {
         "fault": "database"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "totp_code": "123456"
+        }
+      },
       "response": {
         "status": 500,
         "body": {
@@ -9325,7 +9422,11 @@
       "requires": {
         "limit": "rate"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "totp_code": "123456"
+        }
+      },
       "response": {
         "status": 429,
         "body": {
@@ -9359,7 +9460,11 @@
       "requires": {
         "fault": "session_store"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "totp_code": "123456"
+        }
+      },
       "response": {
         "status": 503,
         "body": {
@@ -9376,7 +9481,11 @@
       "requires": {
         "principal": "anonymous"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "totp_code": "123456"
+        }
+      },
       "response": {
         "status": 401,
         "body": {
@@ -21210,7 +21319,11 @@
       "requires": {
         "fault": "database"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "refresh_token": "contract-invalid-token"
+        }
+      },
       "response": {
         "status": 500,
         "body": {
@@ -21329,6 +21442,9 @@
       "request": {
         "path": {
           "id": 1
+        },
+        "body": {
+          "totp_code": "123456"
         }
       },
       "response": {
@@ -21469,6 +21585,9 @@
       "request": {
         "path": {
           "id": 1
+        },
+        "body": {
+          "totp_code": "123456"
         }
       },
       "response": {
@@ -21511,6 +21630,9 @@
       "request": {
         "path": {
           "id": 1
+        },
+        "body": {
+          "totp_code": "123456"
         }
       },
       "response": {
@@ -21532,6 +21654,9 @@
       "request": {
         "path": {
           "id": 1
+        },
+        "body": {
+          "totp_code": "123456"
         }
       },
       "response": {
@@ -22023,7 +22148,13 @@
       "requires": {
         "fault": "database"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "challenge": "c2lnbiB0aGlzIGNoYWxsZW5nZQ",
+          "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample status@example",
+          "signature": "c2lnbmF0dXJl"
+        }
+      },
       "response": {
         "status": 500,
         "body": {
@@ -22083,7 +22214,13 @@
       "requires": {
         "limit": "rate"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "challenge": "c2lnbiB0aGlzIGNoYWxsZW5nZQ",
+          "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample status@example",
+          "signature": "c2lnbmF0dXJl"
+        }
+      },
       "response": {
         "status": 429,
         "body": {
@@ -22168,7 +22305,13 @@
       "requires": {
         "principal": "anonymous"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "challenge": "c2lnbiB0aGlzIGNoYWxsZW5nZQ",
+          "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample status@example",
+          "signature": "c2lnbmF0dXJl"
+        }
+      },
       "response": {
         "status": 401,
         "body": {
@@ -22204,7 +22347,15 @@
       "requires": {
         "fault": "database"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "purpose": "reset-admin",
+          "address": "admin@restmail.test",
+          "challenge": "c2lnbiB0aGlzIGNoYWxsZW5nZQ",
+          "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample owner@example",
+          "signature": "c2lnbmF0dXJl"
+        }
+      },
       "response": {
         "status": 500,
         "body": {
@@ -22347,7 +22498,15 @@
       "requires": {
         "limit": "rate"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "purpose": "reset-admin",
+          "address": "admin@restmail.test",
+          "challenge": "c2lnbiB0aGlzIGNoYWxsZW5nZQ",
+          "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample owner@example",
+          "signature": "c2lnbmF0dXJl"
+        }
+      },
       "response": {
         "status": 429,
         "body": {
@@ -22381,7 +22540,15 @@
       "requires": {
         "principal": "anonymous"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "purpose": "reset-admin",
+          "address": "admin@restmail.test",
+          "challenge": "c2lnbiB0aGlzIGNoYWxsZW5nZQ",
+          "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample owner@example",
+          "signature": "c2lnbmF0dXJl"
+        }
+      },
       "response": {
         "status": 401,
         "body": {
@@ -23400,7 +23567,14 @@
       "requires": {
         "fault": "database"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "email": "admin@restmail.test",
+          "recovery_code": "AAAA-BBBB-CCCC",
+          "new_password": "a new password of my own",
+          "client": "native"
+        }
+      },
       "response": {
         "status": 500,
         "body": {
@@ -23417,7 +23591,14 @@
       "requires": {
         "limit": "rate"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "email": "admin@restmail.test",
+          "recovery_code": "AAAA-BBBB-CCCC",
+          "new_password": "a new password of my own",
+          "client": "native"
+        }
+      },
       "response": {
         "status": 429,
         "body": {
@@ -23482,7 +23663,14 @@
       "requires": {
         "principal": "anonymous"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "email": "admin@restmail.test",
+          "recovery_code": "AAAA-BBBB-CCCC",
+          "new_password": "a new password of my own",
+          "client": "native"
+        }
+      },
       "response": {
         "status": 401,
         "body": {
@@ -24734,7 +24922,13 @@
       "requires": {
         "fault": "database"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "token": "example-reset-token",
+          "password": "a new password of my own",
+          "client": "native"
+        }
+      },
       "response": {
         "status": 500,
         "body": {
@@ -24751,7 +24945,13 @@
       "requires": {
         "limit": "rate"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "token": "example-reset-token",
+          "password": "a new password of my own",
+          "client": "native"
+        }
+      },
       "response": {
         "status": 429,
         "body": {
@@ -24815,7 +25015,13 @@
       "requires": {
         "principal": "anonymous"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "token": "example-reset-token",
+          "password": "a new password of my own",
+          "client": "native"
+        }
+      },
       "response": {
         "status": 401,
         "body": {
@@ -25013,6 +25219,10 @@
       "request": {
         "path": {
           "id": 1
+        },
+        "body": {
+          "from": "admin@restmail.test",
+          "response": "ACCEPTED"
         }
       },
       "response": {
@@ -25084,6 +25294,10 @@
       "request": {
         "path": {
           "id": 1
+        },
+        "body": {
+          "from": "admin@restmail.test",
+          "response": "ACCEPTED"
         }
       },
       "response": {
@@ -25126,6 +25340,10 @@
       "request": {
         "path": {
           "id": 1
+        },
+        "body": {
+          "from": "admin@restmail.test",
+          "response": "ACCEPTED"
         }
       },
       "response": {
@@ -25147,6 +25365,10 @@
       "request": {
         "path": {
           "id": 1
+        },
+        "body": {
+          "from": "admin@restmail.test",
+          "response": "ACCEPTED"
         }
       },
       "response": {
