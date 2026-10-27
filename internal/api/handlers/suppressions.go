@@ -23,11 +23,12 @@ func NewSuppressionHandler(db *gorm.DB) *SuppressionHandler {
 // list returns a domain's suppressions that haven't expired, newest first. An
 // expired one no longer suppresses, so it isn't listed.
 // GET /api/v1/admin/domains/{id}/suppressions
-func (h *SuppressionHandler) list(_ *http.Request, in domainPath) (endpoint.List[Suppression], error) {
+func (h *SuppressionHandler) list(r *http.Request, in domainPath) (endpoint.List[Suppression], error) {
+	db := h.db.WithContext(r.Context())
 	domainID := in.ID
 
 	var suppressions []models.Suppression
-	if err := h.db.Where("domain_id = ? AND expires_at > ?", domainID, time.Now()).
+	if err := db.Where("domain_id = ? AND expires_at > ?", domainID, time.Now()).
 		Order("updated_at DESC").
 		Find(&suppressions).Error; err != nil {
 		return endpoint.List[Suppression]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to list suppressions")
@@ -43,13 +44,14 @@ func (h *SuppressionHandler) list(_ *http.Request, in domainPath) (endpoint.List
 // delete clears a suppression, so mail from the domain to the address is
 // tried again.
 // DELETE /api/v1/admin/domains/{id}/suppressions/{sid}
-func (h *SuppressionHandler) delete(_ *http.Request, in suppressionPath) (endpoint.Empty, error) {
+func (h *SuppressionHandler) delete(r *http.Request, in suppressionPath) (endpoint.Empty, error) {
+	db := h.db.WithContext(r.Context())
 	domainID := in.ID
 	suppressionID := in.SID
 
 	// Scoped to the domain in the path, which the route checked the caller's
 	// capability on: another domain's suppression is not found.
-	res := h.db.Where("id = ? AND domain_id = ?", suppressionID, domainID).Delete(&models.Suppression{})
+	res := db.Where("id = ? AND domain_id = ?", suppressionID, domainID).Delete(&models.Suppression{})
 	if res.Error != nil {
 		return endpoint.Empty{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to clear suppression")
 	}

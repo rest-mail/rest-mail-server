@@ -26,12 +26,13 @@ func NewMTASTSHandler(db *gorm.DB) *MTASTSHandler {
 
 // getPolicy returns the MTA-STS policy for a domain.
 // GET /api/v1/admin/domains/{id}/mta-sts
-func (h *MTASTSHandler) getPolicy(_ *http.Request, in domainPath) (MTASTSPolicy, error) {
+func (h *MTASTSHandler) getPolicy(r *http.Request, in domainPath) (MTASTSPolicy, error) {
+	db := h.db.WithContext(r.Context())
 	domainID := in.ID
 
 	// Verify domain exists
 	var domain models.Domain
-	if err := h.db.First(&domain, domainID).Error; err != nil {
+	if err := db.First(&domain, domainID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return MTASTSPolicy{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Domain not found")
 		}
@@ -39,7 +40,7 @@ func (h *MTASTSHandler) getPolicy(_ *http.Request, in domainPath) (MTASTSPolicy,
 	}
 
 	var policy models.MTASTSPolicy
-	if err := h.db.Where("domain_id = ?", domainID).First(&policy).Error; err != nil {
+	if err := db.Where("domain_id = ?", domainID).First(&policy).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return MTASTSPolicy{}, endpoint.Refuse(http.StatusNotFound, "not_found", "No MTA-STS policy found for this domain")
 		}
@@ -52,7 +53,8 @@ func (h *MTASTSHandler) getPolicy(_ *http.Request, in domainPath) (MTASTSPolicy,
 
 // setPolicy creates or updates the MTA-STS policy for a domain.
 // PUT /api/v1/admin/domains/{id}/mta-sts
-func (h *MTASTSHandler) setPolicy(_ *http.Request, in setMTASTSInput) (endpoint.Status[MTASTSPolicy], error) {
+func (h *MTASTSHandler) setPolicy(r *http.Request, in setMTASTSInput) (endpoint.Status[MTASTSPolicy], error) {
+	db := h.db.WithContext(r.Context())
 	domainID := in.ID
 
 	// The body is checked before the domain is looked up: a refused request
@@ -61,7 +63,7 @@ func (h *MTASTSHandler) setPolicy(_ *http.Request, in setMTASTSInput) (endpoint.
 
 	// Verify domain exists
 	var domain models.Domain
-	if err := h.db.First(&domain, domainID).Error; err != nil {
+	if err := db.First(&domain, domainID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return endpoint.Status[MTASTSPolicy]{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Domain not found")
 		}
@@ -70,7 +72,7 @@ func (h *MTASTSHandler) setPolicy(_ *http.Request, in setMTASTSInput) (endpoint.
 
 	// Upsert: find existing or create new
 	var policy models.MTASTSPolicy
-	result := h.db.Where("domain_id = ?", domainID).First(&policy)
+	result := db.Where("domain_id = ?", domainID).First(&policy)
 	created := errors.Is(result.Error, gorm.ErrRecordNotFound)
 	if result.Error != nil && !created {
 		return endpoint.Status[MTASTSPolicy]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to save MTA-STS policy")
@@ -101,9 +103,16 @@ func (h *MTASTSHandler) setPolicy(_ *http.Request, in setMTASTSInput) (endpoint.
 
 	var saveErr error
 	if created {
-		saveErr = insertMTASTSPolicy(h.db, &policy)
+		saveErr = insertMTASTSPolicy(db, &policy)
 	} else {
-		saveErr = h.db.Save(&policy).Error
+		// Save would recreate a row deleted after the lookup. Update only the
+		// selected policy, keeping explicit zero/false values and its domain.
+		result := db.Model(&policy).Where("domain_id = ?", domainID).
+			Select("mode", "mx_hosts", "max_age", "active").Updates(&policy)
+		saveErr = result.Error
+		if saveErr == nil && result.RowsAffected == 0 {
+			saveErr = fmt.Errorf("MTA-STS policy disappeared before update")
+		}
 	}
 	if saveErr != nil {
 		return endpoint.Status[MTASTSPolicy]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to save MTA-STS policy")
@@ -136,10 +145,11 @@ func insertMTASTSPolicy(db *gorm.DB, policy *models.MTASTSPolicy) error {
 
 // deletePolicy removes the MTA-STS policy for a domain.
 // DELETE /api/v1/admin/domains/{id}/mta-sts
-func (h *MTASTSHandler) deletePolicy(_ *http.Request, in domainPath) (endpoint.Empty, error) {
+func (h *MTASTSHandler) deletePolicy(r *http.Request, in domainPath) (endpoint.Empty, error) {
+	db := h.db.WithContext(r.Context())
 	domainID := in.ID
 
-	result := h.db.Where("domain_id = ?", domainID).Delete(&models.MTASTSPolicy{})
+	result := db.Where("domain_id = ?", domainID).Delete(&models.MTASTSPolicy{})
 	if result.Error != nil {
 		return endpoint.Empty{}, fmt.Errorf("delete MTA-STS policy: %w", result.Error)
 	}

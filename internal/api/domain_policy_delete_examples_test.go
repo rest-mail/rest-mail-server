@@ -72,7 +72,7 @@ func (c *domainPolicyDeleteConnection) ExecContext(_ context.Context, query stri
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if strings.HasPrefix(query, `DELETE FROM "domain_sender_rules"`) {
-		if len(args) != 1 || fmt.Sprint(args[0].Value) != c.loaded || !strings.Contains(query, `WHERE "domain_sender_rules"."id" =`) {
+		if len(args) != 3 || fmt.Sprint(args[0].Value) != c.loaded || !strings.Contains(query, "WHERE id =") || !strings.Contains(query, "domain_id =") || !strings.Contains(query, "list_type =") || args[2].Value != c.listType {
 			return nil, errors.New("delete did not use its previously scoped row")
 		}
 		if c.loaded == "4" {
