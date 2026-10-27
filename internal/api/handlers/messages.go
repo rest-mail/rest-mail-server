@@ -930,35 +930,29 @@ func (h *MessageHandler) sendMessageWithParts(r *http.Request, req sendMessageRe
 	allRecipients = append(allRecipients, req.Cc...)
 	allRecipients = append(allRecipients, req.Bcc...)
 
+	// Where each recipient is decided before anything is sent: a lookup that
+	// failed says nothing about where the recipient is, and taking it for a
+	// remote one would queue a local recipient's copy for the internet.
+	type localRecipient struct {
+		address string
+		mailbox models.Mailbox
+	}
+	var locals []localRecipient
+	var remote []models.OutboundQueue
+	db := h.db.WithContext(r.Context())
 	for _, rcpt := range allRecipients {
 		var recipientMailbox models.Mailbox
-		if err := repositories.FindActiveMailboxByAddress(h.db, rcpt, &recipientMailbox); err == nil {
-			// Local delivery with full inbound pipeline
-			_, deliverErr := h.deliverToLocal(r.Context(), localDeliveryParams{
-				Mailbox:      recipientMailbox,
-				Sender:       req.From,
-				SenderName:   senderMailbox.DisplayName,
-				RecipientsTo: toJSON,
-				RecipientsCc: ccJSON,
-				Subject:      req.Subject,
-				BodyText:     req.BodyText,
-				BodyHTML:     req.BodyHTML,
-				MessageID:    messageID,
-				InReplyTo:    req.InReplyTo,
-				RawMessage:   rawMessage,
-				RequireTLS:   req.RequireTLS,
-			})
-			if deliverErr != nil {
-				slog.Warn("local delivery failed for recipient", "recipient", rcpt, "error", deliverErr)
-			}
-		} else {
-			// Remote delivery - queue it with raw message and message reference
+		err := repositories.FindActiveMailboxByAddress(db, rcpt, &recipientMailbox)
+		switch {
+		case err == nil:
+			locals = append(locals, localRecipient{address: rcpt, mailbox: recipientMailbox})
+		case errors.Is(err, gorm.ErrRecordNotFound), errors.Is(err, repositories.ErrMailboxUnavailable):
 			recipientDomain := rcpt
 			if idx := strings.LastIndex(rcpt, "@"); idx >= 0 {
 				recipientDomain = rcpt[idx+1:]
 			}
 			msgID := sentMsg.ID
-			queueEntry := models.OutboundQueue{
+			remote = append(remote, models.OutboundQueue{
 				MessageID:  &msgID,
 				Sender:     req.From,
 				Recipient:  rcpt,
@@ -966,8 +960,41 @@ func (h *MessageHandler) sendMessageWithParts(r *http.Request, req sendMessageRe
 				RawMessage: rawMessage,
 				Status:     "pending",
 				RequireTLS: req.RequireTLS,
-			}
-			h.db.Create(&queueEntry)
+			})
+		default:
+			slog.Error("send: could not look up a recipient", "recipient", rcpt, "error", err)
+			return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to look up a recipient")
+		}
+	}
+
+	// Remote recipients are queued together, before any local delivery: a
+	// queue entry that was not stored must not be answered as sent, and the
+	// client's retry then delivers nothing locally twice.
+	if len(remote) > 0 {
+		if err := db.Transaction(func(tx *gorm.DB) error { return tx.Create(&remote).Error }); err != nil {
+			slog.Error("send: could not queue the message for remote recipients", "error", err)
+			return zero, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Try again later")
+		}
+	}
+
+	for _, local := range locals {
+		// Local delivery with full inbound pipeline
+		_, deliverErr := h.deliverToLocal(r.Context(), localDeliveryParams{
+			Mailbox:      local.mailbox,
+			Sender:       req.From,
+			SenderName:   senderMailbox.DisplayName,
+			RecipientsTo: toJSON,
+			RecipientsCc: ccJSON,
+			Subject:      req.Subject,
+			BodyText:     req.BodyText,
+			BodyHTML:     req.BodyHTML,
+			MessageID:    messageID,
+			InReplyTo:    req.InReplyTo,
+			RawMessage:   rawMessage,
+			RequireTLS:   req.RequireTLS,
+		})
+		if deliverErr != nil {
+			slog.Warn("local delivery failed for recipient", "recipient", local.address, "error", deliverErr)
 		}
 	}
 
