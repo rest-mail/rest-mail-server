@@ -2,11 +2,11 @@
 """Look for any secret the contract run sent, in everything the server answered.
 
 The examples phase records its traffic as a HAR file (vertrag's har reporter).
-Every secret in it is collected: the passwords, private keys, TOTP secrets and
-recovery codes the run sent in a request, and the ones the server issued once
-in a response (an app password, an API key, an enrollment's secret and codes,
-a session's tokens). Then every response body is searched for each of them, and
-so is the audit log, read through the API at the end of the run (#673).
+Secrets in JSON, Authorization headers and session cookies are collected:
+passwords, private keys and recovery codes the run sent, plus credentials the
+server issued once (app passwords, API keys, enrollment secrets and recovery
+codes, and session tokens). Every response body, header and cookie is searched
+for each of them, as is the audit log read through the API after the run (#673).
 
 A secret may appear in exactly one answer: the one that issued it. Anywhere
 else, in any other answer or in the audit log, it is a finding.
@@ -30,6 +30,8 @@ import base64
 import json
 import sys
 import urllib.request
+from http.cookies import CookieError, SimpleCookie
+from urllib.parse import unquote, urlsplit, urlunsplit
 
 # The fields that carry a secret the client sends: passwords (an account's, a
 # relay's), DKIM and certificate private keys, a recovery code.
@@ -40,6 +42,7 @@ SENT_FIELDS = {
     "private_key",
     "key_pem",
     "recovery_code",
+    "refresh_token",
 }
 # The fields that carry a secret the server issues once: an app password, an
 # enrollment's secret and recovery codes, a session's tokens, an API key's
@@ -97,6 +100,74 @@ def json_secrets(text, fields):
         return []
 
 
+# These are the server's credential cookies (internal/auth/auth.go). CSRF and
+# preferences are intentionally not credentials. HAR may store both a Cookie
+# header and a decoded cookies array; the scan deduplicates collected values.
+SESSION_COOKIES = {
+    "restmail_access": "access_token",
+    "restmail_refresh": "refresh_token",
+}
+
+
+def usable_secret(value):
+    return isinstance(value, str) and len(value) >= MIN_LENGTH and value != REDACTED
+
+
+def cookie_values(message, header_name):
+    for cookie in message.get("cookies", []):
+        yield cookie.get("name", ""), cookie.get("value", "")
+    for header in message.get("headers", []):
+        if header.get("name", "").lower() != header_name:
+            continue
+        try:
+            cookies = SimpleCookie()
+            cookies.load(header.get("value", ""))
+        except CookieError:
+            continue
+        for name, cookie in cookies.items():
+            yield name, cookie.value
+
+
+def authorization_values(message):
+    for header in message.get("headers", []):
+        if header.get("name", "").lower() != "authorization":
+            continue
+        parts = header.get("value", "").split(None, 1)
+        if len(parts) != 2:
+            continue
+        scheme, value = parts
+        if scheme.lower() == "bearer":
+            yield "access_token", value
+        elif scheme.lower() == "basic":
+            try:
+                decoded = base64.b64decode(value, validate=True).decode("utf-8")
+            except (ValueError, UnicodeError):
+                continue
+            _, separator, password = decoded.partition(":")
+            if separator:
+                yield "password", password
+
+
+def session_values(message, header_name):
+    for name, value in cookie_values(message, header_name):
+        if name in SESSION_COOKIES:
+            yield SESSION_COOKIES[name], value
+
+
+def response_parts(entry):
+    response = entry.get("response", {})
+    yield "", body_text(response.get("content"))
+    for header in response.get("headers", []):
+        name, value = header.get("name", ""), header.get("value", "")
+        if name.lower() in {"location", "content-location"}:
+            value = unquote(value)
+        yield f"in response header {name} ", json.dumps(value)
+    for name, value in cookie_values(response, "set-cookie"):
+        yield f"in response cookie {name} ", json.dumps(value)
+    for field, value in authorization_values(response):
+        yield f"in response Authorization {field} ", json.dumps(value)
+
+
 def where(text, value):
     """Locate a secret in decoded JSON strings/keys or plain text; None if absent.
 
@@ -126,8 +197,8 @@ def where(text, value):
 
 
 def hint(value):
-    """A secret as a finding shows it: its first characters and its length."""
-    return f"{value[:4]}…({len(value)})"
+    """Report a secret's length without disclosing even a prefix."""
+    return f"<secret> ({len(value)} chars)"
 
 
 def status_of(entry):
@@ -141,7 +212,14 @@ DOC_PATHS = ("/api/docs/",)
 def label(entry):
     request = entry.get("request", {})
     name = entry.get("comment") or ""
-    return f"{request.get('method', '?')} {request.get('url', '?')} [{name}]"
+    # Query/fragment values and URL userinfo can themselves be credentials.
+    # The decoded route still identifies the operation and permits the final
+    # known-secret redaction to cover a secret embedded in a path segment.
+    url = urlsplit(request.get("url", "?"))
+    public_url = unquote(
+        urlunsplit((url.scheme, url.netloc.rsplit("@", 1)[-1], url.path, "", ""))
+    )
+    return f"{request.get('method', '?')} {public_url} [{name}]"
 
 
 def path_of(entry):
@@ -155,28 +233,48 @@ def scan(har, audit=(), known=()):
     known are (field, secret, where it was sent) the recording redacts: the
     fixture admin's password."""
     entries = har.get("log", {}).get("entries", [])
-    answers = [body_text(e.get("response", {}).get("content")) for e in entries]
+    responses = [tuple(response_parts(entry)) for entry in entries]
+    answers = [parts[0][1] for parts in responses]
     # secret -> (field, index of the answer that issued it, or None if sent).
     secrets = {value: (field, None, origin) for field, value, origin in known}
     for i, entry in enumerate(entries):
         post = entry.get("request", {}).get("postData") or {}
         for field, value in json_secrets(body_text(post), SENT_FIELDS):
             secrets.setdefault(value, (field, None, label(entry)))
-        if 200 <= status_of(entry) < 300:
-            for field, value in json_secrets(answers[i], ISSUED_FIELDS):
-                secrets.setdefault(value, (field, i, label(entry)))
+        request = entry.get("request", {})
+        sent = list(authorization_values(request)) + list(
+            session_values(request, "cookie")
+        )
+        for field, value in sent:
+            if usable_secret(value):
+                secrets.setdefault(value, (field, None, label(entry)))
+        if 200 <= status_of(entry) < 300 and not path_of(entry).startswith(DOC_PATHS):
+            fields = ISSUED_FIELDS
+            path = path_of(entry)
+            if path == "/api/v1/push/devices" or path.startswith(
+                "/api/v1/push/devices/"
+            ):
+                fields = fields - {"token"}
+            issued = json_secrets(answers[i], fields)
+            issued += list(session_values(entry.get("response", {}), "set-cookie"))
+            for field, value in issued:
+                if usable_secret(value):
+                    secrets.setdefault(value, (field, i, label(entry)))
 
     findings = []
     for value, (field, issued, origin) in secrets.items():
         how = "issued by" if issued is not None else "sent in"
-        for j, answer in enumerate(answers):
-            if j == issued or path_of(entries[j]).startswith(DOC_PATHS):
+        for j in range(len(entries)):
+            if j == issued:
                 continue
-            location = where(answer, value)
-            if location:
-                findings.append(
-                    f"{label(entries[j])} answers the {field} {how} {origin}, {hint(value)} {location}"
-                )
+            for transport, text in responses[j]:
+                if not transport and path_of(entries[j]).startswith(DOC_PATHS):
+                    continue
+                location = where(text, value)
+                if location:
+                    findings.append(
+                        f"{label(entries[j])} answers the {field} {how} {origin}, {hint(value)} {transport}{location}"
+                    )
         for record in audit:
             location = where(record, value)
             if location:
@@ -185,6 +283,11 @@ def scan(har, audit=(), known=()):
                     f"the audit log's {action} entry holds the {field} {how} {origin}, {hint(value)} {location}"
                 )
                 break
+    # Metadata is untrusted too: URLs, HAR comments, object keys, header names
+    # and audit actions can contain any collected secret. Redact every known
+    # value from every finding, not just the value that triggered that finding.
+    for value in sorted(secrets, key=len, reverse=True):
+        findings = [finding.replace(value, "<secret>") for finding in findings]
     return findings
 
 
