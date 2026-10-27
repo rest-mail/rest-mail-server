@@ -92,8 +92,8 @@ func (c *personalRemovalConnection) QueryContext(ctx context.Context, q string, 
 func (c *personalRemovalConnection) ExecContext(_ context.Context, q string, args []driver.NamedValue) (driver.Result, error) {
 	switch {
 	case strings.HasPrefix(q, `DELETE FROM "contacts"`):
-		if len(args) != 1 || !strings.Contains(q, `"contacts"."id"`) {
-			return nil, errors.New("contact deletion lost primary key")
+		if len(args) != 2 || !strings.Contains(q, "id =") || !strings.Contains(q, "mailbox_id =") {
+			return nil, errors.New("contact deletion lost row/mailbox")
 		}
 		c.markTransaction()
 		c.record(q, args)
