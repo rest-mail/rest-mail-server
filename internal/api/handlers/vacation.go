@@ -22,6 +22,15 @@ func NewVacationHandler(db *gorm.DB) *VacationHandler {
 	return &VacationHandler{db: db}
 }
 
+// forRequest gives the handler's SQL work — the access check included — the
+// HTTP request's budget and cancellation without changing the shared handler.
+func (h *VacationHandler) forRequest(r *http.Request) *VacationHandler {
+	if h.db == nil {
+		return h
+	}
+	return &VacationHandler{db: h.db.WithContext(r.Context())}
+}
+
 // vacationSetting is the API-facing representation used for request/response
 // bodies.
 type vacationSetting struct {
@@ -91,6 +100,7 @@ func mailRulesMailbox(db *gorm.DB, r *http.Request, accountID uint32) (uint, err
 // get returns the vacation auto-reply configuration for a mailbox.
 // GET /api/v1/accounts/{id}/vacation
 func (h *VacationHandler) get(r *http.Request, in accountPath) (vacationSetting, error) {
+	h = h.forRequest(r)
 	mailboxID, err := mailRulesMailbox(h.db, r, in.ID)
 	if err != nil {
 		return vacationSetting{}, err
@@ -117,6 +127,7 @@ func (h *VacationHandler) get(r *http.Request, in accountPath) (vacationSetting,
 // set creates or updates the vacation auto-reply configuration.
 // PUT /api/v1/accounts/{id}/vacation
 func (h *VacationHandler) set(r *http.Request, in setVacationRequest) (vacationSetting, error) {
+	h = h.forRequest(r)
 	mailboxID, err := mailRulesMailbox(h.db, r, in.ID)
 	if err != nil {
 		return vacationSetting{}, err
@@ -196,6 +207,7 @@ func (h *VacationHandler) set(r *http.Request, in setVacationRequest) (vacationS
 // disable turns off the vacation auto-reply for a mailbox.
 // DELETE /api/v1/accounts/{id}/vacation
 func (h *VacationHandler) disable(r *http.Request, in accountPath) (endpoint.Empty, error) {
+	h = h.forRequest(r)
 	mailboxID, err := mailRulesMailbox(h.db, r, in.ID)
 	if err != nil {
 		return endpoint.Empty{}, err
