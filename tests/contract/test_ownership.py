@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import stat
 import tempfile
 import unittest
@@ -100,7 +101,17 @@ class OwnershipConfig(unittest.TestCase):
     def test_only_account_operations_are_sent(self):
         # The declared id is an account's: sent to a message or domain route it
         # would be refused for naming nothing, and pass without proving anything.
-        self.assertEqual(self.generated["only-matching"], [r"^/api/v1/accounts/\{id\}"])
+        self.assertEqual(
+            self.generated["only-matching"], [r"^/api/v1/accounts(/\{id\}| > )"]
+        )
+        selected = re.compile(self.generated["only-matching"][0])
+        for name, sent in [
+            ("/api/v1/accounts/{id}/folders > List folders > 200", True),
+            ("/api/v1/accounts > List accounts > 200", True),
+            ("/api/v1/accounts/link > Link an account > 201", False),
+            ("/api/v1/admin/domains/{id} > Get a domain > 200", False),
+        ]:
+            self.assertEqual(bool(selected.search(name)), sent, name)
 
     def test_principals_hold_what_they_hold_on_their_own_mailbox(self):
         principals = {p["name"]: p for p in self.generated["principals"]}
@@ -162,7 +173,19 @@ class DomainOwnershipConfig(unittest.TestCase):
             )
             generated = yaml.safe_load(out.read_text())
             self.assertEqual(stat.S_IMODE(out.stat().st_mode), 0o600)
-        self.assertEqual(generated["only-matching"], [r"^/api/v1/admin/domains/\{id\}"])
+        self.assertEqual(generated["only-matching"], [ownership.DOMAIN_OPERATIONS])
+        selected = re.compile(generated["only-matching"][0])
+        for name, sent in [
+            ("/api/v1/admin/domains > List all domains > 200", True),
+            ("/api/v1/admin/domains/{id}/relay > Get relay > 200", True),
+            ("/api/v1/admin/dkim/{id} > Set or replace DKIM key > 200", True),
+            ("/api/v1/admin/aliases/{id} > Get an alias > 200", True),
+            ("/api/v1/admin/custom-filters > List custom filters > 200", True),
+            ("/api/v1/admin/mailboxes/{id} > Get a mailbox > 200", False),
+            ("/api/v1/admin/queue/{id} > Get a queue entry > 200", False),
+            ("/api/v1/admin/domains-unrelated > x > 200", False),
+        ]:
+            self.assertEqual(bool(selected.search(name)), sent, name)
         self.assertEqual(
             generated["tenants"],
             {
@@ -175,10 +198,8 @@ class DomainOwnershipConfig(unittest.TestCase):
             principals["domain-admin-b"]["auth"]["login"]["body"]["email"],
             "contract-domain-admin@contract-other.test",
         )
-        self.assertEqual(
-            principals["domain-admin-a"]["roles"],
-            ["domains:read", "domains:write", "domains:delete"],
-        )
+        self.assertIn("pipelines:write", principals["domain-admin-a"]["roles"])
+        self.assertNotIn("queue:manage", principals["domain-admin-a"]["roles"])
         self.assertNotIn("surface", generated)
         self.assertEqual(generated["output"], ["", os.path.abspath(report)])
 

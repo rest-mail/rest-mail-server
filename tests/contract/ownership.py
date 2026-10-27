@@ -16,8 +16,8 @@ makes and writes to .cache/contract-principals.json, each with its app password:
 
 An account id is not made by any operation, so each tenant declares its own
 (vertrag's tenant `ids`). Only the account-scoped operations are selected, as
-the declared id is the account's: the domain and administration tenants come
-with the domain-scoped admin fixture. Keep this run report-only until it has
+the declared id is the account's, with the account list beside them, which
+must not show the other tenant's account. Keep this run report-only until it has
 run clean.
 
 With --domains it writes the second run instead: the administrators
@@ -42,9 +42,31 @@ from authorization import sign_in
 # sends, and a signed-in session also manages the account.
 MAIL_ROLES = ["mail:read", "mail:write", "mail:send"]
 SESSION_ROLES = MAIL_ROLES + ["mailbox:manage"]
-ACCOUNT_OPERATIONS = r"^/api/v1/accounts/\{id\}"
-DOMAIN_OPERATIONS = r"^/api/v1/admin/domains/\{id\}"
-DOMAIN_ROLES = ["domains:read", "domains:write", "domains:delete"]
+# The operations each run sends: those that take the declared id, and the list
+# beside them, which must not show the other tenant's rows. A transaction is
+# named "<path> > <summary> > <status>", so the list is its path and " > ".
+ACCOUNT_OPERATIONS = r"^/api/v1/accounts(/\{id\}| > )"
+# The domain run also sends the DKIM routes, whose id is the domain's, and the
+# admin resources a create links to (aliases, filters, pipelines,
+# certificates), made again for each cell by the victim tenant's administrator.
+# Mailboxes, the queue, grants and bans take ids no link makes and that are not
+# a domain's, so the declared id would name nothing there.
+DOMAIN_OPERATIONS = (
+    r"^/api/v1/admin/(domains(/\{id\}| > )|dkim/\{id\}"
+    r"|(aliases|custom-filters|pipelines|certificates)(/\{id\}| > ))"
+)
+# What the admin role holds on its own domain (internal/bootstrap).
+DOMAIN_ROLES = [
+    "domains:read",
+    "domains:write",
+    "domains:delete",
+    "mailboxes:read",
+    "mailboxes:write",
+    "mailboxes:delete",
+    "pipelines:read",
+    "pipelines:write",
+    "pipelines:delete",
+]
 # The fixture's disposable password (tests/contract/fixtures, domainTenantPassword).
 DOMAIN_TENANT_PASSWORD = "contract-domain-admin123!@"
 
