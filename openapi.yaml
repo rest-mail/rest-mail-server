@@ -6494,6 +6494,7 @@ paths:
   /api/v1/admin/queue:
     get:
       operationId: listQueue
+      description: Database work follows the HTTP request context, including cancellation and deadlines.
       tags: ["Admin: Queue"]
       security:
         - CookieAuth: [queue:read]
@@ -6570,6 +6571,7 @@ paths:
   /api/v1/admin/queue/stats:
     get:
       operationId: getQueueStats
+      description: Database work follows the HTTP request context, including cancellation and deadlines.
       tags: ["Admin: Queue"]
       security:
         - CookieAuth: [queue:read]
@@ -6591,6 +6593,7 @@ paths:
   /api/v1/admin/queue/bulk-retry:
     post:
       operationId: bulkRetryQueue
+      description: Database work follows the HTTP request context, including cancellation and deadlines.
       tags: ["Admin: Queue"]
       security:
         - CookieAuth: [queue:manage]
@@ -6671,6 +6674,7 @@ paths:
   /api/v1/admin/queue/bulk-bounce:
     post:
       operationId: bulkBounceQueue
+      description: Database work follows the HTTP request context, including cancellation and deadlines.
       tags: ["Admin: Queue"]
       security:
         - CookieAuth: [queue:manage]
@@ -6751,6 +6755,7 @@ paths:
   /api/v1/admin/queue/bulk-delete:
     delete:
       operationId: bulkDeleteQueue
+      description: Database work follows the HTTP request context, including cancellation and deadlines.
       tags: ["Admin: Queue"]
       security:
         - CookieAuth: [queue:manage]
@@ -6822,6 +6827,7 @@ paths:
       - $ref: "#/components/parameters/ResourceId"
     get:
       operationId: getQueueEntry
+      description: Database work follows the HTTP request context, including cancellation and deadlines.
       tags: ["Admin: Queue"]
       security:
         - CookieAuth: [queue:read]
@@ -6872,7 +6878,7 @@ paths:
         - BearerAuth: [queue:manage]
         - APIKeyAuth: [queue:manage]
       summary: Delete a queue entry
-      description: Answers 404 not_found when the ID does not exist.
+      description: Answers 404 not_found when the ID does not exist. Database work follows the HTTP request context, including cancellation and deadlines.
       responses:
         "204":
           description: Queue entry deleted
@@ -6884,6 +6890,7 @@ paths:
       - $ref: "#/components/parameters/ResourceId"
     post:
       operationId: retryQueueEntry
+      description: Database work follows the HTTP request context, including cancellation and deadlines. The entry is locked in one transaction before eligibility is checked and the update is written; lookup, update or commit failures cannot return success.
       tags: ["Admin: Queue"]
       security:
         - CookieAuth: [queue:manage]
@@ -6914,6 +6921,7 @@ paths:
       - $ref: "#/components/parameters/ResourceId"
     post:
       operationId: bounceQueueEntry
+      description: Database work follows the HTTP request context, including cancellation and deadlines. The entry is locked in one transaction before the update is written; lookup, update or commit failures cannot return success.
       tags: ["Admin: Queue"]
       security:
         - CookieAuth: [queue:manage]
