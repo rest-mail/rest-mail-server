@@ -2183,7 +2183,10 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 			if len(preview) > 200 {
 				preview = preview[:200]
 			}
-			h.db.Create(&models.Quarantine{
+			// A hold that cannot be stored must not be answered as accepted: the
+			// message would be in neither the quarantine nor the mailbox. The
+			// failure is the caller's to retry.
+			if err := h.db.WithContext(ctx).Create(&models.Quarantine{
 				MailboxID:        mailbox.ID,
 				Sender:           params.Sender,
 				Subject:          params.Subject,
@@ -2192,7 +2195,9 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 				QuarantineReason: quarantineReason(pipelineResult),
 				ReceivedAt:       time.Now(),
 				ExpiresAt:        time.Now().Add(30 * 24 * time.Hour),
-			})
+			}).Error; err != nil {
+				return nil, fmt.Errorf("hold the message in quarantine: %w", err)
+			}
 			traceBase.Outcome = outcomeQuarantined
 			h.recordTrace(buildTrace(traceBase))
 			return nil, nil // quarantined, not an error but no message created

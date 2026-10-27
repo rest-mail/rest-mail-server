@@ -379,10 +379,15 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 				h.recordTrace(buildTrace(rmTrace))
 				return RestmailDelivery{Delivered: to, Failed: []string{}}, nil
 			case pipeline.ActionQuarantine:
+				var holds []models.Quarantine
 				for _, rcpt := range to {
 					if recipient, ok := recipients[rcpt]; ok {
-						h.quarantineFor(recipient.mailbox.ID, req.From, req.Subject, req.BodyText, result)
+						holds = append(holds, quarantineHold(recipient.mailbox.ID, req.From, req.Subject, req.BodyText, result))
 					}
+				}
+				if err := h.storeHolds(r.Context(), holds); err != nil {
+					slog.Error("restmail: could not hold the message in quarantine, deferring delivery", "error", err)
+					return RestmailDelivery{}, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
 				}
 				rmTrace.Outcome = outcomeQuarantined
 				h.recordTrace(buildTrace(rmTrace))
@@ -408,7 +413,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 			forwarded := 0
 			for _, fwd := range buildRedirectForwards(result.FinalEmail, req.RawMessage, req.From, to, domainName, authResults) {
 				row := fwd
-				if err := h.db.Create(&row).Error; err != nil {
+				if err := h.db.WithContext(r.Context()).Create(&row).Error; err != nil {
 					slog.Error("restmail: failed to enqueue sieve redirect",
 						"recipient", row.Recipient, "error", err)
 					continue
@@ -448,6 +453,20 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 		slog.Error("restmail: a recipient's Sieve script could not run, deferring delivery", "error", err)
 		return RestmailDelivery{}, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
 	}
+	// The holds the recipients' scripts ask for are stored before anything is
+	// delivered, for the reason storeHolds gives.
+	var holds []models.Quarantine
+	for _, rcpt := range to {
+		recipient, ok := recipients[rcpt]
+		own, ran := sieved[rcpt]
+		if ok && ran && own.FinalAction == pipeline.ActionQuarantine {
+			holds = append(holds, quarantineHold(recipient.mailbox.ID, req.From, req.Subject, req.BodyText, own))
+		}
+	}
+	if err := h.storeHolds(r.Context(), holds); err != nil {
+		slog.Error("restmail: could not hold the message in quarantine, deferring delivery", "error", err)
+		return RestmailDelivery{}, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
+	}
 
 	for _, rcpt := range to {
 		recipient, ok := recipients[rcpt]
@@ -472,14 +491,14 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 				delivered = append(delivered, rcpt)
 				continue
 			case pipeline.ActionQuarantine:
-				h.quarantineFor(mailbox.ID, req.From, req.Subject, req.BodyText, own)
+				// Held before the loop.
 				failed = append(failed, rcpt)
 				continue
 			}
 			forwarded := 0
 			for _, fwd := range buildRedirectForwards(final, req.RawMessage, req.From, []string{rcpt}, domainName, authResults) {
 				row := fwd
-				if err := h.db.Create(&row).Error; err != nil {
+				if err := h.db.WithContext(r.Context()).Create(&row).Error; err != nil {
 					slog.Error("restmail: failed to enqueue sieve redirect", "recipient", row.Recipient, "error", err)
 					continue
 				}
@@ -620,13 +639,14 @@ func (h *RestmailHandler) runRecipientScripts(ctx context.Context, cfg *pipeline
 	return sieved, nil
 }
 
-// quarantineFor holds a RESTMAIL message for mailboxID, with the pipeline's reason.
-func (h *RestmailHandler) quarantineFor(mailboxID uint, from, subject, bodyText string, result *pipeline.ExecutionResult) {
+// quarantineHold is a RESTMAIL message held for mailboxID, with the
+// pipeline's reason.
+func quarantineHold(mailboxID uint, from, subject, bodyText string, result *pipeline.ExecutionResult) models.Quarantine {
 	preview := bodyText
 	if len(preview) > 200 {
 		preview = preview[:200]
 	}
-	h.db.Create(&models.Quarantine{
+	return models.Quarantine{
 		MailboxID:        mailboxID,
 		Sender:           from,
 		Subject:          subject,
@@ -634,6 +654,19 @@ func (h *RestmailHandler) quarantineFor(mailboxID uint, from, subject, bodyText 
 		QuarantineReason: quarantineReason(result),
 		ReceivedAt:       time.Now(),
 		ExpiresAt:        time.Now().Add(30 * 24 * time.Hour),
+	}
+}
+
+// storeHolds stores every hold of one delivery together, before anything is
+// delivered, so a failure defers the whole message and the peer's retry
+// gives no recipient a second copy. A hold that was not stored would be a
+// message in neither the quarantine nor the mailbox.
+func (h *RestmailHandler) storeHolds(ctx context.Context, holds []models.Quarantine) error {
+	if len(holds) == 0 {
+		return nil
+	}
+	return h.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return tx.Create(&holds).Error
 	})
 }
 
