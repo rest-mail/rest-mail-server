@@ -9,7 +9,7 @@
 # the code is the same for every install and every stack, contains no secret,
 # and upgrade:pulumi never has to touch it: an upgrade is a config change. The
 # admin password is there only as a bcrypt hash, which nobody can sign in with,
-# so it is an ordinary value and no step needs the stack's passphrase.
+# so it is an ordinary value. Optional APNs credentials use encrypted config.
 #
 # It prints rather than writes. A Pulumi project is a program, in a layout this
 # repository has never seen; the wiring line is an edit to it either way, and
@@ -58,34 +58,51 @@ EOF
   fi
   ;;
 nodejs)
+  component_dir=$(cd "$(dirname "$0")/../../packages/pulumi" && pwd)
+  package_version=$(jq -r .version "$component_dir/package.json")
+  project_dir=${PROJECT:-/path/to/your/project}
+  printf '1. Build the component from this checkout and install its local artifact (Node.js 22+):\n\n'
+  printf '     mkdir -p %q\n' "$project_dir/vendor"
+  printf '     (cd %q && npm ci --ignore-scripts && npm pack --pack-destination %q)\n' "$component_dir" "$project_dir/vendor"
+  printf '     (cd %q && npm install --save-exact %q)\n\n' "$project_dir" "./vendor/rest-mail-pulumi-$package_version.tgz"
   cat <<EOF
-1. Add the Kubernetes provider, if the project does not have it:
-
-     npm install @pulumi/kubernetes
-
 2. Make a file $module.ts:
 
 import * as pulumi from "@pulumi/pulumi";
 import * as k8s from "@pulumi/kubernetes";
+import { RestMail } from "@rest-mail/pulumi";
 
-const mail = new pulumi.Config("$NAME");
+export function create_$module(provider: k8s.Provider): RestMail {
+    const mail = new pulumi.Config("$NAME");
+    const apnsPrivateKey = mail.getSecret("apnsPrivateKey");
+    return new RestMail("$NAME", {
+        hostname: mail.require("hostname"),
+        domain: mail.require("domain"),
+        namespace: mail.require("namespace"),
+        createNamespace: mail.getBoolean("createNamespace") ?? true,
+        releaseName: "$NAME",
+        chartVersion: mail.require("chartVersion"),
+        chart: "$CHART",
+        adminPasswordHash: mail.require("adminPasswordHash"),
+        ownerKeys: mail.get("ownerKeys") || "",
+        apns: apnsPrivateKey === undefined ? undefined : {
+            privateKey: apnsPrivateKey,
+            keyId: mail.require("apnsKeyId"),
+            teamId: mail.require("apnsTeamId"),
+            topic: mail.get("apnsTopic") || "com.antimatterstudios.restmail",
+        },
+    }, { providers: { kubernetes: provider } });
+}
 
-export const release = new k8s.helm.v3.Release("$NAME", {
-    name: "$NAME",
-    chart: "$CHART",
-    version: mail.require("chartVersion"),
-    namespace: mail.require("namespace"),
-    createNamespace: true,
-    skipAwait: true,
-    values: {
-        mailserver: { hostname: mail.require("hostname"), domain: mail.require("domain") },
-        api: { bootstrapAdminPasswordHash: mail.require("adminPasswordHash"), ownerKeys: mail.get("ownerKeys") || "" },
-    },
-});
+3. Wire it in, in index.ts, passing your existing Kubernetes provider
+   (called cluster in homelab-server):
 
-3. Wire it in, in index.ts:
+     import { create_$module } from "./$module";
+     const mail = create_$module(cluster);
+     export const mailUrl = mail.url;
 
-     import "./$module";
+The vendor artifact and package manifests can be committed with your program.
+No npm publication or pipeline change is performed by this installer.
 EOF
   ;;
 python)

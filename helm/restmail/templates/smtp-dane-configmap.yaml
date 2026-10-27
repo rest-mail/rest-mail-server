@@ -1,0 +1,31 @@
+{{- if and .Values.smtpGateway.enabled .Values.smtp.dane.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "restmail.componentName" (list . "smtp-dane") }}
+  labels:
+    {{- include "restmail.componentLabels" (list . "smtp-gateway") | nindent 4 }}
+data:
+  unbound.conf: |
+    server:
+      interface: 127.0.0.1
+      port: 5353
+      access-control: 127.0.0.0/8 allow
+      username: ""
+      chroot: ""
+      directory: "/var/unbound"
+      pidfile: ""
+      use-syslog: no
+      module-config: "validator iterator"
+      auto-trust-anchor-file: "/var/unbound/root.key"
+      root-hints: "/var/unbound/root.hints"
+      val-permissive-mode: no
+      harden-dnssec-stripped: yes
+      edns-buffer-size: 1232
+      msg-cache-size: 4m
+      rrset-cache-size: 8m
+      local-zone: "health.dane.invalid." static
+      local-data: "health.dane.invalid. 60 IN A 127.0.0.1"
+    remote-control:
+      control-enable: no
+{{- end }}

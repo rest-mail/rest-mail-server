@@ -293,7 +293,8 @@ func TestHTTP01Responder_ServesOnlyPendingTokens(t *testing.T) {
 	}
 }
 
-// A renewal uses the same account identity but obtains a fresh serving key.
+// Orders without CertificateKey reuse the account identity but generate a new
+// serving key. Renewal callers explicitly supply their existing CertificateKey.
 // The second registration returns 200 (ErrAccountAlreadyExists in x/crypto).
 func TestIssue_ReusesAccountKey(t *testing.T) {
 	responder := NewHTTP01Responder()
@@ -316,7 +317,7 @@ func TestIssue_ReusesAccountKey(t *testing.T) {
 			t.Fatal("issuance did not use supplied account key")
 		}
 		if key == previousKey {
-			t.Fatal("renewal reused the serving private key")
+			t.Fatal("an order without CertificateKey reused the serving private key")
 		}
 		previousKey = key
 	}

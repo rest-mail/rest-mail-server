@@ -74,7 +74,14 @@ func (f *recipientCheckFilter) deferResult(err error) *pipeline.FilterResult {
 	}
 }
 
-func (f *recipientCheckFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
+func (f *recipientCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
+	// A local forward runs inside its delivery transaction. Keep filter reads
+	// and writes on that connection without changing the registered instance.
+	if db := pipeline.DBFromContext(ctx); db != nil {
+		copy := *f
+		copy.db = db
+		f = &copy
+	}
 	for _, rcpt := range email.Envelope.RcptTo {
 		_, validationErr := rmail.CanonicalMailboxAddress(rcpt)
 		if validationErr != nil || rmail.ContainsControlChar(rcpt) {

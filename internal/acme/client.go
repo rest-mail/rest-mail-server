@@ -6,6 +6,7 @@ package acme
 import (
 	"bytes"
 	"context"
+	stdcrypto "crypto"
 	"crypto/ecdsa"
 	"crypto/tls"
 	"crypto/x509"
@@ -105,6 +106,10 @@ func (c *Client) ChallengeHandler() http.Handler {
 // validates the challenge by fetching it from ChallengeHandler, which must be
 // reachable on port 80 of domain while this runs.
 func (c *Client) ObtainCertificate(ctx context.Context, domain string) (*models.Certificate, error) {
+	return c.obtainCertificate(ctx, domain, nil)
+}
+
+func (c *Client) obtainCertificate(ctx context.Context, domain string, certificateKey stdcrypto.Signer) (*models.Certificate, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -115,11 +120,12 @@ func (c *Client) ObtainCertificate(ctx context.Context, domain string) (*models.
 		return nil, err
 	}
 	certPEM, keyPEM, err := Issue(ctx, IssueConfig{
-		Directory:  c.directory,
-		Email:      c.email,
-		Domains:    []string{domain},
-		HTTPClient: c.httpClient,
-		AccountKey: accountKey,
+		Directory:      c.directory,
+		Email:          c.email,
+		Domains:        []string{domain},
+		HTTPClient:     c.httpClient,
+		AccountKey:     accountKey,
+		CertificateKey: certificateKey,
 	}, c.responder)
 	if err != nil {
 		return nil, err
@@ -259,7 +265,7 @@ func (c *Client) CertificatesNeedingRenewal() ([]models.Certificate, error) {
 }
 
 // RenewCertificate obtains a new certificate for the given domain and updates
-// the existing certificate record.
+// the existing certificate record, preserving its serving key for TLSA.
 func (c *Client) RenewCertificate(ctx context.Context, cert *models.Certificate) error {
 	if cert.Domain.Name == "" {
 		// Load the domain if not preloaded.
@@ -272,7 +278,11 @@ func (c *Client) RenewCertificate(ctx context.Context, cert *models.Certificate)
 
 	slog.Info("acme: renewing certificate", "domain", cert.Domain.Name, "cert_id", cert.ID, "expires", cert.NotAfter)
 
-	newCert, err := c.ObtainCertificate(ctx, cert.Domain.Name)
+	key, err := c.renewalKey(cert)
+	if err != nil {
+		return err
+	}
+	newCert, err := c.obtainCertificate(ctx, cert.Domain.Name, key)
 	if err != nil {
 		return fmt.Errorf("acme: renewal failed for %s: %w", cert.Domain.Name, err)
 	}
@@ -290,20 +300,27 @@ func (c *Client) RenewCertificate(ctx context.Context, cert *models.Certificate)
 	return nil
 }
 
-// encodeCertAndKey encodes a DER certificate chain and ECDSA private key to PEM.
-func encodeCertAndKey(derChain [][]byte, key *ecdsa.PrivateKey) (certPEM string, keyPEM string, err error) {
+// encodeCertAndKey encodes a DER chain and its serving private key to PEM.
+func encodeCertAndKey(derChain [][]byte, key stdcrypto.Signer) (certPEM string, keyPEM string, err error) {
 	var certBuf []byte
 	for _, der := range derChain {
 		block := &pem.Block{Type: "CERTIFICATE", Bytes: der}
 		certBuf = append(certBuf, pem.EncodeToMemory(block)...)
 	}
 
-	keyDER, err := x509.MarshalECPrivateKey(key)
+	keyType := "PRIVATE KEY"
+	var keyDER []byte
+	if ec, ok := key.(*ecdsa.PrivateKey); ok {
+		keyType = "EC PRIVATE KEY"
+		keyDER, err = x509.MarshalECPrivateKey(ec)
+	} else {
+		keyDER, err = x509.MarshalPKCS8PrivateKey(key)
+	}
 	if err != nil {
 		return "", "", fmt.Errorf("failed to marshal private key: %w", err)
 	}
 
-	keyBlock := &pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}
+	keyBlock := &pem.Block{Type: keyType, Bytes: keyDER}
 	keyBuf := pem.EncodeToMemory(keyBlock)
 
 	return string(certBuf), string(keyBuf), nil

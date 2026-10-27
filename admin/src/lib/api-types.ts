@@ -507,6 +507,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/accounts/{id}/messages/import": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Import one historical message
+     * @description Stores original message octets, folder, supported system flags and required internal_date without delivery rules or notifications. Requires mailboxes:write on the destination. A Message-ID already present in that account and folder is skipped without changing its flags or date. Messages without Message-ID use a deterministic SHA-256 import identity; the raw source remains unchanged. Every attempt is audited; successful imports and skips also receive a transactional messages.import audit entry. The decoded message is bounded by SMTP_MAX_MESSAGE_SIZE (10 MiB by default); the general API body limit may be stricter. Deleted-state and keyword flags are unsupported and refused rather than hidden or discarded.
+     */
+    post: operations["importMessage"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/accounts/{id}/quarantine": {
     parameters: {
       query?: never;
@@ -1318,6 +1338,26 @@ export interface paths {
     patch: operations["updateMailbox"];
     trace?: never;
   };
+  "/api/v1/admin/mailboxes/{id}/invitation": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Invite an account to choose its first password
+     * @description For an active account created without credentials. The invitation lasts 15 minutes; issuing another invalidates the previous one. Only a hash is stored. Authenticator enrollment and server encryption must be enabled before invitations can be issued.
+     */
+    post: operations["inviteAccount"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/admin/mailboxes/{id}/sessions": {
     parameters: {
       query?: never;
@@ -1851,6 +1891,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/auth/invitation": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Choose your first password with an invitation
+     * @description Redeems an invitation once, chooses a password of 12–72 bytes and signs in. The session can only finish authenticator enrollment until it is confirmed. Owner reset tokens cannot be used here. Native clients send client: native; browsers receive httpOnly session cookies.
+     */
+    post: operations["acceptInvitation"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/auth/login": {
     parameters: {
       query?: never;
@@ -2240,7 +2300,7 @@ export interface paths {
     put?: never;
     /**
      * Forward a message
-     * @description The message (mail:read) is sent on as sendMessage sends, with Fwd: and its header above the note.
+     * @description The message (mail:read) is forwarded through the normal sender authorization, rate limit and outbound policy, with Fwd: and the note above its original header. Stored attachments, including empty and inline parts, are re-attached; the Sent copy owns independent attachment objects. The final signed MIME message is bounded by SMTP_MAX_MESSAGE_SIZE, and sender quota includes the copied parts. Sent, attachment references, quota and recipient work commit together. Unavailable or changed source objects fail the forward instead of dropping parts.
      */
     post: operations["forwardMessage"];
     delete?: never;
@@ -2707,6 +2767,9 @@ export interface components {
     "Data-Health": {
       data: components["schemas"]["Health"];
     };
+    "Data-ImportMessageResult": {
+      data: components["schemas"]["ImportMessageResult"];
+    };
     "Data-MTASTSPolicy": {
       data: components["schemas"]["MTASTSPolicy"];
     };
@@ -2841,6 +2904,9 @@ export interface components {
     };
     "Data-grantResponseList": {
       data: components["schemas"]["grantResponse"][];
+    };
+    "Data-invitationResponse": {
+      data: components["schemas"]["invitationResponse"];
     };
     "Data-loginResponse": {
       data: components["schemas"]["loginResponse"];
@@ -3000,6 +3066,14 @@ export interface components {
       /** Format: int64 */
       unread: number;
     };
+    ForwardRefusalBody: {
+      code: string;
+      details?: components["schemas"]["ValidationDetails"] | null;
+      message: string;
+    };
+    ForwardRefusalResponse: {
+      error: components["schemas"]["ForwardRefusalBody"];
+    };
     Headers: {
       bcc?: components["schemas"]["Address"][];
       cc?: components["schemas"]["Address"][];
@@ -3021,6 +3095,20 @@ export interface components {
       cert_warnings?: components["schemas"]["CertWarning"][];
       db: string;
       status: string;
+    };
+    ImportMessageBody: {
+      flags?: string[];
+      folder?: string;
+      /** Format: date-time */
+      internal_date: string;
+      /** Format: byte */
+      raw_message: string;
+    };
+    ImportMessageResult: {
+      folder: string;
+      id: number;
+      imported: boolean;
+      message_id: string;
     };
     InboundTransportSecurity: {
       overTLS: number;
@@ -3177,6 +3265,7 @@ export interface components {
       headers?: unknown;
       id: number;
       in_reply_to: string;
+      is_answered?: boolean;
       is_deleted: boolean;
       is_draft: boolean;
       is_dsn: boolean;
@@ -4247,6 +4336,7 @@ export interface components {
       folder?: string;
       helo_name?: string;
       in_reply_to?: string;
+      is_answered?: boolean | null;
       is_draft?: boolean | null;
       is_flagged?: boolean | null;
       is_read?: boolean | null;
@@ -4350,6 +4440,11 @@ export interface components {
     };
     importContactsBody: {
       contacts: components["schemas"]["importContactEntry"][];
+    };
+    invitationResponse: {
+      /** Format: date-time */
+      expires_at: string;
+      token: string;
     };
     linkAccountRequest: {
       address: string;
@@ -4681,6 +4776,7 @@ export interface components {
     };
     updateMessageBody: {
       folder?: string | null;
+      is_answered?: boolean | null;
       is_draft?: boolean | null;
       is_flagged?: boolean | null;
       is_read?: boolean | null;
@@ -7587,6 +7683,113 @@ export interface operations {
         };
       };
       /** @description unavailable: the credential or session check could not be made */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  importMessage: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ImportMessageBody"];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Data-ImportMessageResult"];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description unauthorized: no token, a bad one, or a session that has ended */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Request Entity Too Large */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Unprocessable Entity */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ValidationErrorResponse"];
+        };
+      };
+      /** @description Internal Server Error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description unavailable: the session or grants check could not be made */
       503: {
         headers: {
           [name: string]: unknown;
@@ -14059,6 +14262,102 @@ export interface operations {
       };
     };
   };
+  inviteAccount: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          /** @description no-store: invitation secrets are never cacheable */
+          "Cache-Control"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Data-invitationResponse"];
+        };
+      };
+      /** @description unauthorized: no token, a bad one, or a session that has ended */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description request_too_large: the body is over the API's size cap */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Unprocessable Entity */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ValidationErrorResponse"];
+        };
+      };
+      /** @description Internal Server Error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Service Unavailable */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   endMailboxSessions: {
     parameters: {
       query?: never;
@@ -16896,6 +17195,99 @@ export interface operations {
       };
     };
   };
+  acceptInvitation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["resetRequest"];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          /** @description no-store: invitation secrets are never cacheable */
+          "Cache-Control"?: string;
+          /** @description For a browser: restmail_access and restmail_refresh (httpOnly) and restmail_csrf, set or, on logout, expired */
+          "Set-Cookie"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Data-loginResponse"];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Unauthorized */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Request Entity Too Large */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Unprocessable Entity */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ValidationErrorResponse"];
+        };
+      };
+      /** @description rate_limited: too many requests to the shared authentication throttle */
+      429: {
+        headers: {
+          /** @description Seconds until a request may be made again */
+          "Retry-After": number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal Server Error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Service Unavailable */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   login: {
     parameters: {
       query?: never;
@@ -18954,7 +19346,6 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @example 1 */
         id: number;
       };
       cookie?: never;
@@ -19028,13 +19419,13 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Unprocessable Entity */
+      /** @description Binding validation, sender policy or sender quota refusal */
       422: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["ValidationErrorResponse"];
+          "application/json": components["schemas"]["ForwardRefusalResponse"];
         };
       };
       /** @description Too Many Requests */

@@ -294,6 +294,24 @@ jsFilter:
       memory: 256Mi
 
 # ── SMTP gateway ──────────────────────────────────────────────────────────
+# Optional SMTP transport authentication. The validating resolver shares the
+# SMTP pod's network namespace and listens only on loopback, never a Service.
+smtp:
+  dane:
+    enabled: false
+    image:
+      repository: ghcr.io/klutchell/unbound
+      tag: "1.26.2"
+      digest: sha256:50cbeb32b5838a829a7226b19cb151f9535bd7f9f3190f950780f452fe807478
+      pullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 250m
+        memory: 128Mi
+
 smtpGateway:
   # The gateway serves mail to the outside world on privileged ports, which a
   # cluster can only give it through a LoadBalancer that actually has an address

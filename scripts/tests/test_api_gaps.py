@@ -235,7 +235,7 @@ class APIWarningIssues(unittest.TestCase):
         self.assertEqual(set(areas), {str(number) for number in range(630, 653)})
         ids = [op for operations in areas.values() for op in operations]
         self.assertEqual(len(ids), len(set(ids)))
-        self.assertEqual(len(ids), 175)
+        self.assertEqual(len(ids), 178)
 
 
 if __name__ == "__main__":

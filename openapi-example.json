@@ -1,4 +1,161 @@
 {
+  "acceptInvitation": {
+    "accepted": {
+      "request": {
+        "body": {
+          "password": "the recipient chooses this password",
+          "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "expires_in": 900,
+            "setup_required": [
+              "two_factor"
+            ],
+            "user": {
+              "display_name": "",
+              "email": "invited@example.test",
+              "id": 12
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "body_array": {
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "request": {
+        "body": {
+          "password": "the recipient chooses this password",
+          "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to redeem the token"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_field": {
+      "request": {
+        "body": {
+          "password": "the recipient chooses this password",
+          "token": 3
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "details": {
+              "fields": {
+                "token": "must be a string"
+              }
+            },
+            "message": "Request body failed validation"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_token": {
+      "request": {
+        "body": {
+          "password": "the recipient chooses this password",
+          "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "invalid_token",
+            "message": "the token is not valid: unknown, already used, or expired"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "request": {
+        "body": {
+          "password": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unavailable": {
+      "request": {
+        "body": {
+          "password": "the recipient chooses this password",
+          "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Invitations require authenticator enrollment and server encryption to be enabled"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "wrong_purpose": {
+      "request": {
+        "body": {
+          "password": "the recipient chooses this password",
+          "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "invalid_token",
+            "message": "the token is not valid: unknown, already used, or expired"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "addToAllowlist": {
     "already_exists": {
       "description": "The SQL driver returns PostgreSQL23505. GORM and the production repository conflict mapping produce409, without exposing database details.",
@@ -20688,6 +20845,56 @@
     }
   },
   "forwardMessage": {
+    "attachment_write_failed": {
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "from": "sender@example.test",
+          "to": [
+            "target@remote.test"
+          ],
+          "body_text": "please review"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "checksum_mismatch": {
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "from": "sender@example.test",
+          "to": [
+            "target@remote.test"
+          ],
+          "body_text": "please review"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "attachment_unavailable",
+            "message": "Could not read an original attachment"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "example": {
       "summary": "The operation's example",
       "request": {
@@ -20701,6 +20908,258 @@
       },
       "response": {
         "status": 201
+      }
+    },
+    "mailbox_full": {
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "from": "sender@example.test",
+          "to": [
+            "target@remote.test"
+          ],
+          "body_text": "please review"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "mailbox_full",
+            "message": "The sender account has insufficient quota"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "mime_too_large": {
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "from": "sender@example.test",
+          "to": [
+            "target@remote.test"
+          ],
+          "body_text": "please review"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "message_too_large",
+            "message": "The forwarded message exceeds the message size limit"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing_object": {
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "from": "sender@example.test",
+          "to": [
+            "target@remote.test"
+          ],
+          "body_text": "please review"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "attachment_unavailable",
+            "message": "Could not read an original attachment"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "not_authorized": {
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "from": "sender@example.test",
+          "to": [
+            "target@remote.test"
+          ],
+          "body_text": "please review"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "queue_write_failed": {
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "from": "sender@example.test",
+          "to": [
+            "target@remote.test"
+          ],
+          "body_text": "please review"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "quota_write_failed": {
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "from": "sender@example.test",
+          "to": [
+            "target@remote.test"
+          ],
+          "body_text": "please review"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "source_unavailable": {
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "from": "sender@example.test",
+          "to": [
+            "target@remote.test"
+          ],
+          "body_text": "please review"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "attachment_unavailable",
+            "message": "Could not read an original attachment"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "from": "sender@example.test",
+          "to": [
+            "target@remote.test"
+          ],
+          "body_text": "please review"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Invalid or expired token"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "with_attachments": {
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "from": "sender@example.test",
+          "to": [
+            "target@remote.test"
+          ],
+          "body_text": "please review"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "body_html": "\u003cp\u003eplease review\u003c/p\u003e\n\u003cp\u003e---------- Forwarded message ----------\u003cbr\u003e\nFrom: old@example.test\u003cbr\u003e\nSubject: receipt\u003c/p\u003e\n\u003cp\u003eoriginal\u003cimg src=\"cid:original-image\"\u003e\u003c/p\u003e",
+            "body_text": "please review\n\n---------- Forwarded message ----------\nFrom: old@example.test\nSubject: receipt\n\noriginal receipt",
+            "created_at": "2030-01-02T03:04:05Z",
+            "date_header": null,
+            "folder": "Sent",
+            "has_attachments": true,
+            "id": 41,
+            "in_reply_to": "",
+            "is_deleted": false,
+            "is_draft": false,
+            "is_dsn": false,
+            "is_flagged": false,
+            "is_read": true,
+            "is_starred": false,
+            "mailbox_id": 1,
+            "message_id": "\u003c00000000-0000-4000-8000-000000000001@example.test\u003e",
+            "raw_size": 1714,
+            "received_at": "2030-01-02T03:04:05Z",
+            "recipients_cc": [],
+            "recipients_to": [
+              "target@remote.test"
+            ],
+            "references": "",
+            "sender": "sender@example.test",
+            "sender_name": "",
+            "size_bytes": 285,
+            "subject": "Fwd: receipt",
+            "thread_id": "\u003c00000000-0000-4000-8000-000000000001@example.test\u003e",
+            "updated_at": "2030-01-02T03:04:05Z"
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },
@@ -30201,6 +30660,1099 @@
         "body": {
           "data": {
             "imported": 1
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "importMessage": {
+    "api_key": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "\\Seen",
+            "\\Answered",
+            "\\Flagged",
+            "\\Draft"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 41,
+            "imported": true,
+            "message_id": "\u003chistory@example.test\u003e",
+            "folder": "Archive"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "api_key_ceiling": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "\\Seen",
+            "\\Answered",
+            "\\Flagged",
+            "\\Draft"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "api_key_holder_revoked": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "\\Seen",
+            "\\Answered",
+            "\\Flagged",
+            "\\Draft"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "audit_failure": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "\\Seen",
+            "\\Answered",
+            "\\Flagged",
+            "\\Draft"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "binary_source": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "\\Seen",
+            "\\Answered",
+            "\\Flagged",
+            "\\Draft"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "TWVzc2FnZS1JRDogPGJpbmFyeUBleGFtcGxlLnRlc3Q+DQpGcm9tOiBvbGRAZXhhbXBsZS50ZXN0DQoNCmhpc3Rvcnn/AA0K"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 41,
+            "imported": true,
+            "message_id": "\u003cbinary@example.test\u003e",
+            "folder": "Archive"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "body_array": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": [],
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "created": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "\\Seen",
+            "\\Answered",
+            "\\Flagged",
+            "\\Draft"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 41,
+            "imported": true,
+            "message_id": "\u003chistory@example.test\u003e",
+            "folder": "Archive"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "csrf": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "\\Seen",
+            "\\Answered",
+            "\\Flagged",
+            "\\Draft"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "decoded_too_large": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "\\Seen",
+            "\\Answered",
+            "\\Flagged",
+            "\\Draft"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHg="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "message_too_large",
+            "message": "The decoded message exceeds the import size limit"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "default_folder": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "\\Seen",
+            "\\Answered",
+            "\\Flagged",
+            "\\Draft"
+          ],
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 41,
+            "imported": true,
+            "message_id": "\u003chistory@example.test\u003e",
+            "folder": "INBOX"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "duplicate": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "\\Seen",
+            "\\Answered",
+            "\\Flagged",
+            "\\Draft"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 41,
+            "imported": false,
+            "message_id": "\u003chistory@example.test\u003e",
+            "folder": "Archive"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "insert_failure": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "\\Seen",
+            "\\Answered",
+            "\\Flagged",
+            "\\Draft"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "insufficient_permissions": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "\\Seen",
+            "\\Answered",
+            "\\Flagged",
+            "\\Draft"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_base64": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "\\Seen",
+            "\\Answered",
+            "\\Flagged",
+            "\\Draft"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "!not-base64!"
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "raw_message": "must be a base64 string"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_folder": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "\\Seen",
+            "\\Answered",
+            "\\Flagged",
+            "\\Draft"
+          ],
+          "folder": "bad\u0000folder",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "folder": "must not contain a control character"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "body": {
+          "flags": [
+            "\\Seen",
+            "\\Answered",
+            "\\Flagged",
+            "\\Draft"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "mailbox_full": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "\\Seen",
+            "\\Answered",
+            "\\Flagged",
+            "\\Draft"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "mailbox_full",
+            "message": "The destination account has insufficient quota"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "\\Seen",
+            "\\Answered",
+            "\\Flagged",
+            "\\Draft"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "mailbox_not_found",
+            "message": "Destination account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing_date": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "\\Seen",
+            "\\Answered",
+            "\\Flagged",
+            "\\Draft"
+          ],
+          "folder": "Archive",
+          "raw_message": "TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "internal_date": "required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing_message_id": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "\\Seen",
+            "\\Answered",
+            "\\Flagged",
+            "\\Draft"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "RnJvbTogb2xkQGV4YW1wbGUudGVzdA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 41,
+            "imported": true,
+            "message_id": "\u003cimport.9b98f1924d1d2ce37341bb414c6b3a53b345718aee0e7760eb94724f9b8de94e@rest-mail.invalid\u003e",
+            "folder": "Archive"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing_raw": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "\\Seen",
+            "\\Answered",
+            "\\Flagged",
+            "\\Draft"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z"
+        },
+        "mediaType": "application/json",
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "raw_message": "required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing_scoped_target": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "\\Seen",
+            "\\Answered",
+            "\\Flagged",
+            "\\Draft"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "quota_failure": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "\\Seen",
+            "\\Answered",
+            "\\Flagged",
+            "\\Draft"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "read_failure": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "\\Seen",
+            "\\Answered",
+            "\\Flagged",
+            "\\Draft"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "\\Seen",
+            "\\Answered",
+            "\\Flagged",
+            "\\Draft"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "setup_pending": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "\\Seen",
+            "\\Answered",
+            "\\Flagged",
+            "\\Draft"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "\\Seen",
+            "\\Answered",
+            "\\Flagged",
+            "\\Draft"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unavailable": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "\\Seen",
+            "\\Answered",
+            "\\Flagged",
+            "\\Draft"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unresolved_scoped_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "body": {
+          "flags": [
+            "\\Seen",
+            "\\Answered",
+            "\\Flagged",
+            "\\Draft"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unsupported_deleted": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "\\Deleted"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "flags": "unsupported flag: \\Deleted"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unsupported_keyword": {
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "$Custom"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "flags": "unsupported flag: $Custom"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "inviteAccount": {
+    "created": {
+      "request": {
+        "path": {
+          "id": 12
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "expires_at": "2030-01-01T00:15:00Z",
+            "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "existing_credentials": {
+      "request": {
+        "path": {
+          "id": 12
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "account_not_invitable",
+            "message": "only an active account that has never held credentials can be invited"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "insufficient_permissions": {
+      "request": {
+        "path": {
+          "id": 12
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "request": {
+        "path": {
+          "id": 12
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            },
+            "message": "Path parameters failed validation"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 12
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "mailbox_not_found",
+            "message": "Mailbox not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "request": {
+        "path": {
+          "id": 12
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "request": {
+        "path": {
+          "id": 12
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unavailable": {
+      "request": {
+        "path": {
+          "id": 12
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Invitations require authenticator enrollment and server encryption to be enabled"
           }
         },
         "mediaType": "application/json"

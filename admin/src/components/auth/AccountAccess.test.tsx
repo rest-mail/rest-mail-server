@@ -24,6 +24,71 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 
 describe('account setup and recovery', () => {
+  it("accepts an invitation without exposing its token in history or storage", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/login#invite_token=private-invitation-token",
+    );
+    const fetcher = vi.fn().mockResolvedValue(
+      response({
+        data: {
+          user: { id: 12, email: "invited@example.com" },
+          setup_required: ["two_factor"],
+        },
+      }),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    const { onSession } = mount();
+    expect(location.hash).toBe("");
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(localStorage.length).toBe(0);
+    expect(sessionStorage.length).toBe(0);
+    expect(screen.queryByText("Private mailbox")).toBeNull();
+    passwords();
+    fireEvent.click(screen.getByText("Accept invitation"));
+    await waitFor(() => expect(onSession).toHaveBeenCalledOnce());
+    const [url, init] = fetcher.mock.calls[0];
+    expect(url).toBe("/api/v1/auth/invitation");
+    expect(init.credentials).toBe("include");
+    expect(JSON.parse(init.body)).toEqual({
+      token: "private-invitation-token",
+      password: "a password chosen by the owner",
+    });
+    expect(onSession.mock.calls[0][0].setup_required).toEqual(["two_factor"]);
+  });
+  it("keeps an expired invitation visible without starting a session", async () => {
+    window.history.replaceState(null, "", "/login#invite");
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          response(
+            {
+              error: {
+                code: "invalid_token",
+                message: "Invitation expired or already used",
+              },
+            },
+            401,
+          ),
+        ),
+    );
+    const { onSession } = mount();
+    fireEvent.change(screen.getByLabelText("Invitation token"), {
+      target: { value: "expired-invitation" },
+    });
+    passwords();
+    fireEvent.click(screen.getByText("Accept invitation"));
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain(
+        "expired or already used",
+      ),
+    );
+    expect(onSession).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Invitation token")).toBeTruthy();
+  });
   it('retains a fragment token when StrictMode initializes twice', () => {
     window.history.replaceState(null, '', '/login#reset_token=strict-mode-test-token')
     render(<StrictMode><AccountAccess apiBase="/api/v1" steps={[]} onSession={() => {}} onSignOut={() => {}}>

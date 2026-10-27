@@ -198,11 +198,13 @@ dig +dnssec +short TLSA _25._tcp.mx1.example.org
   records from the SMTP public certificate, with an optional staged key for
   rollover. `chore dns:show --tlsa-cert current.pem --tlsa-next-cert staged.pem`
   includes those candidates. See [preparing TLSA records](../../dane-tlsa.md)
-  for the DNSSEC prerequisites and rollover sequence. Automatic safe
-  certificate/key renewal remains in
-  [#725](https://github.com/rest-mail/rest-mail-server/issues/725); the current
-  ACME renewal rotates keys and must be coordinated before publishing TLSA.
-- **DANE when sending:** with `DANE_RESOLVER` set to a DNSSEC-validating
+  for the DNSSEC prerequisites and rollover sequence. API and instance ACME
+  renewal preserve the serving key, keeping the `3 1 1` digest stable. A
+  deliberate key rotation still needs both records published before the swap;
+  external certificate managers must arrange the same reuse or overlap.
+- **DANE when sending:** the optional, off-by-default chart setting
+  `smtp.dane.enabled` supplies an Unbound sidecar on pod loopback. With
+  `DANE_RESOLVER` set to a DNSSEC-validating
   resolver on the same host (a loopback address), the queue applies DANE for
   SMTP ([RFC 7672](https://www.rfc-editor.org/rfc/rfc7672)) to recipient
   domains whose MX records are DNSSEC-secure. An MX host with usable TLSA

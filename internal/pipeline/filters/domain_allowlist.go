@@ -11,8 +11,8 @@ import (
 )
 
 type domainAllowlistConfig struct {
-	OnAllow       string `json:"on_allow"`        // "continue_skip_spam"
-	OnBlock       string `json:"on_block"`         // "reject"
+	OnAllow       string `json:"on_allow"` // "continue_skip_spam"
+	OnBlock       string `json:"on_block"` // "reject"
 	RejectMessage string `json:"reject_message"`
 }
 
@@ -35,10 +35,17 @@ func NewDomainAllowlist(db *gorm.DB) pipeline.FilterFactory {
 	}
 }
 
-func (f *domainAllowlistFilter) Name() string             { return "domain_allowlist" }
+func (f *domainAllowlistFilter) Name() string              { return "domain_allowlist" }
 func (f *domainAllowlistFilter) Type() pipeline.FilterType { return pipeline.FilterTypeAction }
 
 func (f *domainAllowlistFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
+	// A local forward runs inside its delivery transaction. Keep filter reads
+	// and writes on that connection without changing the registered instance.
+	if db := pipeline.DBFromContext(ctx); db != nil {
+		copy := *f
+		copy.db = db
+		f = &copy
+	}
 	sender := email.Envelope.MailFrom
 	if sender == "" && len(email.Headers.From) > 0 {
 		sender = email.Headers.From[0].Address

@@ -19,13 +19,17 @@ interface Props {
   onSignOut: () => void;
 }
 
-type Recovery = { kind: "token"; token: string } | { kind: "self" };
+type Recovery =
+  | { kind: "token" | "invitation"; token: string }
+  | { kind: "self" };
 
 // A recovery token belongs in the fragment, never the query string sent to
 // nginx/access logs. Remove it from browser history immediately; keep it only
 // in this component until redeemed or cancelled. No local/session storage.
 function readRecovery(): Recovery | null {
   const hash = new URLSearchParams(window.location.hash.slice(1));
+  if (hash.has("invite") || hash.has("invite_token"))
+    return { kind: "invitation", token: hash.get("invite_token") || "" };
   if (hash.has("reset") || hash.has("reset_token"))
     return { kind: "token", token: hash.get("reset_token") || "" };
   return hash.has("recover") ? { kind: "self" } : null;
@@ -81,7 +85,7 @@ export function AccountAccess({
     body: RequestBody<"recoverAccount">,
   ): Promise<SetupSession>;
   async function post(
-    path: "/auth/reset",
+    path: "/auth/reset" | "/auth/invitation",
     body: RequestBody<"resetAdmin">,
   ): Promise<SetupSession>;
   async function post(path: "/auth/2fa/enroll"): Promise<Enrollment>;
@@ -159,10 +163,15 @@ export function AccountAccess({
                 recovery_code: recoveryCode.trim(),
                 new_password: password,
               })
-            : await post("/auth/reset", {
-                token: recovery.token.trim(),
-                password,
-              });
+            : await post(
+                recovery.kind === "invitation"
+                  ? "/auth/invitation"
+                  : "/auth/reset",
+                {
+                  token: recovery.token.trim(),
+                  password,
+                },
+              );
         onSession(session);
         setRecovery(null);
       } else {
@@ -188,6 +197,7 @@ export function AccountAccess({
 
   const resetting = recovery !== null;
   const selfRecovering = recovery?.kind === "self";
+  const invited = recovery?.kind === "invitation";
   const changingPassword = steps.includes("password");
   const enrolling = !changingPassword && steps.includes("two_factor");
   if (!resetting && !changingPassword && !enrolling) {
@@ -210,19 +220,23 @@ export function AccountAccess({
     <main className="min-h-screen bg-white text-gray-900 flex items-center justify-center p-6">
       <section className="w-full max-w-md space-y-5">
         <h1 className="text-2xl font-semibold">
-          {selfRecovering
-            ? "Reset your password"
-            : resetting
-              ? "Recover your account"
-              : "Finish account setup"}
+          {invited
+            ? "Accept your invitation"
+            : selfRecovering
+              ? "Reset your password"
+              : resetting
+                ? "Recover your account"
+                : "Finish account setup"}
         </h1>
         {email && !resetting && <p>{email}</p>}
         <p className="text-sm text-gray-600">
           {selfRecovering
             ? "Use both a current code from your authenticator and an unused recovery code saved when you enabled two-factor authentication. If you do not have both, contact your server administrator to reset your password."
-            : resetting
-              ? "Use the single-use recovery token supplied by your server operator. Choose your password here, then enroll your authenticator."
-              : "Choose your own password and enable two-factor authentication before opening your account."}
+            : invited
+              ? "Choose your own password, then set up your authenticator and save your recovery codes. Your invitation can be used once and expires after 15 minutes."
+              : resetting
+                ? "Use the single-use recovery token supplied by your server operator. Choose your password here, then enroll your authenticator."
+                : "Choose your own password and enable two-factor authentication before opening your account."}
         </p>
         {selfRecovering && (
           <p className="text-sm text-gray-600">
@@ -279,15 +293,18 @@ export function AccountAccess({
               </>
             ) : resetting ? (
               <label className="block text-sm">
-                Recovery token
+                {invited ? "Invitation token" : "Recovery token"}
                 <input
-                  aria-label="Recovery token"
+                  aria-label={invited ? "Invitation token" : "Recovery token"}
                   type="password"
                   autoComplete="off"
                   required
-                  value={recovery?.kind === "token" ? recovery.token : ""}
+                  value={recovery?.token || ""}
                   onChange={(e) =>
-                    setRecovery({ kind: "token", token: e.target.value })
+                    setRecovery({
+                      kind: invited ? "invitation" : "token",
+                      token: e.target.value,
+                    })
                   }
                   className="mt-1 border p-3 w-full"
                 />
@@ -335,9 +352,11 @@ export function AccountAccess({
             >
               {busy
                 ? "Saving…"
-                : resetting
-                  ? "Set new password"
-                  : "Change password"}
+                : invited
+                  ? "Accept invitation"
+                  : resetting
+                    ? "Set new password"
+                    : "Change password"}
             </button>
           </form>
         ) : enrollment ? (
