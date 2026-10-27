@@ -20,6 +20,24 @@ In the `E2E (full topology)` job (`.github/workflows/e2e-suite.yml`), after the
 | `authorization` | Every selected operation as each configured principal, checked against the spec's security roles. | Report only, after the gates |
 | `fuzz` | Values drawn from each schema, shrunk to the smallest failing input, with a replayable seed. | Nightly (`contract-fuzz.yml`), never blocks |
 
+### Attachment download contract
+
+The topology examples send an ordinary download, `Range: bytes=0-0` for a
+single-byte 206, and a range past the end for a plain-text 416. Named path/header
+examples pair those requests with their responses. Content bytes depend on the
+topology's seeded attachment; the selected media types and required headers
+remain checked. Vertrag 0.31.3 keeps optional response headers optional and
+does not send invented empty conditional headers.
+
+Bodyless 304/412 cannot hold named media-type examples. Their topology
+transactions, multipart 206, and storage/writer 500s remain explicitly excluded
+with reasons in `vertrag.yml`. They are not full-topology acceptance evidence.
+The required `TestAttachmentDownloadExamplesWithVertrag` suite exercises the
+named conditional requests and dependency refusals through the real handler
+and storage client. `TestAttachmentConditionalResponsesDescribeTheWire` also
+checks multipart ranges and seek failures. The remaining topology conditional
+and fault matrix stays open under #1166; no coverage baseline entry is added.
+
 ### Own-account authenticator contract
 
 The normal examples run includes `getTwoFactorStatus` and `enrollTwoFactor`,
@@ -555,8 +573,15 @@ a hosted domain and mailbox for each address a test send probe uses, and,
   the fixture email from a credential and is not judged. The configured fixture
   password is searched separately in the unredacted audit log. This limitation
   remains; a redacted recording does not prove that password was never answered.
-  Controls are in `test_secret_scan.py` and `test_secret_transports.py`. The HAR
-  contains fixture credentials and is not uploaded with the logs.
+  Audit retrieval refuses login and page redirects, checks each page's data and
+  explicit pagination, URL-encodes cursors and rejects cycles or missing cursors.
+  It scans credentials newly issued by its own login, including session cookies.
+  Safety limits are 1,000 pages, 16 MiB per HTTP answer and 64 MiB of serialized
+  audit entries. Exceeding a limit, malformed input or a failed read exits 2 with
+  a sanitized error and no clean verdict; a finding exits 1 and a verified clean
+  run exits 0. Controls are in `test_secret_scan.py`, `test_secret_transports.py`
+  and `test_secret_audit_read.py`. The HAR contains fixture credentials and is
+  not uploaded with the logs.
 - `coverage-baseline.txt`: the coverage ratchet's baseline.
 - `test_gate.py`: `gate.py`'s own tests (`python3 -m unittest discover -s tests/contract -p test_gate.py`).
 - `test_hooks_save_draft.py`: the saveDraft sender hook's tests, against a stub admin API.
@@ -697,6 +722,10 @@ and cache; `chore vertrag:install` remains available for an explicit reinstall.
 CI's E2E job calls `chore contract`, so a run here gives the verdict CI gives for
 the same commit. A narrowed run (`--tag`, `--operation-id`, `--only-matching`)
 reports without the surface gate and the baseline, which are about the whole API.
+Its coverage verdict comes directly from Vertrag: exit 0 for passing selected
+probes, exit 2 for findings. A narrowed finding is not excused by the whole-API
+baseline. The complete command preserves that failure while still running the
+secret scan and producing the authorization report.
 
 The secret scan also runs locally, including after a failing examples gate.
 The API key proof and every Vertrag phase honor `CONTRACT_ENDPOINT`. A fetch

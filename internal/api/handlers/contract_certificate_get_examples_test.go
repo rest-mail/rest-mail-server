@@ -32,7 +32,7 @@ func TestCertificateGet_DocumentedExamples(t *testing.T) {
 					In       string `yaml:"in"`
 					Required bool   `yaml:"required"`
 					Examples map[string]struct {
-						Value uint `yaml:"value"`
+						Value any `yaml:"value"`
 					} `yaml:"examples"`
 				} `yaml:"parameters"`
 				Responses map[string]struct {
@@ -53,8 +53,8 @@ func TestCertificateGet_DocumentedExamples(t *testing.T) {
 	if parameter.Name != "id" || parameter.In != "path" || !parameter.Required || len(parameter.Examples) != 2 {
 		t.Fatalf("unexpected ID parameter: %+v", parameter)
 	}
-	missing := parameter.Examples["missing"].Value
-	if missing != 2147483647 || parameter.Examples["found"].Value != 1 {
+	missing := contractPathExampleID(t, parameter.Examples["missing"].Value)
+	if missing != 2147483647 || contractPathExampleID(t, parameter.Examples["found"].Value) != 1 {
 		t.Fatalf("unexpected path examples: %+v", parameter.Examples)
 	}
 	examples := op.Responses["404"].Content["application/json"].Examples

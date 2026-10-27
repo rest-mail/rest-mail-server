@@ -100,6 +100,16 @@ exclude-operation-id:
 # Documented responses the examples phase cannot provoke yet, by pattern. A
 # transaction is named "<title> > <path> > <summary> > <status>[ > <type>]".
 exclude-matching:
+  # The topology sends whole, single-range and unsatisfiable downloads with
+  # named parameter examples. Bodyless 304/412 cannot carry a named media-type
+  # example; multipart content has a per-response boundary, and a healthy
+  # topology cannot provoke storage/writer faults. The mandatory
+  # TestAttachmentDownloadExamplesWithVertrag suite exercises conditional
+  # requests and dependency refusals through the real handler and storage client;
+  # TestAttachmentConditionalResponsesDescribeTheWire covers multipart/seek faults.
+  # #1166 tracks the remaining full-topology conditional and fault matrix.
+  - '^/api/v1/attachments/\{id\} > .* > (304|412|500)( >|$)'
+  - '^/api/v1/attachments/\{id\} > .* > 206 > multipart/byteranges( >|$)'
   # A refusal for a missing capability needs a principal without it: vertrag's
   # authorization phase, not the admin's run.
   - '> 403( >|$)'
@@ -215,6 +225,15 @@ surface:
   count: passed
   require: 100
   exclude:
+    - operation: getAttachment
+      status: "304"
+      reason: "Bodyless responses cannot carry named media-type examples. The required TestAttachmentDownloadExamplesWithVertrag suite sends If-None-Match through the real handler/storage client; full topology coverage remains in #1166."
+    - operation: getAttachment
+      status: "412"
+      reason: "Bodyless responses cannot carry named media-type examples. The required TestAttachmentDownloadExamplesWithVertrag suite sends If-Match through the real handler/storage client; full topology coverage remains in #1166."
+    - operation: getAttachment
+      status: "500"
+      reason: "A healthy topology cannot provoke database/storage/seek faults. The required attachment example suite covers dependency refusals, and TestAttachmentConditionalResponsesDescribeTheWire covers seek errors; topology fault injection remains in #1166."
     - operation: listAPIKeys
       reason: "Required real-MFA API key lifecycle suite: chore test:contract-api-keys in e2e-suite.yml. It checks metadata, creation, scoped use and revocation without changing this run's principal."
     - operation: createAPIKey
