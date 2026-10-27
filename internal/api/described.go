@@ -178,7 +178,7 @@ func describe(registry *endpoint.Registry, version string) *oapifly.Generator {
 
 		ExampleRequirements: exampleRequirements,
 	})
-	g.Register(registry.Endpoints()...)
+	g.Register(withResponseLinks(registry.Endpoints())...)
 	return g
 }
 
