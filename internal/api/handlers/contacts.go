@@ -268,7 +268,7 @@ func (h *ContactHandler) update(r *http.Request, in updateContactRequest) (Conta
 			return fmt.Errorf("find contact for update: %w", err)
 		}
 		if len(updates) > 0 {
-			result := tx.Model(&models.Contact{}).Where("id = ? AND mailbox_id = ?", in.CID, mailboxID).Updates(updates)
+			result := tx.Model(&contact).Where("mailbox_id = ?", mailboxID).Updates(updates)
 			if result.Error != nil {
 				return endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to update contact")
 			}
@@ -348,7 +348,7 @@ func (h *ContactHandler) block(r *http.Request, in blockSenderRequest) (endpoint
 	err = h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
 		result := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("mailbox_id = ? AND email = ?", mailboxID, email).First(&contact)
 		if result.Error == nil {
-			result := tx.Model(&models.Contact{}).Where("id = ? AND mailbox_id = ?", contact.ID, mailboxID).Updates(map[string]interface{}{
+			result := tx.Model(&contact).Where("mailbox_id = ?", mailboxID).Updates(map[string]interface{}{
 				"trust_level": "blocked",
 				"source":      "manual",
 			})
