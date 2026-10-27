@@ -86,7 +86,7 @@ type restmailMailboxQuery struct {
 // checkMailbox verifies a recipient mailbox exists.
 func (h *RestmailHandler) checkMailbox(r *http.Request, in restmailMailboxQuery) (RestmailMailboxCheck, error) {
 	var mailbox models.Mailbox
-	if err := repositories.FindActiveMailboxByAddress(h.db, in.Address, &mailbox); err != nil {
+	if err := repositories.FindActiveMailboxByAddress(h.db.WithContext(r.Context()), in.Address, &mailbox); err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return RestmailMailboxCheck{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to look up mailbox")
 		}
