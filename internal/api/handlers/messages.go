@@ -1918,18 +1918,6 @@ func (h *MessageHandler) respondToCalendar(r *http.Request, in calendarReplyRequ
 	return CalendarReplied{Response: response, Status: "sent"}, nil
 }
 
-// verifyMessageOwnership checks that the caller may act on the message with
-// capability: that it is in a mailbox the caller holds the capability on (its
-// own, or one it owns or has linked; an app password, only its own).
-func (h *MessageHandler) verifyMessageOwnership(w http.ResponseWriter, r *http.Request, msg *models.Message, capability string) bool {
-	claims := middleware.GetClaims(r)
-	if claims == nil {
-		return false
-	}
-	_, err := mayReach(h.db, claims, msg.MailboxID, capability)
-	return err == nil
-}
-
 // localDeliveryParams holds the information needed for local message delivery with
 // full inbound pipeline processing, quota checks, attachment extraction, and SSE events.
 type localDeliveryParams struct {
