@@ -697,6 +697,10 @@ and cache; `chore vertrag:install` remains available for an explicit reinstall.
 CI's E2E job calls `chore contract`, so a run here gives the verdict CI gives for
 the same commit. A narrowed run (`--tag`, `--operation-id`, `--only-matching`)
 reports without the surface gate and the baseline, which are about the whole API.
+Its coverage verdict comes directly from Vertrag: exit 0 for passing selected
+probes, exit 2 for findings. A narrowed finding is not excused by the whole-API
+baseline. The complete command preserves that failure while still running the
+secret scan and producing the authorization report.
 
 The secret scan also runs locally, including after a failing examples gate.
 The API key proof and every Vertrag phase honor `CONTRACT_ENDPOINT`. A fetch
