@@ -14,6 +14,4 @@ example-invalid protocolSignIn/protocol_missing
 example-invalid restmailDeliver/recipients_missing
 example-invalid sendMessage/from_missing
 example-invalid sendMessage/unsubscribe_not_allowed
-example-invalid sendMessage/unsubscribe_not_allowed 422
-example-invalid sendMessage/valid 201
 example-invalid updateMailbox/password_short

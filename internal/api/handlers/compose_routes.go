@@ -76,7 +76,7 @@ var sendOutcomes = []oapifly.EndpointResponse{
 // sentOrDiscarded are the answers of a send that cannot be scheduled: a draft's, a forward's.
 var sentOrDiscarded = []oapifly.EndpointResponse{sendOutcomes[0], sendOutcomes[2]}
 
-// ForwardRefusalResponse covers binding validation and a quota/policy refusal.
+// ForwardRefusalResponse covers binding validation and a send's quota/policy refusal.
 // Their code and message are always present; only validation has field details.
 type ForwardRefusalResponse struct {
 	Error ForwardRefusalBody `json:"error"`
@@ -188,8 +188,9 @@ func (h *MessageHandler) RegisterCompose(rs endpoint.Routes) {
 		OperationID: "sendMessage", Summary: "Send a message", Tags: []string{"Messages"},
 		Description: "Sent at once (201), or with scheduled_at stored and sent then (202); the outbound pipeline may " +
 			"discard it (200). The sender is an address the session may send as (mail:send).",
-		Status: http.StatusCreated, SuccessStatuses: []int{http.StatusOK, http.StatusAccepted}, Responses: sendOutcomes,
-		Errors: sendRefusals, Security: sends}, h.sendMessage)
+		Status: http.StatusCreated, SuccessStatuses: []int{http.StatusOK, http.StatusAccepted},
+		Responses: append(append([]oapifly.EndpointResponse{}, sendOutcomes...), oapifly.EndpointResponse{Status: http.StatusUnprocessableEntity, Description: "Binding validation, sender policy or scheduling refusal", Type: oapifly.TypeOf[ForwardRefusalResponse]()}),
+		Errors:    sendRefusals, Security: sends}, h.sendMessage)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/draft/{id}/send",
 		OperationID: "sendDraft", Summary: "Send a draft", Tags: []string{"Drafts"},
 		Description: "The draft (mail:write) is sent as sendMessage sends, and deleted once it is; a refused send keeps it.",
