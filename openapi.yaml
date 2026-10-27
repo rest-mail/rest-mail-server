@@ -3086,11 +3086,6 @@ paths:
               schema:
                 type: integer
                 format: int64
-            X-Content-Type-Options:
-              description: nosniff.
-              schema:
-                type: string
-              required: true
           content:
             text/plain:
               schema:
@@ -3115,11 +3110,6 @@ paths:
               schema:
                 type: integer
                 format: int64
-            X-Content-Type-Options:
-              description: nosniff on plain-text writer failures or when security headers
-                are enabled.
-              schema:
-                type: string
           content:
             application/json:
               schema:
