@@ -22233,6 +22233,20 @@
         "mediaType": "application/json"
       }
     },
+    "not_modified": {
+      "description": "If-None-Match: * matches the stored attachment, so the GET answers 304 with no body.",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "header": {
+          "If-None-Match": "*"
+        }
+      },
+      "response": {
+        "status": 304
+      }
+    },
     "object_unavailable": {
       "request": {
         "path": {
@@ -22267,6 +22281,20 @@
         "mediaType": "application/json"
       }
     },
+    "precondition_failed": {
+      "description": "An If-Match entity tag the attachment does not have answers 412 with no body.",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "header": {
+          "If-Match": "\"not-this-one\""
+        }
+      },
+      "response": {
+        "status": 412
+      }
+    },
     "primary": {
       "request": {
         "path": {
@@ -22276,6 +22304,38 @@
       "response": {
         "status": 200,
         "body": "attachment café\r\n",
+        "mediaType": "application/octet-stream"
+      }
+    },
+    "range_not_satisfiable": {
+      "description": "A range starting past the end of the attachment answers plain-text 416.",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "header": {
+          "Range": "bytes=1000-"
+        }
+      },
+      "response": {
+        "status": 416,
+        "body": "invalid range: failed to overlap\n",
+        "mediaType": "text/plain"
+      }
+    },
+    "range_single": {
+      "description": "A single byte range is served as 206 with the selected bytes.",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "header": {
+          "Range": "bytes=0-9"
+        }
+      },
+      "response": {
+        "status": 206,
+        "body": "attachment",
         "mediaType": "application/octet-stream"
       }
     },

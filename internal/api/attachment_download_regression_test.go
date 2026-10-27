@@ -110,7 +110,8 @@ func attachmentDownloadScenarios(t *testing.T) (map[string]accountReadScenario, 
 	}, func(cfg *config.Config) { cfg.Attachments = fake.Config })
 	out["domain_grant"] = out["domain_manager"]
 	out["app_password_other"] = out["app_password"]
-	for _, name := range []string{"mailbox_unavailable", "message_unavailable", "source_missing", "missing_message", "unknown_storage", "invalid_storage_path", "file_missing"} {
+	for _, name := range []string{"mailbox_unavailable", "message_unavailable", "source_missing", "missing_message", "unknown_storage", "invalid_storage_path", "file_missing",
+		"range_single", "not_modified", "precondition_failed", "range_not_satisfiable"} {
 		out[name] = out["found"]
 	}
 	normal := out["found"]

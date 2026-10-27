@@ -20,6 +20,24 @@ In the `E2E (full topology)` job (`.github/workflows/e2e-suite.yml`), after the
 | `authorization` | Every selected operation as each configured principal, checked against the spec's security roles. | Report only, after the gates |
 | `fuzz` | Values drawn from each schema, shrunk to the smallest failing input, with a replayable seed. | Nightly (`contract-fuzz.yml`), never blocks |
 
+### Attachment download contract
+
+The topology examples send an ordinary download, `Range: bytes=0-0` for a
+single-byte 206, and a range past the end for a plain-text 416. Named path/header
+examples pair those requests with their responses. Content bytes depend on the
+topology's seeded attachment; the selected media types and required headers
+remain checked. Vertrag 0.31.3 keeps optional response headers optional and
+does not send invented empty conditional headers.
+
+Bodyless 304/412 cannot hold named media-type examples. Their topology
+transactions, multipart 206, and storage/writer 500s remain explicitly excluded
+with reasons in `vertrag.yml`. They are not full-topology acceptance evidence.
+The required `TestAttachmentDownloadExamplesWithVertrag` suite exercises the
+named conditional requests and dependency refusals through the real handler
+and storage client. `TestAttachmentConditionalResponsesDescribeTheWire` also
+checks multipart ranges and seek failures. The remaining topology conditional
+and fault matrix stays open under #1166; no coverage baseline entry is added.
+
 ### Own-account authenticator contract
 
 The normal examples run includes `getTwoFactorStatus` and `enrollTwoFactor`,
