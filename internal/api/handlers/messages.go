@@ -220,6 +220,7 @@ func decodeMessageCursor(cursor string) (messageCursor, bool) {
 
 // listMessages returns messages in a folder with cursor-based pagination.
 func (h *MessageHandler) listMessages(r *http.Request, in listMessagesRequest) (endpoint.List[Message], error) {
+	h = h.forRequest(r)
 	var zero endpoint.List[Message]
 	folder := in.Folder
 	if folder == "" {
@@ -1226,6 +1227,7 @@ func (h *MessageHandler) accountMailbox(r *http.Request, accountID uint32, capab
 
 // listFolders returns all folders for an account.
 func (h *MessageHandler) listFolders(r *http.Request, in accountPath) (endpoint.List[FolderSummary], error) {
+	h = h.forRequest(r)
 	mailboxID, err := h.accountMailbox(r, in.ID, models.CapMailRead)
 	if err != nil {
 		return endpoint.List[FolderSummary]{}, err
@@ -1387,6 +1389,7 @@ func (h *MessageHandler) deleteFolder(r *http.Request, in folderPath) (endpoint.
 // getQuota returns quota usage for a mailbox.
 // GET /api/v1/accounts/{id}/quota
 func (h *MessageHandler) getQuota(r *http.Request, in accountPath) (Quota, error) {
+	h = h.forRequest(r)
 	mailboxID, err := h.accountMailbox(r, in.ID, models.CapMailRead)
 	if err != nil {
 		return Quota{}, err
@@ -1650,6 +1653,7 @@ func (h *MessageHandler) draftAccess(r *http.Request, draft *models.Message) err
 // GetThread returns all messages sharing the same thread_id.
 // getThread returns the account's messages in a thread, oldest first.
 func (h *MessageHandler) getThread(r *http.Request, in threadRequest) (endpoint.List[Message], error) {
+	h = h.forRequest(r)
 	mailboxID, err := h.accountMailbox(r, in.ID, models.CapMailRead)
 	if err != nil {
 		return endpoint.List[Message]{}, err
@@ -2484,6 +2488,7 @@ func (h *MessageHandler) resolveAccountMailbox(accountID uint, claims *auth.Clai
 // grouped by UID with the latest sequence number, enabling the frontend
 // to detect superseded or cancelled events.
 func (h *MessageHandler) listCalendarEvents(r *http.Request, in accountPath) ([]CalendarEventSummary, error) {
+	h = h.forRequest(r)
 	mailboxID, err := h.accountMailbox(r, in.ID, models.CapMailRead)
 	if err != nil {
 		return nil, err
