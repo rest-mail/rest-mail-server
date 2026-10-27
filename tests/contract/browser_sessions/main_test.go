@@ -55,7 +55,7 @@ func TestBrowserCookieAttributes(t *testing.T) {
 	}
 }
 
-func browserFixture(t *testing.T, csrfGuard, secure bool) *httptest.Server {
+func browserFixture(t *testing.T, csrfGuard, secure bool, csrfFault ...string) *httptest.Server {
 	t.Helper()
 	revoked := false
 	mux := http.NewServeMux()
@@ -104,9 +104,22 @@ func browserFixture(t *testing.T, csrfGuard, secure bool) *httptest.Server {
 		if r.Header.Get("Authorization") != "" {
 			t.Error("browser proof sent a bearer credential")
 		}
-		if csrfGuard && r.Method != http.MethodGet && r.Header.Get(auth.CSRFHeaderName) == "" {
-			answer(w, 403, `{"error":{"code":"csrf_failed"}}`)
-			return
+		if csrfGuard && r.Method != http.MethodGet {
+			cookie, err := r.Cookie(auth.CSRFCookieName)
+			header := r.Header.Get(auth.CSRFHeaderName)
+			invalid := header == "" || err != nil || cookie.Value != header
+			if len(csrfFault) > 0 {
+				switch csrfFault[0] {
+				case "presence only":
+					invalid = header == ""
+				case "missing cookie allowed":
+					invalid = header == "" || (err == nil && cookie.Value != header)
+				}
+			}
+			if invalid {
+				answer(w, 403, `{"error":{"code":"csrf_failed"}}`)
+				return
+			}
 		}
 		if r.Method == http.MethodPost && r.URL.Path == "/api/v1/accounts/7/folders" {
 			answer(w, 422, `{"error":{"code":"validation_failed"}}`)
@@ -145,10 +158,22 @@ func TestBrowserSessionProof(t *testing.T) {
 		t.Fatalf("proof failed: %v", err)
 	}
 	seen := map[string]bool{}
+	variants := map[string]map[string]bool{}
 	for _, c := range result.Checks {
 		seen[c.Operation] = true
+		if variants[c.Operation] == nil {
+			variants[c.Operation] = map[string]bool{}
+		}
+		variants[c.Operation][c.Principal] = true
 		if c.Operation == "public" {
 			t.Fatal("public operation classified as cookie-protected")
+		}
+	}
+	for _, operation := range []string{"createFolder", "updateMessage", "deleteMessage"} {
+		for _, variant := range []csrfVariant{csrfMissing, csrfMismatched, csrfCookieMissing} {
+			if !variants[operation][string(variant)] {
+				t.Errorf("missing %s receipt for %s", variant, operation)
+			}
 		}
 	}
 	for _, operation := range []string{"createFolder", "updateMessage", "deleteMessage", "account events", "refresh", "logout", "revoked refresh"} {
@@ -176,6 +201,21 @@ func TestBrowserSessionFaultsFailTheGate(t *testing.T) {
 				t.Fatal("fault was accepted")
 			}
 			t.Logf("fault refused: %v", err)
+		})
+	}
+}
+
+func TestBrowserSessionPartialCSRFFaultsFailTheGate(t *testing.T) {
+	for _, fault := range []string{"presence only", "missing cookie allowed"} {
+		t.Run(fault, func(t *testing.T) {
+			server := browserFixture(t, true, true, fault)
+			result, err := prove(server.URL, fixtureDescription(), principal{Address: "admin@restmail.test", Password: "fixture"})
+			if err == nil || result.Passed {
+				t.Fatal("partial CSRF bypass was accepted")
+			}
+			if !strings.Contains(err.Error(), "createFolder") {
+				t.Fatalf("fault failed outside the operation probe: %v", err)
+			}
 		})
 	}
 }
