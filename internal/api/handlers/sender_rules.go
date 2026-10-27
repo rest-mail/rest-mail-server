@@ -25,11 +25,12 @@ func NewSenderRuleHandler(db *gorm.DB) *SenderRuleHandler {
 
 // listAllowlist returns all sender rules where list_type="allow" for a domain.
 // GET /api/v1/admin/domains/{id}/allowlist
-func (h *SenderRuleHandler) listAllowlist(_ *http.Request, in domainPath) (endpoint.List[SenderRule], error) {
+func (h *SenderRuleHandler) listAllowlist(r *http.Request, in domainPath) (endpoint.List[SenderRule], error) {
+	db := h.db.WithContext(r.Context())
 	domainID := in.ID
 
 	var rules []models.DomainSenderRule
-	if err := h.db.Where("domain_id = ? AND list_type = ?", domainID, "allow").
+	if err := db.Where("domain_id = ? AND list_type = ?", domainID, "allow").
 		Order("created_at DESC").
 		Find(&rules).Error; err != nil {
 		return endpoint.List[SenderRule]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to list allowlist rules")
@@ -49,14 +50,15 @@ type addSenderRuleRequest struct {
 
 // addToAllowlist creates a new sender rule with list_type="allow" for a domain.
 // POST /api/v1/admin/domains/{id}/allowlist
-func (h *SenderRuleHandler) addToAllowlist(_ *http.Request, in addSenderRuleInput) (SenderRule, error) {
+func (h *SenderRuleHandler) addToAllowlist(r *http.Request, in addSenderRuleInput) (SenderRule, error) {
+	db := h.db.WithContext(r.Context())
 	domainID := in.ID
 
 	req := in.Body
 
 	// Verify the domain exists.
 	var domain models.Domain
-	if err := h.db.First(&domain, domainID).Error; err != nil {
+	if err := db.First(&domain, domainID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return SenderRule{}, endpoint.Refuse(http.StatusNotFound, "domain_not_found", "Domain not found")
 		}
@@ -70,7 +72,7 @@ func (h *SenderRuleHandler) addToAllowlist(_ *http.Request, in addSenderRuleInpu
 		Reason:   req.Reason,
 	}
 
-	if err := h.db.Create(&rule).Error; err != nil {
+	if err := db.Create(&rule).Error; err != nil {
 		if repositories.IsUniqueViolation(err) {
 			return SenderRule{}, endpoint.Refuse(http.StatusConflict, "already_exists", "Sender is already on the allowlist")
 		}
@@ -82,13 +84,14 @@ func (h *SenderRuleHandler) addToAllowlist(_ *http.Request, in addSenderRuleInpu
 
 // removeFromAllowlist deletes an allowlist rule for a domain.
 // DELETE /api/v1/admin/domains/{id}/allowlist/{eid}
-func (h *SenderRuleHandler) removeFromAllowlist(_ *http.Request, in senderRulePath) (endpoint.Empty, error) {
+func (h *SenderRuleHandler) removeFromAllowlist(r *http.Request, in senderRulePath) (endpoint.Empty, error) {
+	db := h.db.WithContext(r.Context())
 	domainID := in.ID
 
 	ruleID := in.EID
 
 	var rule models.DomainSenderRule
-	if err := h.db.Where("id = ? AND domain_id = ? AND list_type = ?", ruleID, domainID, "allow").
+	if err := db.Where("id = ? AND domain_id = ? AND list_type = ?", ruleID, domainID, "allow").
 		First(&rule).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Allowlist rule not found")
@@ -96,8 +99,12 @@ func (h *SenderRuleHandler) removeFromAllowlist(_ *http.Request, in senderRulePa
 		return endpoint.Empty{}, fmt.Errorf("look up allowlist rule for deletion: %w", err)
 	}
 
-	if err := h.db.Delete(&rule).Error; err != nil {
+	result := db.Where("id = ? AND domain_id = ? AND list_type = ?", ruleID, domainID, "allow").Delete(&models.DomainSenderRule{})
+	if result.Error != nil {
 		return endpoint.Empty{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to delete allowlist rule")
+	}
+	if result.RowsAffected == 0 {
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Allowlist rule not found")
 	}
 
 	return endpoint.Empty{}, nil
@@ -107,11 +114,12 @@ func (h *SenderRuleHandler) removeFromAllowlist(_ *http.Request, in senderRulePa
 
 // listBlocklist returns all sender rules where list_type="block" for a domain.
 // GET /api/v1/admin/domains/{id}/blocklist
-func (h *SenderRuleHandler) listBlocklist(_ *http.Request, in domainPath) (endpoint.List[SenderRule], error) {
+func (h *SenderRuleHandler) listBlocklist(r *http.Request, in domainPath) (endpoint.List[SenderRule], error) {
+	db := h.db.WithContext(r.Context())
 	domainID := in.ID
 
 	var rules []models.DomainSenderRule
-	if err := h.db.Where("domain_id = ? AND list_type = ?", domainID, "block").
+	if err := db.Where("domain_id = ? AND list_type = ?", domainID, "block").
 		Order("created_at DESC").
 		Find(&rules).Error; err != nil {
 		return endpoint.List[SenderRule]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to list blocklist rules")
@@ -126,14 +134,15 @@ func (h *SenderRuleHandler) listBlocklist(_ *http.Request, in domainPath) (endpo
 
 // addToBlocklist creates a new sender rule with list_type="block" for a domain.
 // POST /api/v1/admin/domains/{id}/blocklist
-func (h *SenderRuleHandler) addToBlocklist(_ *http.Request, in addSenderRuleInput) (SenderRule, error) {
+func (h *SenderRuleHandler) addToBlocklist(r *http.Request, in addSenderRuleInput) (SenderRule, error) {
+	db := h.db.WithContext(r.Context())
 	domainID := in.ID
 
 	req := in.Body
 
 	// Verify the domain exists.
 	var domain models.Domain
-	if err := h.db.First(&domain, domainID).Error; err != nil {
+	if err := db.First(&domain, domainID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return SenderRule{}, endpoint.Refuse(http.StatusNotFound, "domain_not_found", "Domain not found")
 		}
@@ -147,7 +156,7 @@ func (h *SenderRuleHandler) addToBlocklist(_ *http.Request, in addSenderRuleInpu
 		Reason:   req.Reason,
 	}
 
-	if err := h.db.Create(&rule).Error; err != nil {
+	if err := db.Create(&rule).Error; err != nil {
 		if repositories.IsUniqueViolation(err) {
 			return SenderRule{}, endpoint.Refuse(http.StatusConflict, "already_exists", "Sender is already on the blocklist")
 		}
@@ -159,13 +168,14 @@ func (h *SenderRuleHandler) addToBlocklist(_ *http.Request, in addSenderRuleInpu
 
 // removeFromBlocklist deletes a blocklist rule for a domain.
 // DELETE /api/v1/admin/domains/{id}/blocklist/{eid}
-func (h *SenderRuleHandler) removeFromBlocklist(_ *http.Request, in senderRulePath) (endpoint.Empty, error) {
+func (h *SenderRuleHandler) removeFromBlocklist(r *http.Request, in senderRulePath) (endpoint.Empty, error) {
+	db := h.db.WithContext(r.Context())
 	domainID := in.ID
 
 	ruleID := in.EID
 
 	var rule models.DomainSenderRule
-	if err := h.db.Where("id = ? AND domain_id = ? AND list_type = ?", ruleID, domainID, "block").
+	if err := db.Where("id = ? AND domain_id = ? AND list_type = ?", ruleID, domainID, "block").
 		First(&rule).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Blocklist rule not found")
@@ -173,8 +183,12 @@ func (h *SenderRuleHandler) removeFromBlocklist(_ *http.Request, in senderRulePa
 		return endpoint.Empty{}, fmt.Errorf("look up blocklist rule for deletion: %w", err)
 	}
 
-	if err := h.db.Delete(&rule).Error; err != nil {
+	result := db.Where("id = ? AND domain_id = ? AND list_type = ?", ruleID, domainID, "block").Delete(&models.DomainSenderRule{})
+	if result.Error != nil {
 		return endpoint.Empty{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to delete blocklist rule")
+	}
+	if result.RowsAffected == 0 {
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Blocklist rule not found")
 	}
 
 	return endpoint.Empty{}, nil

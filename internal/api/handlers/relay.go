@@ -73,7 +73,10 @@ func (h *RelayHandler) load(domainID uint) (*models.DomainRelay, error) {
 
 // get returns the domain's outbound transport; direct when none is configured.
 // GET /api/v1/admin/domains/{id}/relay
-func (h *RelayHandler) get(_ *http.Request, in domainPath) (relayView, error) {
+func (h *RelayHandler) get(r *http.Request, in domainPath) (relayView, error) {
+	scoped := *h
+	scoped.db = h.db.WithContext(r.Context())
+	h = &scoped
 	domain, err := h.domain(in.ID)
 	if err != nil {
 		return relayView{}, err
@@ -88,7 +91,10 @@ func (h *RelayHandler) get(_ *http.Request, in domainPath) (relayView, error) {
 // set replaces the domain's outbound transport. A password left out keeps the
 // stored one; an empty password clears it.
 // PUT /api/v1/admin/domains/{id}/relay
-func (h *RelayHandler) set(_ *http.Request, in setRelayInput) (relayView, error) {
+func (h *RelayHandler) set(r *http.Request, in setRelayInput) (relayView, error) {
+	scoped := *h
+	scoped.db = h.db.WithContext(r.Context())
+	h = &scoped
 	domain, err := h.domain(in.ID)
 	if err != nil {
 		return relayView{}, err
@@ -165,7 +171,20 @@ func (h *RelayHandler) set(_ *http.Request, in setRelayInput) (relayView, error)
 		return relayView{}, endpoint.Invalid(map[string]string{"transport": "Must be one of: direct, relay"})
 	}
 
-	if err := h.db.Save(&rel).Error; err != nil {
+	var saveErr error
+	if existing == nil {
+		saveErr = h.db.Create(&rel).Error
+	} else {
+		// A vanished row must not be recreated by Save's insert fallback.
+		// Explicit fields keep direct transport's intentional empty values.
+		result := h.db.Model(&rel).Where("domain_id = ?", domain.ID).
+			Select("transport", "host", "port", "tls_mode", "username", "password_enc").Updates(&rel)
+		saveErr = result.Error
+		if saveErr == nil && result.RowsAffected == 0 {
+			saveErr = fmt.Errorf("relay settings disappeared before update")
+		}
+	}
+	if saveErr != nil {
 		return relayView{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to save the relay settings")
 	}
 	return viewRelay(domain.ID, &rel), nil
