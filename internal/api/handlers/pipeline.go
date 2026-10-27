@@ -18,6 +18,7 @@ import (
 	"github.com/restmail/restmail/internal/pipeline"
 	"github.com/restmail/restmail/internal/pipeline/filters"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // validateSievePipelineFilters install-validates every embedded Sieve script in
@@ -911,7 +912,7 @@ func (h *PipelineHandler) quarantineMailbox(r *http.Request, accountID uint32) (
 	if claims == nil {
 		return 0, errQuarantineAccess
 	}
-	mailboxID, err := resolveAccountMailbox(h.db, uint(accountID), claims, mailCapabilityFor(r))
+	mailboxID, err := resolveAccountMailbox(h.db.WithContext(r.Context()), uint(accountID), claims, mailCapabilityFor(r))
 	if err != nil {
 		if errors.Is(err, errNoAccess) {
 			return 0, errQuarantineAccess
@@ -956,47 +957,59 @@ func (h *PipelineHandler) releaseQuarantine(r *http.Request, in quarantinePath) 
 		return QuarantineReleased{}, err
 	}
 
-	// Scope the lookup to the caller's mailbox so a quarantine row belonging to
-	// another mailbox is indistinguishable from a non-existent one (404, no leak).
-	var item models.Quarantine
-	if err := h.db.Where("id = ? AND mailbox_id = ?", in.MID, mailboxID).First(&item).Error; err != nil {
-		return QuarantineReleased{}, errQuarantineNotFound
-	}
-
-	item.Released = true
-	h.db.Save(&item)
-
-	// Deliver the quarantined message to the user's INBOX directly,
-	// bypassing spam filters (the user explicitly released it).
-	// Extract body from raw message
-	bodyText := item.BodyPreview // fallback
-	bodyHTML := ""
-	if item.RawMessage != "" {
-		if headerEnd := strings.Index(item.RawMessage, "\r\n\r\n"); headerEnd >= 0 {
-			bodyText = item.RawMessage[headerEnd+4:]
-		} else if headerEnd := strings.Index(item.RawMessage, "\n\n"); headerEnd >= 0 {
-			bodyText = item.RawMessage[headerEnd+2:]
+	// The held flag, inbox copy and quota charge must commit together. Lock the
+	// mailbox-scoped row so a concurrent deletion cannot remove it mid-release.
+	var msg models.Message
+	err = h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
+		var item models.Quarantine
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ? AND mailbox_id = ?", in.MID, mailboxID).First(&item).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errQuarantineNotFound
+			}
+			return fmt.Errorf("look up quarantined message: %w", err)
 		}
-	}
 
-	msg := models.Message{
-		MailboxID:  item.MailboxID,
-		Folder:     "INBOX",
-		Sender:     item.Sender,
-		Subject:    item.Subject,
-		BodyText:   bodyText,
-		BodyHTML:   bodyHTML,
-		RawMessage: item.RawMessage,
-		SizeBytes:  len(item.RawMessage),
-		RawSize:    len(item.RawMessage), // exact stored-raw octet count for IMAP/POP3 size reporting
-	}
-	if err := h.db.Create(&msg).Error; err != nil {
-		return QuarantineReleased{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to deliver released message")
-	}
+		if err := tx.Model(&item).Update("released", true).Error; err != nil {
+			return fmt.Errorf("mark quarantined message released: %w", err)
+		}
 
-	// Update quota
-	h.db.Model(&models.Mailbox{}).Where("id = ?", item.MailboxID).
-		Update("quota_used_bytes", gorm.Expr("quota_used_bytes + ?", msg.SizeBytes))
+		// Deliver directly to INBOX, bypassing spam filters as the user requested.
+		bodyText := item.BodyPreview // fallback
+		if item.RawMessage != "" {
+			if headerEnd := strings.Index(item.RawMessage, "\r\n\r\n"); headerEnd >= 0 {
+				bodyText = item.RawMessage[headerEnd+4:]
+			} else if headerEnd := strings.Index(item.RawMessage, "\n\n"); headerEnd >= 0 {
+				bodyText = item.RawMessage[headerEnd+2:]
+			}
+		}
+		msg = models.Message{
+			MailboxID:  item.MailboxID,
+			Folder:     "INBOX",
+			Sender:     item.Sender,
+			Subject:    item.Subject,
+			BodyText:   bodyText,
+			BodyHTML:   "",
+			RawMessage: item.RawMessage,
+			SizeBytes:  len(item.RawMessage),
+			RawSize:    len(item.RawMessage), // exact stored-raw octet count for IMAP/POP3 size reporting
+		}
+		if err := tx.Create(&msg).Error; err != nil {
+			return endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to deliver released message")
+		}
+		quota := tx.Model(&models.Mailbox{}).Where("id = ?", item.MailboxID).
+			Update("quota_used_bytes", gorm.Expr("quota_used_bytes + ?", msg.SizeBytes))
+		if quota.Error != nil {
+			return fmt.Errorf("charge released message quota: %w", quota.Error)
+		}
+		if quota.RowsAffected != 1 {
+			return errors.New("released message mailbox disappeared")
+		}
+		return nil
+	})
+	if err != nil {
+		return QuarantineReleased{}, err
+	}
 
 	return QuarantineReleased{MessageID: strconv.FormatUint(uint64(msg.ID), 10), Status: "released"}, nil
 }
