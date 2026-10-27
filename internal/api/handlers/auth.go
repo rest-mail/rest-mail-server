@@ -508,8 +508,10 @@ func (h *AuthHandler) refresh(r *http.Request, in sessionTokenRequest) (endpoint
 	// store (no DB, some unit tests) trusts the claims unchanged.
 	//
 	// Like the rotation-ledger check below, this path fails CLOSED: an
-	// unreachable store refuses the refresh (401) rather than minting tokens
-	// without re-verifying account state.
+	// unreachable store mints nothing. It answers 500, not 401: the failure
+	// is the server's, and a 401 would tell the client its session is over
+	// and to discard the refresh token it can still use once the store is
+	// back.
 	state := accountState{
 		Active:          true,
 		Address:         claims.Address,
@@ -521,7 +523,8 @@ func (h *AuthHandler) refresh(r *http.Request, in sessionTokenRequest) (endpoint
 		var stateErr error
 		state, stateErr = h.accountState.AccountState(claims.AccountID)
 		if stateErr != nil {
-			return zero, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Invalid or expired refresh token")
+			slog.Error("refresh: could not read the account's state", "error", stateErr)
+			return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to verify the session")
 		}
 		if !state.Active {
 			h.revokeAllForAccount(claims.AccountID)
@@ -542,8 +545,11 @@ func (h *AuthHandler) refresh(r *http.Request, in sessionTokenRequest) (endpoint
 	// spent token), or revoked (logout / password change). Any of those refuses
 	// the refresh. A nil store (no DB, some unit tests) skips this check.
 	if h.refreshStore != nil {
-		if err := h.refreshStore.Rotate(claims.ID); err != nil {
+		if err := h.refreshStore.Rotate(claims.ID); errors.Is(err, repositories.ErrRefreshTokenNotFound) {
 			return zero, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Invalid or expired refresh token")
+		} else if err != nil {
+			slog.Error("refresh: could not rotate the refresh token", "error", err)
+			return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to verify the session")
 		}
 	}
 
