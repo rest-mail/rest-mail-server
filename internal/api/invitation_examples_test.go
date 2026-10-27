@@ -46,10 +46,11 @@ type invitationLedger struct {
 }
 type invitationConnection struct {
 	capabilityExampleConnection
-	state   invitationLedger
-	mode    string
-	queries int
-	failed  bool
+	state      invitationLedger
+	mode       string
+	queries    int
+	failed     bool
+	savepoints map[string]invitationLedger
 }
 
 func (c *invitationConnection) Connect(context.Context) (driver.Conn, error) { return c, nil }
@@ -204,6 +205,21 @@ func (c *invitationConnection) ExecContext(ctx context.Context, q string, args [
 		return nil, err
 	}
 	c.queries++
+	if name, ok := strings.CutPrefix(q, "SAVEPOINT "); ok {
+		if c.savepoints == nil {
+			c.savepoints = map[string]invitationLedger{}
+		}
+		c.savepoints[name] = c.state
+		return driver.RowsAffected(0), nil
+	}
+	if name, ok := strings.CutPrefix(q, "ROLLBACK TO SAVEPOINT "); ok {
+		state, exists := c.savepoints[name]
+		if !exists {
+			return nil, errors.New("unknown invitation savepoint")
+		}
+		c.state = state
+		return driver.RowsAffected(0), nil
+	}
 	if strings.HasPrefix(q, `UPDATE "one_time_tokens"`) {
 		if strings.Contains(q, "token_hash =") {
 			if len(args) < 4 || args[1].Value != c.state.token.TokenHash || args[2].Value != models.OneTimeTokenInvitation || c.state.token.UsedAt != nil {
