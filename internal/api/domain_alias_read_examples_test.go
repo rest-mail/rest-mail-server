@@ -148,7 +148,7 @@ func domainAliasReadRouters(t *testing.T) (map[string]http.Handler, *auth.JWTSer
 	}
 	domainRead := grants.Entry{Capability: middleware.CapDomainsRead, Scope: grants.Domain("example.com")}
 	aliasRead := grants.Entry{Capability: middleware.CapMailboxesRead, Scope: grants.Domain("example.com")}
-	return map[string]http.Handler{
+	return map[string]http.Handler{"rate_limited": apiKeyRefusalLimited(t),
 		"found": global, "inactive": global, "missing": global, "internal_error": global, "domain_unavailable": global,
 		"unauthenticated": unavailable, "session_unavailable": unavailable, "request_too_large": global, "invalid_id": global, "invalid_format": global,
 		"domain_scope": scoped(domainRead, aliasRead), "domain_redacted": scoped(aliasRead),

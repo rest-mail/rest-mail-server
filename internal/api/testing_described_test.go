@@ -24,7 +24,7 @@ func TestTestRoutesDescribeWildcardAndMiddleware(t *testing.T) {
 			t.Errorf("%s security = %s, want %s", op.id, got, want)
 		}
 		responses := op.operation["responses"].(map[string]interface{})
-		for _, status := range []string{"401", "403", "413", "500", "503"} {
+		for _, status := range []string{"401", "403", "413", "429", "500", "503"} {
 			if responses[status] == nil {
 				t.Errorf("%s omits %s", op.id, status)
 			}

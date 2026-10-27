@@ -128,7 +128,7 @@ func domainPolicyDeleteRouters(t *testing.T, operation string) (map[string]http.
 		}
 		return makeRouter()
 	}
-	return map[string]http.Handler{"normal": normal, "found": scoped("example.com"), "outside_domain": scoped("other.test"), "unauthenticated": unavailable, "session_unavailable": unavailable}, jwt, store
+	return map[string]http.Handler{"rate_limited": apiKeyRefusalLimited(t), "normal": normal, "found": scoped("example.com"), "outside_domain": scoped("other.test"), "unauthenticated": unavailable, "session_unavailable": unavailable}, jwt, store
 }
 
 func TestSenderRuleDeleteLookupFailuresAreNotMissingRows(t *testing.T) {

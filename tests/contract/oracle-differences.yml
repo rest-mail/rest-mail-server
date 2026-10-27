@@ -3358,3 +3358,210 @@
   reason: >-
     The domain is looked up, not checked as a hostname: a trailing dot is taken and removed,
     so a report naming example.com. is stored for example.com rather than refused.
+
+# The admin routes' refused API keys (#1269)
+
+- operation: addToAllowlist
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: addToBlocklist
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: bounceQueueEntry
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: bulkBounceQueue
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: bulkDeleteQueue
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: bulkRetryQueue
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: clearSuppression
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: createAccount
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: createGrant
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: deactivateGrant
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: deleteAlias
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: deleteBan
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: deleteCertificate
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: deleteCustomFilter
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: deleteDKIMKey
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: deleteMtaStsPolicy
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: deletePipeline
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: deleteQueueEntry
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: domainDNSCheck
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: getAlias
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: getCertificate
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: getCustomFilter
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: getDKIMRotation
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: getDashboardStats
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: getDeliveryLogs
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: getDomain
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: getDomainRelay
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: getMailbox
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: getMessageTrace
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: getMtaStsPolicy
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: getPipelineAnalytics
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: getQueueEntry
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: getQueueStats
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: importMessage
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: inviteAccount
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: listAliases
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: listAllowlist
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: listAuditEntries
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: listBans
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: listBlocklist
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: listCapabilities
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: listCertificates
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: listCustomFilters
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: listDKIMKeys
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: listDomains
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: listGrants
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: listMailboxes
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: listMyGrants
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: listPipelineLogs
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: listPipelines
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: listQueue
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: listRoles
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: listSuppressions
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: listTlsReports
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: removeFromAllowlist
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: removeFromBlocklist
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: resetTestData
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: restoreTestSnapshot
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: retryQueueEntry
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: seedTestData
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: sendTestEmail
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: setDomainRelay
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: setMtaStsPolicy
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: snapshotTestData
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: unbanIP
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: updateMailbox
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: verifyAuditLog
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: verifyDelivery
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).

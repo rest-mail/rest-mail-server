@@ -357,6 +357,7 @@ func newTestDataMutationScenarios(t *testing.T) map[string]bulkQueueExampleScena
 		}), token}, normal.store}
 	}
 	out["production"] = makeRouter(wild, false, true)
+	out["rate_limited"] = bulkQueueExampleScenario{accountReadScenario{apiKeyRefusalLimited(t), ""}, nil}
 	return out
 }
 

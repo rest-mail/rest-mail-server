@@ -120,6 +120,7 @@ func bulkQueueExampleScenarios(t *testing.T) map[string]bulkQueueExampleScenario
 		t.Fatal(err)
 	}
 	out["setup_required"] = bulkQueueExampleScenario{accountReadScenario{normal.handler, setup.AccessToken}, normal.store}
+	out["rate_limited"] = bulkQueueExampleScenario{accountReadScenario{apiKeyRefusalLimited(t), ""}, nil}
 	return out
 }
 

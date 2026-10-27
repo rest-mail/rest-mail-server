@@ -175,6 +175,7 @@ func domainPolicyWriteRouters(t *testing.T) (map[string]http.Handler, *auth.JWTS
 		heldGrants = previous
 		stores[name] = store
 	}
+	routers["rate_limited"] = apiKeyRefusalLimited(t)
 	return routers, jwt, stores
 }
 
@@ -248,7 +249,7 @@ func TestMtaStsWritePreservesDatabaseFailuresAndDomain(t *testing.T) {
 
 func domainPolicyWritePrecondition(name string) string {
 	switch name {
-	case "unauthenticated", "session_unavailable", "outside_domain", "request_too_large", "master_key_required", "save_unavailable":
+	case "unauthenticated", "session_unavailable", "outside_domain", "request_too_large", "master_key_required", "save_unavailable", "rate_limited":
 		return name
 	default:
 		return "normal"

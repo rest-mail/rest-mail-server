@@ -11,20 +11,20 @@ func TestPipelineAreaDescribesCapabilitiesAndPreviewLimits(t *testing.T) {
 		path, method, capability string
 		rateLimited              bool
 	}{
-		"listPipelines":        {"/pipelines", "get", "pipelines:read", false},
+		"listPipelines":        {"/pipelines", "get", "pipelines:read", true},
 		"createPipeline":       {"/pipelines", "post", "pipelines:write", true},
 		"updatePipeline":       {"/pipelines/{id}", "patch", "pipelines:write", true},
-		"deletePipeline":       {"/pipelines/{id}", "delete", "pipelines:delete", false},
+		"deletePipeline":       {"/pipelines/{id}", "delete", "pipelines:delete", true},
 		"testPipeline":         {"/pipelines/test", "post", "pipelines:write", true},
 		"testFilter":           {"/pipelines/test-filter", "post", "pipelines:write", true},
-		"listPipelineLogs":     {"/pipelines/logs", "get", "pipelines:read", false},
-		"getPipelineAnalytics": {"/pipelines/analytics", "get", "observability:read", false},
-		"getMessageTrace":      {"/messages/{id}/trace", "get", "observability:read", false},
-		"listCustomFilters":    {"/custom-filters", "get", "pipelines:read", false},
+		"listPipelineLogs":     {"/pipelines/logs", "get", "pipelines:read", true},
+		"getPipelineAnalytics": {"/pipelines/analytics", "get", "observability:read", true},
+		"getMessageTrace":      {"/messages/{id}/trace", "get", "observability:read", true},
+		"listCustomFilters":    {"/custom-filters", "get", "pipelines:read", true},
 		"createCustomFilter":   {"/custom-filters", "post", "pipelines:write", true},
-		"getCustomFilter":      {"/custom-filters/{id}", "get", "pipelines:read", false},
+		"getCustomFilter":      {"/custom-filters/{id}", "get", "pipelines:read", true},
 		"updateCustomFilter":   {"/custom-filters/{id}", "patch", "pipelines:write", true},
-		"deleteCustomFilter":   {"/custom-filters/{id}", "delete", "pipelines:delete", false},
+		"deleteCustomFilter":   {"/custom-filters/{id}", "delete", "pipelines:delete", true},
 		"validateCustomFilter": {"/custom-filters/validate", "post", "pipelines:write", true},
 		"testCustomFilter":     {"/custom-filters/{id}/test", "post", "pipelines:write", true},
 	}
@@ -39,7 +39,7 @@ func TestPipelineAreaDescribesCapabilitiesAndPreviewLimits(t *testing.T) {
 			if string(security) != expected {
 				t.Fatalf("security = %s, want %s", security, expected)
 			}
-			for _, status := range []string{"401", "403", "413", "422", "500", "503"} {
+			for _, status := range []string{"401", "403", "413", "422", "429", "500", "503"} {
 				// Analytics binds a malformed since or window and answers it in
 				// the handler, so a 422 is not reachable there (#967).
 				if status == "422" && id == "getPipelineAnalytics" {
@@ -52,7 +52,8 @@ func TestPipelineAreaDescribesCapabilitiesAndPreviewLimits(t *testing.T) {
 					t.Errorf("missing response %s", status)
 				}
 			}
-			// Refused credentials can be throttled even without a preview limiter.
+			// Every route is behind the refused API keys' throttle, and the previews
+			// behind their own limiter too.
 			if _, limited := op.Responses["429"]; limited != want.rateLimited {
 				t.Errorf("rate-limit response described = %v", limited)
 			}

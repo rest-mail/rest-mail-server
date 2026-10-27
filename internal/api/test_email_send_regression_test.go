@@ -234,6 +234,7 @@ func newTestEmailSendScenarios(t *testing.T) map[string]bulkQueueExampleScenario
 		}), token}, normal.store}
 	}
 	out["production"] = makeRouter(wild, false, true)
+	out["rate_limited"] = bulkQueueExampleScenario{accountReadScenario{apiKeyRefusalLimited(t), ""}, nil}
 	return out
 }
 

@@ -39,14 +39,10 @@ func TestGrantsDescribeTheirAuthorization(t *testing.T) {
 			if string(gotJSON) != string(wantJSON) {
 				t.Errorf("security = %s, want %s", gotJSON, wantJSON)
 			}
-			for _, status := range []string{"401", "403", "413", "500", "503"} {
+			for _, status := range []string{"401", "403", "413", "429", "500", "503"} {
 				if _, ok := op.Responses[status]; !ok {
 					t.Errorf("missing middleware response %s", status)
 				}
-			}
-			_, throttled := op.Responses["429"]
-			if throttled != (tc.id == "activateGrant" || tc.id == "makeGrantEligible" || tc.id == "deleteGrant") {
-				t.Errorf("unexpected throttle description: %v", throttled)
 			}
 		})
 	}

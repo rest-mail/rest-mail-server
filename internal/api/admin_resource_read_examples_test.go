@@ -168,7 +168,7 @@ func adminResourceReadRouters(t *testing.T) (map[string]http.Handler, *auth.JWTS
 		return func(uint) (grants.Held, error) { return grants.Held{}, errors.New("private grant-store detail") }
 	}
 	grantFailure := makeRouter()
-	return map[string]http.Handler{
+	return map[string]http.Handler{"rate_limited": apiKeyRefusalLimited(t),
 		"found": global, "disabled": global, "missing": global, "internal_error": global, "domain_unavailable": global,
 		"keys_unavailable": global, "awaiting_publication": global, "waiting_ttl": global, "retiring": global, "unreadable_key": global,
 		"unauthenticated": unavailable, "session_unavailable": unavailable, "request_too_large": global, "invalid_id": global, "invalid_format": global,

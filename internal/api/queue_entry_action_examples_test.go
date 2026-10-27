@@ -123,6 +123,7 @@ func queueEntryActionScenarios(t *testing.T) map[string]queueEntryActionScenario
 		t.Fatal(err)
 	}
 	out["setup_required"] = queueEntryActionScenario{bulkQueueExampleScenario{accountReadScenario{normal.handler, setup.AccessToken}, normal.store}, normal.reads}
+	out["rate_limited"] = queueEntryActionScenario{bulkQueueExampleScenario{accountReadScenario{apiKeyRefusalLimited(t), ""}, nil}, nil}
 	return out
 }
 

@@ -88,6 +88,7 @@ func banRemovalScenarios(t *testing.T) map[string]bulkQueueExampleScenario {
 	out["permission_store_unavailable"] = makeRouter(nil, true, false)
 	out["unauthenticated"] = bulkQueueExampleScenario{accountReadScenario{unavailable, ""}, nil}
 	out["session_unavailable"] = bulkQueueExampleScenario{accountReadScenario{unavailable, token}, nil}
+	out["rate_limited"] = bulkQueueExampleScenario{accountReadScenario{apiKeyRefusalLimited(t), ""}, nil}
 	return out
 }
 

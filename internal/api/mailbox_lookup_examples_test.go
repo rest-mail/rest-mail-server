@@ -138,7 +138,7 @@ func mailboxLookupRouters(t *testing.T) (map[string]http.Handler, *auth.JWTServi
 		}
 		return makeRouter()
 	}
-	return map[string]http.Handler{
+	return map[string]http.Handler{"rate_limited": apiKeyRefusalLimited(t),
 		"found": global, "inactive": global, "quota_present": global, "missing": global, "internal_error": global, "domain_unavailable": global, "quota_unavailable": global,
 		"unauthenticated": unavailable, "session_unavailable": unavailable, "permission_store_unavailable": scoped(grants.Mailbox("user@example.com"), true),
 		"request_too_large": global, "invalid_id": global, "address_empty": global, "address_missing": global, "not_local": global, "invalid_address": global, "address_unavailable": failed,

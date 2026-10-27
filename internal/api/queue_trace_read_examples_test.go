@@ -125,7 +125,7 @@ func queueTraceReadRouters(t *testing.T) (map[string]http.Handler, *auth.JWTServ
 		return func(uint) (grants.Held, error) { return grants.Held{}, errors.New("private grant-store detail") }
 	}
 	failure := makeRouter()
-	return map[string]http.Handler{
+	return map[string]http.Handler{"rate_limited": apiKeyRefusalLimited(t),
 		"found": global, "deferred": global, "stages_null": global, "stages_empty": global, "invalid_stages": global,
 		"missing": global, "internal_error": global, "invalid_id": global, "invalid_format": global, "request_too_large": global,
 		"unauthenticated": unavailable, "session_unavailable": unavailable, "permission_store_unavailable": failure,

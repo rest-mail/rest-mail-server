@@ -252,6 +252,7 @@ func newTestSnapshotScenarios(t *testing.T) map[string]bulkQueueExampleScenario 
 	}
 	out["snapshot"] = normal
 	out["production"] = makeRouter(wild, false, true)
+	out["rate_limited"] = bulkQueueExampleScenario{accountReadScenario{apiKeyRefusalLimited(t), ""}, nil}
 	return out
 }
 

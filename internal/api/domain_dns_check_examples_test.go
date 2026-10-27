@@ -300,6 +300,7 @@ func newDomainDNSCheckRouters(t *testing.T, resolver *net.Resolver) map[string]b
 	out["wrong_domain"] = makeRouter([]grants.Entry{{Capability: middleware.CapDomainsRead, Scope: grants.Domain("other.test")}}, false, false)
 
 	out["scope_lookup_unavailable"] = out["domain_scope"]
+	out["rate_limited"] = bulkQueueExampleScenario{accountReadScenario{apiKeyRefusalLimited(t), ""}, nil}
 	return out
 }
 

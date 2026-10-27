@@ -118,19 +118,19 @@ func (h *DomainHandler) Register(rs endpoint.Routes, checks DomainRouteChecks) {
 		Middleware: []endpoint.Middleware{checks.OnList(middleware.CapDomainsRead)}}, h.list)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/domains",
 		OperationID: "createDomain", Summary: "Create a new domain", Tags: tags,
-		Status: http.StatusCreated, Errors: []int{http.StatusConflict, http.StatusTooManyRequests},
+		Status: http.StatusCreated, Errors: []int{http.StatusConflict},
 		Middleware: []endpoint.Middleware{checks.At(middleware.CapDomainsWrite)}}, h.create)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/domains/{id}",
 		OperationID: "getDomain", Summary: "Get a domain by ID", Tags: tags, Errors: missing,
 		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsRead)}}, h.get)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPatch, Path: "/api/v1/admin/domains/{id}",
 		OperationID: "updateDomain", Summary: "Update a domain", Tags: tags,
-		Errors:     []int{http.StatusNotFound, http.StatusConflict, http.StatusTooManyRequests},
+		Errors:     []int{http.StatusNotFound, http.StatusConflict},
 		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsWrite)}}, h.update)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/admin/domains/{id}",
 		OperationID: "deleteDomain", Summary: "Delete a domain", Tags: tags,
 		Description: domainDeletionDescription,
-		Status:      http.StatusNoContent, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusTooManyRequests},
+		Status:      http.StatusNoContent, Errors: []int{http.StatusNotFound, http.StatusConflict},
 		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsDelete)}}, h.delete)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/domains/{id}/dns",
 		OperationID: "domainDNSCheck", Summary: "Live DNS record check (MX, SPF, DMARC, DKIM, MTA-STS, TLS-RPT) for a domain",

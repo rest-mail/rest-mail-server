@@ -11,15 +11,15 @@ func TestQueueIsDescribedFromItsTypes(t *testing.T) {
 		path, method, id, capability string
 		statuses                     []string
 	}{
-		{"", "get", "listQueue", "queue:read", []string{"200", "401", "403", "413", "422", "500", "503"}},
-		{"/stats", "get", "getQueueStats", "queue:read", []string{"200", "401", "403", "413", "500", "503"}},
-		{"/bulk-retry", "post", "bulkRetryQueue", "queue:manage", []string{"200", "400", "401", "403", "413", "422", "500", "503"}},
-		{"/bulk-bounce", "post", "bulkBounceQueue", "queue:manage", []string{"200", "400", "401", "403", "413", "422", "500", "503"}},
-		{"/bulk-delete", "delete", "bulkDeleteQueue", "queue:manage", []string{"200", "400", "401", "403", "413", "422", "500", "503"}},
-		{"/{id}", "get", "getQueueEntry", "queue:read", []string{"200", "401", "403", "404", "413", "422", "500", "503"}},
-		{"/{id}/retry", "post", "retryQueueEntry", "queue:manage", []string{"200", "400", "401", "403", "404", "413", "422", "500", "503"}},
-		{"/{id}/bounce", "post", "bounceQueueEntry", "queue:manage", []string{"200", "401", "403", "404", "413", "422", "500", "503"}},
-		{"/{id}", "delete", "deleteQueueEntry", "queue:manage", []string{"204", "401", "403", "404", "413", "422", "500", "503"}},
+		{"", "get", "listQueue", "queue:read", []string{"200", "401", "403", "413", "422", "429", "500", "503"}},
+		{"/stats", "get", "getQueueStats", "queue:read", []string{"200", "401", "403", "413", "429", "500", "503"}},
+		{"/bulk-retry", "post", "bulkRetryQueue", "queue:manage", []string{"200", "400", "401", "403", "413", "422", "429", "500", "503"}},
+		{"/bulk-bounce", "post", "bulkBounceQueue", "queue:manage", []string{"200", "400", "401", "403", "413", "422", "429", "500", "503"}},
+		{"/bulk-delete", "delete", "bulkDeleteQueue", "queue:manage", []string{"200", "400", "401", "403", "413", "422", "429", "500", "503"}},
+		{"/{id}", "get", "getQueueEntry", "queue:read", []string{"200", "401", "403", "404", "413", "422", "429", "500", "503"}},
+		{"/{id}/retry", "post", "retryQueueEntry", "queue:manage", []string{"200", "400", "401", "403", "404", "413", "422", "429", "500", "503"}},
+		{"/{id}/bounce", "post", "bounceQueueEntry", "queue:manage", []string{"200", "401", "403", "404", "413", "422", "429", "500", "503"}},
+		{"/{id}", "delete", "deleteQueueEntry", "queue:manage", []string{"204", "401", "403", "404", "413", "422", "429", "500", "503"}},
 	} {
 		t.Run(want.id, func(t *testing.T) {
 			op := paths["/api/v1/admin/queue"+want.path][want.method]

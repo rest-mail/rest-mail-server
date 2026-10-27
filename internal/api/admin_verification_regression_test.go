@@ -161,6 +161,7 @@ func adminVerificationScenarios(t *testing.T) map[string]accountReadScenario {
 	if rr.Code != 404 {
 		t.Fatalf("test verification exposed in production: %d", rr.Code)
 	}
+	out["rate_limited"] = accountReadScenario{apiKeyRefusalLimited(t), ""}
 	return out
 }
 

@@ -107,6 +107,7 @@ func scopedAdminRemovalScenarios(t *testing.T, op string) map[string]queueEntryA
 	out["permission_store_unavailable"] = makeRouter(nil, true, false)
 	out["unauthenticated"] = queueEntryActionScenario{bulkQueueExampleScenario{accountReadScenario{unavailable, ""}, nil}, nil}
 	out["session_unavailable"] = queueEntryActionScenario{bulkQueueExampleScenario{accountReadScenario{unavailable, token}, nil}, nil}
+	out["rate_limited"] = queueEntryActionScenario{bulkQueueExampleScenario{accountReadScenario{apiKeyRefusalLimited(t), ""}, nil}, nil}
 	return out
 }
 
