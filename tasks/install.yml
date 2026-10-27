@@ -110,6 +110,14 @@ tasks:
         desc: the Kubernetes namespace (default rest-mail)
       - name: stack
         desc: which stack, if not the one selected in the project
+      - name: apns_key_file
+        desc: APNs push-notification .p8 file; encrypted in Pulumi config through stdin
+      - name: apns_key_id
+        desc: Apple APNs key identifier
+      - name: apns_team_id
+        desc: Apple Developer team identifier
+      - name: apns_topic
+        desc: iOS bundle identifier (default com.antimatterstudios.restmail)
     vars:
       DOMAIN:
         sh: printf %s "${HOST#*.}"
@@ -119,6 +127,10 @@ tasks:
       NAME: restmail
       NAMESPACE: rest-mail
       STACK: ''
+      APNS_KEY_FILE: ''
+      APNS_KEY_ID: ''
+      APNS_TEAM_ID: ''
+      APNS_TOPIC: ''
       # Absolute, from where you ran chore. Tolerant: a missing directory is the
       # precondition's to report, in words.
       PROJECT_DIR:

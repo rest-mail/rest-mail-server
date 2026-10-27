@@ -151,12 +151,23 @@ It installs once. If rest-mail is already there it says so and points you at
 
 ## Pulumi
 
+For TypeScript projects, the reusable [REST Mail Pulumi component](../packages/pulumi/README.md)
+manages the Helm release and an optional APNs Kubernetes Secret. Its `apns.privateKey`
+input accepts encrypted Pulumi configuration, keeping the `.p8` key out of Helm values.
+The package is currently built from this repository; its README includes the complete
+resource declaration, installation commands and namespace/data-retention behavior.
+`install:pulumi` now prints that component for TypeScript projects, including
+commands to build a local package into the destination project's `vendor/`
+directory and install it through npm. It prints a factory that takes the project's
+existing Kubernetes provider; in `homelab-server`, pass `cluster`. Go, Python and
+YAML projects retain their direct Helm release declarations.
+
 ```bash
 chore install:pulumi ~/infra mail.example.com
 ```
 
-Chore owns your stack's config; you own the program. The only contract between
-them is five config keys, under the mail server's name:
+Chore owns your stack's config; you own the program. The basic config keys
+are under the mail server's name:
 
 ```
 restmail:hostname           mail.example.com
@@ -169,11 +180,33 @@ restmail:adminPasswordHash  $2a$10$…
 So the code is the same for every install and every stack, contains no secret,
 and is never touched again: an upgrade is a config change.
 
+For local TypeScript installs, add APNs push credentials with:
+
+```sh
+chore install:pulumi ~/infra mail.example.com \
+  --apns-key-file /secure/path/AuthKey.p8 \
+  --apns-key-id APPLE_KEY_ID --apns-team-id APPLE_TEAM_ID
+```
+
+The file is the APNs push-notification key. Its exact contents go through stdin
+to `pulumi config set --secret --raw`; they never appear in command arguments,
+printed source or Helm values. `--apns-topic` defaults to
+`com.antimatterstudios.restmail`. Omitted flags preserve existing encrypted key
+config and public identifiers. A plaintext existing `apnsPrivateKey` is refused;
+pass the file again to encrypt it. Secret configuration needs the selected
+stack's secrets provider to be available. APNs setup for an inaccessible
+pipeline-owned stack is deliberately deferred, rather than printing a key.
+
+The generated component reads `createNamespace` as an optional boolean. Set it
+to `false` when the destination namespace is managed by another resource or
+stack. The component retains a namespace it creates so removal keeps mail data.
+
+
 **The admin password is in the stack only as a bcrypt hash** (`restmail
 password-hash`), an ordinary value that nobody can sign in with. The password
 itself is made by the installer, 32 random characters, and shown once — as a
-QR code and as text. So nothing here needs the stack's passphrase, and the
-hash is fine to commit. It needs `pulumi`, `jq` and the `restmail` CLI 0.7.0 or
+QR code and as text. The password hash needs no stack secret and is fine to
+commit; optional APNs configuration does need the stack's secrets provider. It needs `pulumi`, `jq` and the `restmail` CLI 0.7.0 or
 newer — and `kubectl` only where it deploys the stack itself.
 
 1. It sets the config — generating the password if you gave none and the stack
@@ -185,9 +218,12 @@ newer — and `kubectl` only where it deploys the stack itself.
 3. It previews again. This is the only thing that proves the config and the
    code found each other: a wrong stack, config namespace or project shows up
    here instead of as a server nobody can sign in to.
-4. It offers `pulumi up` on the release alone — nothing else in your stack —
-   then runs `server:verify`. Or deploy it however you deploy, and run
-   `server:verify` yourself.
+4. It offers `pulumi up` on the REST Mail component and its declared children
+   (namespace, APNs Secret and Helm release), with explicit targets that exclude
+   unrelated stack resources. Existing direct releases still target only the
+   release. It then runs `server:verify`. Or deploy through your normal process
+   and run `server:verify` yourself. Secret-redacted Helm values are checked
+   through the component's public URL output.
 
 Run it again at any point and it picks up where it was. `--name mail-eu` puts
 a second mail server in the same stack under its own config namespace.

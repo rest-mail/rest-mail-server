@@ -24,6 +24,7 @@ With --audit-from, the audit log is read from the configuration's endpoint,
 signed in as its auth.login does (the fixture admin).
 Exit 1 with one line per finding; 0 when the run is clean.
 """
+
 import argparse
 import base64
 import json
@@ -32,13 +33,27 @@ import urllib.request
 
 # The fields that carry a secret the client sends: passwords (an account's, a
 # relay's), DKIM and certificate private keys, a recovery code.
-SENT_FIELDS = {"password", "new_password", "current_password", "private_key", "key_pem", "recovery_code"}
+SENT_FIELDS = {
+    "password",
+    "new_password",
+    "current_password",
+    "private_key",
+    "key_pem",
+    "recovery_code",
+}
 # The fields that carry a secret the server issues once: an app password, an
 # enrollment's secret and recovery codes, a session's tokens, an API key's
 # token. A push device's token is the client's, not a credential, and is not
 # collected. Short values (a six-digit TOTP code) are left out: they match by
 # chance.
-ISSUED_FIELDS = {"password", "secret", "recovery_codes", "access_token", "refresh_token", "token"}
+ISSUED_FIELDS = {
+    "password",
+    "secret",
+    "recovery_codes",
+    "access_token",
+    "refresh_token",
+    "token",
+}
 MIN_LENGTH = 8
 REDACTED = "<redacted>"
 
@@ -83,25 +98,31 @@ def json_secrets(text, fields):
 
 
 def where(text, value):
-    """Where value sits in an answer: the JSON paths that hold it, or "in the text"."""
+    """Locate a secret in decoded JSON strings/keys or plain text; None if absent.
+
+    Match logical strings, not their JSON encoding: private keys contain
+    newlines, and passwords may contain quotes, backslashes or Unicode.
+    """
     try:
         doc = json.loads(text)
     except ValueError:
-        return "in the text"
+        return "in the text" if value in text else None
     paths = []
 
     def walk(node, path):
         if isinstance(node, dict):
             for key, item in node.items():
-                walk(item, f"{path}.{key}")
+                if value in key:
+                    paths.append(f"{path} (object key)")
+                walk(item, f"{path}.{key.replace(value, '<secret>')}")
         elif isinstance(node, list):
             for i, item in enumerate(node):
                 walk(item, f"{path}[{i}]")
-        elif isinstance(node, str) and value in node:
+        elif isinstance(node, (str, int, float)) and value in str(node):
             paths.append(path)
 
     walk(doc, "$")
-    return "at " + ", ".join(paths[:3]) if paths else "in the text"
+    return "at " + ", ".join(paths[:3]) if paths else None
 
 
 def hint(value):
@@ -149,12 +170,20 @@ def scan(har, audit=(), known=()):
     for value, (field, issued, origin) in secrets.items():
         how = "issued by" if issued is not None else "sent in"
         for j, answer in enumerate(answers):
-            if j != issued and value in answer and not path_of(entries[j]).startswith(DOC_PATHS):
-                findings.append(f"{label(entries[j])} answers the {field} {how} {origin}, {hint(value)} {where(answer, value)}")
+            if j == issued or path_of(entries[j]).startswith(DOC_PATHS):
+                continue
+            location = where(answer, value)
+            if location:
+                findings.append(
+                    f"{label(entries[j])} answers the {field} {how} {origin}, {hint(value)} {location}"
+                )
         for record in audit:
-            if value in record:
+            location = where(record, value)
+            if location:
                 action = json.loads(record).get("action", "?")
-                findings.append(f"the audit log's {action} entry holds the {field} {how} {origin}, {hint(value)} {where(record, value)}")
+                findings.append(
+                    f"the audit log's {action} entry holds the {field} {how} {origin}, {hint(value)} {location}"
+                )
                 break
     return findings
 
@@ -165,8 +194,11 @@ def login_secrets(config_path):
 
     with open(config_path) as stream:
         body = yaml.safe_load(stream)["auth"]["login"]["body"]
-    return [(field, body[field], "vertrag.yml's auth.login") for field in SENT_FIELDS
-            if isinstance(body.get(field), str) and len(body[field]) >= MIN_LENGTH]
+    return [
+        (field, body[field], "vertrag.yml's auth.login")
+        for field in SENT_FIELDS
+        if isinstance(body.get(field), str) and len(body[field]) >= MIN_LENGTH
+    ]
 
 
 def read_audit(config_path):
@@ -179,14 +211,23 @@ def read_audit(config_path):
     endpoint = config["endpoint"].rstrip("/")
     signin = config["auth"]["login"]
     login = urllib.request.Request(
-        endpoint + signin["path"], data=json.dumps(signin["body"]).encode(),
-        headers={"Content-Type": "application/json"}, method="POST")
+        endpoint + signin["path"],
+        data=json.dumps(signin["body"]).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
     with urllib.request.urlopen(login, timeout=30) as response:
         token = json.load(response)["data"]["access_token"]
     records, cursor = [], None
     while True:
-        url = endpoint + "/api/v1/admin/audit?limit=200" + (f"&before_seq={cursor}" if cursor else "")
-        request = urllib.request.Request(url, headers={"Authorization": "Bearer " + token})
+        url = (
+            endpoint
+            + "/api/v1/admin/audit?limit=200"
+            + (f"&before_seq={cursor}" if cursor else "")
+        )
+        request = urllib.request.Request(
+            url, headers={"Authorization": "Bearer " + token}
+        )
         with urllib.request.urlopen(request, timeout=30) as response:
             page = json.load(response)
         records += [json.dumps(entry) for entry in page["data"]]
@@ -209,7 +250,9 @@ def main(argv):
     entries = len(har.get("log", {}).get("entries", []))
     for finding in findings:
         print("secret echoed:", finding)
-    print(f"secret scan: {entries} recorded exchanges, {len(audit)} audit entries, {len(findings)} findings")
+    print(
+        f"secret scan: {entries} recorded exchanges, {len(audit)} audit entries, {len(findings)} findings"
+    )
     return 1 if findings else 0
 
 

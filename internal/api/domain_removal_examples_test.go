@@ -62,10 +62,13 @@ func TestDomainRemovalExamples(t *testing.T) {
 				calls = s.store.snapshot()[before:]
 			}
 			var deletes []bulkQueueExampleMutation
+			cleanups := 0
 			counts := []string{}
 			for _, call := range calls {
-				if strings.HasPrefix(call.query, "DELETE") {
+				if strings.HasPrefix(call.query, `DELETE FROM "domains"`) {
 					deletes = append(deletes, call)
+				} else if strings.HasPrefix(call.query, "DELETE") {
+					cleanups++
 				}
 				for _, table := range []string{"mailboxes", "aliases"} {
 					if strings.HasPrefix(call.query, `SELECT count(*) FROM "`+table+`"`) {
@@ -76,6 +79,10 @@ func TestDomainRemovalExamples(t *testing.T) {
 			wantWrite := rr.Code == 204 || name == "delete_unavailable"
 			if (len(deletes) == 1) != wantWrite || len(deletes) > 1 {
 				t.Fatalf("deletion writes:%d want%t", len(deletes), wantWrite)
+			}
+			// The domain's own DELETE comes after its configuration is cleared.
+			if (cleanups == len(domainOwnedTables)) != wantWrite || (!wantWrite && cleanups != 0) {
+				t.Fatalf("configuration cleanups:%d want%t", cleanups, wantWrite)
 			}
 			if len(deletes) == 1 {
 				if len(deletes[0].args) != 1 || deletes[0].args[0].Value != int64(pair.Request.Path["id"].(float64)) {
