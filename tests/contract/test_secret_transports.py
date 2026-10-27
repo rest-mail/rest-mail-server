@@ -15,6 +15,19 @@ from test_secret_scan import exchange, har
 
 
 class SecretTransportTest(unittest.TestCase):
+    def test_malformed_har_fails_without_printing_credential_text(self):
+        value = "fixture-malformed-har-password"
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "run.har"
+            path.write_text("not json " + value)
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                result = secret_scan.main([str(path)])
+        self.assertEqual(result, 2)
+        self.assertNotIn(value, stdout.getvalue() + stderr.getvalue())
+        self.assertNotIn("0 findings", stdout.getvalue())
+        self.assertNotIn("Traceback", stderr.getvalue())
+
     def test_refresh_token_sent_without_an_issuance_is_collected(self):
         value = "fixture-refresh-only-token"
         sent = exchange("POST", "/api/v1/auth/refresh", {"refresh_token": value})

@@ -23,7 +23,7 @@ func TestMtaStsPolicy_DocumentedAbsentExample(t *testing.T) {
 				OperationID string `yaml:"operationId"`
 				Parameters  []struct {
 					Examples map[string]struct {
-						Value uint `yaml:"value"`
+						Value any `yaml:"value"`
 					} `yaml:"examples"`
 				} `yaml:"parameters"`
 				Responses map[string]struct {
@@ -39,7 +39,7 @@ func TestMtaStsPolicy_DocumentedAbsentExample(t *testing.T) {
 	if op.OperationID != "getMtaStsPolicy" || len(op.Parameters) != 1 {
 		t.Fatalf("unexpected lookup operation: %+v", op)
 	}
-	if op.Parameters[0].Examples["policy_absent"].Value != 2147483646 {
+	if contractPathExampleID(t, op.Parameters[0].Examples["policy_absent"].Value) != 2147483646 {
 		t.Fatal("policy-absent request must retain its distinct fixture placeholder")
 	}
 	want := map[string]interface{}{"error": map[string]interface{}{

@@ -579,9 +579,13 @@ tasks:
     cmds:
       - |
         set -eu
-        python3 tests/contract/report_files.py --reset-run .cache/contract
+        python3 -B tests/contract/report_files.py --reset-run .cache/contract
         export CONTRACT_DEFER_SUMMARY=1
-        trap 'python3 tests/contract/summary.py .cache/contract examples coverage authorization' EXIT
+        trap 'python3 -B tests/contract/summary.py .cache/contract examples coverage authorization' EXIT
+        CONTRACT_VERTRAG="$(python3 -B scripts/vertrag_pin.py ensure .cache/bin)"
+        export CONTRACT_VERTRAG
+        export RESTMAIL_VERTRAG_BINARY="$CONTRACT_VERTRAG"
+        export PATH="$(dirname "$CONTRACT_VERTRAG"):$PATH"
         if [ -z "${CONTRACT_ENDPOINT:-}" ]; then chore e2e:up; fi
         if [ ! -s .cache/contract-principals.json ]; then
           API_BASE_URL="${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}" E2E_REQUIRE_STACK=1 chore test:e2e -- -run '^TestContractPrincipals$'
@@ -591,7 +595,7 @@ tasks:
         code=0
         tests/contract/run.sh gate {{.CLI_ARGS}} || code=$?
         scan=0
-        python3 tests/contract/secret_scan.py .cache/contract/examples.har --audit-from .cache/contract/vertrag-run.yml || scan=$?
+        python3 -B tests/contract/secret_scan.py .cache/contract/examples.har --audit-from .cache/contract/vertrag-run.yml || scan=$?
         tests/contract/run.sh authorization {{.CLI_ARGS}} || echo "the authorization phase is a report, not a gate"
         if [ "$code" -ne 0 ]; then exit "$code"; fi
         exit "$scan"

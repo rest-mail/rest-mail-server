@@ -238,7 +238,10 @@ export interface paths {
         get: operations["getAccount"];
         put?: never;
         post?: never;
-        /** Give up access to an account */
+        /**
+         * Give up access to an account
+         * @description Missing links retain 404; account lookup and grant-removal failures return 500. The lookup and removal transaction follow request cancellation.
+         */
         delete: operations["unlinkAccount"];
         options?: never;
         head?: never;
@@ -434,7 +437,7 @@ export interface paths {
         };
         /**
          * Server-Sent Events stream for real-time updates
-         * @description A stream of the account's events, new_message, message_updated, message_deleted, message_sent or folder_update, each an id, the event's name and its JSON data. A Last-Event-ID header asks for the events after it that the server still holds. The session is checked when the stream opens, and again before every event and keepalive: once the account's sessions end, the stream ends without sending anything more.
+         * @description A stream of the account's events, new_message, message_updated, message_deleted, message_sent or folder_update, each an id, the event's name and its JSON data. A Last-Event-ID header asks for the events after it that the server still holds. The session is checked when the stream opens, and again before every event and keepalive: once the account's sessions end, the stream ends without sending anything more. Access lookup failures return 500 before a stream opens; missing or inaccessible accounts retain 403.
          */
         get: operations["accountEvents"];
         put?: never;
@@ -1104,7 +1107,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Live DNS record check (MX, SPF, DMARC, DKIM, MTA-STS) for a domain */
+        /** Live DNS record check (MX, SPF, DMARC, DKIM, MTA-STS, TLS-RPT) for a domain */
         get: operations["domainDNSCheck"];
         put?: never;
         post?: never;
@@ -1815,7 +1818,7 @@ export interface paths {
         };
         /**
          * Download an attachment
-         * @description The attachment's bytes, always as application/octet-stream; the type its sender gave it is listAttachments' content_type. Range and conditional requests are answered (206, 304, 412, 416).
+         * @description The attachment's bytes are application/octet-stream; listAttachments' content_type is the sender's declared type. Range requests return a binary part or multipart/byteranges. Conditional requests can return bodyless 304 or 412; malformed or non-overlapping ranges return plain-text 416.
          */
         get: operations["getAttachment"];
         put?: never;
@@ -2486,12 +2489,11 @@ export interface components {
             active: boolean;
             /** Format: date-time */
             created_at: string;
-            /** Format: email */
             destination_address: string;
             domain?: components["schemas"]["Domain"] | null;
             domain_id: number;
             id: number;
-            /** Format: email */
+            /** Format: idn-email */
             source_address: string;
         };
         AnalyticsWindow: {
@@ -3597,6 +3599,7 @@ export interface components {
             headers?: unknown;
             id?: number;
             in_reply_to?: string;
+            is_answered?: boolean;
             is_deleted?: boolean;
             is_draft?: boolean;
             is_dsn?: boolean;
@@ -4001,6 +4004,7 @@ export interface components {
             headers?: unknown;
             id: number;
             in_reply_to: string;
+            is_answered?: boolean;
             is_deleted: boolean;
             is_draft: boolean;
             is_dsn: boolean;
@@ -4684,6 +4688,15 @@ export interface components {
         tlsReportStored: {
             stored: number;
         };
+        tlsReportUnprocessable: {
+            error: components["schemas"]["tlsReportUnprocessableError"];
+        };
+        tlsReportUnprocessableError: {
+            /** @enum {string} */
+            code: "validation_failed" | "no_matching_domains";
+            details?: components["schemas"]["ValidationDetails"];
+            message: string;
+        };
         twoFactorStatusResponse: {
             enabled: boolean;
             pending: boolean;
@@ -4999,13 +5012,13 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Invalid report fields, or no policy domain hosted by this server */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                    "application/json": components["schemas"]["tlsReportUnprocessable"];
                 };
             };
             /** @description rate_limited: too many reports from one address */
@@ -5910,9 +5923,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
-                /** @example 1 */
                 credential_id: number;
             };
             cookie?: never;
@@ -6175,7 +6186,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -6285,7 +6295,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -6395,7 +6404,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -6498,7 +6506,6 @@ export interface operations {
             };
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -6586,9 +6593,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
-                /** @example 1 */
                 cid: number;
             };
             cookie?: never;
@@ -6683,9 +6688,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
-                /** @example 1 */
                 cid: number;
             };
             cookie?: never;
@@ -6990,9 +6993,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
-                /** @example 1 */
                 credential_id: number;
             };
             cookie?: never;
@@ -7231,7 +7232,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -7341,9 +7341,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
-                /** @example INBOX */
                 folder: string;
             };
             cookie?: never;
@@ -7447,9 +7445,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
-                /** @example INBOX */
                 folder: string;
             };
             cookie?: never;
@@ -7856,9 +7852,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
-                /** @example 1 */
                 mid: number;
             };
             cookie?: never;
@@ -8343,7 +8337,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -8453,7 +8446,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -8541,7 +8533,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -8817,7 +8808,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -8918,7 +8908,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -9160,6 +9149,17 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    /** @description Seconds until another request is allowed */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Internal Server Error */
@@ -9426,6 +9426,17 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    /** @description Seconds until another request is allowed */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Internal Server Error */
@@ -9762,6 +9773,17 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    /** @description Seconds until another request is allowed */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Internal Server Error */
@@ -10150,6 +10172,17 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    /** @description Seconds until another request is allowed */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Internal Server Error */
             500: {
                 headers: {
@@ -10483,6 +10516,17 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    /** @description Seconds until another request is allowed */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Internal Server Error */
             500: {
                 headers: {
@@ -10568,6 +10612,17 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    /** @description Seconds until another request is allowed */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Internal Server Error */
@@ -10838,6 +10893,17 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    /** @description Seconds until another request is allowed */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Internal Server Error */
             500: {
                 headers: {
@@ -10863,7 +10929,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -11047,7 +11112,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -11121,6 +11185,17 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    /** @description Seconds until another request is allowed */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Internal Server Error */
             500: {
                 headers: {
@@ -11146,7 +11221,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -11315,7 +11389,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -11387,6 +11460,17 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    /** @description Seconds until another request is allowed */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Internal Server Error */
@@ -11560,6 +11644,17 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    /** @description Seconds until another request is allowed */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Internal Server Error */
@@ -11739,6 +11834,17 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    /** @description Seconds until another request is allowed */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Internal Server Error */
             500: {
                 headers: {
@@ -11844,6 +11950,17 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    /** @description Seconds until another request is allowed */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Internal Server Error */
@@ -13358,7 +13475,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -13424,6 +13540,17 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    /** @description Seconds until another request is allowed */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Internal Server Error */
@@ -14097,6 +14224,17 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    /** @description Seconds until another request is allowed */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Internal Server Error */
             500: {
                 headers: {
@@ -14316,7 +14454,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -14373,6 +14510,17 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    /** @description Seconds until another request is allowed */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Internal Server Error */
@@ -14623,6 +14771,17 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    /** @description Seconds until another request is allowed */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Internal Server Error */
@@ -15162,6 +15321,17 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    /** @description Seconds until another request is allowed */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Internal Server Error */
@@ -16135,6 +16305,17 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    /** @description Seconds until another request is allowed */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Internal Server Error */
             500: {
                 headers: {
@@ -16695,7 +16876,14 @@ export interface operations {
     getAttachment: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                Range?: string;
+                "If-Range"?: string;
+                "If-Match"?: string;
+                "If-None-Match"?: string;
+                "If-Modified-Since"?: string;
+                "If-Unmodified-Since"?: string;
+            };
             path: {
                 id: number;
             };
@@ -16712,11 +16900,50 @@ export interface operations {
                     "Content-Disposition": string;
                     /** @description The number of bytes in the complete attachment. */
                     "Content-Length": number;
+                    /** @description The stored object's entity tag, when available. */
+                    ETag?: string;
+                    /** @description The stored object's modification time, when available, as an HTTP date. */
+                    "Last-Modified"?: string;
                     [name: string]: unknown;
                 };
                 content: {
                     "application/octet-stream": unknown;
                 };
+            };
+            /** @description Selected bytes, or multiple byte ranges with a Content-Range on each binary part. */
+            206: {
+                headers: {
+                    /** @description Byte ranges are supported. */
+                    "Accept-Ranges": string;
+                    /** @description Download as an attachment, with a safely encoded filename. */
+                    "Content-Disposition": string;
+                    /** @description The number of bytes in this partial or multipart response. */
+                    "Content-Length": number;
+                    /** @description The selected byte range and complete length for a single-range response; multipart responses put it on each part. */
+                    "Content-Range"?: string;
+                    /** @description The stored object's entity tag, when available. */
+                    ETag?: string;
+                    /** @description The stored object's modification time, when available, as an HTTP date. */
+                    "Last-Modified"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                    "multipart/byteranges": unknown;
+                };
+            };
+            /** @description The conditional request's cached representation is current; no response body. */
+            304: {
+                headers: {
+                    /** @description Download as an attachment, with a safely encoded filename. */
+                    "Content-Disposition": string;
+                    /** @description The stored object's entity tag, when available. */
+                    ETag?: string;
+                    /** @description The stored object's modification time, when available, as an HTTP date. */
+                    "Last-Modified"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
             401: {
@@ -16745,6 +16972,23 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description An If-Match or If-Unmodified-Since precondition failed; no response body. */
+            412: {
+                headers: {
+                    /** @description Download as an attachment, with a safely encoded filename. */
+                    "Content-Disposition": string;
+                    /** @description Zero when emitted for a bodyless precondition failure. */
+                    "Content-Length"?: number;
+                    /** @description The attachment media type may remain on a bodyless precondition failure. */
+                    "Content-Type"?: string;
+                    /** @description The stored object's entity tag, when available. */
+                    ETag?: string;
+                    /** @description The stored object's modification time, when available, as an HTTP date. */
+                    "Last-Modified"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description request_too_large: the body is over the API's size cap */
             413: {
                 headers: {
@@ -16752,6 +16996,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The byte range is malformed or does not overlap the attachment. */
+            416: {
+                headers: {
+                    /** @description Download as an attachment, with a safely encoded filename. */
+                    "Content-Disposition": string;
+                    /** @description The error body's byte length, when emitted. */
+                    "Content-Length"?: number;
+                    /** @description bytes *\/length for a non-overlapping range; omitted for a malformed range. */
+                    "Content-Range"?: string;
+                    /** @description The stored object's entity tag, when available. */
+                    ETag?: string;
+                    /** @description The stored object's modification time, when available, as an HTTP date. */
+                    "Last-Modified"?: string;
+                    /** @description Prevents MIME type sniffing for the plain-text range refusal. */
+                    "X-Content-Type-Options": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
                 };
             };
             /** @description Unprocessable Entity */
@@ -16774,13 +17039,24 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Internal Server Error */
+            /** @description A handler dependency failed, or the stored content could not be served. */
             500: {
                 headers: {
+                    /** @description Download as an attachment, with a safely encoded filename. */
+                    "Content-Disposition"?: string;
+                    /** @description The error body's byte length, when emitted. */
+                    "Content-Length"?: number;
+                    /** @description The stored object's entity tag, when available. */
+                    ETag?: string;
+                    /** @description The stored object's modification time, when available, as an HTTP date. */
+                    "Last-Modified"?: string;
+                    /** @description nosniff on the plain-text streaming failure, or when security headers are enabled. */
+                    "X-Content-Type-Options"?: string;
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                    "text/plain": string;
                 };
             };
             /** @description unavailable: the credential or session check could not be made */
@@ -17884,7 +18160,7 @@ export interface operations {
             /** @description Too Many Requests */
             429: {
                 headers: {
-                    /** @description Seconds until a request may be made again */
+                    /** @description Seconds until another request is allowed */
                     "Retry-After": number;
                     [name: string]: unknown;
                 };
@@ -18457,7 +18733,7 @@ export interface operations {
             /** @description Too Many Requests */
             429: {
                 headers: {
-                    /** @description Seconds until a request may be made again */
+                    /** @description Seconds until another request is allowed */
                     "Retry-After": number;
                     [name: string]: unknown;
                 };
@@ -18566,7 +18842,6 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -18732,19 +19007,19 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Binding validation, sender policy or scheduling refusal */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                    "application/json": components["schemas"]["ForwardRefusalResponse"];
                 };
             };
             /** @description Too Many Requests */
             429: {
                 headers: {
-                    /** @description Seconds until a request may be made again */
+                    /** @description Seconds until another request is allowed */
                     "Retry-After": number;
                     [name: string]: unknown;
                 };
@@ -18876,7 +19151,6 @@ export interface operations {
             };
             header?: never;
             path: {
-                /** @example 1 */
                 id: number;
             };
             cookie?: never;
@@ -19372,7 +19646,7 @@ export interface operations {
             /** @description Too Many Requests */
             429: {
                 headers: {
-                    /** @description Seconds until a request may be made again */
+                    /** @description Seconds until another request is allowed */
                     "Retry-After": number;
                     [name: string]: unknown;
                 };

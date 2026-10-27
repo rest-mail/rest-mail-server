@@ -157,13 +157,15 @@ func (h *PipelineHandler) listPipelines(r *http.Request, in listPipelineResource
 	limit, offset := parsePagination(r, defaultListLimit, maxListLimit)
 	domainID := r.URL.Query().Get("domain_id")
 
-	query := h.db.Model(&models.Pipeline{})
+	query := h.db.WithContext(r.Context()).Model(&models.Pipeline{})
 	if domainID != "" {
 		query = query.Where("domain_id = ?", domainID)
 	}
 
 	var total int64
-	query.Count(&total)
+	if err := query.Count(&total).Error; err != nil {
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to list pipelines")
+	}
 
 	var pipelines []models.Pipeline
 	if err := query.Order("direction ASC, id ASC").Limit(limit).Offset(offset).Find(&pipelines).Error; err != nil {
@@ -214,7 +216,7 @@ func (h *PipelineHandler) listPipelineLogs(r *http.Request, in listPipelineLogsR
 		offset = o
 	}
 
-	query := h.db.Model(&models.MessageTrace{})
+	query := h.db.WithContext(r.Context()).Model(&models.MessageTrace{})
 	if pipelineID := r.URL.Query().Get("pipeline_id"); pipelineID != "" {
 		query = query.Where("pipeline_id = ?", pipelineID)
 	}
@@ -236,7 +238,9 @@ func (h *PipelineHandler) listPipelineLogs(r *http.Request, in listPipelineLogsR
 	}
 
 	var total int64
-	query.Count(&total)
+	if err := query.Count(&total).Error; err != nil {
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to list pipeline traces")
+	}
 
 	var traces []models.MessageTrace
 	if err := query.Order("created_at DESC").Limit(limit).Offset(offset).Find(&traces).Error; err != nil {
@@ -266,7 +270,7 @@ func (h *PipelineHandler) getMessageTrace(r *http.Request, in pipelinePath) (Mes
 	id := in.ID
 
 	var trace models.MessageTrace
-	if err := h.db.Where("message_id = ?", uint(id)).Order("created_at DESC").First(&trace).Error; err != nil {
+	if err := h.db.WithContext(r.Context()).Where("message_id = ?", uint(id)).Order("created_at DESC").First(&trace).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "No pipeline trace for this message")
 		}
@@ -385,7 +389,7 @@ func (h *PipelineHandler) deletePipeline(r *http.Request, in pipelinePath) (dele
 	var zero deletedStatus
 	id := in.ID
 
-	deleted := h.db.Delete(&models.Pipeline{}, id)
+	deleted := h.db.WithContext(r.Context()).Delete(&models.Pipeline{}, id)
 	if deleted.Error != nil {
 		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to delete pipeline")
 	}
@@ -474,13 +478,15 @@ func (h *PipelineHandler) listCustomFilters(r *http.Request, in listPipelineReso
 	limit, offset := parsePagination(r, defaultListLimit, maxListLimit)
 	domainID := r.URL.Query().Get("domain_id")
 
-	query := h.db.Model(&models.CustomFilter{})
+	query := h.db.WithContext(r.Context()).Model(&models.CustomFilter{})
 	if domainID != "" {
 		query = query.Where("domain_id = ?", domainID)
 	}
 
 	var total int64
-	query.Count(&total)
+	if err := query.Count(&total).Error; err != nil {
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to list custom filters")
+	}
 
 	var filters []models.CustomFilter
 	if err := query.Order("name ASC").Limit(limit).Offset(offset).Find(&filters).Error; err != nil {
@@ -579,7 +585,7 @@ func (h *PipelineHandler) getCustomFilter(r *http.Request, in pipelinePath) (Cus
 	id := in.ID
 
 	var cf models.CustomFilter
-	if err := h.db.First(&cf, id).Error; err != nil {
+	if err := h.db.WithContext(r.Context()).First(&cf, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "Custom filter not found")
 		}
@@ -649,7 +655,7 @@ func (h *PipelineHandler) deleteCustomFilter(r *http.Request, in pipelinePath) (
 	var zero deletedStatus
 	id := in.ID
 
-	deleted := h.db.Delete(&models.CustomFilter{}, id)
+	deleted := h.db.WithContext(r.Context()).Delete(&models.CustomFilter{}, id)
 	if deleted.Error != nil {
 		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to delete custom filter")
 	}

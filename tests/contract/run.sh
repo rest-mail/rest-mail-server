@@ -52,24 +52,30 @@ if [ "$phase" != authorization ]; then
 fi
 # Clear this invocation's reports before dependencies or tools can fail. An
 # authorization-only run keeps the gate's saved inputs, but not an old verdict.
-python3 tests/contract/report_files.py "${reset_run[@]}" "$out" "${names[@]}"
+python3 -B tests/contract/report_files.py "${reset_run[@]}" "$out" "${names[@]}"
 # The full command prints once after authorization. Standalone phases summarize
 # only reports from this invocation, never a previous gate or fuzz run.
 if [ "${CONTRACT_DEFER_SUMMARY:-0}" != 1 ]; then
   summary_phases=("$phase")
   if [ "$phase" = gate ]; then summary_phases=(examples coverage); fi
-  trap 'python3 tests/contract/summary.py "$out" "${summary_phases[@]}"' EXIT
+  trap 'python3 -B tests/contract/summary.py "$out" "${summary_phases[@]}"' EXIT
 fi
-python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
-vertrag version
+# Select the same verified binary as CI before contacting the target server.
+CONTRACT_VERTRAG="$(python3 -B scripts/vertrag_pin.py ensure .cache/bin)"
+export CONTRACT_VERTRAG
+export RESTMAIL_VERTRAG_BINARY="$CONTRACT_VERTRAG"
+PATH="$(dirname "$CONTRACT_VERTRAG"):$PATH"
+export PATH
+"$CONTRACT_VERTRAG" version
+python3 -B -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
 if [ "$phase" != authorization ]; then
-  python3 tests/contract/description.py vertrag.yml "$served"
+  python3 -B tests/contract/description.py vertrag.yml "$served"
 fi
 test -s "$served"
 
 # vertrag.yml as this run uses it: absolute paths, the endpoint, and the surface
 # gate only for a whole-API run.
-python3 tests/contract/reports.py vertrag.yml "$out/vertrag-run.yml" "$out/run" "${narrowed[@]}"
+python3 -B tests/contract/reports.py vertrag.yml "$out/vertrag-run.yml" "$out/run" "${narrowed[@]}"
 
 case "$phase" in
 gate)
@@ -82,44 +88,46 @@ gate)
   # 1 is a failed transaction (or a run that could not be carried out) and 3 an
   # operation not exercised and passing (the surface gate): either fails here,
   # at once. 2 is a failed boundary probe, which the baseline judges below.
-  python3 tests/contract/reports.py "$out/vertrag-run.yml" "$out/vertrag-examples.yml" "$out/examples" "${narrowed[@]}"
-  vertrag run --config "$out/vertrag-examples.yml" --sequence --phases examples "${select[@]}" 2>&1 | tee "$logs/contract-examples.log"
+  python3 -B tests/contract/reports.py "$out/vertrag-run.yml" "$out/vertrag-examples.yml" "$out/examples" "${narrowed[@]}"
+  "$CONTRACT_VERTRAG" run --config "$out/vertrag-examples.yml" --sequence --phases examples "${select[@]}" 2>&1 | tee "$logs/contract-examples.log"
 
   # The second process repeats create examples after the first one consumed
   # its queue entry and left its folder and contact behind.
-  python3 tests/contract/repeat_fixtures.py "$out/vertrag-run.yml"
+  python3 -B tests/contract/repeat_fixtures.py "$out/vertrag-run.yml"
   chore test:contract-fixtures
-  python3 tests/contract/probes.py "$out/vertrag-run.yml" "$out/vertrag-probes.yml" "$out/coverage.xml"
-  python3 tests/contract/reports.py "$out/vertrag-probes.yml" "$out/vertrag-probes.yml" "$out/coverage" "${narrowed[@]}"
+  python3 -B tests/contract/probes.py "$out/vertrag-run.yml" "$out/vertrag-probes.yml" "$out/coverage.xml"
+  python3 -B tests/contract/reports.py "$out/vertrag-probes.yml" "$out/vertrag-probes.yml" "$out/coverage" "${narrowed[@]}"
   code=0
-  vertrag run --config "$out/vertrag-probes.yml" --sequence --phases coverage "${select[@]}" \
+  "$CONTRACT_VERTRAG" run --config "$out/vertrag-probes.yml" --sequence --phases coverage "${select[@]}" \
     2>&1 | tee "$logs/contract.log" || code=$?
   echo "vertrag exited $code"
   if [ "$code" -ne 0 ] && [ "$code" -ne 2 ]; then exit "$code"; fi
   if [ ${#select[@]} -eq 0 ]; then
     # The coverage baseline only shrinks.
-    python3 tests/contract/gate.py "$CONTRACT_SPEC" vertrag.yml "$out/coverage.xml" tests/contract/coverage-baseline.txt
+    python3 -B tests/contract/gate.py "$CONTRACT_SPEC" vertrag.yml "$out/coverage.xml" tests/contract/coverage-baseline.txt
   else
     echo "a narrowed run: the coverage baseline is not applied"
+    # Without the whole-API ratchet, Vertrag's selected probe verdict is final.
+    exit "$code"
   fi
   ;;
 authorization)
   # Examples always run first, then the matrix repeats destructive requests as
   # the admin, so this runs after the gate.
-  python3 tests/contract/authorization.py "$CONTRACT_SPEC" "$out/vertrag-run.yml" \
+  python3 -B tests/contract/authorization.py "$CONTRACT_SPEC" "$out/vertrag-run.yml" \
     .cache/contract-principals.json "$out/vertrag-authorization.yml" "$out/authorization.xml"
-  python3 tests/contract/reports.py "$out/vertrag-authorization.yml" "$out/vertrag-authorization.yml" "$out/authorization" "${narrowed[@]}"
+  python3 -B tests/contract/reports.py "$out/vertrag-authorization.yml" "$out/vertrag-authorization.yml" "$out/authorization" "${narrowed[@]}"
   code=0
-  vertrag run --config "$out/vertrag-authorization.yml" --sequence --phases authorization "${select[@]}" \
+  "$CONTRACT_VERTRAG" run --config "$out/vertrag-authorization.yml" --sequence --phases authorization "${select[@]}" \
     >"$logs/contract-authorization.log" 2>&1 || code=$?
   cat "$logs/contract-authorization.log"
   echo "vertrag authorization exited $code (report only)"
   exit "$code"
   ;;
 fuzz)
-  python3 tests/contract/probes.py "$out/vertrag-run.yml" "$out/vertrag-probes.yml" "$out/fuzz.xml"
-  python3 tests/contract/reports.py "$out/vertrag-probes.yml" "$out/vertrag-probes.yml" "$out/fuzz" "${narrowed[@]}"
-  vertrag run --config "$out/vertrag-probes.yml" --sequence --phases fuzz "${select[@]}" \
+  python3 -B tests/contract/probes.py "$out/vertrag-run.yml" "$out/vertrag-probes.yml" "$out/fuzz.xml"
+  python3 -B tests/contract/reports.py "$out/vertrag-probes.yml" "$out/vertrag-probes.yml" "$out/fuzz" "${narrowed[@]}"
+  "$CONTRACT_VERTRAG" run --config "$out/vertrag-probes.yml" --sequence --phases fuzz "${select[@]}" \
     >"$logs/contract-fuzz.log" 2>&1 || echo "vertrag exited $?: findings are in the report"
   cat "$logs/contract-fuzz.log"
   ;;
