@@ -555,8 +555,15 @@ a hosted domain and mailbox for each address a test send probe uses, and,
   the fixture email from a credential and is not judged. The configured fixture
   password is searched separately in the unredacted audit log. This limitation
   remains; a redacted recording does not prove that password was never answered.
-  Controls are in `test_secret_scan.py` and `test_secret_transports.py`. The HAR
-  contains fixture credentials and is not uploaded with the logs.
+  Audit retrieval refuses login and page redirects, checks each page's data and
+  explicit pagination, URL-encodes cursors and rejects cycles or missing cursors.
+  It scans credentials newly issued by its own login, including session cookies.
+  Safety limits are 1,000 pages, 16 MiB per HTTP answer and 64 MiB of serialized
+  audit entries. Exceeding a limit, malformed input or a failed read exits 2 with
+  a sanitized error and no clean verdict; a finding exits 1 and a verified clean
+  run exits 0. Controls are in `test_secret_scan.py`, `test_secret_transports.py`
+  and `test_secret_audit_read.py`. The HAR contains fixture credentials and is
+  not uploaded with the logs.
 - `coverage-baseline.txt`: the coverage ratchet's baseline.
 - `test_gate.py`: `gate.py`'s own tests (`python3 -m unittest discover -s tests/contract -p test_gate.py`).
 - `test_hooks_save_draft.py`: the saveDraft sender hook's tests, against a stub admin API.
