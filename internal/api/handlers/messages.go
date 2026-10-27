@@ -75,6 +75,17 @@ func (h *MessageHandler) SetNewMailNotifier(n NewMailNotifier) {
 	h.newMail = n
 }
 
+// forRequest gives the handler's SQL work the HTTP request's budget and
+// cancellation without changing the shared handler.
+func (h *MessageHandler) forRequest(r *http.Request) *MessageHandler {
+	if h.db == nil {
+		return h
+	}
+	scoped := *h
+	scoped.db = h.db.WithContext(r.Context())
+	return &scoped
+}
+
 func NewMessageHandler(db *gorm.DB, broker *SSEBroker, engine *pipeline.Engine, masterKey string, recorder traceRecorder) *MessageHandler {
 	return &MessageHandler{db: db, broker: broker, engine: engine, masterKey: masterKey, recorder: recorder, forwardRoot: attachmentstore.FilesystemRoot, maxForwardBytes: config.DefaultSMTPMaxMessageSize}
 }
@@ -209,6 +220,7 @@ func decodeMessageCursor(cursor string) (messageCursor, bool) {
 
 // listMessages returns messages in a folder with cursor-based pagination.
 func (h *MessageHandler) listMessages(r *http.Request, in listMessagesRequest) (endpoint.List[Message], error) {
+	h = h.forRequest(r)
 	var zero endpoint.List[Message]
 	folder := in.Folder
 	if folder == "" {
@@ -299,6 +311,7 @@ func (h *MessageHandler) getMessage(r *http.Request, in messagePath) (Message, e
 
 // updateMessage updates message flags or moves to a folder.
 func (h *MessageHandler) updateMessage(r *http.Request, in updateMessageRequest) (Message, error) {
+	h = h.forRequest(r)
 	msg, err := h.ownedMessage(r, in.ID, models.CapMailWrite)
 	if err != nil {
 		return Message{}, err
@@ -333,11 +346,22 @@ func (h *MessageHandler) updateMessage(r *http.Request, in updateMessageRequest)
 		updates["folder"] = rmail.CanonicalFolder(*req.Folder)
 	}
 
+	// The answer, and the events, are the message as stored: read back in the
+	// change's own transaction, so a change that fails, or cannot be read
+	// back, is neither answered nor announced as made.
 	if len(updates) > 0 {
-		h.db.Model(&msg).Updates(updates)
+		err = h.db.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Model(&msg).Updates(updates).Error; err != nil {
+				return err
+			}
+			return tx.First(&msg, in.ID).Error
+		})
+	} else {
+		err = h.db.First(&msg, in.ID).Error
 	}
-
-	h.db.First(&msg, in.ID)
+	if err != nil {
+		return Message{}, fmt.Errorf("update message: %w", err)
+	}
 
 	if h.broker != nil {
 		h.broker.Publish(msg.MailboxID, SSEEvent{
@@ -906,35 +930,29 @@ func (h *MessageHandler) sendMessageWithParts(r *http.Request, req sendMessageRe
 	allRecipients = append(allRecipients, req.Cc...)
 	allRecipients = append(allRecipients, req.Bcc...)
 
+	// Where each recipient is decided before anything is sent: a lookup that
+	// failed says nothing about where the recipient is, and taking it for a
+	// remote one would queue a local recipient's copy for the internet.
+	type localRecipient struct {
+		address string
+		mailbox models.Mailbox
+	}
+	var locals []localRecipient
+	var remote []models.OutboundQueue
+	db := h.db.WithContext(r.Context())
 	for _, rcpt := range allRecipients {
 		var recipientMailbox models.Mailbox
-		if err := repositories.FindActiveMailboxByAddress(h.db, rcpt, &recipientMailbox); err == nil {
-			// Local delivery with full inbound pipeline
-			_, deliverErr := h.deliverToLocal(r.Context(), localDeliveryParams{
-				Mailbox:      recipientMailbox,
-				Sender:       req.From,
-				SenderName:   senderMailbox.DisplayName,
-				RecipientsTo: toJSON,
-				RecipientsCc: ccJSON,
-				Subject:      req.Subject,
-				BodyText:     req.BodyText,
-				BodyHTML:     req.BodyHTML,
-				MessageID:    messageID,
-				InReplyTo:    req.InReplyTo,
-				RawMessage:   rawMessage,
-				RequireTLS:   req.RequireTLS,
-			})
-			if deliverErr != nil {
-				slog.Warn("local delivery failed for recipient", "recipient", rcpt, "error", deliverErr)
-			}
-		} else {
-			// Remote delivery - queue it with raw message and message reference
+		err := repositories.FindActiveMailboxByAddress(db, rcpt, &recipientMailbox)
+		switch {
+		case err == nil:
+			locals = append(locals, localRecipient{address: rcpt, mailbox: recipientMailbox})
+		case errors.Is(err, gorm.ErrRecordNotFound), errors.Is(err, repositories.ErrMailboxUnavailable):
 			recipientDomain := rcpt
 			if idx := strings.LastIndex(rcpt, "@"); idx >= 0 {
 				recipientDomain = rcpt[idx+1:]
 			}
 			msgID := sentMsg.ID
-			queueEntry := models.OutboundQueue{
+			remote = append(remote, models.OutboundQueue{
 				MessageID:  &msgID,
 				Sender:     req.From,
 				Recipient:  rcpt,
@@ -942,8 +960,41 @@ func (h *MessageHandler) sendMessageWithParts(r *http.Request, req sendMessageRe
 				RawMessage: rawMessage,
 				Status:     "pending",
 				RequireTLS: req.RequireTLS,
-			}
-			h.db.Create(&queueEntry)
+			})
+		default:
+			slog.Error("send: could not look up a recipient", "recipient", rcpt, "error", err)
+			return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to look up a recipient")
+		}
+	}
+
+	// Remote recipients are queued together, before any local delivery: a
+	// queue entry that was not stored must not be answered as sent, and the
+	// client's retry then delivers nothing locally twice.
+	if len(remote) > 0 {
+		if err := db.Transaction(func(tx *gorm.DB) error { return tx.Create(&remote).Error }); err != nil {
+			slog.Error("send: could not queue the message for remote recipients", "error", err)
+			return zero, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Try again later")
+		}
+	}
+
+	for _, local := range locals {
+		// Local delivery with full inbound pipeline
+		_, deliverErr := h.deliverToLocal(r.Context(), localDeliveryParams{
+			Mailbox:      local.mailbox,
+			Sender:       req.From,
+			SenderName:   senderMailbox.DisplayName,
+			RecipientsTo: toJSON,
+			RecipientsCc: ccJSON,
+			Subject:      req.Subject,
+			BodyText:     req.BodyText,
+			BodyHTML:     req.BodyHTML,
+			MessageID:    messageID,
+			InReplyTo:    req.InReplyTo,
+			RawMessage:   rawMessage,
+			RequireTLS:   req.RequireTLS,
+		})
+		if deliverErr != nil {
+			slog.Warn("local delivery failed for recipient", "recipient", local.address, "error", deliverErr)
 		}
 	}
 
@@ -1203,6 +1254,7 @@ func (h *MessageHandler) accountMailbox(r *http.Request, accountID uint32, capab
 
 // listFolders returns all folders for an account.
 func (h *MessageHandler) listFolders(r *http.Request, in accountPath) (endpoint.List[FolderSummary], error) {
+	h = h.forRequest(r)
 	mailboxID, err := h.accountMailbox(r, in.ID, models.CapMailRead)
 	if err != nil {
 		return endpoint.List[FolderSummary]{}, err
@@ -1364,6 +1416,7 @@ func (h *MessageHandler) deleteFolder(r *http.Request, in folderPath) (endpoint.
 // getQuota returns quota usage for a mailbox.
 // GET /api/v1/accounts/{id}/quota
 func (h *MessageHandler) getQuota(r *http.Request, in accountPath) (Quota, error) {
+	h = h.forRequest(r)
 	mailboxID, err := h.accountMailbox(r, in.ID, models.CapMailRead)
 	if err != nil {
 		return Quota{}, err
@@ -1627,6 +1680,7 @@ func (h *MessageHandler) draftAccess(r *http.Request, draft *models.Message) err
 // GetThread returns all messages sharing the same thread_id.
 // getThread returns the account's messages in a thread, oldest first.
 func (h *MessageHandler) getThread(r *http.Request, in threadRequest) (endpoint.List[Message], error) {
+	h = h.forRequest(r)
 	mailboxID, err := h.accountMailbox(r, in.ID, models.CapMailRead)
 	if err != nil {
 		return endpoint.List[Message]{}, err
@@ -1748,6 +1802,7 @@ func forwardBodies(note string, original *models.Message) (text, htmlBody string
 // RespondToCalendar handles Accept/Decline/Tentative responses to calendar invites.
 // POST /api/v1/messages/{id}/calendar-reply
 func (h *MessageHandler) respondToCalendar(r *http.Request, in calendarReplyRequest) (CalendarReplied, error) {
+	h = h.forRequest(r)
 	claims := middleware.GetClaims(r)
 	if claims == nil {
 		return CalendarReplied{}, errNotSignedIn
@@ -1878,13 +1933,20 @@ func (h *MessageHandler) respondToCalendar(r *http.Request, in calendarReplyRequ
 		ReceivedAt:   now,
 	}
 
-	if err := h.db.Create(&sentMsg).Error; err != nil {
-		return CalendarReplied{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to save calendar reply")
+	// Deliver to organizer if local, else queue for remote delivery. A lookup
+	// that failed says nothing about where the organizer is: it must not send
+	// a local organizer's reply out to the internet.
+	var recipientMailbox models.Mailbox
+	lookupErr := repositories.FindActiveMailboxByAddress(h.db, organizer, &recipientMailbox)
+	if lookupErr != nil && !errors.Is(lookupErr, gorm.ErrRecordNotFound) &&
+		!errors.Is(lookupErr, repositories.ErrMailboxUnavailable) {
+		return CalendarReplied{}, fmt.Errorf("find the organizer's mailbox: %w", lookupErr)
 	}
 
-	// Deliver to organizer if local, else queue for remote delivery
-	var recipientMailbox models.Mailbox
-	if err := repositories.FindActiveMailboxByAddress(h.db, organizer, &recipientMailbox); err == nil {
+	if lookupErr == nil {
+		if err := h.db.Create(&sentMsg).Error; err != nil {
+			return CalendarReplied{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to save calendar reply")
+		}
 		_, deliverErr := h.deliverToLocal(r.Context(), localDeliveryParams{
 			Mailbox:      recipientMailbox,
 			Sender:       req.From,
@@ -1901,21 +1963,29 @@ func (h *MessageHandler) respondToCalendar(r *http.Request, in calendarReplyRequ
 			slog.Warn("calendar reply local delivery failed", "recipient", organizer, "error", deliverErr)
 		}
 	} else {
-		// Remote delivery
+		// Remote delivery: the Sent copy and its queue entry commit together,
+		// so a reply is never shown as sent with nothing queued to send it.
 		recipientDomain := organizer
 		if idx := strings.LastIndex(organizer, "@"); idx >= 0 {
 			recipientDomain = organizer[idx+1:]
 		}
-		msgID := sentMsg.ID
-		queueEntry := models.OutboundQueue{
-			MessageID:  &msgID,
-			Sender:     req.From,
-			Recipient:  organizer,
-			Domain:     recipientDomain,
-			RawMessage: rawMessage,
-			Status:     "pending",
+		err := h.db.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Create(&sentMsg).Error; err != nil {
+				return err
+			}
+			msgID := sentMsg.ID
+			return tx.Create(&models.OutboundQueue{
+				MessageID:  &msgID,
+				Sender:     req.From,
+				Recipient:  organizer,
+				Domain:     recipientDomain,
+				RawMessage: rawMessage,
+				Status:     "pending",
+			}).Error
+		})
+		if err != nil {
+			return CalendarReplied{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to save calendar reply")
 		}
-		h.db.Create(&queueEntry)
 	}
 
 	return CalendarReplied{Response: response, Status: "sent"}, nil
@@ -2140,7 +2210,10 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 			if len(preview) > 200 {
 				preview = preview[:200]
 			}
-			h.db.Create(&models.Quarantine{
+			// A hold that cannot be stored must not be answered as accepted: the
+			// message would be in neither the quarantine nor the mailbox. The
+			// failure is the caller's to retry.
+			if err := h.db.WithContext(ctx).Create(&models.Quarantine{
 				MailboxID:        mailbox.ID,
 				Sender:           params.Sender,
 				Subject:          params.Subject,
@@ -2149,7 +2222,9 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 				QuarantineReason: quarantineReason(pipelineResult),
 				ReceivedAt:       time.Now(),
 				ExpiresAt:        time.Now().Add(30 * 24 * time.Hour),
-			})
+			}).Error; err != nil {
+				return nil, fmt.Errorf("hold the message in quarantine: %w", err)
+			}
 			traceBase.Outcome = outcomeQuarantined
 			h.recordTrace(buildTrace(traceBase))
 			return nil, nil // quarantined, not an error but no message created
@@ -2445,6 +2520,7 @@ func (h *MessageHandler) resolveAccountMailbox(accountID uint, claims *auth.Clai
 // grouped by UID with the latest sequence number, enabling the frontend
 // to detect superseded or cancelled events.
 func (h *MessageHandler) listCalendarEvents(r *http.Request, in accountPath) ([]CalendarEventSummary, error) {
+	h = h.forRequest(r)
 	mailboxID, err := h.accountMailbox(r, in.ID, models.CapMailRead)
 	if err != nil {
 		return nil, err

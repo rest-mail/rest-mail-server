@@ -191,6 +191,29 @@ func NewAuthHandler(db *gorm.DB, jwtService *auth.JWTService, masterKey string, 
 	return &AuthHandler{db: db, jwtService: jwtService, refreshStore: refreshStore, accountState: accountState, twoFactorStore: tfStore, masterKey: masterKey, sessions: sessions}
 }
 
+// forRequest gives the sign-in routes' SQL work the HTTP request's budget and
+// cancellation without changing the shared handler. Injected stores (unit
+// tests) are kept; the production repositories and account-state reader are
+// rebuilt on the scoped connection. The push-device store keeps its own
+// connection: it takes no context.
+func (h *AuthHandler) forRequest(r *http.Request) *AuthHandler {
+	if h.db == nil {
+		return h
+	}
+	scoped := *h
+	scoped.db = h.db.WithContext(r.Context())
+	if _, ok := h.refreshStore.(*repositories.RefreshTokenRepository); ok {
+		scoped.refreshStore = repositories.NewRefreshTokenRepository(scoped.db)
+	}
+	if _, ok := h.accountState.(dbAccountState); ok {
+		scoped.accountState = dbAccountState{db: scoped.db}
+	}
+	if _, ok := h.twoFactorStore.(*repositories.TwoFactorRepository); ok {
+		scoped.twoFactorStore = repositories.NewTwoFactorRepository(scoped.db)
+	}
+	return &scoped
+}
+
 // persistRefreshToken records a freshly issued refresh token in the rotation
 // ledger (status active). A nil store (no database, e.g. some unit tests) is a
 // no-op — production always wires the DB-backed store via NewAuthHandler.
@@ -369,6 +392,7 @@ type userInfo = apitypes.UserInfo
 // password credentials, and a code from one of its TOTP credentials when it
 // has one.
 func (h *AuthHandler) login(r *http.Request, req loginRequest) (endpoint.Headed[loginResponse], error) {
+	h = h.forRequest(r)
 	var zero endpoint.Headed[loginResponse]
 
 	// Find the account. A miss does NOT short-circuit: MatchPassword still runs
@@ -429,7 +453,11 @@ func (h *AuthHandler) enforce2FA(accountID uint, req loginRequest) (verified boo
 	if err != nil {
 		return false, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to verify two-factor authentication")
 	}
-	if verifyTOTPOrRecovery(h.twoFactorStore, h.masterKey, accountID, req.TOTPCode, req.RecoveryCode) {
+	verified, err = verifyTOTPOrRecovery(h.twoFactorStore, h.masterKey, accountID, req.TOTPCode, req.RecoveryCode)
+	if err != nil {
+		return false, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to verify two-factor authentication")
+	}
+	if verified {
 		return true, nil
 	}
 	if req.TOTPCode == "" && req.RecoveryCode == "" {
@@ -448,6 +476,7 @@ func signInMethods(verified bool) []string {
 }
 
 func (h *AuthHandler) logout(r *http.Request, in sessionTokenRequest) (endpoint.Headed[endpoint.Empty], error) {
+	h = h.forRequest(r)
 	// Revoke the presented refresh token server-side so it can no longer be
 	// exchanged (OSI-10: logout was previously client-side only). The token is
 	// the cookie, or for a native client the body. A missing or invalid token
@@ -487,6 +516,7 @@ func (h *AuthHandler) logout(r *http.Request, in sessionTokenRequest) (endpoint.
 }
 
 func (h *AuthHandler) refresh(r *http.Request, in sessionTokenRequest) (endpoint.Headed[loginResponse], error) {
+	h = h.forRequest(r)
 	var zero endpoint.Headed[loginResponse]
 	token, native := presentedRefreshToken(r, in.Body)
 	if token == "" {
@@ -504,8 +534,10 @@ func (h *AuthHandler) refresh(r *http.Request, in sessionTokenRequest) (endpoint
 	// store (no DB, some unit tests) trusts the claims unchanged.
 	//
 	// Like the rotation-ledger check below, this path fails CLOSED: an
-	// unreachable store refuses the refresh (401) rather than minting tokens
-	// without re-verifying account state.
+	// unreachable store mints nothing. It answers 500, not 401: the failure
+	// is the server's, and a 401 would tell the client its session is over
+	// and to discard the refresh token it can still use once the store is
+	// back.
 	state := accountState{
 		Active:          true,
 		Address:         claims.Address,
@@ -517,7 +549,8 @@ func (h *AuthHandler) refresh(r *http.Request, in sessionTokenRequest) (endpoint
 		var stateErr error
 		state, stateErr = h.accountState.AccountState(claims.AccountID)
 		if stateErr != nil {
-			return zero, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Invalid or expired refresh token")
+			slog.Error("refresh: could not read the account's state", "error", stateErr)
+			return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to verify the session")
 		}
 		if !state.Active {
 			h.revokeAllForAccount(claims.AccountID)
@@ -538,8 +571,11 @@ func (h *AuthHandler) refresh(r *http.Request, in sessionTokenRequest) (endpoint
 	// spent token), or revoked (logout / password change). Any of those refuses
 	// the refresh. A nil store (no DB, some unit tests) skips this check.
 	if h.refreshStore != nil {
-		if err := h.refreshStore.Rotate(claims.ID); err != nil {
+		if err := h.refreshStore.Rotate(claims.ID); errors.Is(err, repositories.ErrRefreshTokenNotFound) {
 			return zero, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Invalid or expired refresh token")
+		} else if err != nil {
+			slog.Error("refresh: could not rotate the refresh token", "error", err)
+			return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to verify the session")
 		}
 	}
 
@@ -669,12 +705,21 @@ func (h *AuthHandler) changePassword(r *http.Request, req changePasswordRequest)
 		})
 	}
 
+	// The request's budget and cancellation reach every statement, the
+	// transaction included.
+	db := h.db.WithContext(r.Context())
 	var account models.Mailbox
-	if err := h.db.First(&account, claims.AccountID).Error; err != nil || !account.Active {
+	err := db.First(&account, claims.AccountID).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		// A read that failed says nothing about the session, and a 401 would
+		// tell the client to sign out.
+		return passwordChanged{}, fmt.Errorf("read the account: %w", err)
+	}
+	if err != nil || !account.Active {
 		return passwordChanged{}, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Invalid or expired session")
 	}
 	now := time.Now()
-	cred, err := repositories.NewCredentialRepository(h.db).MatchPassword(account.ID, req.CurrentPassword, now)
+	cred, err := repositories.NewCredentialRepository(db).MatchPassword(account.ID, req.CurrentPassword, now)
 	if err != nil {
 		return passwordChanged{}, fmt.Errorf("verify the password: %w", err)
 	}
@@ -696,7 +741,7 @@ func (h *AuthHandler) changePassword(r *http.Request, req changePasswordRequest)
 	if err != nil {
 		return passwordChanged{}, fmt.Errorf("hash the password: %w", err)
 	}
-	err = h.db.Transaction(func(tx *gorm.DB) error {
+	err = db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&models.Mailbox{}).Where("id = ?", account.ID).Updates(map[string]interface{}{
 			"last_password_change":     now,
 			"password_change_required": false,
@@ -793,7 +838,8 @@ type resetRequest = apitypes.ResetRequest
 // password the redeemer chose, loses its authenticator and must enroll a new
 // one, and every session and app password it had ends: whoever held the old
 // credentials, a person or an agent that set the server up, is locked out.
-func (h *AuthHandler) reset(_ *http.Request, req resetRequest) (endpoint.Headed[loginResponse], error) {
+func (h *AuthHandler) reset(r *http.Request, req resetRequest) (endpoint.Headed[loginResponse], error) {
+	h = h.forRequest(r)
 	var zero endpoint.Headed[loginResponse]
 	if req.Client != "" && req.Client != clientNative {
 		return zero, endpoint.Invalid(map[string]string{"client": `must be "native" or omitted`})
@@ -856,6 +902,7 @@ type recoverRequest struct {
 // admin resets it. Every refusal looks the same, so it says nothing about
 // which addresses exist or have 2FA.
 func (h *AuthHandler) recoverAccount(r *http.Request, req recoverRequest) (endpoint.Headed[loginResponse], error) {
+	h = h.forRequest(r)
 	var zero endpoint.Headed[loginResponse]
 	problems := map[string]string{}
 	if strings.TrimSpace(req.Email) == "" {
@@ -905,9 +952,24 @@ func (h *AuthHandler) recoverAccount(r *http.Request, req recoverRequest) (endpo
 	if err != nil {
 		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to read the account")
 	}
-	if !account.Active ||
-		!verifyTOTPOrRecovery(h.twoFactorStore, h.masterKey, account.ID, req.TOTPCode, "") ||
-		!verifyTOTPOrRecovery(h.twoFactorStore, h.masterKey, account.ID, "", req.RecoveryCode) {
+	if !account.Active {
+		return zero, refuse()
+	}
+	// Both factors, and the recovery code is spent only once the authenticator
+	// code has matched. A failure to check either is the server's, not a wrong
+	// code, and is neither refused nor charged to the address.
+	codeMatched, err := verifyTOTPOrRecovery(h.twoFactorStore, h.masterKey, account.ID, req.TOTPCode, "")
+	if err != nil {
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to verify two-factor authentication")
+	}
+	if !codeMatched {
+		return zero, refuse()
+	}
+	recoveryMatched, err := verifyTOTPOrRecovery(h.twoFactorStore, h.masterKey, account.ID, "", req.RecoveryCode)
+	if err != nil {
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to verify two-factor authentication")
+	}
+	if !recoveryMatched {
 		return zero, refuse()
 	}
 

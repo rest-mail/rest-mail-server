@@ -28,6 +28,15 @@ func NewTLSReportHandler(db *gorm.DB) *TLSReportHandler {
 	return &TLSReportHandler{db: db}
 }
 
+// forRequest gives the handler's SQL work the HTTP request's budget and
+// cancellation without changing the shared handler.
+func (h *TLSReportHandler) forRequest(r *http.Request) *TLSReportHandler {
+	if h.db == nil {
+		return h
+	}
+	return &TLSReportHandler{db: h.db.WithContext(r.Context())}
+}
+
 // TLSRPTReport is an inbound TLS-RPT aggregate report (RFC 8460 §4.4). Every level is open:
 // a reporter may add fields of its own, and the report is stored as it was sent. Only what
 // the handler needs is checked; a policy whose domain this server does not host, or that
@@ -295,7 +304,8 @@ type listTLSReportsInput struct {
 }
 
 // listReports returns TLS-RPT reports with optional filters and pagination.
-func (h *TLSReportHandler) listReports(_ *http.Request, in listTLSReportsInput) (endpoint.List[TLSReport], error) {
+func (h *TLSReportHandler) listReports(r *http.Request, in listTLSReportsInput) (endpoint.List[TLSReport], error) {
+	h = h.forRequest(r)
 	limit, offset := pagination(in.Limit, in.Offset, 50, 200)
 	query := h.db.Model(&models.TLSReport{})
 	if in.DomainID != nil {

@@ -35,6 +35,18 @@ func NewGrantHandler(db *gorm.DB, cache *grants.Cache, masterKey string) *GrantH
 	return &GrantHandler{db: db, cache: cache, masterKey: masterKey}
 }
 
+// forRequest gives the handler's SQL work the HTTP request's budget and
+// cancellation without changing the shared handler: reads, the grant lock
+// and every grant transaction run on the scoped connection.
+func (h *GrantHandler) forRequest(r *http.Request) *GrantHandler {
+	if h.db == nil {
+		return h
+	}
+	scoped := *h
+	scoped.db = h.db.WithContext(r.Context())
+	return &scoped
+}
+
 type grantHolder struct {
 	Kind string `json:"kind"`
 	ID   uint   `json:"id"`
@@ -103,6 +115,7 @@ type listGrantsRequest struct {
 
 // list returns grants, oldest first, optionally only one holder's or scope's.
 func (h *GrantHandler) list(r *http.Request, req listGrantsRequest) (endpoint.List[grantResponse], error) {
+	h = h.forRequest(r)
 	q := h.db.Model(&models.Grant{})
 	if req.HolderKind != "" {
 		q = q.Where("holder_kind = ?", req.HolderKind)
@@ -147,6 +160,7 @@ type createGrantRequest struct {
 // create grants a role at a scope.
 // POST /api/v1/admin/grants {"holder":{"kind":"account","id":3},"role":"admin","scope":"domain:a.com","mode":"active"}
 func (h *GrantHandler) create(r *http.Request, req createGrantRequest) (grantResponse, error) {
+	h = h.forRequest(r)
 	claims := middleware.GetClaims(r)
 	problems := map[string]string{}
 	if req.Holder == nil || req.Holder.Kind == "" || req.Holder.ID == 0 {
@@ -337,6 +351,7 @@ type capabilityResponse struct {
 // listRoles lists the roles that can be granted, each with its capabilities.
 // GET /api/v1/admin/roles
 func (h *GrantHandler) listRoles(r *http.Request, _ struct{}) ([]roleResponse, error) {
+	h = h.forRequest(r)
 	var roles []models.Role
 	if err := h.db.Order("id").Find(&roles).Error; err != nil {
 		return nil, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to fetch roles")
@@ -358,6 +373,7 @@ func (h *GrantHandler) listRoles(r *http.Request, _ struct{}) ([]roleResponse, e
 // listCapabilities lists every capability.
 // GET /api/v1/admin/capabilities
 func (h *GrantHandler) listCapabilities(r *http.Request, _ struct{}) ([]capabilityResponse, error) {
+	h = h.forRequest(r)
 	var caps []models.Capability
 	if err := h.db.Order("name").Find(&caps).Error; err != nil {
 		return nil, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to fetch capabilities")

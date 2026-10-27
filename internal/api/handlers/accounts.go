@@ -40,6 +40,19 @@ func NewAccountHandler(db *gorm.DB, cache *grants.Cache, masterKey string) *Acco
 	return &AccountHandler{db: db, cache: cache, masterKey: masterKey}
 }
 
+// forRequest gives the handler's SQL work the HTTP request's budget and
+// cancellation without changing the shared handler: reads, access checks,
+// password and second-factor checks and the account transactions run on the
+// scoped connection.
+func (h *AccountHandler) forRequest(r *http.Request) *AccountHandler {
+	if h.db == nil {
+		return h
+	}
+	scoped := *h
+	scoped.db = h.db.WithContext(r.Context())
+	return &scoped
+}
+
 // SessionRouteChecks are the middleware routes.go makes for the account and credential
 // routes a signed-in person reaches: login's per-client-IP throttle, for a route that checks
 // a password, and the audit log.
@@ -125,6 +138,7 @@ var mailCapabilities = []string{models.CapMailRead, models.CapMailWrite, models.
 // own account.
 // GET /api/v1/accounts
 func (h *AccountHandler) list(r *http.Request, _ struct{}) (endpoint.List[accountResponse], error) {
+	h = h.forRequest(r)
 	claims := middleware.GetClaims(r)
 	if claims == nil {
 		return endpoint.List[accountResponse]{}, errAuthenticationRequired
@@ -181,6 +195,7 @@ var (
 // GetAccount returns one account the session may read.
 // GET /api/v1/accounts/{id}
 func (h *AccountHandler) get(r *http.Request, in accountPath) (accountResponse, error) {
+	h = h.forRequest(r)
 	claims := middleware.GetClaims(r)
 	if claims == nil {
 		return accountResponse{}, errAuthenticationRequired
@@ -210,6 +225,7 @@ const ActionAccountsCreate = "accounts.create"
 // audit entries commit together.
 // POST /api/v1/accounts {"address", "display_name"?, "password"?}
 func (h *AccountHandler) create(r *http.Request, req createAccountRequest) (accountResponse, error) {
+	h = h.forRequest(r)
 	claims := middleware.GetClaims(r)
 	if claims == nil {
 		return accountResponse{}, errAuthenticationRequired
@@ -367,6 +383,7 @@ type linkAccountRequest struct {
 // renew that session and send the guess again (#385).
 // POST /api/v1/accounts/link {"address", "password", "display_name"?}
 func (h *AccountHandler) link(r *http.Request, req linkAccountRequest) (accountResponse, error) {
+	h = h.forRequest(r)
 	claims := middleware.GetClaims(r)
 	if claims == nil {
 		return accountResponse{}, errAuthenticationRequired
@@ -392,7 +409,11 @@ func (h *AccountHandler) link(r *http.Request, req linkAccountRequest) (accountR
 	}
 	tf := repositories.NewTwoFactorRepository(h.db)
 	if _, err := tf.GetActive(account.ID); err == nil {
-		if !verifyTOTPOrRecovery(tf, h.masterKey, account.ID, req.TOTPCode, req.RecoveryCode) {
+		verified, err := verifyTOTPOrRecovery(tf, h.masterKey, account.ID, req.TOTPCode, req.RecoveryCode)
+		if err != nil {
+			return accountResponse{}, fmt.Errorf("verify two-factor authentication: %w", err)
+		}
+		if !verified {
 			if req.TOTPCode == "" && req.RecoveryCode == "" {
 				return accountResponse{}, endpoint.Refuse(http.StatusForbidden, "totp_required", "That account has two-factor authentication: send its code too")
 			}

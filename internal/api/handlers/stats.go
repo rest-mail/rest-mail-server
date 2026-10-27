@@ -18,6 +18,15 @@ func NewStatsHandler(db *gorm.DB) *StatsHandler {
 	return &StatsHandler{db: db}
 }
 
+// forRequest gives the handler's SQL work the HTTP request's budget and
+// cancellation without changing the shared handler.
+func (h *StatsHandler) forRequest(r *http.Request) *StatsHandler {
+	if h.db == nil {
+		return h
+	}
+	return &StatsHandler{db: h.db.WithContext(r.Context())}
+}
+
 type QueueStats struct {
 	Pending    int `json:"pending"`
 	Processing int `json:"processing"`
@@ -68,7 +77,8 @@ type DashboardStats struct {
 
 // dashboardStats returns statistics for the admin dashboard
 // GET /api/v1/admin/stats
-func (h *StatsHandler) dashboardStats(_ *http.Request, _ struct{}) (DashboardStats, error) {
+func (h *StatsHandler) dashboardStats(r *http.Request, _ struct{}) (DashboardStats, error) {
+	h = h.forRequest(r)
 	stats := DashboardStats{}
 
 	// Count total domains

@@ -22,6 +22,15 @@ func NewSieveHandler(db *gorm.DB) *SieveHandler {
 	return &SieveHandler{db: db}
 }
 
+// forRequest gives the handler's SQL work — the access check included — the
+// HTTP request's budget and cancellation without changing the shared handler.
+func (h *SieveHandler) forRequest(r *http.Request) *SieveHandler {
+	if h.db == nil {
+		return h
+	}
+	return &SieveHandler{db: h.db.WithContext(r.Context())}
+}
+
 // SieveScript is the account's Sieve script. With none stored it is the empty script, not
 // active, with no id, hash or timestamps; a stored one has them all, its hash being the
 // sha256 hex of the script validated at install.
@@ -109,6 +118,7 @@ func (h *SieveHandler) Register(rs endpoint.Routes) {
 // get returns the Sieve script for a mailbox, or the empty script when it has none.
 // GET /api/v1/accounts/{id}/sieve
 func (h *SieveHandler) get(r *http.Request, in accountPath) (SieveScript, error) {
+	h = h.forRequest(r)
 	mailboxID, err := mailRulesMailbox(h.db, r, in.ID)
 	if err != nil {
 		return SieveScript{}, err
@@ -127,6 +137,7 @@ func (h *SieveHandler) get(r *http.Request, in accountPath) (SieveScript, error)
 // put creates or updates the Sieve script for a mailbox.
 // PUT /api/v1/accounts/{id}/sieve
 func (h *SieveHandler) put(r *http.Request, in putSieveRequest) (endpoint.Status[SieveScript], error) {
+	h = h.forRequest(r)
 	mailboxID, err := mailRulesMailbox(h.db, r, in.ID)
 	if err != nil {
 		return endpoint.Status[SieveScript]{}, err
@@ -190,6 +201,7 @@ RETURNING "id", "mailbox_id", "script", "script_hash", "validated_at", "active",
 // delete removes the Sieve script for a mailbox.
 // DELETE /api/v1/accounts/{id}/sieve
 func (h *SieveHandler) delete(r *http.Request, in accountPath) (SieveDeleted, error) {
+	h = h.forRequest(r)
 	mailboxID, err := mailRulesMailbox(h.db, r, in.ID)
 	if err != nil {
 		return SieveDeleted{}, err
@@ -204,6 +216,7 @@ func (h *SieveHandler) delete(r *http.Request, in accountPath) (SieveDeleted, er
 // validate checks a Sieve script without saving it.
 // POST /api/v1/accounts/{id}/sieve/validate
 func (h *SieveHandler) validate(r *http.Request, in validateSieveRequest) (SieveValidation, error) {
+	h = h.forRequest(r)
 	// The same check as put (mail:write on the account): validating is part of
 	// changing the account's script, and nobody else may run it there.
 	if _, err := mailRulesMailbox(h.db, r, in.ID); err != nil {

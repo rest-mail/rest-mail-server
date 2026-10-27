@@ -11,6 +11,7 @@ import (
 
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/bootstrap"
+	"github.com/restmail/restmail/internal/crypto"
 	rmdb "github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
@@ -214,7 +215,7 @@ func TestCreateAccount(t *testing.T) {
 func TestLinkAccount(t *testing.T) {
 	db := openAccountsTestDB(t)
 	fx := seedAccountsFixture(t, db)
-	h := NewAccountHandler(db, grants.NewCache(db, grants.CacheTTL), "")
+	h := NewAccountHandler(db, grants.NewCache(db, grants.CacheTTL), testMasterKey)
 	linkWith := func(accountID uint, body string) *httptest.ResponseRecorder {
 		rr := httptest.NewRecorder()
 		accountRoutes(h).ServeHTTP(rr, authzRequest(http.MethodPost, "/api/v1/accounts/link", accountID, nil, body))
@@ -271,7 +272,17 @@ func TestLinkAccount(t *testing.T) {
 
 	// An account with 2FA needs its code too: a password alone is less than
 	// signing in to it.
-	if _, err := repositories.NewTwoFactorRepository(db).Enroll(fx.admin.ID, "x", nil); err != nil {
+	// A readable authenticator, so a wrong code is refused as wrong; one that
+	// cannot be decrypted is a server error (second_factor_errors_test.go).
+	key, err := auth.GenerateTOTPSecret(auth.DefaultTOTPIssuer, fx.admin.Address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secret, err := crypto.EncryptString(key.Secret(), testMasterKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repositories.NewTwoFactorRepository(db).Enroll(fx.admin.ID, secret, nil); err != nil {
 		t.Fatal(err)
 	}
 	db.Model(&models.Credential{}).Where("account_id = ? AND kind = ?", fx.admin.ID, models.CredentialKindTOTP).Update("confirmed_at", time.Now())

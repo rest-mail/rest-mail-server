@@ -25,7 +25,17 @@ func NewAliasHandler(db *gorm.DB) *AliasHandler {
 	return &AliasHandler{db: db}
 }
 
+// forRequest gives the handler's SQL work the HTTP request's budget and
+// cancellation without changing the shared handler.
+func (h *AliasHandler) forRequest(r *http.Request) *AliasHandler {
+	if h.db == nil {
+		return h
+	}
+	return &AliasHandler{db: h.db.WithContext(r.Context())}
+}
+
 func (h *AliasHandler) list(r *http.Request, in adminAddressListRequest) (endpoint.List[Alias], error) {
+	h = h.forRequest(r)
 	limit, offset := pagination(in.Limit, in.Offset, defaultListLimit, maxListLimit)
 
 	query := filterAdminList(h.db.Model(&models.Alias{}), r, middleware.CapMailboxesRead, "aliases")
@@ -125,6 +135,7 @@ func (h *AliasHandler) create(r *http.Request, in createAliasRequest) (Alias, er
 }
 
 func (h *AliasHandler) get(r *http.Request, in adminAddressPath) (Alias, error) {
+	h = h.forRequest(r)
 	id := in.ID
 
 	var alias models.Alias
@@ -185,6 +196,7 @@ func (h *AliasHandler) update(r *http.Request, in updateAliasInput) (Alias, erro
 }
 
 func (h *AliasHandler) delete(r *http.Request, in adminAddressPath) (endpoint.Empty, error) {
+	h = h.forRequest(r)
 	id := in.ID
 
 	var alias models.Alias

@@ -34,7 +34,19 @@ func NewMailboxHandler(db *gorm.DB, cache *grants.Cache, sessions *SessionCache)
 	return &MailboxHandler{db: db, cache: cache, sessions: sessions}
 }
 
+// forRequest gives the handler's SQL work the HTTP request's budget and
+// cancellation without changing the shared handler.
+func (h *MailboxHandler) forRequest(r *http.Request) *MailboxHandler {
+	if h.db == nil {
+		return h
+	}
+	scoped := *h
+	scoped.db = h.db.WithContext(r.Context())
+	return &scoped
+}
+
 func (h *MailboxHandler) list(r *http.Request, in adminAddressListRequest) (endpoint.List[Mailbox], error) {
+	h = h.forRequest(r)
 	limit, offset := pagination(in.Limit, in.Offset, defaultListLimit, maxListLimit)
 
 	query := filterAdminList(h.db.Model(&models.Mailbox{}), r, middleware.CapMailboxesRead, "mailboxes")
@@ -60,6 +72,7 @@ func (h *MailboxHandler) list(r *http.Request, in adminAddressListRequest) (endp
 }
 
 func (h *MailboxHandler) get(r *http.Request, in adminAddressPath) (Mailbox, error) {
+	h = h.forRequest(r)
 	id := in.ID
 
 	var mailbox models.Mailbox
@@ -89,11 +102,21 @@ var mailboxUpdatableColumns = map[string]bool{
 }
 
 func (h *MailboxHandler) update(r *http.Request, in updateMailboxInput) (Mailbox, error) {
+	h = h.forRequest(r)
 	id := in.ID
 
 	var mailbox models.Mailbox
 	if err := h.db.First(&mailbox, id).Error; err != nil {
-		return Mailbox{}, endpoint.Refuse(http.StatusNotFound, "mailbox_not_found", "Mailbox not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return Mailbox{}, endpoint.Refuse(http.StatusNotFound, "mailbox_not_found", "Mailbox not found")
+		}
+		return Mailbox{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to update mailbox")
+	}
+	// The answer is the mailbox as stored, read back in the change's own
+	// transaction: a read-back that fails undoes the change rather than
+	// answering with what was there before it.
+	reload := func(db *gorm.DB) error {
+		return db.Preload("Domain").Preload("QuotaUsage").First(&mailbox, id).Error
 	}
 
 	req := in.Body
@@ -128,7 +151,7 @@ func (h *MailboxHandler) update(r *http.Request, in updateMailboxInput) (Mailbox
 		}
 	}
 	if len(cols) > 0 || hashed != "" {
-		err := h.db.Transaction(func(tx *gorm.DB) error {
+		change := func(tx *gorm.DB) error {
 			if len(cols) > 0 {
 				if err := tx.Model(&mailbox).Select(cols).Updates(updates).Error; err != nil {
 					return err
@@ -151,6 +174,12 @@ func (h *MailboxHandler) update(r *http.Request, in updateMailboxInput) (Mailbox
 				return endSessions(tx, mailbox.ID)
 			}
 			return nil
+		}
+		err := h.db.Transaction(func(tx *gorm.DB) error {
+			if err := change(tx); err != nil {
+				return err
+			}
+			return reload(tx)
 		})
 		if err != nil {
 			return Mailbox{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to update mailbox")
@@ -158,9 +187,10 @@ func (h *MailboxHandler) update(r *http.Request, in updateMailboxInput) (Mailbox
 		if hashed != "" || req.Active != nil {
 			h.sessions.Forget(mailbox.ID)
 		}
+	} else if err := reload(h.db); err != nil {
+		return Mailbox{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to update mailbox")
 	}
 
-	h.db.Preload("Domain").Preload("QuotaUsage").First(&mailbox, id)
 	redactMailboxDomain(r, &mailbox)
 	return mailboxOf(mailbox), nil
 }
@@ -269,7 +299,8 @@ func (h *MailboxHandler) RegisterAddressCheck(rs endpoint.Routes) {
 }
 
 // checkAddress verifies a recipient exists: GET /api/mailboxes?address=...
-func (h *MailboxHandler) checkAddress(_ *http.Request, in addressCheckQuery) (AddressCheck, error) {
+func (h *MailboxHandler) checkAddress(r *http.Request, in addressCheckQuery) (AddressCheck, error) {
+	h = h.forRequest(r)
 	address := in.Address
 	if address == "" {
 		return AddressCheck{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "address query parameter required")

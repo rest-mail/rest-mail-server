@@ -126,7 +126,7 @@ func (h *OwnerHandler) token(r *http.Request, req ownerTokenRequest) (OwnerToken
 	if err != nil {
 		return OwnerToken{}, err
 	}
-	token, expires, err := bootstrap.MintForOwner(h.db, keys, h.challengeKey, bootstrap.OwnerRequest{
+	token, expires, err := bootstrap.MintForOwner(h.db.WithContext(r.Context()), keys, h.challengeKey, bootstrap.OwnerRequest{
 		Challenge: req.Challenge,
 		PublicKey: req.PublicKey,
 		Signature: sig,
@@ -161,7 +161,7 @@ func (h *OwnerHandler) status(r *http.Request, req apitypes.OwnerStatusRequest) 
 	if err != nil {
 		return apitypes.ServerStatus{}, err
 	}
-	err = bootstrap.CheckStatus(h.db, h.statusKeys, keys, h.challengeKey, bootstrap.StatusRequest{
+	err = bootstrap.CheckStatus(h.db.WithContext(r.Context()), h.statusKeys, keys, h.challengeKey, bootstrap.StatusRequest{
 		Challenge: req.Challenge,
 		PublicKey: req.PublicKey,
 		Signature: sig,
