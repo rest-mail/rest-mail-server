@@ -2328,9 +2328,57 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		}
 	}
 	msg.HasAttachments = len(attachmentRows) > 0
-	if err := h.db.Transaction(func(tx *gorm.DB) error {
+
+	// Calendar events are stored with the message, in its transaction: an
+	// invite delivered without them shows no reply controls, refuses a
+	// calendar reply and leaves the version history behind (#1266).
+	var calendarVersions []models.CalendarEventVersion
+	if params.RawMessage != "" {
+		if parsed, parseErr := rmime.Parse([]byte(params.RawMessage)); parseErr == nil && len(parsed.CalendarEvents) > 0 {
+			if calJSON, jsonErr := json.Marshal(parsed.CalendarEvents); jsonErr == nil {
+				msg.CalendarEventsRaw = models.JSONB(calJSON)
+			}
+			// Track calendar event versions for update/cancel detection
+			for _, evt := range parsed.CalendarEvents {
+				if evt.UID == "" {
+					continue
+				}
+				var dtStart, dtEnd *time.Time
+				if !evt.DTStart.IsZero() {
+					t := evt.DTStart
+					dtStart = &t
+				}
+				if !evt.DTEnd.IsZero() {
+					t := evt.DTEnd
+					dtEnd = &t
+				}
+				calendarVersions = append(calendarVersions, models.CalendarEventVersion{
+					MailboxID: mailbox.ID,
+					UID:       evt.UID,
+					Sequence:  evt.Sequence,
+					Method:    evt.Method,
+					Status:    evt.Status,
+					Summary:   evt.Summary,
+					DTStart:   dtStart,
+					DTEnd:     dtEnd,
+					Organizer: evt.Organizer.Address,
+				})
+			}
+		}
+	}
+
+	if err := h.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&msg).Error; err != nil {
 			return err
+		}
+		if len(calendarVersions) > 0 {
+			for i := range calendarVersions {
+				id := msg.ID
+				calendarVersions[i].MessageID = &id
+			}
+			if err := tx.Create(&calendarVersions).Error; err != nil {
+				return err
+			}
 		}
 		if len(attachmentRows) > 0 {
 			for i := range attachmentRows {
@@ -2364,46 +2412,6 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		mid := msg.ID
 		deliveredTrace.MessageID = &mid
 		h.recordTrace(buildTrace(*deliveredTrace))
-	}
-
-	// ── Extract calendar events ─────────────────────────────────────
-	if params.RawMessage != "" {
-		if parsed, parseErr := rmime.Parse([]byte(params.RawMessage)); parseErr == nil && len(parsed.CalendarEvents) > 0 {
-			if calJSON, jsonErr := json.Marshal(parsed.CalendarEvents); jsonErr == nil {
-				h.db.Model(&msg).Update("calendar_events", models.JSONB(calJSON))
-				msg.CalendarEventsRaw = models.JSONB(calJSON)
-			}
-
-			// Track calendar event versions for update/cancel detection
-			for _, evt := range parsed.CalendarEvents {
-				if evt.UID == "" {
-					continue
-				}
-				msgID := msg.ID
-				var dtStart, dtEnd *time.Time
-				if !evt.DTStart.IsZero() {
-					t := evt.DTStart
-					dtStart = &t
-				}
-				if !evt.DTEnd.IsZero() {
-					t := evt.DTEnd
-					dtEnd = &t
-				}
-				ver := models.CalendarEventVersion{
-					MailboxID: mailbox.ID,
-					UID:       evt.UID,
-					Sequence:  evt.Sequence,
-					Method:    evt.Method,
-					Status:    evt.Status,
-					Summary:   evt.Summary,
-					DTStart:   dtStart,
-					DTEnd:     dtEnd,
-					Organizer: evt.Organizer.Address,
-					MessageID: &msgID,
-				}
-				h.db.Create(&ver)
-			}
-		}
 	}
 
 	// ── SSE notifications ────────────────────────────────────────────
