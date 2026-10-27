@@ -193,10 +193,14 @@ class ContractCommand(unittest.TestCase):
                 'if [ "$1" = test:e2e ]; then '
                 '[ "$API_BASE_URL" = "${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}" ] || exit 98; fi\n'
                 'exit "${FIXTURE_EXIT:-0}"\n',
-                "python3": 'case "$1" in *report_files.py) exec "$REAL_PYTHON" "$@";; '
+                "python3": 'if [ "${1:-}" = -B ]; then shift; fi\n'
+                'case "$1" in *vertrag_pin.py) echo pin >> "$CALLS"; '
+                '[ "${TOOL_EXIT:-0}" = 0 ] || exit "$TOOL_EXIT"; '
+                'echo "$PWD/.cache/bin/vertrag"; exit 0;; '
+                '*report_files.py) exec "$REAL_PYTHON" -B "$@";; '
                 '*summary.py) echo "summary:$*" >> "$CALLS"; '
                 '[ "${SUMMARY_EXIT:-0}" = 0 ] || exit "$SUMMARY_EXIT"; '
-                'exec "$REAL_PYTHON" "$@";; esac\n'
+                'exec "$REAL_PYTHON" -B "$@";; esac\n'
                 'echo scan >> "$CALLS"\nexit "${SCAN_EXIT:-0}"\n',
                 "tests/contract/run.sh": 'echo "run:$*" >> "$CALLS"\n'
                 '[ "$CONTRACT_DEFER_SUMMARY" = 1 ] || exit 99\n'
@@ -210,7 +214,11 @@ class ContractCommand(unittest.TestCase):
             calls = work / "calls"
             env = dict(
                 os.environ,
-                PATH=str(work) + os.pathsep + os.environ["PATH"],
+                PATH=str(work)
+                + os.pathsep
+                + str(Path(sys.executable).parent)
+                + os.pathsep
+                + os.environ["PATH"],
                 CALLS=str(calls),
                 CONTRACT_ENDPOINT="http://fixture.test:8080",
                 REAL_PYTHON=sys.executable,
@@ -264,6 +272,7 @@ class ContractCommand(unittest.TestCase):
         self.assertEqual(
             calls,
             [
+                "pin",
                 "chore:test:contract-fixtures",
                 "chore:test:contract-api-keys",
                 "run:gate --tag Domains",
@@ -285,6 +294,7 @@ class ContractCommand(unittest.TestCase):
         self.assertEqual(
             calls,
             [
+                "pin",
                 "chore:test:contract-fixtures",
                 "summary:tests/contract/summary.py .cache/contract examples coverage authorization",
             ],
@@ -293,15 +303,36 @@ class ContractCommand(unittest.TestCase):
     def test_a_fresh_topology_prepares_only_the_principal_fixture_first(self):
         result, calls = self.run_command(principals=False)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(calls[0], "chore:test:e2e -- -run ^TestContractPrincipals$")
-        self.assertEqual(calls[1], "chore:test:contract-fixtures")
+        self.assertEqual(calls[0], "pin")
+        self.assertEqual(calls[1], "chore:test:e2e -- -run ^TestContractPrincipals$")
+        self.assertEqual(calls[2], "chore:test:contract-fixtures")
 
     def test_default_endpoint_starts_the_topology_before_principal_setup(self):
         result, calls = self.run_command(principals=False, CONTRACT_ENDPOINT="")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(calls[0], "chore:e2e:up")
-        self.assertEqual(calls[1], "chore:test:e2e -- -run ^TestContractPrincipals$")
+        self.assertEqual(calls[0], "pin")
+        self.assertEqual(calls[1], "chore:e2e:up")
+        self.assertEqual(calls[2], "chore:test:e2e -- -run ^TestContractPrincipals$")
         self.assertEqual(sum(call.startswith("summary:") for call in calls), 1)
+
+    def test_tool_failure_precedes_topology_and_fixture_changes(self):
+        artifacts = {}
+        result, calls = self.run_command(
+            principals=False,
+            stale_reports=True,
+            artifacts=artifacts,
+            CONTRACT_ENDPOINT="",
+            TOOL_EXIT="17",
+        )
+        self.assertEqual(result.returncode, 17, result.stderr)
+        self.assertEqual(
+            calls,
+            [
+                "pin",
+                "summary:tests/contract/summary.py .cache/contract examples coverage authorization",
+            ],
+        )
+        self.assertNotIn("previous", artifacts["summary.md"])
 
 
 class PhaseCommand(unittest.TestCase):
@@ -326,6 +357,10 @@ class PhaseCommand(unittest.TestCase):
                     (reports_dir / (stale + ".xml")).write_text(
                         '<testsuite><testcase name="stale"><failure/></testcase></testsuite>'
                     )
+                    (work / "scripts").mkdir()
+                    (work / "scripts/vertrag_pin.py").write_text(
+                        "from pathlib import Path\nprint(Path(__file__).resolve().parents[1] / 'vertrag')\n"
+                    )
                     vertrag = work / "vertrag"
                     vertrag.write_text("#!/bin/sh\nexit 17\n")
                     vertrag.chmod(0o755)
@@ -334,7 +369,11 @@ class PhaseCommand(unittest.TestCase):
                         cwd=work,
                         env=dict(
                             os.environ,
-                            PATH=str(work) + os.pathsep + os.environ["PATH"],
+                            PATH=str(work)
+                            + os.pathsep
+                            + str(Path(sys.executable).parent)
+                            + os.pathsep
+                            + os.environ["PATH"],
                             CONTRACT_DEFER_SUMMARY="1" if deferred else "0",
                         ),
                         text=True,

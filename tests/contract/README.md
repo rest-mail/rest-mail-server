@@ -476,8 +476,9 @@ mail:write on that mailbox (`contract_draft_test.go`). The operation remains
 in the coverage baseline because generated sender addresses can name
 mailboxes the principal cannot write to.
 
-vertrag is the released, checksum-pinned binary (v0.29.0), not a Go
-dependency: it needs Go 1.26 and this module is on 1.25.
+Vertrag is a released binary selected by the checksum pin in
+`.github/workflows/e2e-suite.yml`; it is installed independently of this
+module's Go dependencies.
 
 ## Files
 
@@ -656,8 +657,8 @@ is not treated as schema.
 
 ## Running it
 
-One command does what CI does (#627), on any machine with Docker, `chore` and the
-pinned Vertrag (`chore vertrag:install`):
+One command does what CI does (#627), on any machine with Docker, `chore` and
+Python 3. The command installs and selects the CI-pinned Vertrag automatically:
 
 ```sh
 chore contract                      # bring up the E2E topology, then every phase
@@ -668,7 +669,19 @@ chore contract:fuzz -- --seed 42    # the fuzz phase; replay a finding by its se
 chore contract:diff                 # the generated description against openapi.yaml, no server
 ```
 
-`chore contract` prepares the fixtures, proves the API key lifecycle, fetches
+The complete command and each live phase first run
+`python3 -B scripts/vertrag_pin.py ensure .cache/bin`. A cache receipt records the
+workflow pin, platform, archive checksum and installed binary hash. A matching,
+executable cache is reused without downloads; stale or corrupt entries are
+reinstalled from the pinned release after checksum verification. Linux x86_64's
+release checksum must also match the immutable digest in the workflow. The
+binary and receipt are published as complete files, and an incomplete receipt
+cannot validate a changed binary. The selected executable's `version` command
+must start successfully before topology or fixture setup. Its absolute path is
+exported to API-key probes and phase child commands. CI uses the same installer
+and cache; `chore vertrag:install` remains available for an explicit reinstall.
+
+`chore contract` then prepares the fixtures, proves the API key lifecycle, fetches
 `/api/docs/openapi.json` into `.cache/contract/openapi.json`, then runs
 `tests/contract/run.sh gate` (the examples phase, then the coverage phase held to
 `coverage-baseline.txt`) and `tests/contract/run.sh authorization` (a report).
