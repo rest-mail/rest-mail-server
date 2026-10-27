@@ -261,7 +261,11 @@ func (h *TwoFactorHandler) disableOwn(r *http.Request, req disableRequest) (endp
 		return endpoint.Empty{}, fmt.Errorf("read 2FA enrollment: %w", err)
 	}
 
-	if !h.verifySecondFactor(accountID, req.TOTPCode, req.RecoveryCode) {
+	verified, err := h.verifySecondFactor(accountID, req.TOTPCode, req.RecoveryCode)
+	if err != nil {
+		return endpoint.Empty{}, fmt.Errorf("verify the second factor: %w", err)
+	}
+	if !verified {
 		if req.TOTPCode == "" {
 			return endpoint.Empty{}, endpoint.Refuse(http.StatusForbidden, "invalid_recovery_code", "Invalid or already used recovery code")
 		}
@@ -303,30 +307,57 @@ func (h *TwoFactorHandler) disable(accountID uint) error {
 }
 
 // verifySecondFactor checks a TOTP code or a recovery code for the account.
-func (h *TwoFactorHandler) verifySecondFactor(accountID uint, totpCode, recoveryCode string) bool {
+func (h *TwoFactorHandler) verifySecondFactor(accountID uint, totpCode, recoveryCode string) (bool, error) {
 	return verifyTOTPOrRecovery(h.store, h.masterKey, accountID, totpCode, recoveryCode)
 }
+
+// errTwoFactorUnreadable is a TOTP code that could not be checked because the
+// server cannot read the account's secrets: no encryption key is configured,
+// or a stored secret does not decrypt with it.
+var errTwoFactorUnreadable = errors.New("the stored two-factor secret cannot be read")
 
 // verifyTOTPOrRecovery reports whether totpCode is a current code of one of
 // the account's confirmed TOTP credentials, or recoveryCode one of its unspent
 // recovery codes, which it spends. A TOTP code is tried first; a recovery code
 // only when no TOTP code matched, so one is never spent needlessly.
-func verifyTOTPOrRecovery(store twoFactorStore, masterKey string, accountID uint, totpCode, recoveryCode string) bool {
-	if totpCode != "" && masterKey != "" {
+//
+// The error is why the answer could not be found: the credentials could not be
+// read, a secret could not be decrypted, or a recovery code could not be
+// spent. It is never a wrong code. Reporting such a failure as "invalid code"
+// told a caller with the right code to try again, and charged a sign-in
+// throttle for the server's own fault.
+func verifyTOTPOrRecovery(store twoFactorStore, masterKey string, accountID uint, totpCode, recoveryCode string) (bool, error) {
+	var unreadable error
+	if totpCode != "" {
 		creds, err := store.Active(accountID)
-		if err == nil {
-			for i := range creds {
-				secret, err := crypto.DecryptString(creds[i].EncryptedSecret, masterKey)
-				if err == nil && auth.ValidateTOTPCode(totpCode, secret) {
-					return true
-				}
+		if err != nil {
+			return false, fmt.Errorf("read the authenticators: %w", err)
+		}
+		for i := range creds {
+			if masterKey == "" {
+				unreadable = errTwoFactorUnreadable
+				break
+			}
+			secret, err := crypto.DecryptString(creds[i].EncryptedSecret, masterKey)
+			if err != nil {
+				// Another authenticator may still match; the failure counts
+				// only if none does.
+				unreadable = fmt.Errorf("%w: %w", errTwoFactorUnreadable, err)
+				continue
+			}
+			if auth.ValidateTOTPCode(totpCode, secret) {
+				return true, nil
 			}
 		}
 	}
 	if recoveryCode != "" {
-		if consumed, err := store.ConsumeRecoveryCode(accountID, recoveryCode); err == nil && consumed {
-			return true
+		consumed, err := store.ConsumeRecoveryCode(accountID, recoveryCode)
+		if err != nil {
+			return false, fmt.Errorf("spend the recovery code: %w", err)
+		}
+		if consumed {
+			return true, nil
 		}
 	}
-	return false
+	return false, unreadable
 }

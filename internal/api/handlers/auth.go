@@ -429,7 +429,11 @@ func (h *AuthHandler) enforce2FA(accountID uint, req loginRequest) (verified boo
 	if err != nil {
 		return false, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to verify two-factor authentication")
 	}
-	if verifyTOTPOrRecovery(h.twoFactorStore, h.masterKey, accountID, req.TOTPCode, req.RecoveryCode) {
+	verified, err = verifyTOTPOrRecovery(h.twoFactorStore, h.masterKey, accountID, req.TOTPCode, req.RecoveryCode)
+	if err != nil {
+		return false, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to verify two-factor authentication")
+	}
+	if verified {
 		return true, nil
 	}
 	if req.TOTPCode == "" && req.RecoveryCode == "" {
@@ -905,9 +909,24 @@ func (h *AuthHandler) recoverAccount(r *http.Request, req recoverRequest) (endpo
 	if err != nil {
 		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to read the account")
 	}
-	if !account.Active ||
-		!verifyTOTPOrRecovery(h.twoFactorStore, h.masterKey, account.ID, req.TOTPCode, "") ||
-		!verifyTOTPOrRecovery(h.twoFactorStore, h.masterKey, account.ID, "", req.RecoveryCode) {
+	if !account.Active {
+		return zero, refuse()
+	}
+	// Both factors, and the recovery code is spent only once the authenticator
+	// code has matched. A failure to check either is the server's, not a wrong
+	// code, and is neither refused nor charged to the address.
+	codeMatched, err := verifyTOTPOrRecovery(h.twoFactorStore, h.masterKey, account.ID, req.TOTPCode, "")
+	if err != nil {
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to verify two-factor authentication")
+	}
+	if !codeMatched {
+		return zero, refuse()
+	}
+	recoveryMatched, err := verifyTOTPOrRecovery(h.twoFactorStore, h.masterKey, account.ID, "", req.RecoveryCode)
+	if err != nil {
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to verify two-factor authentication")
+	}
+	if !recoveryMatched {
 		return zero, refuse()
 	}
 

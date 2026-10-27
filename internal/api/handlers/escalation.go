@@ -232,7 +232,11 @@ func (h *GrantHandler) freshSecondFactor(tx *gorm.DB, accountID uint, totpCode, 
 	if strings.TrimSpace(totpCode) == "" && strings.TrimSpace(recoveryCode) == "" {
 		return errFreshCodeRequired
 	}
-	if !verifyTOTPOrRecovery(store, h.masterKey, accountID, totpCode, recoveryCode) {
+	verified, err := verifyTOTPOrRecovery(store, h.masterKey, accountID, totpCode, recoveryCode)
+	if err != nil {
+		return err
+	}
+	if !verified {
 		return errFreshCodeInvalid
 	}
 	return nil

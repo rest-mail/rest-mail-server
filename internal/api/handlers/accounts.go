@@ -392,7 +392,11 @@ func (h *AccountHandler) link(r *http.Request, req linkAccountRequest) (accountR
 	}
 	tf := repositories.NewTwoFactorRepository(h.db)
 	if _, err := tf.GetActive(account.ID); err == nil {
-		if !verifyTOTPOrRecovery(tf, h.masterKey, account.ID, req.TOTPCode, req.RecoveryCode) {
+		verified, err := verifyTOTPOrRecovery(tf, h.masterKey, account.ID, req.TOTPCode, req.RecoveryCode)
+		if err != nil {
+			return accountResponse{}, fmt.Errorf("verify two-factor authentication: %w", err)
+		}
+		if !verified {
 			if req.TOTPCode == "" && req.RecoveryCode == "" {
 				return accountResponse{}, endpoint.Refuse(http.StatusForbidden, "totp_required", "That account has two-factor authentication: send its code too")
 			}
