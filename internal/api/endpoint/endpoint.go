@@ -54,6 +54,7 @@ type Operation struct {
 
 	// Responses overrides individual response bodies when the answer belongs to an upstream
 	// service (for example, a sidecar error beside the API's own binding errors).
+	// Several entries for one status describe its distinct media types.
 	Responses []oapifly.EndpointResponse
 
 	// SuccessStatuses are additional success statuses carrying the same response type.
@@ -366,14 +367,20 @@ func (reg *Registry) record(applied []oapifly.Middleware, op Operation, reqType,
 		responses = append(responses, response)
 	}
 
+	// Replace the automatic description once, retaining its position, then keep
+	// every additional media type declared for that status.
+	overridden := map[int]bool{}
 	for _, override := range op.Responses {
 		replaced := false
-		for i := range responses {
-			if responses[i].Status == override.Status {
-				responses[i] = override
-				replaced = true
-				break
+		if !overridden[override.Status] {
+			for i := range responses {
+				if responses[i].Status == override.Status {
+					responses[i] = override
+					replaced = true
+					break
+				}
 			}
+			overridden[override.Status] = true
 		}
 		if !replaced {
 			responses = append(responses, override)

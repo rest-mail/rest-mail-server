@@ -34,7 +34,7 @@ func TestAdminUpdates_DocumentedMissingExamples(t *testing.T) {
 					In       string `yaml:"in"`
 					Required bool   `yaml:"required"`
 					Examples map[string]struct {
-						Value uint `yaml:"value"`
+						Value any `yaml:"value"`
 					} `yaml:"examples"`
 				} `yaml:"parameters"`
 				RequestBody struct {
@@ -82,8 +82,8 @@ func TestAdminUpdates_DocumentedMissingExamples(t *testing.T) {
 				t.Fatalf("unexpected update operation or parameters: %+v", op)
 			}
 			parameter := op.Parameters[0]
-			missing := parameter.Examples["missing"].Value
-			if parameter.Name != "id" || parameter.In != "path" || !parameter.Required || missing != 2147483647 || parameter.Examples["found"].Value != 1 {
+			missing := contractPathExampleID(t, parameter.Examples["missing"].Value)
+			if parameter.Name != "id" || parameter.In != "path" || !parameter.Required || missing != 2147483647 || contractPathExampleID(t, parameter.Examples["found"].Value) != 1 {
 				t.Fatalf("unexpected ID parameter: %+v", parameter)
 			}
 			bodies := op.RequestBody.Content["application/json"].Examples

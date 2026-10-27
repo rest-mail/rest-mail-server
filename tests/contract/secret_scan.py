@@ -22,7 +22,8 @@ Usage: secret_scan.py <run.har> [--audit-from vertrag.yml]
 
 With --audit-from, the audit log is read from the configuration's endpoint,
 signed in as its auth.login does (the fixture admin).
-Exit 1 with one line per finding; 0 when the run is clean.
+Exit 1 with one line per finding; 0 when the run is clean. Exit 2 if input or
+audit retrieval cannot be verified; an incomplete audit never reports clean.
 """
 
 import argparse
@@ -31,7 +32,7 @@ import json
 import sys
 import urllib.request
 from http.cookies import CookieError, SimpleCookie
-from urllib.parse import unquote, urlsplit, urlunsplit
+from urllib.parse import unquote, urlencode, urlsplit, urlunsplit
 
 # The fields that carry a secret the client sends: passwords (an account's, a
 # relay's), DKIM and certificate private keys, a recovery code.
@@ -304,40 +305,110 @@ def login_secrets(config_path):
     ]
 
 
-def read_audit(config_path):
-    """Every audit entry, newest first, each as its JSON text, read from the
-    vertrag configuration's endpoint as its auth.login signs in."""
+# A contract run must fail rather than declare a truncated audit log clean.
+MAX_AUDIT_PAGES = 1000
+MAX_AUDIT_RESPONSE_BYTES = 16 * 1024 * 1024
+MAX_AUDIT_TOTAL_BYTES = 64 * 1024 * 1024
+
+
+class AuditReadError(Exception):
+    """The audit could not be read completely and safely."""
+
+
+class _NoAuditRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        # urllib otherwise forwards the original Authorization on redirects.
+        # Refuse login redirects too, before trusting a different endpoint.
+        raise AuditReadError("audit redirect refused")
+
+
+def _audit_json(response):
+    raw = response.read(MAX_AUDIT_RESPONSE_BYTES + 1)
+    if len(raw) > MAX_AUDIT_RESPONSE_BYTES:
+        raise AuditReadError("audit response exceeds the safety limit")
+    return json.loads(raw)
+
+
+def read_audit(config_path, known=None):
+    """Read every audit page without redirects. Add this reader's freshly
+    issued credentials to known too: its login is outside the recorded HAR.
+    Fail on incomplete, malformed, cyclic or excessive pagination.
+    """
     import yaml
 
     with open(config_path) as stream:
         config = yaml.safe_load(stream)
     endpoint = config["endpoint"].rstrip("/")
     signin = config["auth"]["login"]
+    opener = urllib.request.build_opener(_NoAuditRedirect())
     login = urllib.request.Request(
         endpoint + signin["path"],
         data=json.dumps(signin["body"]).encode(),
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(login, timeout=30) as response:
-        token = json.load(response)["data"]["access_token"]
-    records, cursor = [], None
-    while True:
-        url = (
-            endpoint
-            + "/api/v1/admin/audit?limit=200"
-            + (f"&before_seq={cursor}" if cursor else "")
-        )
+    with opener.open(login, timeout=30) as response:
+        issued = _audit_json(response)
+        token = issued["data"]["access_token"]
+        if not usable_secret(token) or "\r" in token or "\n" in token:
+            raise AuditReadError("audit login did not issue a usable token")
+        if known is not None:
+            credentials = json_secrets(json.dumps(issued), ISSUED_FIELDS)
+            credentials += list(
+                session_values(
+                    {
+                        "headers": [
+                            {"name": "set-cookie", "value": v}
+                            for v in response.headers.get_all("Set-Cookie", [])
+                        ]
+                    },
+                    "set-cookie",
+                )
+            )
+            known.extend(
+                (field, value, "the audit reader's login")
+                for field, value in credentials
+                if usable_secret(value)
+            )
+    records, cursor, seen = [], None, set()
+    total_bytes = 0
+    for _ in range(MAX_AUDIT_PAGES):
+        query = {"limit": "200"}
+        if cursor is not None:
+            query["before_seq"] = cursor
         request = urllib.request.Request(
-            url, headers={"Authorization": "Bearer " + token}
+            endpoint + "/api/v1/admin/audit?" + urlencode(query),
+            headers={"Authorization": "Bearer " + token},
         )
-        with urllib.request.urlopen(request, timeout=30) as response:
-            page = json.load(response)
-        records += [json.dumps(entry) for entry in page["data"]]
-        pagination = page.get("pagination") or {}
-        if not pagination.get("has_more") or not pagination.get("cursor"):
+        with opener.open(request, timeout=30) as response:
+            page = _audit_json(response)
+        if not isinstance(page, dict) or not isinstance(page.get("data"), list):
+            raise AuditReadError("invalid audit page")
+        entries = page["data"]
+        pagination = page.get("pagination")
+        if (
+            not all(isinstance(entry, dict) for entry in entries)
+            or not isinstance(pagination, dict)
+            or type(pagination.get("has_more")) is not bool
+        ):
+            raise AuditReadError("invalid audit pagination")
+        batch = [json.dumps(entry) for entry in entries]
+        total_bytes += sum(len(record.encode("utf-8")) for record in batch)
+        if total_bytes > MAX_AUDIT_TOTAL_BYTES:
+            raise AuditReadError("audit total exceeds the safety limit")
+        records.extend(batch)
+        if not pagination["has_more"]:
             return records
-        cursor = pagination["cursor"]
+        cursor = pagination.get("cursor")
+        if (
+            not entries
+            or not isinstance(cursor, str)
+            or not cursor.strip()
+            or cursor in seen
+        ):
+            raise AuditReadError("incomplete or cyclic audit pagination")
+        seen.add(cursor)
+    raise AuditReadError("audit page count exceeds the safety limit")
 
 
 def main(argv):
@@ -345,12 +416,21 @@ def main(argv):
     parser.add_argument("har")
     parser.add_argument("--audit-from", metavar="VERTRAG_YML")
     args = parser.parse_args(argv)
-    with open(args.har) as stream:
-        har = json.load(stream)
-    audit = read_audit(args.audit_from) if args.audit_from else []
-    known = login_secrets(args.audit_from) if args.audit_from else []
-    findings = scan(har, audit, known)
-    entries = len(har.get("log", {}).get("entries", []))
+    try:
+        with open(args.har) as stream:
+            har = json.load(stream)
+        known = login_secrets(args.audit_from) if args.audit_from else []
+        audit = read_audit(args.audit_from, known) if args.audit_from else []
+        findings = scan(har, audit, known)
+        entries = len(har.get("log", {}).get("entries", []))
+    except Exception:  # noqa: BLE001 -- CLI boundary must hide untrusted credentials.
+        # HTTP/JSON/YAML errors may contain credentials, URLs or response text.
+        # Never print them or emit a clean verdict for an incomplete scan.
+        print(
+            "secret scan failed: input or audit log could not be verified",
+            file=sys.stderr,
+        )
+        return 2
     for finding in findings:
         print("secret echoed:", finding)
     print(

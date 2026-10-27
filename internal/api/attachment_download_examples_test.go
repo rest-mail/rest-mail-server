@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"mime"
 	"net/http"
 	"net/http/httptest"
@@ -38,10 +39,21 @@ func TestAttachmentDownloadExamples(t *testing.T) {
 			if name == "request_too_large" {
 				req.ContentLength = 9
 			}
+			for header, value := range pair.Request.Header {
+				req.Header.Set(header, fmt.Sprint(value))
+			}
 			rr := httptest.NewRecorder()
 			before := fake.Requests.Load()
 			s.handler.ServeHTTP(rr, req)
-			if rr.Code != pair.Response.Status || rr.Header().Get("Content-Type") != pair.Response.MediaType {
+			// Compare the media type without parameters; a bodyless answer has none to compare.
+			gotType := rr.Header().Get("Content-Type")
+			if parsed, _, err := mime.ParseMediaType(gotType); err == nil {
+				gotType = parsed
+			}
+			if len(pair.Response.Body) == 0 && pair.Response.MediaType == "" {
+				gotType = ""
+			}
+			if rr.Code != pair.Response.Status || gotType != pair.Response.MediaType {
 				t.Fatalf("got %d %s %s, want %d %s", rr.Code, rr.Header().Get("Content-Type"), rr.Body.String(), pair.Response.Status, pair.Response.MediaType)
 			}
 			if pair.Response.Status == 200 {
@@ -65,6 +77,18 @@ func TestAttachmentDownloadExamples(t *testing.T) {
 				}
 				if fake.Requests.Load() <= before {
 					t.Fatal("download did not reach real S3 client")
+				}
+			} else if pair.Response.Status == 206 || pair.Response.Status == 416 {
+				var body string
+				if err := json.Unmarshal(pair.Response.Body, &body); err != nil {
+					t.Fatal(err)
+				}
+				if rr.Body.String() != body {
+					t.Fatalf("got body %q, want %q", rr.Body.String(), body)
+				}
+			} else if pair.Response.Status == 304 || pair.Response.Status == 412 {
+				if rr.Body.Len() != 0 {
+					t.Fatalf("bodyless %d sent %q", rr.Code, rr.Body.String())
 				}
 			} else {
 				assertPublicExampleBody(t, pair.Response.Body, rr.Body.Bytes())

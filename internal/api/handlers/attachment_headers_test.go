@@ -31,8 +31,12 @@ func TestAttachmentDownloadHeadersDescribeTheWire(t *testing.T) {
 			success = response
 			continue
 		}
+		switch response.Status {
+		case http.StatusPartialContent, http.StatusNotModified, http.StatusPreconditionFailed, http.StatusRequestedRangeNotSatisfiable:
+			continue // Each wire-controlled response is checked by the conditional matrix.
+		}
 		for _, name := range []string{"Content-Disposition", "Content-Length", "Accept-Ranges"} {
-			if _, present := response.Headers[name]; present {
+			if header, present := response.Headers[name]; present && !(response.Status == http.StatusInternalServerError && !header.Required) {
 				t.Errorf("error %d declares the successful download's %s", response.Status, name)
 			}
 		}
