@@ -69,6 +69,18 @@ func NewAttachmentHandler(db *gorm.DB, s3 *attachmentstore.S3) *AttachmentHandle
 	return &AttachmentHandler{db: db, s3: s3}
 }
 
+// forRequest gives the handler's SQL work the HTTP request's budget and
+// cancellation without changing the shared handler. The object store already
+// takes the request's context.
+func (h *AttachmentHandler) forRequest(r *http.Request) *AttachmentHandler {
+	if h.db == nil {
+		return h
+	}
+	scoped := *h
+	scoped.db = h.db.WithContext(r.Context())
+	return &scoped
+}
+
 // attachmentPath names an attachment by the path's {id}.
 type attachmentPath struct {
 	ID                uint32 `path:"id" minimum:"1" example:"1"`
@@ -84,6 +96,7 @@ type attachmentPath struct {
 // answered as http.ServeContent answers them.
 // GET /api/v1/attachments/{id}
 func (h *AttachmentHandler) getAttachment(r *http.Request, in attachmentPath) (endpoint.Served, error) {
+	h = h.forRequest(r)
 	claims := middleware.GetClaims(r)
 	if claims == nil {
 		return endpoint.Served{}, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Authentication required")
@@ -245,6 +258,7 @@ func (h *AttachmentHandler) Register(rs endpoint.Routes) {
 // listAttachments returns attachment metadata for a message.
 // GET /api/v1/messages/{id}/attachments
 func (h *AttachmentHandler) listAttachments(r *http.Request, in messagePath) (endpoint.List[MessageAttachment], error) {
+	h = h.forRequest(r)
 	claims := middleware.GetClaims(r)
 	if claims == nil {
 		return endpoint.List[MessageAttachment]{}, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Authentication required")
