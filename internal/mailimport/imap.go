@@ -56,7 +56,7 @@ func IMAP(ctx context.Context, options IMAPOptions, maxBytes int64, visit Visit)
 	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
 	defer stop()
 	c := imapclient.New(conn, nil)
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	if err := c.WaitGreeting(); err != nil {
 		return errors.New("IMAP source greeting failed")
 	}
