@@ -26,7 +26,7 @@ The topology examples send an ordinary download, `Range: bytes=0-0` for a
 single-byte 206, and a range past the end for a plain-text 416. Named path/header
 examples pair those requests with their responses. Content bytes depend on the
 topology's seeded attachment; the selected media types and required headers
-remain checked. Vertrag 0.31.3 keeps optional response headers optional and
+remain checked. Vertrag 0.31.3 and later keep optional response headers optional and
 does not send invented empty conditional headers.
 
 Bodyless 304/412 cannot hold named media-type examples. Their topology
@@ -635,7 +635,7 @@ authorization matrix with them (`TestContractPrincipals`):
 | no credentials | every request without one, and vertrag's `ignored-auth` check |
 
 The examples and coverage run signs in as the admin. The authorization run
-uses vertrag v0.29.0's authorization phase: each operation's `security`
+uses vertrag's authorization phase (v0.29.0 and later): each operation's `security`
 requirements name the capability it needs as OpenAPI 3.1 roles, for example
 `security: [{BearerAuth: [domains:read]}]`. `authorization.py` configures `none`,
 `admin`, `ordinary`, and `app-password` from the fresh E2E fixture. The owned
@@ -647,10 +647,12 @@ are resolved. The provisional admin expectation lists every role in the spec;
 ordinary and app-password list none, since their mail rights cover their own
 mailbox rather than arbitrary example IDs. These flat roles cannot express
 resource ownership or grants. In particular, admin access to other mailboxes
-and out-of-scope 404 versus 403 still need a policy decision. The authorization
-phase uses literal example IDs instead of lifecycle links (vertrag#81), so
-deleted or absent resources, reused refresh tokens and hooks that replace a
-credential also cause failures or unsent cells. This report does not establish
+and out-of-scope 404 versus 403 still need a policy decision. Since vertrag
+0.35.0, a cell whose IDs the description's links supply addresses a resource
+made for it by following those links (vertrag#81); an operation no link leads
+to still sends its example IDs, so absent resources there, reused refresh
+tokens and hooks that replace a credential can still cause failures or unsent
+cells. This report does not establish
 that every operation or principal passes. The existing examples and coverage
 gates keep their configuration and exclusions.
 
