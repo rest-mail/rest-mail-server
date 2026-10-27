@@ -5,11 +5,7 @@
 #   request type does not state; state it in the type (go-oapifly#23), or, for a rule no
 #   schema can state, take the mark off the example.
 # - example-invalid on a response: the example and the response type disagree.
-example-invalid createAPIKey/permissions_missing
-example-invalid createAPIKey/wildcard_capability
 example-invalid createAppPassword/name_control
-example-invalid createAppPassword/name_empty
-example-invalid createAppPassword/name_too_long
 example-invalid protocolSignIn/protocol_missing
 example-invalid restmailDeliver/recipients_missing
 example-invalid sendMessage/from_missing
