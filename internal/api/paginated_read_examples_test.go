@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -14,12 +15,10 @@ import (
 	"strings"
 	"testing"
 
-	oapifly "github.com/antimatter-studios/go-oapifly"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	"github.com/restmail/restmail"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/config"
 )
@@ -85,7 +84,7 @@ func TestPaginatedReadExamples(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

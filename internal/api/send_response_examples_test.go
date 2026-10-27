@@ -2,13 +2,13 @@ package api
 
 import (
 	"encoding/json"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"os"
 	"testing"
 	"time"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
-	"github.com/restmail/restmail"
 	"github.com/restmail/restmail/internal/db/models"
 )
 
@@ -37,7 +37,7 @@ func TestSendMessageResponseExamplesUseProductionRouter(t *testing.T) {
 	if err := f.db.Model(&models.Domain{}).Where("id = ?", sender.DomainID).Updates(map[string]any{"name": "restmail.test", "sending_policy": models.SendingPolicyTransactional}).Error; err != nil {
 		t.Fatal(err)
 	}
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

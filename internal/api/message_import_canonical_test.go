@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,7 +12,6 @@ import (
 	"testing"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
-	"github.com/restmail/restmail"
 	"github.com/restmail/restmail/internal/auth"
 )
 
@@ -102,7 +102,7 @@ func authorizeImportScenario(tc importScenario, f *importFixture, r *http.Reques
 
 func TestMessageImportCanonicalExamples(t *testing.T) {
 	useRealGrants(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

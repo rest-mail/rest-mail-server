@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql/driver"
 	"encoding/json"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -19,7 +20,7 @@ var customFilterMutationPaths = map[string]string{"createCustomFilter": "/api/v1
 
 func TestCustomFilterMutationExamples(t *testing.T) {
 	scenarios := newCustomFilterMutationScenarios(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

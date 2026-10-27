@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql/driver"
 	"encoding/json"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -172,7 +173,7 @@ func testEmailSendNormalized(t *testing.T, s bulkQueueExampleScenario) bulkQueue
 
 func TestTestEmailSendExamples(t *testing.T) {
 	f := newTestEmailSendScenarios(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

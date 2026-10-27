@@ -10,6 +10,7 @@ import (
 	"database/sql/driver"
 	"encoding/pem"
 	"errors"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -19,12 +20,10 @@ import (
 	"testing"
 	"time"
 
-	oapifly "github.com/antimatter-studios/go-oapifly"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	"github.com/restmail/restmail"
 	"github.com/restmail/restmail/internal/api/handlers"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/auth"
@@ -153,7 +152,7 @@ func TestAuthenticatedReadBatchExamples(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

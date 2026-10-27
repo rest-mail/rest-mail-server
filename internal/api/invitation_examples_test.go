@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -20,7 +21,6 @@ import (
 	"time"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
-	"github.com/restmail/restmail"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/db/models"
@@ -430,7 +430,7 @@ func TestInvitationRealRoutesAndRollback(t *testing.T) {
 // random issued token and expiry are normalized, after validating both above.
 func TestInvitationCanonicalExamples(t *testing.T) {
 	useRealGrants(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

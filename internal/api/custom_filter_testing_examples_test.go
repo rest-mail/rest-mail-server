@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -23,7 +24,7 @@ const customFilterTestingPath = "/api/v1/admin/custom-filters/{id}/test"
 
 func TestCustomFilterTestingExamples(t *testing.T) {
 	f, calls := newCustomFilterTestingScenarios(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

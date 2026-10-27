@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -16,7 +17,7 @@ const mailboxRemovalPath = "/api/v1/admin/mailboxes/{id}"
 
 func TestMailboxRemovalExamples(t *testing.T) {
 	f := newMailboxRemovalScenarios(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

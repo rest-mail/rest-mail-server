@@ -2,11 +2,11 @@ package api
 
 import (
 	"bytes"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"os"
 	"testing"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
-	"github.com/restmail/restmail"
 )
 
 // Each cleanup scenario answers as one of deleteDomain's published examples
@@ -61,7 +61,7 @@ func assertDomainCleanupResponse(t *testing.T, f *domainCleanupFixture, status i
 
 func TestDomainCleanupCanonicalExamples(t *testing.T) {
 	useRealGrants(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

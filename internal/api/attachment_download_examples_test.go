@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"mime"
 	"net/http"
 	"net/http/httptest"
@@ -19,7 +20,7 @@ const attachmentDownloadPath = "/api/v1/attachments/{id}"
 
 func TestAttachmentDownloadExamples(t *testing.T) {
 	scenarios, fake := attachmentDownloadScenarios(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

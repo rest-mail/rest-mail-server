@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"errors"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,13 +13,11 @@ import (
 	"testing"
 	"time"
 
-	oapifly "github.com/antimatter-studios/go-oapifly"
 	"github.com/go-chi/chi/v5"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	"github.com/restmail/restmail"
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/handlers"
 	"github.com/restmail/restmail/internal/api/middleware"
@@ -70,7 +69,7 @@ func TestAuthenticatedReadExamplesMatchRegisteredRefusals(t *testing.T) {
 	// The package's ordinary authorization tests stand these DB lookups aside.
 	// Restore the production builders so the503 cases reach the real session cache.
 	useRealGrants(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +113,7 @@ func TestAuthenticatedReadExamplesMatchRegisteredRefusals(t *testing.T) {
 }
 
 func TestCapabilitiesExampleMatchesRegisteredRows(t *testing.T) {
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

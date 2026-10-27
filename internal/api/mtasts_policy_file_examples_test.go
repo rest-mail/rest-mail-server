@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -105,7 +106,7 @@ func TestPolicyFileLookupFailuresAreNotMissingPolicies(t *testing.T) {
 
 func TestMtaStsPolicyFileExamples(t *testing.T) {
 	router := policyFileRouter(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

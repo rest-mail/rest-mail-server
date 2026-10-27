@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -188,7 +189,7 @@ func domainAliasReadURI(path string, pair oapifly.ExamplePair) string {
 func TestDomainAliasReadExamples(t *testing.T) {
 	routers, jwt := domainAliasReadRouters(t)
 	token := mailboxToken(t, jwt)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

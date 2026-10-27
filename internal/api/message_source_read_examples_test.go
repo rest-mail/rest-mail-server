@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -17,7 +18,7 @@ var messageSourceReadPaths = map[string]string{"getMessage": "/api/v1/messages/{
 
 func TestMessageSourceReadExamples(t *testing.T) {
 	scenarios := messageSourceReadScenarios(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

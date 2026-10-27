@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"errors"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -142,7 +143,7 @@ func newDeviceRemovalFixture(t *testing.T) deviceRemovalFixture {
 
 func TestDeviceRemovalExamples(t *testing.T) {
 	f := newDeviceRemovalFixture(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

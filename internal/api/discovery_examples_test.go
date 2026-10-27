@@ -1,15 +1,13 @@
 package api
 
 import (
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"testing"
 	"time"
 
-	oapifly "github.com/antimatter-studios/go-oapifly"
-
-	"github.com/restmail/restmail"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/config"
 )
@@ -18,7 +16,7 @@ import (
 // the shared owner-endpoint budget. Exercise the actual router and limiter,
 // without credentials, sleeping for a refill or replacing the middleware.
 func TestDiscoveryRateLimitExampleMatchesRegisteredResponse(t *testing.T) {
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

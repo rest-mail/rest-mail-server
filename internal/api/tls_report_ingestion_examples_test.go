@@ -8,6 +8,7 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -289,7 +290,7 @@ func assertTLSIngestionSQL(t *testing.T, s bulkQueueExampleScenario, name string
 }
 
 func TestTLSIngestionExamples(t *testing.T) {
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -328,7 +329,7 @@ func TestTLSIngestionExamples(t *testing.T) {
 // RFC 8460 §5.4's binary gzip form, plus the receiver's existing encoded and
 // sniffed forms, travel as actual bytes. Oversize cases inflate past the same cap.
 func TestTLSIngestionGzipTransports(t *testing.T) {
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

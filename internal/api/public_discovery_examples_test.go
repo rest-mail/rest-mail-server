@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -117,7 +118,7 @@ func TestPublicDiscoveryDependencyFailureIsNotNegative(t *testing.T) {
 
 func TestPublicDiscoveryExamples(t *testing.T) {
 	routers := publicDiscoveryRouters(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

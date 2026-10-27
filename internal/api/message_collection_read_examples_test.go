@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -33,7 +34,7 @@ func messageCollectionReadURI(path string, pair oapifly.ExamplePair) string {
 
 func TestMessageCollectionReadExamples(t *testing.T) {
 	scenarios := messageCollectionReadScenarios(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

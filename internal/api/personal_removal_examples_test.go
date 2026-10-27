@@ -1,6 +1,7 @@
 package api
 
 import (
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -17,7 +18,7 @@ var personalRemovalPaths = map[string]string{"deleteContact": "/api/v1/accounts/
 
 func TestPersonalRemovalExamples(t *testing.T) {
 	fixture := newPersonalRemovalScenarios(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

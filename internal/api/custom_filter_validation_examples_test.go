@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/restmail/restmail/internal/examplepairs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -21,7 +22,7 @@ func (c *customFilterValidationCalls) snapshot() []map[string]interface{} {
 
 func TestCustomFilterValidationExamples(t *testing.T) {
 	f, calls := newCustomFilterValidationScenarios(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}
