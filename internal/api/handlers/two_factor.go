@@ -52,6 +52,22 @@ func NewTwoFactorHandler(db *gorm.DB, masterKey string, enabled bool, sessions *
 	return &TwoFactorHandler{db: db, store: store, masterKey: masterKey, enabled: enabled, sessions: sessions}
 }
 
+// forRequest gives the handler's SQL work the HTTP request's budget and
+// cancellation without changing the shared handler. An injected in-memory
+// store is kept; the production repository is rebuilt on the scoped
+// connection, as the enrollment, confirmation and disable transactions are.
+func (h *TwoFactorHandler) forRequest(r *http.Request) *TwoFactorHandler {
+	if h.db == nil {
+		return h
+	}
+	scoped := *h
+	scoped.db = h.db.WithContext(r.Context())
+	if _, ok := h.store.(*repositories.TwoFactorRepository); ok {
+		scoped.store = repositories.NewTwoFactorRepository(scoped.db)
+	}
+	return &scoped
+}
+
 // twoFactorOwner is the account a session's 2FA requests act on: its own, and
 // its address, which labels the authenticator entry. Only a session: a
 // credential sent with HTTP Basic never reaches these routes.
@@ -98,6 +114,7 @@ type twoFactorStatusResponse struct {
 // status reports whether the caller has 2FA active and/or a pending enrollment.
 // GET /api/v1/auth/2fa
 func (h *TwoFactorHandler) status(r *http.Request, _ struct{}) (twoFactorStatusResponse, error) {
+	h = h.forRequest(r)
 	accountID, _, ok := twoFactorOwner(middleware.GetClaims(r))
 	if !ok {
 		return twoFactorStatusResponse{}, errAuthenticationRequired
@@ -129,6 +146,7 @@ type enrollResponse struct {
 // out. Re-enrolling replaces any prior pending enrollment.
 // POST /api/v1/auth/2fa/enroll
 func (h *TwoFactorHandler) enroll(r *http.Request, _ struct{}) (enrollResponse, error) {
+	h = h.forRequest(r)
 	if !h.enabled {
 		return enrollResponse{}, errTwoFactorOff
 	}
@@ -196,6 +214,7 @@ type confirmRequest struct {
 // that sent it is still good (#392).
 // POST /api/v1/auth/2fa/confirm
 func (h *TwoFactorHandler) confirm(r *http.Request, req confirmRequest) (endpoint.Empty, error) {
+	h = h.forRequest(r)
 	if !h.enabled {
 		return endpoint.Empty{}, errTwoFactorOff
 	}
@@ -245,6 +264,7 @@ type disableRequest struct {
 // sent), never 401: the session that sent it is still good (#392).
 // POST /api/v1/auth/2fa/disable
 func (h *TwoFactorHandler) disableOwn(r *http.Request, req disableRequest) (endpoint.Empty, error) {
+	h = h.forRequest(r)
 	accountID, _, ok := twoFactorOwner(middleware.GetClaims(r))
 	if !ok {
 		return endpoint.Empty{}, errAuthenticationRequired
