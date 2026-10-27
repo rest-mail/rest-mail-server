@@ -21,6 +21,15 @@ func NewBanHandler(db *gorm.DB) *BanHandler {
 	return &BanHandler{db: db}
 }
 
+// forRequest gives the handler's SQL work the HTTP request's budget and
+// cancellation without changing the shared handler.
+func (h *BanHandler) forRequest(r *http.Request) *BanHandler {
+	if h.db == nil {
+		return h
+	}
+	return &BanHandler{db: h.db.WithContext(r.Context())}
+}
+
 // listBansRequest filters active bans by default.
 // GET /api/v1/admin/bans?protocol=smtp&active=true&limit=50&offset=0
 type listBansRequest struct {
@@ -31,7 +40,8 @@ type listBansRequest struct {
 	IP       string  `query:"ip"`
 }
 
-func (h *BanHandler) list(_ *http.Request, in listBansRequest) (endpoint.List[Ban], error) {
+func (h *BanHandler) list(r *http.Request, in listBansRequest) (endpoint.List[Ban], error) {
+	h = h.forRequest(r)
 	// Preserve the ban list's default for limits outside 1..200.
 	limit, offset := 50, 0
 	if in.Limit != nil && *in.Limit > 0 && *in.Limit <= 200 {
@@ -133,7 +143,8 @@ type banPath struct {
 	ID uint32 `path:"id" minimum:"1" example:"1"`
 }
 
-func (h *BanHandler) delete(_ *http.Request, in banPath) (endpoint.Empty, error) {
+func (h *BanHandler) delete(r *http.Request, in banPath) (endpoint.Empty, error) {
+	h = h.forRequest(r)
 	id := in.ID
 
 	if err := h.db.Delete(&models.Ban{}, id).Error; err != nil {
@@ -149,7 +160,8 @@ type unbanIPRequest struct {
 	IP string `path:"ip" minLength:"1" message:"IP address required" missing:"IP address required" example:"192.0.2.10"`
 }
 
-func (h *BanHandler) unbanIP(_ *http.Request, in unbanIPRequest) (endpoint.Empty, error) {
+func (h *BanHandler) unbanIP(r *http.Request, in unbanIPRequest) (endpoint.Empty, error) {
+	h = h.forRequest(r)
 	ip := in.IP
 
 	result := h.db.Where("ip = ?", ip).Delete(&models.Ban{})

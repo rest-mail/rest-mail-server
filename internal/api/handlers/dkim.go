@@ -23,6 +23,15 @@ func NewDKIMHandler(db *gorm.DB, masterKey string) *DKIMHandler {
 	return &DKIMHandler{db: db, masterKey: masterKey}
 }
 
+// forRequest gives the handler's SQL work the HTTP request's budget and
+// cancellation without changing the shared handler.
+func (h *DKIMHandler) forRequest(r *http.Request) *DKIMHandler {
+	if h.db == nil {
+		return h
+	}
+	return &DKIMHandler{db: h.db.WithContext(r.Context()), masterKey: h.masterKey}
+}
+
 // dkimEntry contains only public monitoring metadata. Unknown legacy key ages
 // are null; the domain's CreatedAt/UpdatedAt are not key timestamps.
 type dkimEntry = apitypes.DKIMEntry
@@ -120,7 +129,8 @@ func (h *DKIMHandler) setKey(r *http.Request, in setDKIMKeyRequest) (dkimEntry, 
 
 // deleteKey removes the DKIM key for a domain.
 // DELETE /api/v1/admin/dkim/{id}
-func (h *DKIMHandler) deleteKey(_ *http.Request, in domainPath) (endpoint.Empty, error) {
+func (h *DKIMHandler) deleteKey(r *http.Request, in domainPath) (endpoint.Empty, error) {
+	h = h.forRequest(r)
 	var domain models.Domain
 	if err := h.db.First(&domain, in.ID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {

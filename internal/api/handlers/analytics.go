@@ -120,6 +120,7 @@ type seriesSum struct {
 // GetPipelineAnalytics returns the windowed pipeline funnel from pipeline_rollups.
 // GET /api/v1/admin/pipelines/analytics?window=24h  (or ?since=RFC3339)
 func (h *StatsHandler) getPipelineAnalytics(r *http.Request, _ pipelineAnalyticsRequest) (PipelineAnalyticsResponse, error) {
+	h = h.forRequest(r)
 	win := parseAnalyticsWindow(r, time.Now())
 
 	series, err := h.rollupSeries(win.Since)
