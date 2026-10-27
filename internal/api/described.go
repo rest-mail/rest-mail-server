@@ -183,14 +183,22 @@ func describe(registry *endpoint.Registry, version string) *oapifly.Generator {
 }
 
 // exampleRequirements is what an example pair may say proving it needs (#1236): the
-// principal it is sent as, a body the description cannot hold, a limit spent, or a
-// dependency fault. A pair that requires none of these runs as the fixture admin
-// against the seeded data, which is what the live contract run provides.
+// principal it is sent as, a body the description cannot hold, a limit spent, a
+// dependency fault, or state the seeded fixtures do not have (an authenticator, an
+// owner key, a grant in a given mode, a pipeline that discards). A pair that requires
+// none of these runs as the fixture admin against the seeded data, which is what the
+// live contract run provides.
 var exampleRequirements = map[string][]string{
 	"principal": {"anonymous", "without_capability"},
 	"body":      {"over_cap", "malformed"},
 	"limit":     {"rate"},
 	"fault":     {"database", "session_store", "permission_store"},
+	"state": {
+		"active_grant", "calendar_invitation", "discarding_pipeline", "eligible_grant",
+		"enrolled_authenticator", "event_stream", "existing_grant", "existing_link",
+		"full_mailbox", "future_time", "known_password", "own_account", "owner_key",
+		"pending_enrollment", "quarantined_message", "two_factor_off", "two_factor_session",
+	},
 }
 
 // The preview limit applies per IP before binding or running the engine.

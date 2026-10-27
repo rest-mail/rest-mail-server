@@ -107,6 +107,28 @@
         "mediaType": "application/json"
       }
     },
+    "rate_limited": {
+      "summary": "The limit is already spent",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "body": {
+          "password": "the recipient chooses this password",
+          "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "requires": {
         "body": "over_cap"
@@ -144,6 +166,415 @@
           "error": {
             "code": "unavailable",
             "message": "Invitations require authenticator enrollment and server encryption to be enabled"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "accountEvents": {
+    "inaccessible": {
+      "summary": "The caller does not reach the account",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 2
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "summary": "A zero id is refused before the handler",
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "stream": {
+      "summary": "The account's event stream",
+      "description": "The stream stays open; the in-process and browser-session suites read its events.",
+      "requires": {
+        "state": "event_stream"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": "event: ping\ndata: {}\n\n",
+        "mediaType": "text/event-stream"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No credential is sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "activateGrant": {
+    "activated": {
+      "summary": "An eligible grant is switched on for an hour",
+      "requires": {
+        "state": "eligible_grant"
+      },
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "reason": "Rotate the DKIM key",
+          "minutes": 60,
+          "totp_code": "123456"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "grant": {
+              "id": 7,
+              "holder": {
+                "kind": "account",
+                "id": 2
+              },
+              "role": "admin",
+              "role_id": 2,
+              "scope": "domain:example.com",
+              "mode": "eligible",
+              "granted_by": {
+                "kind": "account",
+                "id": 1
+              },
+              "granted_at": "2026-10-20T00:00:00Z",
+              "expires_at": null,
+              "activation": {
+                "id": 3,
+                "activated_at": "2026-10-20T00:00:00Z",
+                "expires_at": "2026-10-20T01:00:00Z",
+                "reason": "Rotate the DKIM key",
+                "seconds_left": 3600
+              }
+            },
+            "capabilities": [],
+            "scoped_capabilities": [
+              {
+                "scope": "domain:example.com",
+                "capability": "domains:read"
+              }
+            ]
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "already_active": {
+      "summary": "The grant is on already",
+      "requires": {
+        "state": "active_grant"
+      },
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "reason": "Rotate the DKIM key",
+          "totp_code": "123456"
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "already_active",
+            "message": "this grant is already switched on"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "body_array": {
+      "summary": "The body is not a JSON object",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_code": {
+      "summary": "The second factor does not match",
+      "requires": {
+        "state": "eligible_grant"
+      },
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "reason": "Rotate the DKIM key",
+          "totp_code": "000000"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "invalid_totp",
+            "message": "Invalid two-factor authentication code"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "summary": "A zero id is refused before the handler",
+      "description": "The JSON body is valid. The real path binder refuses the zero identifier; a body-invalid marker would not describe path binding.",
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "body": {
+          "reason": "Rotate the DKIM key",
+          "totp_code": "123456"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "No such grant of the caller's",
+      "request": {
+        "path": {
+          "id": 2147483647
+        },
+        "body": {
+          "reason": "Rotate the DKIM key",
+          "totp_code": "123456"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Grant not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "The limit is already spent",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No credential is sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
           }
         },
         "mediaType": "application/json"
@@ -1718,6 +2149,177 @@
       }
     }
   },
+  "changeOwnPassword": {
+    "body_array": {
+      "summary": "The body is not a JSON object",
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "changed": {
+      "summary": "The password is changed; sessions end",
+      "requires": {
+        "state": "known_password"
+      },
+      "request": {
+        "body": {
+          "current_password": "the current password",
+          "new_password": "a new password of my own"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "message": "Password changed. Sign in again with the new password."
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "The limit is already spent",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {},
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "same_password": {
+      "summary": "The new password is the current one",
+      "requires": {
+        "state": "known_password"
+      },
+      "request": {
+        "body": {
+          "current_password": "the current password",
+          "new_password": "the current password"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "new_password": "must differ from the current password"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {},
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No credential is sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {},
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "wrong_current": {
+      "summary": "The current password is wrong",
+      "request": {
+        "body": {
+          "current_password": "not the password",
+          "new_password": "a new password of my own"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "invalid_password",
+            "message": "Current password is incorrect"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "checkMailboxAddress": {
     "address_empty": {
       "request": {
@@ -1964,7 +2566,209 @@
       }
     }
   },
+  "confirmTwoFactor": {
+    "already_enabled": {
+      "summary": "The account has an authenticator already",
+      "requires": {
+        "state": "enrolled_authenticator"
+      },
+      "request": {
+        "body": {
+          "totp_code": "123456"
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "conflict",
+            "message": "Two-factor authentication is already enabled"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "body_array": {
+      "summary": "The body is not a JSON object",
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "code_missing": {
+      "summary": "No code is sent",
+      "request": {
+        "body": {},
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "totp_code": "required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "confirmed": {
+      "summary": "The pending authenticator is confirmed",
+      "requires": {
+        "state": "pending_enrollment"
+      },
+      "request": {
+        "body": {
+          "totp_code": "123456"
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_code": {
+      "summary": "The code does not match the pending authenticator",
+      "requires": {
+        "state": "pending_enrollment"
+      },
+      "request": {
+        "body": {
+          "totp_code": "000000"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "invalid_totp",
+            "message": "Invalid two-factor authentication code"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "The limit is already spent",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {},
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {},
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No credential is sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {},
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "createAPIKey": {
+    "body_array": {
+      "summary": "The body is not a JSON object",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "created": {
       "request": {
         "body": {
@@ -2000,6 +2804,65 @@
         }
       }
     },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Invoice robot",
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "The account does not exist or is out of reach",
+      "request": {
+        "path": {
+          "id": 2147483647
+        },
+        "body": {
+          "name": "n8n invoices",
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:admin@restmail.test"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "name_missing": {
       "request": {
         "body": {
@@ -2027,6 +2890,161 @@
           }
         }
       }
+    },
+    "password_only": {
+      "summary": "A session without a second factor",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "n8n invoices",
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:admin@restmail.test"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "two_factor_required",
+            "message": "Sign in with two-factor authentication to create API keys"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "The limit is already spent",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Invoice robot",
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Invoice robot",
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Invoice robot",
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No credential is sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Invoice robot",
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
     }
   },
   "createAccount": {
@@ -2053,6 +3071,41 @@
         }
       }
     },
+    "already_exists": {
+      "summary": "The address is already an account",
+      "request": {
+        "body": {
+          "address": "admin@restmail.test"
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "already_exists",
+            "message": "An account with this address already exists"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "body_array": {
+      "summary": "The body is not a JSON object",
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "created": {
       "request": {
         "body": {
@@ -2071,6 +3124,119 @@
             "is_primary": false
           }
         }
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "body": {
+          "address": "new-account@restmail.test",
+          "display_name": "New Account",
+          "password": "correct-horse-battery"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "outside_domain": {
+      "summary": "The caller cannot create accounts on that domain",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "body": {
+          "address": "chris@other.test"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "You cannot create accounts on other.test"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "body": {
+          "address": "new-account@restmail.test",
+          "display_name": "New Account",
+          "password": "correct-horse-battery"
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "body": {
+          "address": "new-account@restmail.test",
+          "display_name": "New Account",
+          "password": "correct-horse-battery"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No credential is sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "body": {
+          "address": "new-account@restmail.test",
+          "display_name": "New Account",
+          "password": "correct-horse-battery"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },
@@ -2307,6 +3473,26 @@
     }
   },
   "createAppPassword": {
+    "body_array": {
+      "summary": "The body is not a JSON object",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "created": {
       "request": {
         "body": {
@@ -2329,6 +3515,75 @@
         }
       }
     },
+    "credential": {
+      "summary": "A request made with a credential cannot manage credentials",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Thunderbird"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Sign in with your password to manage app passwords"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "iPhone Mail"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "The account does not exist or is out of reach",
+      "request": {
+        "path": {
+          "id": 2147483647
+        },
+        "body": {
+          "name": "Thunderbird"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "name_control": {
       "request": {
         "body": {
@@ -2349,6 +3604,102 @@
             }
           }
         }
+      }
+    },
+    "rate_limited": {
+      "summary": "The limit is already spent",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "iPhone Mail"
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "iPhone Mail"
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "iPhone Mail"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No credential is sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "iPhone Mail"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },
@@ -3812,6 +5163,219 @@
       }
     }
   },
+  "createGrant": {
+    "body_array": {
+      "summary": "The body is not a JSON object",
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "exceeds_held": {
+      "summary": "The granter does not hold the role's capabilities",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "body": {
+          "holder": {
+            "kind": "account",
+            "id": 2
+          },
+          "role": "superadmin",
+          "scope": "*"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "grant_exceeds_held",
+            "message": "you can only grant or remove a role whose capabilities you hold, at a scope within your own"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "exists": {
+      "summary": "The holder already has that grant",
+      "requires": {
+        "state": "existing_grant"
+      },
+      "request": {
+        "body": {
+          "holder": {
+            "kind": "account",
+            "id": 2
+          },
+          "role": "admin",
+          "scope": "domain:example.com",
+          "mode": "eligible"
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "conflict",
+            "message": "the holder already holds this role at this scope"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "granted": {
+      "summary": "An eligible admin grant on one domain",
+      "description": "Changing grants needs a session that signed in with a second factor.",
+      "requires": {
+        "state": "two_factor_session"
+      },
+      "request": {
+        "body": {
+          "holder": {
+            "kind": "account",
+            "id": 2
+          },
+          "role": "admin",
+          "scope": "domain:example.com",
+          "mode": "eligible"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 7,
+            "holder": {
+              "kind": "account",
+              "id": 2
+            },
+            "role": "admin",
+            "role_id": 2,
+            "scope": "domain:example.com",
+            "mode": "eligible",
+            "granted_by": {
+              "kind": "account",
+              "id": 1
+            },
+            "granted_at": "2026-10-20T00:00:00Z",
+            "expires_at": null,
+            "activation": null
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "no_holder": {
+      "summary": "The holder does not exist",
+      "requires": {
+        "state": "two_factor_session"
+      },
+      "request": {
+        "body": {
+          "holder": {
+            "kind": "account",
+            "id": 2147483647
+          },
+          "role": "admin",
+          "scope": "domain:example.com"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "holder": "no such account"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {},
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No credential is sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {},
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "createPipeline": {
     "active_wrong_type": {
       "request": {
@@ -4070,6 +5634,220 @@
             "message": "Missing authorization header"
           }
         }
+      }
+    }
+  },
+  "deactivateGrant": {
+    "csrf_mismatch": {
+      "summary": "A cookie session sends no CSRF header",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "summary": "A zero id is refused before the handler",
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "No such grant of the caller's",
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Grant not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "not_active": {
+      "summary": "Nothing to switch off",
+      "requires": {
+        "state": "eligible_grant"
+      },
+      "request": {
+        "path": {
+          "id": 7
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "not_active",
+            "message": "this grant is not switched on"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "switched_off": {
+      "summary": "The running activation ends",
+      "requires": {
+        "state": "active_grant"
+      },
+      "request": {
+        "path": {
+          "id": 7
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "grant": {
+              "id": 7,
+              "holder": {
+                "kind": "account",
+                "id": 2
+              },
+              "role": "admin",
+              "role_id": 2,
+              "scope": "domain:example.com",
+              "mode": "eligible",
+              "granted_by": {
+                "kind": "account",
+                "id": 1
+              },
+              "granted_at": "2026-10-20T00:00:00Z",
+              "expires_at": null,
+              "activation": null
+            },
+            "capabilities": [],
+            "scoped_capabilities": [
+              {
+                "scope": "domain:example.com",
+                "capability": "domains:read"
+              }
+            ]
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No credential is sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },
@@ -6772,6 +8550,225 @@
       }
     }
   },
+  "deliverMessage": {
+    "body_array": {
+      "summary": "The body is not a JSON object",
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "deferred": {
+      "summary": "The pipeline defers the message",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "body": {
+          "address": "admin@restmail.test",
+          "sender": "sender@example.net",
+          "subject": "Hello",
+          "body_text": "Hello"
+        }
+      },
+      "response": {
+        "status": 451,
+        "body": {
+          "error": {
+            "code": "deferred",
+            "message": "Try again later"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "delivered": {
+      "summary": "Delivered into the mailbox",
+      "request": {
+        "body": {
+          "address": "admin@restmail.test",
+          "sender": "sender@example.net",
+          "subject": "Subject",
+          "body_text": "Hello"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 1,
+            "folder": "INBOX",
+            "message_id": "\u003cmessage@example.net\u003e",
+            "in_reply_to": "",
+            "references": "",
+            "thread_id": "",
+            "sender": "sender@example.net",
+            "sender_name": "Sender",
+            "recipients_to": [
+              "recipient@example.com"
+            ],
+            "recipients_cc": [],
+            "subject": "Subject",
+            "size_bytes": 80,
+            "raw_size": 137,
+            "has_attachments": false,
+            "is_read": false,
+            "is_dsn": false,
+            "is_flagged": false,
+            "is_starred": false,
+            "is_draft": false,
+            "is_deleted": false,
+            "received_at": "2026-10-20T00:00:00Z",
+            "date_header": "2026-10-20T00:00:00Z",
+            "created_at": "2026-10-20T00:00:00Z",
+            "updated_at": "2026-10-20T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "folder_invalid": {
+      "summary": "The folder name is refused",
+      "description": "A name the folder rule refuses is 422 on folder, behind the gateway's own check.",
+      "request": {
+        "body": {
+          "address": "admin@restmail.test",
+          "sender": "sender@example.net",
+          "subject": "Hello",
+          "body_text": "Hello",
+          "folder": " Archive"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "folder": "must not begin or end with a space"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "no_mailbox": {
+      "summary": "No mailbox has that address",
+      "request": {
+        "body": {
+          "address": "nobody@restmail.test",
+          "sender": "sender@example.net",
+          "subject": "Hello",
+          "body_text": "Hello"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "mailbox_not_found",
+            "message": "Mailbox not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "processed": {
+      "summary": "The inbound pipeline quarantines or discards it",
+      "requires": {
+        "state": "discarding_pipeline"
+      },
+      "request": {
+        "body": {
+          "address": "admin@restmail.test",
+          "sender": "sender@example.net",
+          "subject": "Hello",
+          "body_text": "Hello"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "status": "processed"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rejected": {
+      "summary": "The pipeline rejects the message",
+      "requires": {
+        "state": "discarding_pipeline"
+      },
+      "request": {
+        "body": {
+          "address": "admin@restmail.test",
+          "sender": "sender@example.net",
+          "subject": "Hello",
+          "body_text": "Hello"
+        }
+      },
+      "response": {
+        "status": 550,
+        "body": {
+          "error": {
+            "code": "rejected",
+            "message": "Message rejected by policy"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "describeServer": {
     "available": {
       "summary": "Public discovery answers without credentials",
@@ -6819,6 +8816,167 @@
           "error": {
             "code": "rate_limited",
             "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "disableTwoFactor": {
+    "body_array": {
+      "summary": "The body is not a JSON object",
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "code_missing": {
+      "summary": "Neither code is sent",
+      "description": "The handler refuses it by a rule the request type does not state, so the request is not marked invalid.",
+      "request": {
+        "body": {}
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "totp_code": "required unless recovery_code is sent"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "disabled": {
+      "summary": "Two-factor authentication is turned off",
+      "requires": {
+        "state": "enrolled_authenticator"
+      },
+      "request": {
+        "body": {
+          "totp_code": "123456"
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "The limit is already spent",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {},
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {},
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No credential is sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {},
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "wrong_recovery_code": {
+      "summary": "The recovery code is wrong or used",
+      "requires": {
+        "state": "enrolled_authenticator"
+      },
+      "request": {
+        "body": {
+          "recovery_code": "AAAA-BBBB-CCCC"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "invalid_recovery_code",
+            "message": "Invalid or already used recovery code"
           }
         },
         "mediaType": "application/json"
@@ -7356,6 +9514,40 @@
     }
   },
   "enrollTwoFactor": {
+    "already_enabled": {
+      "summary": "The account has an authenticator already",
+      "requires": {
+        "state": "enrolled_authenticator"
+      },
+      "request": {},
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "conflict",
+            "message": "Two-factor authentication is already enabled; disable it first"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "disabled": {
+      "summary": "The server has two-factor authentication off",
+      "requires": {
+        "state": "two_factor_off"
+      },
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Two-factor authentication is disabled on this server"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "example": {
       "summary": "The operation's example",
       "request": {},
@@ -7370,6 +9562,91 @@
             ]
           }
         }
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "The limit is already spent",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {},
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {},
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No credential is sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {},
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },
@@ -7397,6 +9674,52 @@
           "error": {
             "code": "internal_error",
             "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "body_array": {
+      "summary": "The body is not a JSON object",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "discarded": {
+      "summary": "The outbound pipeline discards it",
+      "requires": {
+        "state": "discarding_pipeline"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "from": "admin@restmail.test",
+          "to": [
+            "recipient@example.net"
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "status": "discarded"
           }
         },
         "mediaType": "application/json"
@@ -7470,6 +9793,30 @@
         "mediaType": "application/json"
       }
     },
+    "missing": {
+      "summary": "No such message",
+      "request": {
+        "path": {
+          "id": 2147483647
+        },
+        "body": {
+          "from": "admin@restmail.test",
+          "to": [
+            "recipient@example.net"
+          ]
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "message_not_found",
+            "message": "Message not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "not_authorized": {
       "requires": {
         "principal": "without_capability"
@@ -7493,6 +9840,62 @@
           "error": {
             "code": "forbidden",
             "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "The limit is already spent",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "from": "sender@example.test",
+          "to": [
+            "target@remote.test"
+          ],
+          "body_text": "please review"
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "from": "sender@example.test",
+          "to": [
+            "target@remote.test"
+          ],
+          "body_text": "please review"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
           }
         },
         "mediaType": "application/json"
@@ -12451,6 +14854,67 @@
         }
       }
     },
+    "already_linked": {
+      "summary": "The account is linked already",
+      "requires": {
+        "state": "existing_link"
+      },
+      "request": {
+        "body": {
+          "address": "eve@restmail.test",
+          "password": "supplied-by-contract-hook"
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "already_exists",
+            "message": "This account is already linked"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "body_array": {
+      "summary": "The body is not a JSON object",
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "body": {
+          "address": "eve@restmail.test",
+          "password": "supplied-by-contract-hook"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "linked": {
       "request": {
         "body": {
@@ -12468,6 +14932,114 @@
             "is_primary": false
           }
         }
+      }
+    },
+    "rate_limited": {
+      "summary": "The limit is already spent",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "body": {
+          "address": "eve@restmail.test",
+          "password": "supplied-by-contract-hook"
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "body": {
+          "address": "eve@restmail.test",
+          "password": "supplied-by-contract-hook"
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "body": {
+          "address": "eve@restmail.test",
+          "password": "supplied-by-contract-hook"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No credential is sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "body": {
+          "address": "eve@restmail.test",
+          "password": "supplied-by-contract-hook"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "wrong_password": {
+      "summary": "The password does not prove the account",
+      "description": "A refused proof is 403, never 401: the session that sent it is still good.",
+      "request": {
+        "body": {
+          "address": "eve@restmail.test",
+          "password": "contract-wrong-password"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "invalid_credentials",
+            "message": "Invalid email or password"
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },
@@ -17251,6 +19823,23 @@
     }
   },
   "login": {
+    "body_array": {
+      "summary": "The body is not a JSON object",
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "client_invalid": {
       "request": {
         "body": {
@@ -17273,6 +19862,75 @@
             }
           }
         }
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "body": {
+          "email": "admin@restmail.test",
+          "password": "fixture-password",
+          "client": "native"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "The limit is already spent",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "body": {
+          "email": "admin@restmail.test",
+          "password": "fixture-password",
+          "client": "native"
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "body": {
+          "email": "admin@restmail.test",
+          "password": "fixture-password",
+          "client": "native"
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "signed_in": {
@@ -17319,6 +19977,365 @@
             "message": "Invalid email or password"
           }
         }
+      }
+    }
+  },
+  "logout": {
+    "body_array": {
+      "summary": "The body is not a JSON object",
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "signed_out": {
+      "summary": "The session is revoked and its cookies cleared",
+      "description": "A missing or unknown refresh token still clears the client's state.",
+      "request": {
+        "body": {
+          "refresh_token": "contract-invalid-token"
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    "token_not_string": {
+      "summary": "The refresh token is not a string",
+      "request": {
+        "body": {
+          "refresh_token": 7
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "refresh_token": "must be a string"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "makeGrantEligible": {
+    "already_eligible": {
+      "summary": "The grant is eligible already",
+      "requires": {
+        "state": "eligible_grant"
+      },
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "totp_code": "123456"
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "already_eligible",
+            "message": "this grant is eligible already"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "body_array": {
+      "summary": "The body is not a JSON object",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_code": {
+      "summary": "The second factor does not match",
+      "requires": {
+        "state": "active_grant"
+      },
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "totp_code": "000000"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "invalid_totp",
+            "message": "Invalid two-factor authentication code"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "summary": "A zero id is refused before the handler",
+      "description": "The JSON body is valid. The real path binder refuses the zero identifier; a body-invalid marker would not describe path binding.",
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "body": {
+          "totp_code": "123456"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "No such grant of the caller's",
+      "request": {
+        "path": {
+          "id": 2147483647
+        },
+        "body": {
+          "totp_code": "123456"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Grant not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "now_eligible": {
+      "summary": "An active grant becomes eligible",
+      "requires": {
+        "state": "active_grant"
+      },
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": {
+          "totp_code": "123456"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "grant": {
+              "id": 7,
+              "holder": {
+                "kind": "account",
+                "id": 2
+              },
+              "role": "admin",
+              "role_id": 2,
+              "scope": "domain:example.com",
+              "mode": "eligible",
+              "granted_by": {
+                "kind": "account",
+                "id": 1
+              },
+              "granted_at": "2026-10-20T00:00:00Z",
+              "expires_at": null,
+              "activation": null
+            },
+            "capabilities": [],
+            "scoped_capabilities": [
+              {
+                "scope": "domain:example.com",
+                "capability": "domains:read"
+              }
+            ]
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "The limit is already spent",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No credential is sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },
@@ -17709,6 +20726,467 @@
       }
     }
   },
+  "ownerChallenge": {
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "issued": {
+      "summary": "A challenge to sign",
+      "requires": {
+        "state": "owner_key"
+      },
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "challenge": "c2lnbiB0aGlzIGNoYWxsZW5nZQ",
+            "expires_at": "2026-10-20T00:05:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "no_keys": {
+      "summary": "The server has no owner or status keys",
+      "request": {},
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "no_owner_keys",
+            "message": "this server lists no status keys (RESTMAIL_STATUS_KEYS) and no owner keys (RESTMAIL_OWNER_KEYS)"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "The limit is already spent",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {},
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "ownerStatus": {
+    "body_array": {
+      "summary": "The body is not a JSON object",
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "no_keys": {
+      "summary": "The server has no status or owner keys",
+      "request": {
+        "body": {
+          "challenge": "c2lnbiB0aGlzIGNoYWxsZW5nZQ",
+          "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample status@example",
+          "signature": "c2lnbmF0dXJl"
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "no_status_keys",
+            "message": "this server lists no status keys (RESTMAIL_STATUS_KEYS) and no owner keys (RESTMAIL_OWNER_KEYS)"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "not_status_key": {
+      "summary": "The key is not listed",
+      "requires": {
+        "state": "owner_key"
+      },
+      "request": {
+        "body": {
+          "challenge": "c2lnbiB0aGlzIGNoYWxsZW5nZQ",
+          "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOther other@example",
+          "signature": "c2lnbmF0dXJl"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "not_status_key",
+            "message": "that key is not one of this server's status or owner keys, or the signature does not match"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "The limit is already spent",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {},
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "signature_not_base64": {
+      "summary": "The signature is not base64",
+      "description": "The handler refuses it by a rule the request type does not state, so the request is not marked invalid.",
+      "request": {
+        "body": {
+          "challenge": "c2lnbiB0aGlzIGNoYWxsZW5nZQ",
+          "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample status@example",
+          "signature": "not base64!"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "signature": "must be base64"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "status": {
+      "summary": "The running version, for a status key",
+      "requires": {
+        "state": "owner_key"
+      },
+      "request": {
+        "body": {
+          "challenge": "c2lnbiB0aGlzIGNoYWxsZW5nZQ",
+          "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample status@example",
+          "signature": "c2lnbmF0dXJl"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "version": "0.24.0",
+            "commit": "3350b002",
+            "built_at": "2026-10-20T00:00:00Z",
+            "started_at": "2026-10-20T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No credential is sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {},
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "ownerToken": {
+    "body_array": {
+      "summary": "The body is not a JSON object",
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "minted": {
+      "summary": "A reset token for an owner key",
+      "requires": {
+        "state": "owner_key"
+      },
+      "request": {
+        "body": {
+          "purpose": "reset-admin",
+          "address": "admin@restmail.test",
+          "challenge": "c2lnbiB0aGlzIGNoYWxsZW5nZQ",
+          "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample owner@example",
+          "signature": "c2lnbmF0dXJl"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "token": "example-reset-token",
+            "purpose": "reset-admin",
+            "expires_at": "2026-10-20T00:15:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "no_account": {
+      "summary": "The address is no account",
+      "requires": {
+        "state": "owner_key"
+      },
+      "request": {
+        "body": {
+          "purpose": "reset-admin",
+          "address": "nobody@restmail.test",
+          "challenge": "c2lnbiB0aGlzIGNoYWxsZW5nZQ",
+          "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample owner@example",
+          "signature": "c2lnbmF0dXJl"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "no_such_account",
+            "message": "no such account"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "no_keys": {
+      "summary": "The server has no owner keys",
+      "request": {
+        "body": {
+          "purpose": "reset-admin",
+          "address": "admin@restmail.test",
+          "challenge": "c2lnbiB0aGlzIGNoYWxsZW5nZQ",
+          "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample owner@example",
+          "signature": "c2lnbmF0dXJl"
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "no_owner_keys",
+            "message": "this server has no registered owner keys"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "not_owner": {
+      "summary": "The key is not an owner key",
+      "requires": {
+        "state": "owner_key"
+      },
+      "request": {
+        "body": {
+          "purpose": "reset-admin",
+          "address": "admin@restmail.test",
+          "challenge": "c2lnbiB0aGlzIGNoYWxsZW5nZQ",
+          "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOther other@example",
+          "signature": "c2lnbmF0dXJl"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "not_owner",
+            "message": "that key is not one of this server's owner keys, or the signature does not match"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "purpose_invalid": {
+      "summary": "The purpose is not reset-admin",
+      "description": "The handler refuses it by a rule the request type does not state, so the request is not marked invalid.",
+      "request": {
+        "body": {
+          "purpose": "other",
+          "address": "admin@restmail.test",
+          "challenge": "c2lnbiB0aGlzIGNoYWxsZW5nZQ",
+          "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample owner@example",
+          "signature": "c2lnbmF0dXJl"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "purpose": "must be \"reset-admin\""
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "The limit is already spent",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {},
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No credential is sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {},
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "probeServices": {
     "body_boundary": {
       "summary": "Body boundary",
@@ -17940,6 +21418,48 @@
     }
   },
   "protocolSignIn": {
+    "csrf_mismatch": {
+      "summary": "A cookie session sends no CSRF header",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "body": {
+          "protocol": "imap"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "body": {
+          "protocol": "imap"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "invalid_body": {
       "request": {
         "body": [],
@@ -17975,6 +21495,69 @@
         }
       }
     },
+    "rate_limited": {
+      "summary": "The limit is already spent",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "body": {
+          "protocol": "imap"
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "body": {
+          "protocol": "imap"
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "body": {
+          "protocol": "imap"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "signed_in": {
       "request": {
         "body": {
@@ -17994,6 +21577,27 @@
             "credential_kind": "app_password"
           }
         }
+      }
+    },
+    "unauthenticated": {
+      "summary": "No credential is sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "body": {
+          "protocol": "imap"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },
@@ -18539,7 +22143,190 @@
       }
     }
   },
+  "recoverAccount": {
+    "body_array": {
+      "summary": "The body is not a JSON object",
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "client_invalid": {
+      "summary": "The client is not native",
+      "description": "The handler refuses it by a rule the request type does not state, so the request is not marked invalid.",
+      "request": {
+        "body": {
+          "email": "admin@restmail.test",
+          "recovery_code": "AAAA-BBBB-CCCC",
+          "new_password": "a new password of my own",
+          "client": "desktop"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "client": "must be \"native\" or omitted"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "The limit is already spent",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {},
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "recovered": {
+      "summary": "A recovery code sets a new password and signs in",
+      "requires": {
+        "state": "enrolled_authenticator"
+      },
+      "request": {
+        "body": {
+          "email": "admin@restmail.test",
+          "recovery_code": "AAAA-BBBB-CCCC",
+          "new_password": "a new password of my own",
+          "client": "native"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "expires_in": 900,
+            "user": {
+              "id": 1,
+              "email": "admin@restmail.test",
+              "display_name": "Admin"
+            },
+            "access_token": "example-access-token",
+            "refresh_token": "example-refresh-token",
+            "refresh_expires_in": 604800
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No credential is sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {},
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "refreshToken": {
+    "body_array": {
+      "summary": "The body is not a JSON object",
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "body": {
+          "refresh_token": "contract-invalid-token"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "invalid_token": {
       "requires": {
         "principal": "anonymous"
@@ -18557,6 +22344,27 @@
             "message": "Invalid or expired refresh token"
           }
         }
+      }
+    },
+    "rate_limited": {
+      "summary": "The limit is already spent",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "body": {
+          "refresh_token": "contract-invalid-token"
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "refreshed": {
@@ -18580,6 +22388,51 @@
             "refresh_expires_in": 604800
           }
         }
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "body": {
+          "refresh_token": "contract-invalid-token"
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "token_not_string": {
+      "summary": "The refresh token is not a string",
+      "request": {
+        "body": {
+          "refresh_token": 7
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "refresh_token": "must be a string"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },
@@ -18642,6 +22495,207 @@
             "created_at": "2026-01-01T00:00:00Z"
           }
         }
+      }
+    }
+  },
+  "releaseQuarantine": {
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "mid": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "summary": "A zero id is refused before the handler",
+      "request": {
+        "path": {
+          "id": 0,
+          "mid": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1",
+                "mid": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "No such held message",
+      "request": {
+        "path": {
+          "id": 1,
+          "mid": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Quarantined message not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "The limit is already spent",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "mid": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "read_only": {
+      "summary": "The caller cannot change the mailbox",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "mid": 41
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "released": {
+      "summary": "The held message goes to the inbox",
+      "requires": {
+        "state": "quarantined_message"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "mid": 41
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "message_id": "41",
+            "status": "released"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "mid": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "mid": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No credential is sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "mid": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },
@@ -19378,6 +23432,149 @@
       }
     }
   },
+  "resetAdmin": {
+    "body_array": {
+      "summary": "The body is not a JSON object",
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "client_invalid": {
+      "summary": "The client is not native",
+      "description": "The handler refuses it by a rule the request type does not state, so the request is not marked invalid.",
+      "request": {
+        "body": {
+          "token": "example-reset-token",
+          "password": "a new password of my own",
+          "client": "desktop"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "client": "must be \"native\" or omitted"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "The limit is already spent",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {},
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "reset": {
+      "summary": "A minted reset token sets the password and signs in",
+      "requires": {
+        "state": "owner_key"
+      },
+      "request": {
+        "body": {
+          "token": "example-reset-token",
+          "password": "a new password of my own",
+          "client": "native"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "expires_in": 900,
+            "user": {
+              "id": 1,
+              "email": "admin@restmail.test",
+              "display_name": "Admin"
+            },
+            "access_token": "example-access-token",
+            "refresh_token": "example-refresh-token",
+            "refresh_expires_in": 604800
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No credential is sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {},
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "resetTestData": {
     "admin": {
       "request": {},
@@ -19463,6 +23660,233 @@
             "message": "Missing authorization header"
           }
         }
+      }
+    }
+  },
+  "respondToCalendar": {
+    "accepted": {
+      "summary": "The reply is sent to the organizer",
+      "requires": {
+        "state": "calendar_invitation"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "from": "admin@restmail.test",
+          "response": "ACCEPTED"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "response": "ACCEPTED",
+            "status": "sent"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "body_array": {
+      "summary": "The body is not a JSON object",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "foreign_sender": {
+      "summary": "The caller cannot send as that address",
+      "requires": {
+        "state": "calendar_invitation"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "from": "someone@other.test",
+          "response": "ACCEPTED"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "You are not authorized to send from this address"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "summary": "A zero id is refused before the handler",
+      "description": "The JSON body is valid. The real path binder refuses the zero identifier; a body-invalid marker would not describe path binding.",
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "body": {
+          "from": "admin@restmail.test",
+          "response": "ACCEPTED"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "No such message",
+      "request": {
+        "path": {
+          "id": 2147483647
+        },
+        "body": {
+          "from": "admin@restmail.test",
+          "response": "ACCEPTED"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "message_not_found",
+            "message": "Message not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "The limit is already spent",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No credential is sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },
@@ -19570,6 +23994,49 @@
     }
   },
   "restmailDeliver": {
+    "body_array": {
+      "summary": "The body is not a JSON object",
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "deferred": {
+      "summary": "Storage fails; the sender retries",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "body": {
+          "from": "someone@ext-contract.test",
+          "to": [
+            "eve@restmail.test"
+          ],
+          "subject": "Delivered over RESTMAIL",
+          "body_text": "Hello, Eve."
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "deferred",
+            "message": "Message deferred, retry later"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "delivered": {
       "request": {
         "body": {
@@ -19593,6 +24060,34 @@
             "failed": []
           }
         }
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "body": {
+          "from": "someone@ext-contract.test",
+          "to": [
+            "eve@restmail.test"
+          ],
+          "subject": "Delivered over RESTMAIL",
+          "body_text": "Hello, Eve.",
+          "message_id": "\u003crestmail-delivery@ext-contract.test\u003e",
+          "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "recipients_missing": {
@@ -19619,6 +24114,59 @@
             }
           }
         }
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "body": {
+          "from": "someone@ext-contract.test",
+          "to": [
+            "eve@restmail.test"
+          ],
+          "subject": "Delivered over RESTMAIL",
+          "body_text": "Hello, Eve.",
+          "message_id": "\u003crestmail-delivery@ext-contract.test\u003e",
+          "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated_delivery": {
+      "summary": "The sending server is not authenticated",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "body": {
+          "from": "sender@example.net",
+          "to": [
+            "admin@restmail.test"
+          ],
+          "raw_message": "U3ViamVjdDogSGVsbG8NCg0KSGVsbG8NCg=="
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Delivery not authenticated"
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },
@@ -20439,6 +24987,25 @@
         "mediaType": "application/json"
       }
     },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "body": {}
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "malformed_json": {
       "description": "The wire body is the raw truncated JSON byte {. The production request and Vertrag hook send those exact bytes.",
       "requires": {
@@ -20454,6 +25021,25 @@
           "error": {
             "code": "bad_request",
             "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "The limit is already spent",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "body": {}
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
           }
         },
         "mediaType": "application/json"
@@ -20478,6 +25064,44 @@
         "mediaType": "application/json"
       }
     },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "body": {}
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No credential is sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "body": {}
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "wrong_type": {
       "request": {
         "body": {
@@ -20496,6 +25120,230 @@
                 "subject": "must be a string"
               }
             }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "searchMessages": {
+    "csrf_mismatch": {
+      "summary": "A cookie session sends no CSRF header",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "found": {
+      "summary": "Messages matching the query",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "q": "Subject"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "id": 1,
+              "mailbox_id": 1,
+              "folder": "INBOX",
+              "message_id": "\u003cmessage@example.net\u003e",
+              "in_reply_to": "",
+              "references": "",
+              "thread_id": "",
+              "sender": "sender@example.net",
+              "sender_name": "Sender",
+              "recipients_to": [
+                "recipient@example.com"
+              ],
+              "recipients_cc": [],
+              "subject": "Subject",
+              "size_bytes": 80,
+              "raw_size": 137,
+              "has_attachments": false,
+              "is_read": false,
+              "is_dsn": false,
+              "is_flagged": false,
+              "is_starred": false,
+              "is_draft": false,
+              "is_deleted": false,
+              "received_at": "2026-10-20T00:00:00Z",
+              "date_header": "2026-10-20T00:00:00Z",
+              "created_at": "2026-10-20T00:00:00Z",
+              "updated_at": "2026-10-20T00:00:00Z"
+            }
+          ],
+          "pagination": {
+            "has_more": false
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "summary": "A zero id is refused before the handler",
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "The account does not exist or is out of reach",
+      "request": {
+        "path": {
+          "id": 2147483647
+        },
+        "query": {
+          "q": "Subject"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "The limit is already spent",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No credential is sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
           }
         },
         "mediaType": "application/json"
@@ -20629,6 +25477,27 @@
         "mediaType": "application/json"
       }
     },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "invalid_id": {
       "request": {
         "path": {
@@ -20683,6 +25552,27 @@
           "error": {
             "code": "bad_request",
             "message": "Draft has no recipients"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "The limit is already spent",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
           }
         },
         "mediaType": "application/json"
@@ -20752,9 +25642,99 @@
         },
         "mediaType": "application/json"
       }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No credential is sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
     }
   },
   "sendMessage": {
+    "discarded": {
+      "summary": "The outbound pipeline discards it",
+      "requires": {
+        "state": "discarding_pipeline"
+      },
+      "request": {
+        "body": {
+          "from": "admin@restmail.test",
+          "to": [
+            "recipient@example.net"
+          ],
+          "subject": "Hello",
+          "body_text": "Hello"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "status": "discarded"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "foreign_sender": {
+      "summary": "The caller cannot send as that address",
+      "request": {
+        "body": {
+          "from": "someone@other.test",
+          "to": [
+            "recipient@example.net"
+          ],
+          "subject": "Hello",
+          "body_text": "Hello"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "You are not authorized to send from this address"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "from_missing": {
       "request": {
         "body": {
@@ -20775,6 +25755,178 @@
             "message": "from is required"
           }
         }
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "body": {
+          "from": "admin@restmail.test",
+          "to": [
+            "admin@restmail.test",
+            "someone@imap.restmail.test"
+          ],
+          "subject": "Hello",
+          "body_text": "Sent through the REST API."
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "The limit is already spent",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "body": {
+          "from": "admin@restmail.test",
+          "to": [
+            "admin@restmail.test",
+            "someone@imap.restmail.test"
+          ],
+          "subject": "Hello",
+          "body_text": "Sent through the REST API."
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "body": {
+          "from": "admin@restmail.test",
+          "to": [
+            "admin@restmail.test",
+            "someone@imap.restmail.test"
+          ],
+          "subject": "Hello",
+          "body_text": "Sent through the REST API."
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "scheduled": {
+      "summary": "Held to send at scheduled_at",
+      "requires": {
+        "state": "future_time"
+      },
+      "request": {
+        "body": {
+          "from": "admin@restmail.test",
+          "to": [
+            "recipient@example.net"
+          ],
+          "subject": "Hello",
+          "body_text": "Hello",
+          "scheduled_at": "2026-10-27T00:00:00Z"
+        }
+      },
+      "response": {
+        "status": 202,
+        "body": {
+          "data": {
+            "id": 51,
+            "account_id": 1,
+            "from": "admin@restmail.test",
+            "to": [
+              "recipient@example.net"
+            ],
+            "subject": "Hello",
+            "scheduled_at": "2026-10-27T00:00:00Z",
+            "status": "pending",
+            "attempts": 0,
+            "created_at": "2026-10-20T00:00:00Z",
+            "updated_at": "2026-10-20T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "body": {
+          "from": "admin@restmail.test",
+          "to": [
+            "admin@restmail.test",
+            "someone@imap.restmail.test"
+          ],
+          "subject": "Hello",
+          "body_text": "Sent through the REST API."
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No credential is sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "body": {
+          "from": "admin@restmail.test",
+          "to": [
+            "admin@restmail.test",
+            "someone@imap.restmail.test"
+          ],
+          "subject": "Hello",
+          "body_text": "Sent through the REST API."
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "unsubscribe_not_allowed": {
@@ -23855,6 +29007,190 @@
       }
     }
   },
+  "unlinkAccount": {
+    "csrf_mismatch": {
+      "summary": "A cookie session sends no CSRF header",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "summary": "A zero id is refused before the handler",
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "No link to that account",
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Linked account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "own_account": {
+      "summary": "The caller's own account is not a link",
+      "requires": {
+        "state": "own_account"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "own_account",
+            "message": "You cannot unlink your own account"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No credential is sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unlinked": {
+      "summary": "The link is given up",
+      "requires": {
+        "state": "existing_link"
+      },
+      "request": {
+        "path": {
+          "id": 2
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    }
+  },
   "updateAlias": {
     "csrf_mismatch": {
       "requires": {
@@ -24960,6 +30296,35 @@
         "mediaType": "application/json"
       }
     },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "from": "admin@restmail.test",
+          "to": [
+            "admin@restmail.test"
+          ],
+          "subject": "Draft, edited",
+          "body_text": "Ready to send."
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "invalid_id": {
       "description": "The path ID is invalid. Its empty JSON body remains valid; body-invalid flags do not describe path binding.",
       "request": {
@@ -25026,6 +30391,35 @@
         "mediaType": "application/json"
       }
     },
+    "rate_limited": {
+      "summary": "The limit is already spent",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "from": "admin@restmail.test",
+          "to": [
+            "admin@restmail.test"
+          ],
+          "subject": "Draft, edited",
+          "body_text": "Ready to send."
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "description": "The fixture cap is 512 bytes; the transport sends 513 bytes. Binding and draft side effects are never reached.",
       "requires": {
@@ -25047,9 +30441,139 @@
         },
         "mediaType": "application/json"
       }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "from": "admin@restmail.test",
+          "to": [
+            "admin@restmail.test"
+          ],
+          "subject": "Draft, edited",
+          "body_text": "Ready to send."
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No credential is sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "from": "admin@restmail.test",
+          "to": [
+            "admin@restmail.test"
+          ],
+          "subject": "Draft, edited",
+          "body_text": "Ready to send."
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
     }
   },
   "updateMailbox": {
+    "body_array": {
+      "summary": "The body is not a JSON object",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "csrf_mismatch": {
+      "summary": "A cookie session sends no CSRF header",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "display_name": "Contract Test",
+          "quota_bytes": 1073741824,
+          "active": true
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "csrf_failed",
+            "message": "Missing or invalid CSRF token"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "display_name": "Contract Test",
+          "quota_bytes": 1073741824,
+          "active": true
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "missing": {
       "request": {
         "path": {
@@ -25094,6 +30618,84 @@
         }
       }
     },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "display_name": "Contract Test",
+          "quota_bytes": 1073741824,
+          "active": true
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "display_name": "Contract Test",
+          "quota_bytes": 1073741824,
+          "active": true
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No credential is sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "display_name": "Contract Test",
+          "quota_bytes": 1073741824,
+          "active": true
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "updated": {
       "request": {
         "body": {
@@ -25126,6 +30728,26 @@
     }
   },
   "updateMessage": {
+    "body_array": {
+      "summary": "The body is not a JSON object",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "example": {
       "summary": "The operation's example",
       "request": {
@@ -25136,6 +30758,203 @@
       },
       "response": {
         "status": 200
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "is_read": true,
+          "is_flagged": true
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "summary": "A zero id is refused before the handler",
+      "description": "The JSON body is valid. The real path binder refuses the zero identifier; a body-invalid marker would not describe path binding.",
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "body": {
+          "is_read": true
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "summary": "No such message",
+      "request": {
+        "path": {
+          "id": 2147483647
+        },
+        "body": {
+          "is_read": true
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "message_not_found",
+            "message": "Message not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "The limit is already spent",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "is_read": true,
+          "is_flagged": true
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "read_only": {
+      "summary": "The caller does not reach the message's mailbox",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "is_read": true
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "is_read": true,
+          "is_flagged": true
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "is_read": true,
+          "is_flagged": true
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No credential is sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "is_read": true,
+          "is_flagged": true
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },
