@@ -105,6 +105,43 @@ one set of files becomes both, without the two ever drifting apart.
   turns it into reference pages on rest-mail.com, so the reference is as
   current as the code.
 
+## Publication check, 2026-10-27
+
+Read-only HTTP checks of [the live guide](https://rest-mail.com/email-explained)
+found bundle source commit
+[`48b81639491375056b1ed7efcfad1e479ce66d2a`](https://github.com/rest-mail/rest-mail-server/commit/48b81639491375056b1ed7efcfad1e479ce66d2a).
+All 29 chapter pages were fetched. Their 27 distinct diagram documents use
+same-origin frames with `embed=1` and that source revision, and serve
+`frame-ancestors 'self'`. Every diagram contains Safe's paper, ink and cobalt
+colours and JetBrains Mono. The diagram sources and rendering scripts have no
+changes between that revision and server `55f24354`; later guide text does.
+
+The four redraws are present in the published documents, including both halves
+of open-relay. Their SVG canvas widths and the minimum frame widths calculated
+by the shipped phone code are:
+
+| Diagram | Canvas width | Configured phone minimum |
+|---|---:|---:|
+| `spf` | 918px | 793px |
+| `rest-mail` | 908px | 785px |
+| `queue` | 702px | 607px |
+| `open-relay` | 898px | 776px |
+| `open-relay-cost` | 898px | 776px |
+
+The shipped `Chapter-B54ArTI9.js` calculates those minima from the SVG width
+using `ceil(width × 9.5 / 11)`. `base-FFsFlxY-.css` applies them at viewport
+widths up to 600px inside an `overflow-x: auto` container. The script observes
+overflow and displays “Scroll sideways to see the whole diagram →”. It also
+observes the framed document's body to fit its height.
+
+These checks establish published content and shipped layout code, not a fresh
+browser measurement or touch test. The earlier 390px sideways/downward swipe
+check is recorded in [#824](https://github.com/rest-mail/rest-mail-server/issues/824)
+with [website #31](https://github.com/rest-mail/website/pull/31). The embedding
+and layout decisions above remain dated and provisional. Fresh visual/touch
+acceptance and the owner's assessment remain open under
+[#822](https://github.com/rest-mail/rest-mail-server/issues/822).
+
 ## Leaning
 
 ### Plain Markdown, with a few conventions, not MDX
