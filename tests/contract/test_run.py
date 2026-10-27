@@ -147,7 +147,7 @@ class Summary(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/e2e-suite.yml").read_text()
         self.assertIn("run: chore contract\n", workflow)
         self.assertIn("CONTRACT_ENDPOINT: http://10.99.0.20:8080", workflow)
-        for phase in ("gate", "authorization", "fuzz"):
+        for phase in ("gate", "authorization", "ownership", "fuzz"):
             self.assertIn("tests/contract/run.sh " + phase, chores)
         self.assertIn("secret_scan.py .cache/contract/examples.har", chores)
         self.assertIn("--audit-from .cache/contract/vertrag-run.yml", chores)
@@ -205,7 +205,8 @@ class ContractCommand(unittest.TestCase):
                 "tests/contract/run.sh": 'echo "run:$*" >> "$CALLS"\n'
                 '[ "$CONTRACT_DEFER_SUMMARY" = 1 ] || exit 99\n'
                 'case "$1" in gate) exit "${GATE_EXIT:-0}";; '
-                'authorization) exit "${AUTH_EXIT:-0}";; esac\n',
+                'authorization) exit "${AUTH_EXIT:-0}";; '
+                'ownership) exit "${OWNERSHIP_EXIT:-0}";; esac\n',
             }
             for name, script in scripts.items():
                 path = work / name
@@ -278,14 +279,17 @@ class ContractCommand(unittest.TestCase):
                 "run:gate --tag Domains",
                 "scan",
                 "run:authorization --tag Domains",
-                "summary:tests/contract/summary.py .cache/contract examples coverage authorization",
+                "run:ownership --tag Domains",
+                "summary:tests/contract/summary.py .cache/contract examples coverage authorization ownership",
             ],
         )
 
     def test_secret_scan_is_required_and_authorization_remains_report_only(self):
         for scan, auth, expected in (("1", "0", 1), ("0", "1", 0)):
             with self.subTest(scan=scan, auth=auth):
-                result, _ = self.run_command(SCAN_EXIT=scan, AUTH_EXIT=auth)
+                result, _ = self.run_command(
+                    SCAN_EXIT=scan, AUTH_EXIT=auth, OWNERSHIP_EXIT=auth
+                )
                 self.assertEqual(result.returncode, expected, result.stderr)
 
     def test_fixture_failure_prevents_contract_checks(self):
@@ -296,7 +300,7 @@ class ContractCommand(unittest.TestCase):
             [
                 "pin",
                 "chore:test:contract-fixtures",
-                "summary:tests/contract/summary.py .cache/contract examples coverage authorization",
+                "summary:tests/contract/summary.py .cache/contract examples coverage authorization ownership",
             ],
         )
 
@@ -329,7 +333,7 @@ class ContractCommand(unittest.TestCase):
             calls,
             [
                 "pin",
-                "summary:tests/contract/summary.py .cache/contract examples coverage authorization",
+                "summary:tests/contract/summary.py .cache/contract examples coverage authorization ownership",
             ],
         )
         self.assertNotIn("previous", artifacts["summary.md"])

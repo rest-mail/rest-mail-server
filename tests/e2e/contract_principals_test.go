@@ -44,6 +44,10 @@ type contractPrincipal struct {
 //	app password (Basic)      401           200           403
 //	owned, no password        cannot sign in
 //	no credentials            401           401           401
+//
+// The other account and its app password are a second tenant for the
+// ownership phase (#657): each tenant is sent the other's account id, and
+// neither may reach the other's mailbox.
 func TestContractPrincipals(t *testing.T) {
 	plan, err := fixtureplan.Default()
 	requireNoError(t, err)
@@ -88,24 +92,24 @@ func TestContractPrincipals(t *testing.T) {
 	// narrow, read, write and send on its own mailbox and nothing else.
 	user := newAPIClient()
 	requireNoError(t, loginRetrying(user, contractOrdinaryAddress, accountPassword))
-	resp, err = user.post(fmt.Sprintf("/api/v1/accounts/%d/credentials", ordinary.ID),
-		map[string]string{"name": plan.Principals["app_password"].Name, "password": accountPassword})
-	requireNoError(t, err)
-	requireStatus(t, resp, http.StatusCreated)
-	var created struct {
-		Data struct {
-			Password string `json:"password"`
-		} `json:"data"`
-	}
-	requireNoError(t, decodeJSON(resp, &created))
-	appPassword := created.Data.Password
+	appPassword := mintAppPassword(t, user, ordinary.ID, plan.Principals["app_password"].Name)
+
+	// The second tenant: an account of its own, made like the ordinary one,
+	// with an app password of its own.
+	otherPlan := plan.Principals["other"]
+	other := createMailbox(t, admin, otherPlan.Address, accountPassword, otherPlan.DisplayName)
+	otherUser := newAPIClient()
+	requireNoError(t, loginRetrying(otherUser, otherPlan.Address, accountPassword))
+	otherAppPassword := mintAppPassword(t, otherUser, other.ID, plan.Principals["other_app_password"].Name)
 
 	principals := map[string]contractPrincipal{
-		"admin":        {Address: seedAdminAddress, Password: seedAdminPassword, ID: adminAccount.ID},
-		"ordinary":     {Address: contractOrdinaryAddress, Password: accountPassword, ID: ordinary.ID},
-		"owned":        {Address: contractOwnedAddress, ID: owned.ID},
-		"app_password": {Address: contractOrdinaryAddress, Secret: appPassword, ID: ordinary.ID},
-		"none":         {},
+		"admin":              {Address: seedAdminAddress, Password: seedAdminPassword, ID: adminAccount.ID},
+		"ordinary":           {Address: contractOrdinaryAddress, Password: accountPassword, ID: ordinary.ID},
+		"owned":              {Address: contractOwnedAddress, ID: owned.ID},
+		"app_password":       {Address: contractOrdinaryAddress, Secret: appPassword, ID: ordinary.ID},
+		"other":              {Address: otherPlan.Address, Password: accountPassword, ID: other.ID},
+		"other_app_password": {Address: otherPlan.Address, Secret: otherAppPassword, ID: other.ID},
+		"none":               {},
 	}
 	writeContractPrincipals(t, principals)
 
@@ -126,6 +130,9 @@ func TestContractPrincipals(t *testing.T) {
 		{"ordinary", user.get, adminRoute, http.StatusForbidden},
 		{"ordinary", user.get, folders(ordinary.ID), http.StatusOK},
 		{"ordinary", user.get, folders(owned.ID), http.StatusForbidden},
+		{"ordinary", user.get, folders(other.ID), http.StatusForbidden},
+		{"other", otherUser.get, folders(other.ID), http.StatusOK},
+		{"other", otherUser.get, folders(ordinary.ID), http.StatusForbidden},
 		{"app password", basic.get, adminRoute, http.StatusUnauthorized},
 		{"app password", basic.get, folders(ordinary.ID), http.StatusOK},
 		{"app password", basic.get, folders(owned.ID), http.StatusForbidden},
@@ -151,6 +158,23 @@ func TestContractPrincipals(t *testing.T) {
 	} else {
 		resp.Body.Close()
 	}
+}
+
+// mintAppPassword creates an app password for the account c is signed in to,
+// and returns its secret.
+func mintAppPassword(t *testing.T, c *apiClient, account uint, name string) string {
+	t.Helper()
+	resp, err := c.post(fmt.Sprintf("/api/v1/accounts/%d/credentials", account),
+		map[string]string{"name": name, "password": accountPassword})
+	requireNoError(t, err)
+	requireStatus(t, resp, http.StatusCreated)
+	var created struct {
+		Data struct {
+			Password string `json:"password"`
+		} `json:"data"`
+	}
+	requireNoError(t, decodeJSON(resp, &created))
+	return created.Data.Password
 }
 
 // loginRetrying signs in, waiting out the login rate limit: the stages share

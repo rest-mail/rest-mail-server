@@ -3,7 +3,14 @@
 import argparse
 from pathlib import Path
 
-PHASES = ("examples", "coverage", "authorization", "fuzz", "browser-sessions")
+PHASES = (
+    "examples",
+    "coverage",
+    "authorization",
+    "ownership",
+    "fuzz",
+    "browser-sessions",
+)
 SUFFIXES = (".xml", ".html", ".md", ".har", ".json")
 RUN_FILES = (
     "openapi.json",
@@ -11,6 +18,7 @@ RUN_FILES = (
     "vertrag-examples.yml",
     "vertrag-probes.yml",
     "vertrag-authorization.yml",
+    "vertrag-ownership.yml",
 )
 
 

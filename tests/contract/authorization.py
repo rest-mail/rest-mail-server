@@ -21,14 +21,17 @@ vertrag.yml: vertrag.yml with `principals` added and the surface gate left out
 
 These are provisional role expectations, not a complete model of resource
 scope: ordinary and app-password mail capabilities cover their own mailbox,
-and the admin cannot necessarily reach another mailbox without a grant. The
-phase uses literal example IDs rather than lifecycle links (vertrag#81).
+and the admin cannot necessarily reach another mailbox without a grant. A
+cell whose ids the description's links supply is sent on a resource made for
+it as its owner (vertrag#81); an operation no link leads to still sends its
+example ids.
 Keep this run report-only until these fixture and scope mismatches are resolved.
 The account with no password cannot sign in, so it has no separate credential
 from `none`; there is no agent principal until the model has agents (#341).
 
 Usage: authorization.py <openapi.yaml> <vertrag.yml> <principals.json> <out.yml> <report.xml>
 """
+
 import base64
 import json
 import os
@@ -60,9 +63,16 @@ def sign_in(principal):
     return {
         # Vertrag 0.31 refuses a login body field that is in neither list: the
         # password is redacted, the address and client are shown (vertrag#87).
-        "login": {"path": LOGIN, "body": {
-            "email": principal["address"], "password": principal["password"], "client": "native"},
-            "secrets": ["password"], "public": ["email", "client"]},
+        "login": {
+            "path": LOGIN,
+            "body": {
+                "email": principal["address"],
+                "password": principal["password"],
+                "client": "native",
+            },
+            "secrets": ["password"],
+            "public": ["email", "client"],
+        },
         "header": BEARER,
     }
 
@@ -73,7 +83,7 @@ def main(spec_path, config_path, principals_path, out_path, report_path):
     with open(principals_path) as source:
         fixture = json.load(source)
     app = fixture["app_password"]
-    basic = base64.b64encode(("%s:%s" % (app["address"], app["secret"])).encode()).decode()
+    basic = base64.b64encode(f"{app['address']}:{app['secret']}".encode()).decode()
 
     here = os.path.dirname(os.path.abspath(config_path))
     config["spec"] = os.path.abspath(spec_path)
@@ -85,19 +95,27 @@ def main(spec_path, config_path, principals_path, out_path, report_path):
         {"name": "none"},
         {"name": "admin", "auth": sign_in(fixture["admin"]), "roles": roles(spec_path)},
         {"name": "ordinary", "auth": sign_in(fixture["ordinary"]), "roles": []},
-        {"name": "app-password", "auth": {"header": "Authorization: Basic " + basic}, "roles": []},
+        {
+            "name": "app-password",
+            "auth": {"header": "Authorization: Basic " + basic},
+            "roles": [],
+        },
     ]
     # This generated configuration holds the freshly minted app password.
     # Restrict existing files too, and never copy it into the report artifact.
     descriptor = os.open(out_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(descriptor, "w") as out:
         os.fchmod(out.fileno(), 0o600)
-        out.write("# Written by tests/contract/authorization.py; it holds a credential.\n")
+        out.write(
+            "# Written by tests/contract/authorization.py; it holds a credential.\n"
+        )
         yaml.safe_dump(config, out, sort_keys=False, allow_unicode=True)
     return 0
 
 
 if __name__ == "__main__":
     if len(sys.argv) != 6:
-        sys.exit("usage: authorization.py <spec> <config> <principals> <out.yml> <report.xml>")
+        sys.exit(
+            "usage: authorization.py <spec> <config> <principals> <out.yml> <report.xml>"
+        )
     sys.exit(main(*sys.argv[1:]))

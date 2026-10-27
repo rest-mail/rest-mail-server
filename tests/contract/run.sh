@@ -3,11 +3,13 @@
 # `chore contract`: Vertrag against a running E2E topology, every phase writing
 # JUnit, HTML and Markdown reports to .cache/contract/, and a summary at the end.
 #
-#   tests/contract/run.sh [gate|authorization|fuzz] [selection flags]
+#   tests/contract/run.sh [gate|authorization|ownership|fuzz] [selection flags]
 #
 #   gate           the examples phase, then the coverage phase held to
 #                  tests/contract/coverage-baseline.txt (the default)
 #   authorization  the authorization matrix, a report and not a gate (#376)
+#   ownership      each account tenant sent the other's ids, a report and not
+#                  a gate (#657)
 #   fuzz           values drawn from each schema, a report and not a gate; a
 #                  finding replays with --seed from its log line
 #
@@ -22,7 +24,7 @@ cd "$(dirname "$0")/../.."
 
 phase=gate
 case "${1:-}" in
-gate | authorization | fuzz)
+gate | authorization | ownership | fuzz)
   phase=$1
   shift
   ;;
@@ -43,15 +45,16 @@ mkdir -p "$out" "$logs"
 # live contract proof.
 served="$PWD/$out/openapi.json"
 export CONTRACT_SPEC="$PWD/openapi.yaml"
-names=(authorization)
+names=("$phase")
 reset_run=()
-if [ "$phase" != authorization ]; then
+if [ "$phase" != authorization ] && [ "$phase" != ownership ]; then
   reset_run=(--reset-run)
   names=(fuzz)
-  if [ "$phase" = gate ]; then names=(examples coverage authorization browser-sessions); fi
+  if [ "$phase" = gate ]; then names=(examples coverage authorization ownership browser-sessions); fi
 fi
 # Clear this invocation's reports before dependencies or tools can fail. An
-# authorization-only run keeps the gate's saved inputs, but not an old verdict.
+# authorization or ownership run keeps the gate's saved inputs, but not an old
+# verdict.
 python3 -B tests/contract/report_files.py "${reset_run[@]}" "$out" "${names[@]}"
 # The full command prints once after authorization. Standalone phases summarize
 # only reports from this invocation, never a previous gate or fuzz run.
@@ -68,7 +71,7 @@ PATH="$(dirname "$CONTRACT_VERTRAG"):$PATH"
 export PATH
 "$CONTRACT_VERTRAG" version
 python3 -B -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
-if [ "$phase" != authorization ]; then
+if [ "$phase" != authorization ] && [ "$phase" != ownership ]; then
   python3 -B tests/contract/description.py vertrag.yml "$served"
 fi
 test -s "$served"
@@ -122,6 +125,19 @@ authorization)
     >"$logs/contract-authorization.log" 2>&1 || code=$?
   cat "$logs/contract-authorization.log"
   echo "vertrag authorization exited $code (report only)"
+  exit "$code"
+  ;;
+ownership)
+  # Like authorization, after the gate: each tenant's resources are made again
+  # as their owner before the other tenant is sent their ids.
+  python3 -B tests/contract/ownership.py "$CONTRACT_SPEC" "$out/vertrag-run.yml" \
+    .cache/contract-principals.json "$out/vertrag-ownership.yml" "$out/ownership.xml"
+  python3 -B tests/contract/reports.py "$out/vertrag-ownership.yml" "$out/vertrag-ownership.yml" "$out/ownership" "${narrowed[@]}"
+  code=0
+  "$CONTRACT_VERTRAG" run --config "$out/vertrag-ownership.yml" --sequence --phases ownership "${select[@]}" \
+    >"$logs/contract-ownership.log" 2>&1 || code=$?
+  cat "$logs/contract-ownership.log"
+  echo "vertrag ownership exited $code (report only)"
   exit "$code"
   ;;
 fuzz)

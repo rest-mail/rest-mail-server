@@ -5,6 +5,8 @@
     "ordinary": {"kind": "account", "address": "contract-ordinary@restmail.test", "display_name": "Contract Ordinary", "owner": "admin", "password": true},
     "owned": {"kind": "account", "address": "contract-owned@restmail.test", "display_name": "Contract Owned", "owner": "admin"},
     "app_password": {"kind": "app_password", "account": "ordinary", "name": "contract tests"},
+    "other": {"kind": "account", "address": "contract-other@restmail.test", "display_name": "Contract Other", "owner": "admin", "password": true},
+    "other_app_password": {"kind": "app_password", "account": "other", "name": "contract tests"},
     "none": {"kind": "anonymous"}
   },
   "queue": {
