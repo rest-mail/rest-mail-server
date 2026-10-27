@@ -64,7 +64,8 @@ fi
 CONTRACT_VERTRAG="$(python3 -B scripts/vertrag_pin.py ensure .cache/bin)"
 export CONTRACT_VERTRAG
 export RESTMAIL_VERTRAG_BINARY="$CONTRACT_VERTRAG"
-export PATH="$(dirname "$CONTRACT_VERTRAG"):$PATH"
+PATH="$(dirname "$CONTRACT_VERTRAG"):$PATH"
+export PATH
 "$CONTRACT_VERTRAG" version
 python3 -B -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
 if [ "$phase" != authorization ]; then
@@ -106,6 +107,8 @@ gate)
     python3 -B tests/contract/gate.py "$CONTRACT_SPEC" vertrag.yml "$out/coverage.xml" tests/contract/coverage-baseline.txt
   else
     echo "a narrowed run: the coverage baseline is not applied"
+    # Without the whole-API ratchet, Vertrag's selected probe verdict is final.
+    exit "$code"
   fi
   ;;
 authorization)
