@@ -59,6 +59,7 @@ func (c *domainPolicyWriteConnection) Open(string) (driver.Conn, error)         
 
 var domainPolicyInsertColumns = regexp.MustCompile(`^INSERT INTO "([^"]+)" \(([^)]+)\) VALUES`)
 var domainPolicyUpdateColumns = regexp.MustCompile(`"([^"]+)"=\$(\d+)`)
+var domainPolicyUpdateDomain = regexp.MustCompile(` WHERE domain_id = \$(\d+)`)
 
 func (c *domainPolicyWriteConnection) record(query string, args []driver.NamedValue) error {
 	if c.failWrites {
@@ -77,12 +78,17 @@ func (c *domainPolicyWriteConnection) record(query string, args []driver.NamedVa
 	} else if strings.HasPrefix(query, "UPDATE ") {
 		parts := strings.Split(query, `"`)
 		write.table = parts[1]
-		if !strings.Contains(query, `WHERE "id" = $`) {
+		// Stale-safe updates also bind the domain: WHERE domain_id = $n AND "id" = $m.
+		if !strings.Contains(query, " WHERE ") || !strings.Contains(query, `"id" = $`) {
 			return errors.New("unrestricted policy update")
 		}
 		for _, match := range domainPolicyUpdateColumns.FindAllStringSubmatch(query, -1) {
 			index, _ := strconv.Atoi(match[2])
 			write.fields[match[1]] = args[index-1].Value
+		}
+		if match := domainPolicyUpdateDomain.FindStringSubmatch(query); match != nil {
+			index, _ := strconv.Atoi(match[1])
+			write.fields["domain_id"] = args[index-1].Value
 		}
 	} else {
 		return errors.New("unexpected policy SQL write")
