@@ -213,9 +213,21 @@ func spendChallenge(database *gorm.DB, challenge string, now time.Time) error {
 		UsedAt:    &now,
 	}
 	if err := database.Create(&spent).Error; err != nil {
-		return ErrChallengeInvalid
+		// Only the unique hash refusing a second row means the challenge was
+		// answered before. Any other failure is the database's, and reporting
+		// it as an invalid challenge sent the owner to sign again.
+		if isUniqueViolation(err) {
+			return ErrChallengeInvalid
+		}
+		return fmt.Errorf("record the answered challenge: %w", err)
 	}
 	return nil
+}
+
+// isUniqueViolation reports a unique constraint refusing an insert, as
+// repositories.IsUniqueViolation does: bootstrap stays below the repositories.
+func isUniqueViolation(err error) bool {
+	return errors.Is(err, gorm.ErrDuplicatedKey) || strings.Contains(err.Error(), "SQLSTATE 23505")
 }
 
 // ChallengeKey derives the key owner challenges are signed with from a server
