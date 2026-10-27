@@ -24,7 +24,8 @@ func (h *RestmailHandler) Register(rs endpoint.Routes, deliverBodyLimit endpoint
 		Description: "Server-to-server delivery. Unauthenticated at the HTTP layer: a delivery must come from a " +
 			"trusted peer network or carry a DKIM signature aligned with its From domain, or it is refused 403 " +
 			"unauthorized. The inbound pipeline can refuse it 403 rejected or defer it 503 deferred. When no " +
-			"recipient takes the message the answer is 422 undeliverable.",
+			"recipient takes the message the answer is 422 undeliverable. Failed sender/recipient or inbound-policy " +
+			"lookups and corrupt stored policy defer with 503; recipient lookups finish before delivery side effects.",
 		Status: http.StatusCreated, Errors: []int{http.StatusForbidden, http.StatusServiceUnavailable},
 		Security: oapifly.Public, Middleware: []endpoint.Middleware{deliverBodyLimit}}, h.deliver)
 }

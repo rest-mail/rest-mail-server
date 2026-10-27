@@ -105,7 +105,8 @@ func TestRecipientsEAI(t *testing.T) {
 					}
 				}
 			}
-			mb, _, ok := rest.resolveRecipientMailbox(tc.address)
+			mb, _, resolveErr := rest.resolveRecipientMailbox(t.Context(), tc.address)
+			ok := resolveErr == nil
 			if ok != (tc.wantID != 0) || (ok && mb.ID != tc.wantID) {
 				t.Fatalf("resolve = %d, %v; want %d", mb.ID, ok, tc.wantID)
 			}
@@ -119,7 +120,7 @@ func TestRecipientsEAI(t *testing.T) {
 	if err := tx.Create(&alias).Error; err != nil {
 		t.Fatal(err)
 	}
-	if _, _, ok := rest.resolveRecipientMailbox("mu\u0308nchen+shop@" + unicodeDomain); ok {
+	if _, _, resolveErr := rest.resolveRecipientMailbox(t.Context(), "mu\u0308nchen+shop@"+unicodeDomain); resolveErr == nil {
 		t.Fatal("plus fallback bypassed the explicit alias")
 	}
 

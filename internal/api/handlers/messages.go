@@ -989,7 +989,7 @@ func (h *MessageHandler) RegisterDelivery(rs endpoint.Routes, bodyLimit endpoint
 		OperationID: "deliverMessage", Summary: "Deliver a message into a mailbox (protocol gateways)", Tags: []string{"Messages"},
 		Description: "Machine to machine: no user token. The inbound pipeline decides: 201 with the message made, " +
 			"200 processed when it quarantined or discarded it, 550 rejected, 451 deferred, 422 mailbox_full " +
-			"over quota.",
+			"over quota. A missing mailbox is 404; a failed mailbox lookup is 500, never a missing recipient.",
 		Status: http.StatusCreated, SuccessStatuses: []int{http.StatusOK},
 		Responses: []oapifly.EndpointResponse{
 			{Status: http.StatusCreated, Description: "Delivered; the message made", Type: oapifly.TypeOf[endpoint.Data[Message]]()},
@@ -1015,16 +1015,19 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody)
 	}
 
 	var mailbox models.Mailbox
+	var lookupErr error
 	if req.MailboxID > 0 {
-		if err := h.db.First(&mailbox, req.MailboxID).Error; err != nil {
-			return zero, endpoint.Refuse(http.StatusNotFound, "mailbox_not_found", "Mailbox not found")
-		}
+		lookupErr = h.db.WithContext(r.Context()).First(&mailbox, req.MailboxID).Error
 	} else if req.Address != "" {
-		if err := repositories.FindActiveMailboxByAddress(h.db, req.Address, &mailbox); err != nil {
-			return zero, endpoint.Refuse(http.StatusNotFound, "mailbox_not_found", "Mailbox not found")
-		}
+		lookupErr = repositories.FindActiveMailboxByAddress(h.db.WithContext(r.Context()), req.Address, &mailbox)
 	} else {
 		return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "mailbox_id or address required")
+	}
+	if errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+		return zero, endpoint.Refuse(http.StatusNotFound, "mailbox_not_found", "Mailbox not found")
+	}
+	if lookupErr != nil {
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to look up mailbox")
 	}
 
 	// Delegate to shared local delivery helper (pipeline + quota + attachments + SSE)

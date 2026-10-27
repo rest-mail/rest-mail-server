@@ -82,7 +82,8 @@ func TestLegacyAliasEAIClaims(t *testing.T) {
 				t.Fatalf("unrelated alias bypassed base quota: %+v", result)
 			}
 			rest := NewRestmailHandler(tx, nil, nil, RestmailTarpitConfig{}, RestmailDeliverAuthConfig{})
-			mailbox, deliveredTo, ok := rest.resolveRecipientMailbox(tc.recipient)
+			mailbox, deliveredTo, resolveErr := rest.resolveRecipientMailbox(t.Context(), tc.recipient)
+			ok := resolveErr == nil
 			if ok == tc.wantClaim {
 				t.Fatalf("plus fallback = %v, mailbox %d; alias claim = %v", ok, mailbox.ID, tc.wantClaim)
 			}
@@ -164,7 +165,7 @@ func TestAliasClaimLookupFailureBlocksPlusFallback(t *testing.T) {
 		t.Fatalf("alias lookup failure did not defer: %+v, %v", result, err)
 	}
 	rest := NewRestmailHandler(db, nil, nil, RestmailTarpitConfig{}, RestmailDeliverAuthConfig{})
-	if _, _, ok := rest.resolveRecipientMailbox("user+tag@aliases.test"); ok {
+	if _, _, resolveErr := rest.resolveRecipientMailbox(t.Context(), "user+tag@aliases.test"); resolveErr == nil {
 		t.Fatal("alias query failure allowed plus-address delivery")
 	}
 }
