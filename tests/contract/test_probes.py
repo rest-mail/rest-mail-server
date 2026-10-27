@@ -94,9 +94,9 @@ class ProbeConfig(unittest.TestCase):
         )
         script = (ROOT / "tests/contract/run.sh").read_text()
         examples = script.index("--sequence --phases examples")
-        generated = script.index("python3 tests/contract/probes.py")
+        generated = script.index("python3 -B tests/contract/probes.py")
         coverage = script.index("--sequence --phases coverage")
-        repeated = script.index("python3 tests/contract/repeat_fixtures.py")
+        repeated = script.index("python3 -B tests/contract/repeat_fixtures.py")
         queue = script.index("chore test:contract-fixtures", repeated)
         self.assertLess(examples, repeated)
         self.assertLess(repeated, queue)
@@ -113,7 +113,7 @@ class ProbeConfig(unittest.TestCase):
         command = (
             script[script.rindex("\n", 0, examples) : generated].strip().splitlines()[0]
         )
-        self.assertTrue(command.startswith("vertrag run"), command)
+        self.assertTrue(command.startswith('"$CONTRACT_VERTRAG" run'), command)
         self.assertNotIn("||", command)
         self.assertIn("set -euo pipefail", script)
 

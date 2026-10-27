@@ -181,23 +181,16 @@ jobs:
           VERTRAG_SHA256: a82661d1ca8205f754aca04a05db3b74bb714d0a9ea1121345c8e745fabba3bb
         run: |
           set -euo pipefail
-          tmp="$(mktemp -d)"
-          asset="vertrag-${VERTRAG_VERSION}-linux-x86_64.tar.gz"
-          curl --location --silent --show-error --fail \
-            "https://github.com/antimatter-studios/vertrag/releases/download/v${VERTRAG_VERSION}/${asset}" \
-            -o "$tmp/vertrag.tar.gz"
-          echo "${VERTRAG_SHA256}  $tmp/vertrag.tar.gz" | sha256sum -c -
-          tar -xzf "$tmp/vertrag.tar.gz" -C "$tmp" vertrag
-          sudo install -m 0755 "$tmp/vertrag" /usr/local/bin/vertrag
-          rm -rf "$tmp"
-          vertrag version
+          selected="$(python3 -B scripts/vertrag_pin.py ensure .cache/bin)"
+          echo "$(dirname "$selected")" >> "$GITHUB_PATH"
+          "$selected" version
 
       - name: Registered example-pair boundary checks
         if: inputs.contract-phases == 'gate'
         # About 25 minutes of Vertrag exchanges in one process: the script builds
         # the test binary once and runs the registered tests in parallel shards.
         env:
-          RESTMAIL_VERTRAG_BINARY: /usr/local/bin/vertrag
+          RESTMAIL_VERTRAG_BINARY: ${{ github.workspace }}/.cache/bin/vertrag
         run: tests/contract/example_pairs.sh -run '^(TestPublicJSONExamplesWithVertrag|TestAuthenticatedReadExamplesWithVertrag|TestAuthenticatedReadBatchWithVertrag|TestPaginatedReadExamplesWithVertrag|TestAnalyticsExamplesWithVertrag|TestMozillaExamplesWithVertrag|TestAutodiscoverExamplesWithVertrag|TestDomainPolicyReadExamplesWithVertrag|TestDomainPolicyGetExamplesWithVertrag|TestDomainPolicyWriteExamplesWithVertrag|TestDomainPolicyDeleteExamplesWithVertrag|TestSenderRuleCreateExamplesWithVertrag|TestMtaStsPolicyFileExamplesWithVertrag|TestMailboxLookupExamplesWithVertrag|TestDomainAliasReadExamplesWithVertrag|TestAdminResourceReadExamplesWithVertrag|TestPublicDiscoveryExamplesWithVertrag|TestQueueTraceReadExamplesWithVertrag|TestAccountReadExamplesWithVertrag|TestAccountCredentialListExamplesWithVertrag|TestPersonalDataReadExamplesWithVertrag|TestFolderQuarantineReadExamplesWithVertrag|TestMailResourceReadExamplesWithVertrag|TestMessageCollectionReadExamplesWithVertrag|TestMessageSourceReadExamplesWithVertrag|TestAttachmentDownloadExamplesWithVertrag|TestAdminVerificationExamplesWithVertrag|TestBulkQueueCompleteExamplesWithVertrag|TestQueueEntryActionExamplesWithVertrag|TestAdminResourceDeleteExamplesWithVertrag|TestBanRemovalExamplesWithVertrag|TestScopedAdminRemovalExamplesWithVertrag|TestMailRemovalExamplesWithVertrag|TestPersonalRemovalExamplesWithVertrag|TestDeviceRemovalExamplesWithVertrag|TestCredentialRevocationExamplesWithVertrag|TestSieveMutationExamplesWithVertrag|TestSieveInstallationExamplesWithVertrag|TestVacationMutationExamplesWithVertrag|TestFolderMutationExamplesWithVertrag|TestContactMutationExamplesWithVertrag|TestContactImportSuggestExamplesWithVertrag|TestAliasMutationExamplesWithVertrag|TestCustomFilterMutationExamplesWithVertrag|TestCustomFilterValidationExamplesWithVertrag|TestBanCreationExamplesWithVertrag|TestDomainMutationExamplesWithVertrag|TestMailboxSessionEndingExamplesWithVertrag|TestInvitationExamplesWithVertrag|TestMessageImportExamplesWithVertrag|TestForwardAttachmentsExamplesWithVertrag|TestDomainCleanupExamplesWithVertrag)$' -count=1 -v
 
       - name: Prepare stable contract queue state for fuzz
