@@ -178,7 +178,7 @@ func (h *MTASTSHandler) RegisterPolicyFile(rs endpoint.Routes) {
 // It extracts the domain from the Host header and returns the appropriate
 // text/plain policy file per RFC 8461.
 // GET /.well-known/mta-sts.txt
-func (h *MTASTSHandler) servePolicy(_ *http.Request, in mtaSTSPolicyFileRequest) (endpoint.Document, error) {
+func (h *MTASTSHandler) servePolicy(r *http.Request, in mtaSTSPolicyFileRequest) (endpoint.Document, error) {
 	host := in.Host
 	if name, _, err := net.SplitHostPort(host); err == nil {
 		host = name
@@ -200,7 +200,7 @@ func (h *MTASTSHandler) servePolicy(_ *http.Request, in mtaSTSPolicyFileRequest)
 
 	// Look up the domain
 	var domain models.Domain
-	if err := h.db.Where("name IN ?", names).First(&domain).Error; err != nil {
+	if err := h.db.WithContext(r.Context()).Where("name IN ?", names).First(&domain).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return endpoint.Document{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Domain not found")
 		}
@@ -209,7 +209,7 @@ func (h *MTASTSHandler) servePolicy(_ *http.Request, in mtaSTSPolicyFileRequest)
 
 	// Look up the MTA-STS policy
 	var policy models.MTASTSPolicy
-	if err := h.db.Where("domain_id = ? AND active = ?", domain.ID, true).First(&policy).Error; err != nil {
+	if err := h.db.WithContext(r.Context()).Where("domain_id = ? AND active = ?", domain.ID, true).First(&policy).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return endpoint.Document{}, endpoint.Refuse(http.StatusNotFound, "not_found", "No MTA-STS policy configured")
 		}

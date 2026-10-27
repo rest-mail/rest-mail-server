@@ -28,7 +28,7 @@ func TestPipelineOperations_DocumentedMissingExamples(t *testing.T) {
 			In       string `yaml:"in"`
 			Required bool   `yaml:"required"`
 			Examples map[string]struct {
-				Value uint `yaml:"value"`
+				Value any `yaml:"value"`
 			} `yaml:"examples"`
 		} `yaml:"parameters"`
 		RequestBody struct {
@@ -95,7 +95,7 @@ func TestPipelineOperations_DocumentedMissingExamples(t *testing.T) {
 					t.Fatalf("expected one named ID parameter: %+v", op.Parameters)
 				}
 				p := op.Parameters[0]
-				if p.Name != "id" || p.In != "path" || !p.Required || p.Examples["found"].Value != 1 || p.Examples["missing"].Value != missing || string(pair.Request.Path["id"]) != strconv.FormatUint(uint64(missing), 10) {
+				if p.Name != "id" || p.In != "path" || !p.Required || contractPathExampleID(t, p.Examples["found"].Value) != 1 || contractPathExampleID(t, p.Examples["missing"].Value) != missing || string(pair.Request.Path["id"]) != strconv.FormatUint(uint64(missing), 10) {
 					t.Fatalf("missing path differs: parameter %+v, generated %+v", p, pair.Request.Path)
 				}
 			}

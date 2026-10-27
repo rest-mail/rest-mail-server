@@ -86,7 +86,7 @@ type restmailMailboxQuery struct {
 // checkMailbox verifies a recipient mailbox exists.
 func (h *RestmailHandler) checkMailbox(r *http.Request, in restmailMailboxQuery) (RestmailMailboxCheck, error) {
 	var mailbox models.Mailbox
-	if err := repositories.FindActiveMailboxByAddress(h.db, in.Address, &mailbox); err != nil {
+	if err := repositories.FindActiveMailboxByAddress(h.db.WithContext(r.Context()), in.Address, &mailbox); err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return RestmailMailboxCheck{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to look up mailbox")
 		}
@@ -536,7 +536,23 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 			RawSize:      len(rcptRaw), // exact stored-raw octet count for IMAP/POP3 size reporting
 		}
 
-		if err := h.db.Create(&msg).Error; err != nil {
+		// A recipient is accepted only after its message and both quota
+		// charges commit together. A failed charge must not leave an inbox
+		// copy behind for the peer's retry, and HTTP cancellation must reach
+		// every write and the transaction's commit.
+		if err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
+			if err := tx.Create(&msg).Error; err != nil {
+				return err
+			}
+			if err := tx.Model(&mailbox).Update("quota_used_bytes", gorm.Expr("quota_used_bytes + ?", sizeBytes)).Error; err != nil {
+				return err
+			}
+			return tx.Model(&models.QuotaUsage{}).Where("mailbox_id = ?", mailbox.ID).Updates(map[string]interface{}{
+				"subject_bytes": gorm.Expr("subject_bytes + ?", len(req.Subject)),
+				"body_bytes":    gorm.Expr("body_bytes + ?", len(req.BodyText)+len(req.BodyHTML)),
+				"message_count": gorm.Expr("message_count + 1"),
+			}).Error
+		}); err != nil {
 			failed = append(failed, rcpt)
 			continue
 		}
@@ -547,14 +563,6 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 			mid := msg.ID
 			deliveredTrace.MessageID = &mid
 		}
-
-		// Update quota
-		h.db.Model(&mailbox).Update("quota_used_bytes", gorm.Expr("quota_used_bytes + ?", sizeBytes))
-		h.db.Model(&models.QuotaUsage{}).Where("mailbox_id = ?", mailbox.ID).Updates(map[string]interface{}{
-			"subject_bytes": gorm.Expr("subject_bytes + ?", len(req.Subject)),
-			"body_bytes":    gorm.Expr("body_bytes + ?", len(req.BodyText)+len(req.BodyHTML)),
-			"message_count": gorm.Expr("message_count + 1"),
-		})
 
 		delivered = append(delivered, rcpt)
 	}
