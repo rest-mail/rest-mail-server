@@ -22,12 +22,16 @@ import (
 )
 
 type imapSourceFixture struct {
-	raw, flags, folders string
-	size                *int
-	count               int
-	stall, refuse       bool
-	mu                  sync.Mutex
-	commands            []string
+	raw, flags, folders                    string
+	size                                   *int
+	count                                  int
+	stall, refuse                          bool
+	startTLS, refuseTLS, stallTLS, preauth bool
+	stallHandshake                         bool
+	startTLSSeen                           chan struct{}
+	handshakeSeen                          chan struct{}
+	mu                                     sync.Mutex
+	commands                               []string
 }
 
 func newIMAPFixture(t *testing.T, f *imapSourceFixture) IMAPOptions {
@@ -37,7 +41,13 @@ func newIMAPFixture(t *testing.T, f *imapSourceFixture) IMAPOptions {
 	pool.AddCert(certificate.Certificate())
 	config := certificate.TLS.Clone()
 	certificate.Close()
-	listener, err := tls.Listen("tcp", "127.0.0.1:0", config)
+	var listener net.Listener
+	var err error
+	if f.startTLS {
+		listener, err = net.Listen("tcp", "127.0.0.1:0")
+	} else {
+		listener, err = tls.Listen("tcp", "127.0.0.1:0", config)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +64,15 @@ func newIMAPFixture(t *testing.T, f *imapSourceFixture) IMAPOptions {
 		connections = append(connections, conn)
 		mu.Unlock()
 		defer conn.Close()
-		_, _ = io.WriteString(conn, "* OK [CAPABILITY IMAP4rev1] source\r\n")
+		caps := "IMAP4rev1"
+		if f.startTLS {
+			caps += " STARTTLS LOGINDISABLED"
+		}
+		greeting := "OK"
+		if f.preauth {
+			greeting = "PREAUTH"
+		}
+		_, _ = fmt.Fprintf(conn, "* %s [CAPABILITY %s] source\r\n", greeting, caps)
 		r := bufio.NewReader(conn)
 		for {
 			line, err := r.ReadString('\n')
@@ -70,8 +88,35 @@ func newIMAPFixture(t *testing.T, f *imapSourceFixture) IMAPOptions {
 			f.commands = append(f.commands, command)
 			f.mu.Unlock()
 			switch command {
+			case "STARTTLS":
+				if f.startTLSSeen != nil {
+					close(f.startTLSSeen)
+				}
+				if f.stallTLS {
+					continue
+				}
+				if f.refuseTLS {
+					_, _ = fmt.Fprintf(conn, "%s NO source-password-MUST-NOT-APPEAR\r\n", tag)
+					continue
+				}
+				_, _ = fmt.Fprintf(conn, "%s OK upgrade\r\n", tag)
+				if f.stallHandshake {
+					if _, err := r.Peek(1); err != nil {
+						return
+					}
+					close(f.handshakeSeen)
+					_, _ = io.Copy(io.Discard, r)
+					return
+				}
+				secured := tls.Server(conn, config)
+				if err := secured.Handshake(); err != nil {
+					return
+				}
+				conn = secured
+				r = bufio.NewReader(conn)
+				caps = "IMAP4rev1"
 			case "CAPABILITY":
-				_, _ = fmt.Fprintf(conn, "* CAPABILITY IMAP4rev1\r\n%s OK capability\r\n", tag)
+				_, _ = fmt.Fprintf(conn, "* CAPABILITY %s\r\n%s OK capability\r\n", caps, tag)
 			case "LOGIN":
 				if f.refuse {
 					_, _ = fmt.Fprintf(conn, "%s NO source-password-MUST-NOT-APPEAR\r\n", tag)
@@ -120,7 +165,7 @@ func newIMAPFixture(t *testing.T, f *imapSourceFixture) IMAPOptions {
 			t.Error("IMAP source fixture did not stop")
 		}
 	})
-	return IMAPOptions{Address: listener.Addr().String(), Username: "source-user", Password: "source-password-MUST-NOT-APPEAR", TLSConfig: &tls.Config{RootCAs: pool}}
+	return IMAPOptions{Address: listener.Addr().String(), Username: "source-user", Password: "source-password-MUST-NOT-APPEAR", TLSConfig: &tls.Config{RootCAs: pool}, StartTLS: f.startTLS}
 }
 
 func TestIMAPPreservesReadOnlySource(t *testing.T) {
