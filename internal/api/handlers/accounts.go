@@ -81,6 +81,8 @@ func (h *AccountHandler) RegisterLinks(rs endpoint.Routes, checks SessionRouteCh
 			checks.Audit("accounts.link", middleware.AuditBodyFields("address"))}}, h.link)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/accounts/{id}",
 		OperationID: "unlinkAccount", Summary: "Give up access to an account", Tags: tags,
+		Description: "Missing links retain 404; account lookup and grant-removal failures return 500. " +
+			"The lookup and removal transaction follow request cancellation.",
 		Status: http.StatusNoContent, Errors: []int{http.StatusNotFound, http.StatusConflict},
 		Middleware: []endpoint.Middleware{checks.Audit("accounts.unlink")}}, h.unlink)
 }
@@ -440,11 +442,14 @@ func (h *AccountHandler) unlink(r *http.Request, in accountPath) (endpoint.Empty
 	}
 	errLinkNotFound := endpoint.Refuse(http.StatusNotFound, "not_found", "Linked account not found")
 	var account models.Mailbox
-	if err := h.db.First(&account, in.ID).Error; err != nil {
-		return endpoint.Empty{}, errLinkNotFound
+	if err := h.db.WithContext(r.Context()).First(&account, in.ID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return endpoint.Empty{}, errLinkNotFound
+		}
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to look up linked account")
 	}
 	errNoGrant := errors.New("no grant")
-	err := h.db.Transaction(func(tx *gorm.DB) error {
+	err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
 		if err := grants.Lock(tx); err != nil {
 			return err
 		}

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -259,7 +260,8 @@ func (h *EventHandler) Register(rs endpoint.Routes) {
 			"or folder_update, each an id, the event's name and its JSON data. A " +
 			"Last-Event-ID header asks for the events after it that the server still holds. The session is checked when " +
 			"the stream opens, and again before every event and keepalive: once the account's sessions end, the " +
-			"stream ends without sending anything more.",
+			"stream ends without sending anything more. Access lookup failures return 500 before a stream opens; " +
+			"missing or inaccessible accounts retain 403.",
 		MediaType: "text/event-stream",
 		Errors:    []int{http.StatusForbidden, http.StatusServiceUnavailable},
 		Security:  handlerChecked(models.CapMailRead, "CookieAuth", "BearerAuth")}, h.events)
@@ -273,9 +275,12 @@ func (h *EventHandler) events(r *http.Request, in accountPath) (endpoint.Stream,
 	}
 
 	// The mailbox: one the caller may read.
-	mailboxID, err := resolveAccountMailbox(h.db, uint(in.ID), claims, models.CapMailRead)
-	if err != nil {
+	mailboxID, err := resolveAccountMailbox(h.db.WithContext(r.Context()), uint(in.ID), claims, models.CapMailRead)
+	if errors.Is(err, errNoAccess) {
 		return endpoint.Stream{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "Access denied")
+	}
+	if err != nil {
+		return endpoint.Stream{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to check account access")
 	}
 
 	// Per-account concurrency cap (#204): bound the number of simultaneous SSE streams for

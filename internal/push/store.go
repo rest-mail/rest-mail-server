@@ -1,6 +1,7 @@
 package push
 
 import (
+	"context"
 	"errors"
 	"strconv"
 	"time"
@@ -49,6 +50,12 @@ type Store struct {
 
 // NewStore is the device store over db.
 func NewStore(db *gorm.DB) *Store { return &Store{db: db} }
+
+// WithContext returns a request-scoped store. It leaves the shared store and
+// background push work unchanged; transactions inherit this context as well.
+func (s *Store) WithContext(ctx context.Context) *Store {
+	return &Store{db: s.db.WithContext(ctx)}
+}
 
 // DeviceID is a device's id as the API and the push payload give it: an
 // opaque string.
