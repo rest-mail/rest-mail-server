@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -68,9 +69,9 @@ func requestDomain(r *http.Request, email string) (string, bool) {
 }
 
 // hostedDomain reports whether REST Mail hosts the active domain name.
-func (h *AutoconfigHandler) hostedDomain(name string) (bool, error) {
+func (h *AutoconfigHandler) hostedDomain(ctx context.Context, name string) (bool, error) {
 	var domain models.Domain
-	err := h.db.Where("name = ? AND active = ?", name, true).First(&domain).Error
+	err := h.db.WithContext(ctx).Where("name = ? AND active = ?", name, true).First(&domain).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return false, nil
 	}
@@ -272,7 +273,7 @@ func (h *AutoconfigHandler) mozillaAutoconfig(r *http.Request, in autoconfigRequ
 	if h.mailHost == "" {
 		return endpoint.Document{}, endpoint.RefuseText(http.StatusServiceUnavailable, "mail host not configured")
 	}
-	hosted, err := h.hostedDomain(domainName)
+	hosted, err := h.hostedDomain(r.Context(), domainName)
 	if err != nil {
 		return endpoint.Document{}, err
 	}
@@ -320,7 +321,7 @@ func (h *AutoconfigHandler) microsoftAutodiscover(r *http.Request, in autodiscov
 	if h.mailHost == "" {
 		return endpoint.Document{}, endpoint.RefuseText(http.StatusServiceUnavailable, "mail host not configured")
 	}
-	hosted, err := h.hostedDomain(domainName)
+	hosted, err := h.hostedDomain(r.Context(), domainName)
 	if err != nil {
 		return endpoint.Document{}, err
 	}

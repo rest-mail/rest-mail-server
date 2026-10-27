@@ -45,7 +45,7 @@ func (h *HealthHandler) health(r *http.Request, _ struct{}) (Health, error) {
 	if err != nil {
 		return Health{}, endpoint.Refuse(http.StatusServiceUnavailable, "unhealthy", "Database connection unavailable")
 	}
-	if err := sqlDB.Ping(); err != nil {
+	if err := sqlDB.PingContext(r.Context()); err != nil {
 		return Health{}, endpoint.Refuse(http.StatusServiceUnavailable, "unhealthy", "Database ping failed")
 	}
 
