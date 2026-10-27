@@ -59,6 +59,7 @@ type escalationResponse struct {
 // running now, so a client can offer to switch an eligible one on.
 // GET /api/v1/admin/grants/mine
 func (h *GrantHandler) mine(r *http.Request, _ struct{}) ([]grantResponse, error) {
+	h = h.forRequest(r)
 	claims := middleware.GetClaims(r)
 	now := time.Now()
 	// Activations that ran out are recorded when noticed: here as well as by
@@ -93,6 +94,7 @@ type activateRequest struct {
 // activate switches one of the caller's eligible grants on.
 // POST /api/v1/admin/grants/{id}/activate {"reason":"…","minutes":60,"totp_code":"123456"}
 func (h *GrantHandler) activate(r *http.Request, in activateGrantRequest) (escalationResponse, error) {
+	h = h.forRequest(r)
 	claims := middleware.GetClaims(r)
 	req := in.Body
 	problems := map[string]string{}
@@ -141,6 +143,7 @@ func (h *GrantHandler) activate(r *http.Request, in activateGrantRequest) (escal
 // runs out. It needs no second factor: it only takes access away.
 // POST /api/v1/admin/grants/{id}/deactivate
 func (h *GrantHandler) deactivate(r *http.Request, in grantPath) (escalationResponse, error) {
+	h = h.forRequest(r)
 	claims := middleware.GetClaims(r)
 	var g models.Grant
 	err := h.db.Transaction(func(tx *gorm.DB) error {
@@ -173,6 +176,7 @@ type secondFactorRequest struct {
 // switch it on again.
 // POST /api/v1/admin/grants/{id}/make-eligible {"totp_code":"123456"}
 func (h *GrantHandler) makeEligible(r *http.Request, in eligibleGrantRequest) (escalationResponse, error) {
+	h = h.forRequest(r)
 	claims := middleware.GetClaims(r)
 	req := in.Body
 	var g models.Grant
