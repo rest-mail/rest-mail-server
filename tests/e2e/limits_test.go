@@ -65,7 +65,8 @@ const (
 	ownerThrottleGroup  = "rate_limited: too many requests to the owner endpoints' throttle"
 	tlsrptThrottleGroup = "rate_limited: too many reports from one address"
 	pipelineTestGroup   = "rate_limited: pipeline preview limit exceeded"
-	basicRefusalGroup   = "rate_limited: refused HTTP Basic credentials, throttled at login's rate"
+	basicRefusalGroup   = "rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate"
+	apiKeyRefusalGroup  = "rate_limited: refused API keys, throttled at login's rate"
 	// handlerLimitGroup is the bare status text: what a route says when it
 	// lists 429 among its errors. The limit is its handler's (handlerLimits),
 	// or else the refused API keys' throttle in front of the admin routes.
@@ -74,8 +75,7 @@ const (
 
 // handlerLimits are the operations whose handler answers 429 itself, and the
 // limit each spends: the account's send rate (#184), and the address's
-// recovery failures (#124). Every other operation that declares the bare 429
-// gets it from the refused API keys' throttle (#1269).
+// recovery failures (#124).
 var handlerLimits = map[string]string{
 	"POST /api/v1/messages/send":            "sends",
 	"POST /api/v1/messages/draft/{id}/send": "sends",
@@ -110,7 +110,7 @@ type limitsRun struct {
 	aAddr, bAddr   string
 	limits         map[string][]limitsOperation // 429 description → operations
 	capped         []limitsOperation            // operations that declare a 413
-	apiKeyLimited  []limitsOperation            // the bare 429s of the refused API keys' throttle
+	apiKeyLimited  []limitsOperation            // the operations behind the refused API keys' throttle
 	sendsRetryFrom time.Time                    // when the send limit may be spent again
 }
 
@@ -164,16 +164,18 @@ func sortOperations(ops []limitsOperation) {
 // declared places every declared 429 in a limit the suite spends.
 func (l *limitsRun) declared(t *testing.T) {
 	known := map[string]bool{authThrottleShared: true, authThrottleGrants: true, ownerThrottleGroup: true,
-		tlsrptThrottleGroup: true, pipelineTestGroup: true, basicRefusalGroup: true, handlerLimitGroup: true}
+		tlsrptThrottleGroup: true, pipelineTestGroup: true, basicRefusalGroup: true, apiKeyRefusalGroup: true,
+		handlerLimitGroup: true}
 	for description, ops := range l.limits {
 		if !known[description] {
 			t.Errorf("%d operations declare a 429 the limits suite does not spend (%q), e.g. %s: add the limit to tests/e2e/limits_test.go",
 				len(ops), description, ops[0])
 		}
 	}
+	l.apiKeyLimited = l.limits[apiKeyRefusalGroup]
 	for _, op := range l.limits[handlerLimitGroup] {
 		if handlerLimits[op.String()] == "" {
-			l.apiKeyLimited = append(l.apiKeyLimited, op)
+			t.Errorf("%s declares the bare 429, and no handler of its limits it: describe the limit where it is applied", op)
 		}
 	}
 	if len(l.limits[authThrottleShared]) == 0 || len(l.limits[basicRefusalGroup]) == 0 {
@@ -436,9 +438,9 @@ func (l *limitsRun) pipelineTestThrottle(t *testing.T) {
 	l.requireNotLimited(t, "a preview after Retry-After", spend())
 }
 
-// apiKeyRefusals spends the refused API keys of this IP, and checks the
-// operations whose bare 429 is that throttle's. HTTP Basic refusals and
-// sessions keep their own buckets.
+// apiKeyRefusals spends the refused API keys of this IP, and checks every
+// operation behind that throttle (#1269). HTTP Basic refusals and sessions keep
+// their own buckets.
 func (l *limitsRun) apiKeyRefusals(t *testing.T) {
 	withKey := func(op limitsOperation) *http.Response {
 		return l.call(t, &apiClient{token: refusedAPIKey}, op, map[string]any{})

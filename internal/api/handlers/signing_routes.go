@@ -24,11 +24,11 @@ func (h *DKIMHandler) Register(rs endpoint.Routes, checks DKIMRouteChecks) {
 		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsRead)}}, h.getRotation)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPut, Path: "/api/v1/admin/dkim/{id}/rotation",
 		OperationID: "setDKIMRotation", Summary: "Set a domain's DKIM rotation interval", Tags: tags,
-		Errors:     []int{http.StatusNotFound, http.StatusTooManyRequests},
+		Errors:     []int{http.StatusNotFound},
 		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsWrite)}}, h.setRotation)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPut, Path: "/api/v1/admin/dkim/{id}",
 		OperationID: "setDKIMKey", Summary: "Set or replace DKIM key for a domain", Tags: tags,
-		Errors:     []int{http.StatusNotFound, http.StatusTooManyRequests},
+		Errors:     []int{http.StatusNotFound},
 		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsWrite)}}, h.setKey)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/admin/dkim/{id}",
 		OperationID: "deleteDKIMKey", Summary: "Delete DKIM key for a domain", Tags: tags, Errors: missing, Status: http.StatusNoContent,
@@ -49,7 +49,7 @@ func (h *CertificateHandler) Register(rs endpoint.Routes, checks CertificateRout
 		OperationID: "getCertificate", Summary: "Get certificate details (includes cert_pem)", Tags: tags, Errors: missing,
 		Middleware: []endpoint.Middleware{checks.At(middleware.CapDomainsRead)}}, h.getCertificate)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/certificates",
-		OperationID: "createCertificate", Summary: "Upload a new TLS certificate", Tags: tags, Errors: []int{http.StatusNotFound, http.StatusTooManyRequests}, Status: http.StatusCreated,
+		OperationID: "createCertificate", Summary: "Upload a new TLS certificate", Tags: tags, Errors: []int{http.StatusNotFound}, Status: http.StatusCreated,
 		Middleware: []endpoint.Middleware{checks.At(middleware.CapDomainsWrite)}}, h.createCertificate)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/admin/certificates/{id}",
 		OperationID: "deleteCertificate", Summary: "Delete a certificate", Tags: tags, Errors: missing, Status: http.StatusNoContent,

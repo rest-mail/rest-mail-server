@@ -744,6 +744,32 @@
         }
       }
     },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "pattern": "@partner.example.com",
+          "reason": "A trusted partner"
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "description": "The published JSON body exceeds the eight-byte fixture cap; the production transport limiter refuses it before insertion.",
@@ -982,6 +1008,32 @@
             "message": "Request body failed validation"
           }
         }
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "pattern": "spam@spammer.example.com",
+          "reason": "Sends spam"
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "request_too_large": {
@@ -1444,6 +1496,28 @@
         "mediaType": "application/json"
       }
     },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "requires": {
         "body": "over_cap"
@@ -1607,6 +1681,33 @@
         "mediaType": "application/json"
       }
     },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "body": {
+          "filter": {
+            "status": "deferred",
+            "domain": "example.test",
+            "sender": "sender%_\\",
+            "recipient": "recipient%_\\"
+          }
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "requires": {
         "body": "over_cap"
@@ -1764,6 +1865,33 @@
         "mediaType": "application/json"
       }
     },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "body": {
+          "filter": {
+            "status": "deferred",
+            "domain": "example.test",
+            "sender": "sender%_\\",
+            "recipient": "recipient%_\\"
+          }
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "requires": {
         "body": "over_cap"
@@ -1916,6 +2044,33 @@
                 "ids": "must be an array"
               }
             }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "body": {
+          "filter": {
+            "status": "deferred",
+            "domain": "example.test",
+            "sender": "sender%_\\",
+            "recipient": "recipient%_\\"
+          }
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
           }
         },
         "mediaType": "application/json"
@@ -2493,6 +2648,29 @@
           "error": {
             "code": "forbidden",
             "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "sid": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
           }
         },
         "mediaType": "application/json"
@@ -3165,6 +3343,30 @@
           "error": {
             "code": "forbidden",
             "message": "You cannot create accounts on other.test"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "body": {
+          "address": "new-account@restmail.test",
+          "display_name": "New Account",
+          "password": "correct-horse-battery"
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
           }
         },
         "mediaType": "application/json"
@@ -5324,6 +5526,33 @@
         "mediaType": "application/json"
       }
     },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "body": {
+          "holder": {
+            "kind": "account",
+            "id": 2
+          },
+          "role": "superadmin",
+          "scope": "*"
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "requires": {
@@ -5743,6 +5972,28 @@
         "mediaType": "application/json"
       }
     },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "requires": {
@@ -5942,6 +6193,28 @@
         }
       }
     },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "requires": {
         "body": "over_cap"
@@ -6073,6 +6346,28 @@
                 "id": "must be at least 1"
               }
             }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
           }
         },
         "mediaType": "application/json"
@@ -6226,6 +6521,28 @@
           "error": {
             "code": "not_found",
             "message": "Certificate not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
           }
         },
         "mediaType": "application/json"
@@ -6571,6 +6888,28 @@
         }
       }
     },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "requires": {
         "body": "over_cap"
@@ -6719,6 +7058,28 @@
           "error": {
             "code": "not_found",
             "message": "Domain not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
           }
         },
         "mediaType": "application/json"
@@ -7821,6 +8182,28 @@
         "mediaType": "application/json"
       }
     },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
@@ -7983,6 +8366,28 @@
             "message": "Pipeline not found"
           }
         }
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "request_too_large": {
@@ -8321,6 +8726,28 @@
           "error": {
             "code": "not_found",
             "message": "Queue entry not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
           }
         },
         "mediaType": "application/json"
@@ -9274,6 +9701,28 @@
             "message": "Domain not found"
           }
         }
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "request_too_large": {
@@ -10244,6 +10693,28 @@
         "mediaType": "application/json"
       }
     },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
@@ -10668,6 +11139,28 @@
         "mediaType": "application/json"
       }
     },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
@@ -10860,6 +11353,28 @@
         "mediaType": "application/json"
       }
     },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
@@ -11032,6 +11547,28 @@
         "mediaType": "application/json"
       }
     },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
@@ -11147,6 +11684,24 @@
           "error": {
             "code": "internal_error",
             "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {},
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
           }
         },
         "mediaType": "application/json"
@@ -11287,6 +11842,28 @@
                 "limit": "must be an integer"
               }
             }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "query": {
+          "limit": 20
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
           }
         },
         "mediaType": "application/json"
@@ -11494,6 +12071,28 @@
         "mediaType": "application/json"
       }
     },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
@@ -11664,6 +12263,28 @@
           "error": {
             "code": "forbidden",
             "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
           }
         },
         "mediaType": "application/json"
@@ -11904,6 +12525,28 @@
           "error": {
             "code": "forbidden",
             "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
           }
         },
         "mediaType": "application/json"
@@ -12318,6 +12961,28 @@
         "mediaType": "application/json"
       }
     },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
@@ -12506,6 +13171,28 @@
         "mediaType": "application/json"
       }
     },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
@@ -12627,6 +13314,28 @@
           "error": {
             "code": "internal_error",
             "message": "Failed to aggregate pipeline analytics"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "query": {
+          "window": "1h"
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
           }
         },
         "mediaType": "application/json"
@@ -12839,6 +13548,28 @@
         "mediaType": "application/json"
       }
     },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
@@ -12936,6 +13667,24 @@
           "error": {
             "code": "internal_error",
             "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {},
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
           }
         },
         "mediaType": "application/json"
@@ -14557,6 +15306,40 @@
         "mediaType": "application/json"
       }
     },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "flags": [
+            "\\Seen",
+            "\\Answered",
+            "\\Flagged",
+            "\\Draft"
+          ],
+          "folder": "Archive",
+          "internal_date": "2020-01-02T03:04:05Z",
+          "raw_message": "TWVzc2FnZS1JRDogPGhpc3RvcnlAZXhhbXBsZS50ZXN0Pg0KRnJvbTogT3JpZ2luYWwgPG9sZEBleGFtcGxlLnRlc3Q+DQpTdWJqZWN0OiBvcmlnaW5hbA0KDQpoaXN0b3J5DQo="
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "requires": {
         "body": "over_cap"
@@ -14764,6 +15547,28 @@
           "error": {
             "code": "mailbox_not_found",
             "message": "Mailbox not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 12
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
           }
         },
         "mediaType": "application/json"
@@ -15452,6 +16257,28 @@
         "mediaType": "application/json"
       }
     },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "query": {
+          "limit": 20
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
@@ -15620,6 +16447,28 @@
           "error": {
             "code": "forbidden",
             "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
           }
         },
         "mediaType": "application/json"
@@ -15956,6 +16805,28 @@
         "mediaType": "application/json"
       }
     },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "query": {
+          "limit": 20
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
@@ -16107,6 +16978,28 @@
                 "limit": "must be an integer"
               }
             }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "query": {
+          "limit": 20
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
           }
         },
         "mediaType": "application/json"
@@ -16280,6 +17173,28 @@
           "error": {
             "code": "forbidden",
             "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
           }
         },
         "mediaType": "application/json"
@@ -16608,6 +17523,24 @@
         "mediaType": "application/json"
       }
     },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {},
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the configured transport body cap",
       "description": "Precondition: a current session sends Content-Length above APIMaxBodyBytes, even on this GET. The registered-route test sets the transport size directly; there is no typed request body.",
@@ -16725,6 +17658,28 @@
                 "limit": "must be an integer"
               }
             }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "query": {
+          "limit": 20
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
           }
         },
         "mediaType": "application/json"
@@ -17262,6 +18217,28 @@
         "mediaType": "application/json"
       }
     },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "query": {
+          "limit": 20
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
@@ -17377,6 +18354,24 @@
           "error": {
             "code": "internal_error",
             "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {},
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
           }
         },
         "mediaType": "application/json"
@@ -17517,6 +18512,28 @@
                 "limit": "must be an integer"
               }
             }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "query": {
+          "limit": 20
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
           }
         },
         "mediaType": "application/json"
@@ -17870,6 +18887,28 @@
         "mediaType": "application/json"
       }
     },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "query": {
+          "limit": 20
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
@@ -18021,6 +19060,28 @@
                 "limit": "must be an integer"
               }
             }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "query": {
+          "limit": 20
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
           }
         },
         "mediaType": "application/json"
@@ -18426,6 +19487,24 @@
         "mediaType": "application/json"
       }
     },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {},
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
@@ -18561,6 +19640,28 @@
                 "limit": "must be an integer"
               }
             }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "query": {
+          "limit": 20
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
           }
         },
         "mediaType": "application/json"
@@ -18717,6 +19818,28 @@
                 "limit": "must be an integer"
               }
             }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "query": {
+          "limit": 20
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
           }
         },
         "mediaType": "application/json"
@@ -19163,6 +20286,28 @@
         "mediaType": "application/json"
       }
     },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "query": {
+          "limit": 20
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
@@ -19278,6 +20423,24 @@
           "error": {
             "code": "internal_error",
             "message": "Failed to fetch roles"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {},
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
           }
         },
         "mediaType": "application/json"
@@ -19599,6 +20762,28 @@
         "mediaType": "application/json"
       }
     },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
@@ -19728,6 +20913,28 @@
                 "limit": "must be an integer"
               }
             }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "query": {
+          "limit": 20
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
           }
         },
         "mediaType": "application/json"
@@ -22802,6 +24009,29 @@
         "mediaType": "application/json"
       }
     },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "eid": 1,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "description": "A nine-byte transport body exceeds the eight-byte fixture cap. The production limiter refuses the request; the focused replay sends actual bytes.",
@@ -22968,6 +24198,29 @@
           "error": {
             "code": "forbidden",
             "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "eid": 1,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
           }
         },
         "mediaType": "application/json"
@@ -23615,6 +24868,24 @@
             "message": "Missing or invalid CSRF token"
           }
         }
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {},
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "request_too_large": {
@@ -24355,6 +25626,26 @@
         }
       }
     },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "body": {}
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "requires": {
         "body": "over_cap"
@@ -24539,6 +25830,28 @@
           "error": {
             "code": "not_found",
             "message": "Queue entry not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
           }
         },
         "mediaType": "application/json"
@@ -25392,6 +26705,24 @@
         }
       }
     },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {},
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "requires": {
         "body": "over_cap"
@@ -26114,6 +27445,31 @@
             "message": "Invalid request body"
           }
         }
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "body": {
+          "from": "postmaster@restmail.test",
+          "to": "admin@restmail.test",
+          "subject": "Test",
+          "body": "A test message."
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "recipient_missing": {
@@ -26845,6 +28201,35 @@
         "mediaType": "application/json"
       }
     },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "host": "smtp.example.net",
+          "port": 587,
+          "tls_mode": "starttls",
+          "transport": "relay",
+          "username": "apikey"
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "description": "The published JSON body exceeds the eight-byte test cap. The production body limiter refuses it before policy writes.",
@@ -27115,6 +28500,34 @@
             "updated_at": "2026-10-25T00:00:00Z"
           }
         }
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 2
+        },
+        "body": {
+          "active": false,
+          "max_age": 0,
+          "mode": "enforce",
+          "mx_hosts": "mail.direct.test"
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "request_too_large": {
@@ -27650,6 +29063,24 @@
             "message": "Missing or invalid CSRF token"
           }
         }
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {},
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "request_too_large": {
@@ -28941,6 +30372,28 @@
           "error": {
             "code": "not_found",
             "message": "No ban found for this IP"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "ip": "192.0.2.10"
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
           }
         },
         "mediaType": "application/json"
@@ -30618,6 +32071,30 @@
         }
       }
     },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "body": {
+          "display_name": "Contract Test",
+          "quota_bytes": 1073741824,
+          "active": true
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "requires": {
@@ -31729,6 +33206,24 @@
         "mediaType": "application/json"
       }
     },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {},
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "requires": {
         "body": "over_cap"
@@ -31839,6 +33334,29 @@
           "error": {
             "code": "internal_error",
             "message": "Failed to look up the recipient mailbox"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "Refused API keys exhaust the per-IP budget",
+      "description": "Repeated refused API keys from one address spend the refusal budget of the API-key authentication middleware, which answers 429 with a positive Retry-After before the handler runs.",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "query": {
+          "timeout": "0s",
+          "to": "recipient@example.com"
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
           }
         },
         "mediaType": "application/json"

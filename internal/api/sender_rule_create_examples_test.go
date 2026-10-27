@@ -127,7 +127,7 @@ func senderRuleCreateRouters(t *testing.T, operation string) (map[string]http.Ha
 		}
 		return makeRouter(db, 4096)
 	}
-	return map[string]http.Handler{"normal": normal, "created": scoped("example.com"), "created_without_reason": scoped("example.com"), "outside_domain": scoped("other.test"), "request_too_large": oversized, "unauthenticated": unavailable, "session_unavailable": unavailable}, jwt, store
+	return map[string]http.Handler{"rate_limited": apiKeyRefusalLimited(t), "normal": normal, "created": scoped("example.com"), "created_without_reason": scoped("example.com"), "outside_domain": scoped("other.test"), "request_too_large": oversized, "unauthenticated": unavailable, "session_unavailable": unavailable}, jwt, store
 }
 
 func TestSenderRuleCreateLookupFailuresAreNotMissingDomains(t *testing.T) {

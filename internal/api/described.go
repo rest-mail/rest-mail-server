@@ -45,11 +45,13 @@ var refusedBeforeTheHandler = refusal(http.StatusForbidden,
 
 var (
 	// describedAdminSession is the admin group's authentication: a session or a scoped API
-	// key, never HTTP Basic, whose token is current.
+	// key, never HTTP Basic, whose token is current. Refused API keys are throttled at
+	// login's rate.
 	describedAdminSession = oapifly.Middleware{
 		Security: []oapifly.SecurityRequirement{{"CookieAuth": nil}, {"BearerAuth": nil}, {"APIKeyAuth": nil}},
 		Responses: []oapifly.EndpointResponse{
 			refusal(http.StatusUnauthorized, "unauthorized: no token, a bad one, or a session that has ended"),
+			rateLimited("rate_limited: refused API keys, throttled at login's rate"),
 			refusal(http.StatusServiceUnavailable, "unavailable: the session or grants check could not be made"),
 		},
 	}
@@ -76,7 +78,7 @@ var (
 		Security: []oapifly.SecurityRequirement{{"CookieAuth": nil}, {"BearerAuth": nil}, {"APIKeyAuth": nil}, {"BasicAuth": nil}},
 		Responses: []oapifly.EndpointResponse{
 			refusal(http.StatusUnauthorized, "unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential"),
-			rateLimited("rate_limited: refused HTTP Basic credentials, throttled at login's rate"),
+			rateLimited("rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate"),
 			refusal(http.StatusServiceUnavailable, "unavailable: the credential or session check could not be made"),
 		},
 	}

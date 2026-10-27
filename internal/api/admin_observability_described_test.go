@@ -11,14 +11,14 @@ func TestAdminObservabilityIsDescribedFromItsTypes(t *testing.T) {
 		id, path, method, capability string
 		statuses                     []string
 	}{
-		{"listBans", "/api/v1/admin/bans", "get", "bans:read", []string{"200", "401", "403", "413", "422", "500", "503"}},
+		{"listBans", "/api/v1/admin/bans", "get", "bans:read", []string{"200", "401", "403", "413", "422", "429", "500", "503"}},
 		{"createBan", "/api/v1/admin/bans", "post", "bans:write", []string{"200", "201", "400", "401", "403", "413", "422", "429", "500", "503"}},
-		{"deleteBan", "/api/v1/admin/bans/{id}", "delete", "bans:delete", []string{"204", "401", "403", "413", "422", "500", "503"}},
-		{"unbanIP", "/api/v1/admin/bans/ip/{ip}", "delete", "bans:delete", []string{"204", "401", "403", "404", "413", "500", "503"}},
-		{"getDeliveryLogs", "/api/v1/admin/logs/delivery", "get", "messages:read", []string{"200", "401", "403", "413", "422", "500", "503"}},
-		{"listAuditEntries", "/api/v1/admin/audit", "get", "audit:read", []string{"200", "401", "403", "413", "422", "500", "503"}},
-		{"verifyAuditLog", "/api/v1/admin/audit/verify", "get", "audit:read", []string{"200", "401", "403", "413", "422", "500", "503"}},
-		{"getDashboardStats", "/api/v1/admin/stats", "get", "domains:read", []string{"200", "401", "403", "413", "500", "503"}},
+		{"deleteBan", "/api/v1/admin/bans/{id}", "delete", "bans:delete", []string{"204", "401", "403", "413", "422", "429", "500", "503"}},
+		{"unbanIP", "/api/v1/admin/bans/ip/{ip}", "delete", "bans:delete", []string{"204", "401", "403", "404", "413", "429", "500", "503"}},
+		{"getDeliveryLogs", "/api/v1/admin/logs/delivery", "get", "messages:read", []string{"200", "401", "403", "413", "422", "429", "500", "503"}},
+		{"listAuditEntries", "/api/v1/admin/audit", "get", "audit:read", []string{"200", "401", "403", "413", "422", "429", "500", "503"}},
+		{"verifyAuditLog", "/api/v1/admin/audit/verify", "get", "audit:read", []string{"200", "401", "403", "413", "422", "429", "500", "503"}},
+		{"getDashboardStats", "/api/v1/admin/stats", "get", "domains:read", []string{"200", "401", "403", "413", "429", "500", "503"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.id, func(t *testing.T) {

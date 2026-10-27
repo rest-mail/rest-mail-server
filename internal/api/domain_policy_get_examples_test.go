@@ -159,7 +159,7 @@ func domainPolicyGetRouters(t *testing.T) (map[string]http.Handler, *auth.JWTSer
 		return makeRouter()
 	}
 	found := scoped("example.com", "direct.test")
-	return map[string]http.Handler{
+	return map[string]http.Handler{"rate_limited": apiKeyRefusalLimited(t),
 		"found": found, "direct": found, "missing": unrestricted, "policy_absent": unrestricted,
 		"unauthenticated": unavailable, "outside_domain": scoped("other.test"),
 		"request_too_large": unrestricted, "invalid_domain": unrestricted,

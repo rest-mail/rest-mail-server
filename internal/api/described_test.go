@@ -67,12 +67,12 @@ func TestDomainsAreDescribedFromTheirTypes(t *testing.T) {
 		path, method, capability string
 		statuses                 []string
 	}{
-		"listDomains":    {"/api/v1/admin/domains", "get", "domains:read", []string{"200", "401", "403", "413", "422", "500", "503"}},
+		"listDomains":    {"/api/v1/admin/domains", "get", "domains:read", []string{"200", "401", "403", "413", "422", "429", "500", "503"}},
 		"createDomain":   {"/api/v1/admin/domains", "post", "domains:write", []string{"201", "400", "401", "403", "409", "413", "422", "429", "500", "503"}},
-		"getDomain":      {"/api/v1/admin/domains/{id}", "get", "domains:read", []string{"200", "401", "403", "404", "413", "422", "500", "503"}},
+		"getDomain":      {"/api/v1/admin/domains/{id}", "get", "domains:read", []string{"200", "401", "403", "404", "413", "422", "429", "500", "503"}},
 		"updateDomain":   {"/api/v1/admin/domains/{id}", "patch", "domains:write", []string{"200", "400", "401", "403", "404", "409", "413", "422", "429", "500", "503"}},
 		"deleteDomain":   {"/api/v1/admin/domains/{id}", "delete", "domains:delete", []string{"204", "401", "403", "404", "409", "413", "422", "429", "500", "503"}},
-		"domainDNSCheck": {"/api/v1/admin/domains/{id}/dns", "get", "domains:read", []string{"200", "401", "403", "404", "413", "422", "500", "503"}},
+		"domainDNSCheck": {"/api/v1/admin/domains/{id}/dns", "get", "domains:read", []string{"200", "401", "403", "404", "413", "422", "429", "500", "503"}},
 	}
 	for id, w := range want {
 		op, ok := paths[w.path][w.method]
@@ -155,7 +155,7 @@ func TestDomainMailPolicyIsDescribed(t *testing.T) {
 			if string(security) != want {
 				t.Errorf("security = %s, want %s", security, want)
 			}
-			statuses := append([]string{"401", "403", "413", "422", "500", "503"}, tc.statuses...)
+			statuses := append([]string{"401", "403", "413", "422", "429", "500", "503"}, tc.statuses...)
 			for _, status := range statuses {
 				if _, ok := op.Responses[status]; !ok {
 					t.Errorf("missing response %s", status)
