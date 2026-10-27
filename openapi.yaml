@@ -2909,6 +2909,37 @@ paths:
         example: 1
     get:
       operationId: getAttachment
+      parameters:
+        - name: Range
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: If-Range
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: If-Match
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: If-None-Match
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: If-Modified-Since
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: If-Unmodified-Since
+          in: header
+          required: false
+          schema:
+            type: string
       tags: [Attachments]
       security:
         - CookieAuth: [mail:read]
@@ -2916,6 +2947,7 @@ paths:
         - APIKeyAuth: [mail:read]
         - BasicAuth: [mail:read]
       summary: Download an attachment
+      description: Whole and single-range downloads are binary; multiple ranges use multipart/byteranges. Conditional requests may return bodyless 304 or 412, and invalid ranges return plain-text 416.
       responses:
         "200":
           description: >-
@@ -2938,11 +2970,163 @@ paths:
               required: true
               schema:
                 type: string
+            ETag:
+              description: Stored object entity tag when available.
+              schema:
+                type: string
+            Last-Modified:
+              description: Stored modification time as an HTTP date, when available.
+              schema:
+                type: string
           content:
             application/octet-stream:
               schema:
                 type: string
                 format: binary
+        '206':
+          description: A single binary range, or multipart ranges with a Content-Range on
+            each part.
+          headers:
+            Content-Disposition:
+              description: Safe attachment filename.
+              schema:
+                type: string
+              required: true
+            ETag:
+              description: Stored object entity tag when available.
+              schema:
+                type: string
+            Last-Modified:
+              description: Stored modification time as an HTTP date, when available.
+              schema:
+                type: string
+            Content-Length:
+              description: Length of the partial or multipart response.
+              schema:
+                type: integer
+                format: int64
+              required: true
+            Accept-Ranges:
+              description: Byte ranges are supported.
+              schema:
+                type: string
+              required: true
+            Content-Range:
+              description: Selected bytes and total length for a single range; multipart responses
+                put this header on each part.
+              schema:
+                type: string
+          content:
+            application/octet-stream: {}
+            multipart/byteranges: {}
+        '304':
+          description: The cached representation is current; no body.
+          headers:
+            Content-Disposition:
+              description: Safe attachment filename.
+              schema:
+                type: string
+              required: true
+            ETag:
+              description: Stored object entity tag when available.
+              schema:
+                type: string
+            Last-Modified:
+              description: Stored modification time as an HTTP date, when available.
+              schema:
+                type: string
+        '412':
+          description: An If-Match or If-Unmodified-Since precondition failed; no body.
+          headers:
+            Content-Disposition:
+              description: Safe attachment filename.
+              schema:
+                type: string
+              required: true
+            ETag:
+              description: Stored object entity tag when available.
+              schema:
+                type: string
+            Last-Modified:
+              description: Stored modification time as an HTTP date, when available.
+              schema:
+                type: string
+            Content-Type:
+              description: Attachment media type may remain on a bodyless precondition failure.
+              schema:
+                type: string
+            Content-Length:
+              description: Zero when emitted for a bodyless precondition failure.
+              schema:
+                type: integer
+                format: int64
+        '416':
+          description: Malformed or non-overlapping range.
+          headers:
+            Content-Disposition:
+              description: Safe attachment filename.
+              schema:
+                type: string
+              required: true
+            ETag:
+              description: Stored object entity tag when available.
+              schema:
+                type: string
+            Last-Modified:
+              description: Stored modification time as an HTTP date, when available.
+              schema:
+                type: string
+            Content-Range:
+              description: bytes */length for a non-overlapping range; absent for malformed
+                ranges.
+              schema:
+                type: string
+            Content-Length:
+              description: Error body byte length when emitted.
+              schema:
+                type: integer
+                format: int64
+            X-Content-Type-Options:
+              description: nosniff.
+              schema:
+                type: string
+              required: true
+          content:
+            text/plain:
+              schema:
+                type: string
+        '500':
+          description: Handler dependency or streaming failure.
+          headers:
+            Content-Disposition:
+              description: Safe attachment filename if the failure occurs in the content writer.
+              schema:
+                type: string
+            ETag:
+              description: Stored object entity tag when available.
+              schema:
+                type: string
+            Last-Modified:
+              description: Stored modification time as an HTTP date, when available.
+              schema:
+                type: string
+            Content-Length:
+              description: Error body byte length when emitted.
+              schema:
+                type: integer
+                format: int64
+            X-Content-Type-Options:
+              description: nosniff on plain-text writer failures or when security headers
+                are enabled.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+            text/plain:
+              schema:
+                type: string
         "404":
           $ref: "#/components/responses/NotFound"
 

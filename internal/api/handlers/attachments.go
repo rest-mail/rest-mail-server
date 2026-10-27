@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"mime"
 	"net/http"
 	"os"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
+	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/attachmentstore"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
@@ -69,7 +71,13 @@ func NewAttachmentHandler(db *gorm.DB, s3 *attachmentstore.S3) *AttachmentHandle
 
 // attachmentPath names an attachment by the path's {id}.
 type attachmentPath struct {
-	ID uint32 `path:"id" minimum:"1" example:"1"`
+	ID                uint32 `path:"id" minimum:"1" example:"1"`
+	Range             string `header:"Range"`
+	IfRange           string `header:"If-Range"`
+	IfMatch           string `header:"If-Match"`
+	IfNoneMatch       string `header:"If-None-Match"`
+	IfModifiedSince   string `header:"If-Modified-Since"`
+	IfUnmodifiedSince string `header:"If-Unmodified-Since"`
 }
 
 // getAttachment streams an attachment file from storage, with Range and conditional requests
@@ -171,6 +179,55 @@ func (h *AttachmentHandler) s3Attachment(r *http.Request, att *models.Attachment
 	return served, nil
 }
 
+// attachmentDownloadHeaders describes the ordinary whole-file response. A stored
+// ETag or modification time is optional because not every storage object has one.
+func attachmentDownloadHeaders() map[string]oapifly.ResponseHeader {
+	return map[string]oapifly.ResponseHeader{
+		"Content-Disposition": {Description: "Download as an attachment, with a safely encoded filename.", Required: true},
+		"Content-Length":      {Description: "The number of bytes in the complete attachment.", Required: true, Type: oapifly.TypeOf[int64]()},
+		"Accept-Ranges":       {Description: "Byte ranges are supported.", Required: true},
+		"ETag":                {Description: "The stored object's entity tag, when available."},
+		"Last-Modified":       {Description: "The stored object's modification time, when available, as an HTTP date."},
+	}
+}
+
+// attachmentConditionalResponses describes the outcomes of the same ServeContent
+// writer used for filesystem and object-storage downloads. Headers common to a
+// status are shared across its media types; Content-Range is only required by a
+// single range, so it is optional on the combined single/multipart 206 response.
+func attachmentConditionalResponses() []oapifly.EndpointResponse {
+	download := attachmentDownloadHeaders()
+	ranges := maps.Clone(download)
+	ranges["Content-Length"] = oapifly.ResponseHeader{Description: "The number of bytes in this partial or multipart response.", Required: true, Type: oapifly.TypeOf[int64]()}
+	ranges["Content-Range"] = oapifly.ResponseHeader{Description: "The selected byte range and complete length for a single-range response; multipart responses put it on each part."}
+	conditional := map[string]oapifly.ResponseHeader{
+		"Content-Disposition": download["Content-Disposition"],
+		"ETag":                download["ETag"], "Last-Modified": download["Last-Modified"],
+	}
+	precondition := maps.Clone(conditional)
+	precondition["Content-Type"] = oapifly.ResponseHeader{Description: "The attachment media type may remain on a bodyless precondition failure."}
+	precondition["Content-Length"] = oapifly.ResponseHeader{Description: "Zero when emitted for a bodyless precondition failure.", Type: oapifly.TypeOf[int64]()}
+	rangeError := maps.Clone(conditional)
+	rangeError["Content-Range"] = oapifly.ResponseHeader{Description: "bytes */length for a non-overlapping range; omitted for a malformed range."}
+	rangeError["Content-Length"] = oapifly.ResponseHeader{Description: "The error body's byte length, when emitted.", Type: oapifly.TypeOf[int64]()}
+	rangeError["X-Content-Type-Options"] = oapifly.ResponseHeader{Description: "Prevents MIME type sniffing for the plain-text range refusal.", Required: true}
+	streamError := maps.Clone(conditional)
+	disposition := streamError["Content-Disposition"]
+	disposition.Required = false // A handler failure happens before the writer sets it.
+	streamError["Content-Disposition"] = disposition
+	streamError["Content-Length"] = rangeError["Content-Length"]
+	streamError["X-Content-Type-Options"] = oapifly.ResponseHeader{Description: "nosniff on the plain-text streaming failure, or when security headers are enabled."}
+	return []oapifly.EndpointResponse{
+		{Status: http.StatusPartialContent, Description: "Selected bytes, or multiple byte ranges with a Content-Range on each binary part.", Type: oapifly.TypeOf[[]byte](), MediaType: "application/octet-stream", Headers: ranges},
+		{Status: http.StatusPartialContent, Description: "Selected bytes, or multiple byte ranges with a Content-Range on each binary part.", Type: oapifly.TypeOf[[]byte](), MediaType: "multipart/byteranges", Headers: ranges},
+		{Status: http.StatusNotModified, Description: "The conditional request's cached representation is current; no response body.", Headers: conditional},
+		{Status: http.StatusPreconditionFailed, Description: "An If-Match or If-Unmodified-Since precondition failed; no response body.", Headers: precondition},
+		{Status: http.StatusRequestedRangeNotSatisfiable, Description: "The byte range is malformed or does not overlap the attachment.", Type: oapifly.TypeOf[string](), MediaType: "text/plain", Headers: rangeError},
+		{Status: http.StatusInternalServerError, Description: "A handler dependency failed, or the stored content could not be served.", Type: oapifly.TypeOf[respond.ErrorResponse](), Headers: streamError},
+		{Status: http.StatusInternalServerError, Description: "A handler dependency failed, or the stored content could not be served.", Type: oapifly.TypeOf[string](), MediaType: "text/plain", Headers: streamError},
+	}
+}
+
 // Register mounts listing a message's attachments and downloading one. Their routes take what
 // the mail routes take; an attachment, or a message, in an account the session cannot read is
 // 404, as one that is not there.
@@ -181,15 +238,9 @@ func (h *AttachmentHandler) Register(rs endpoint.Routes) {
 		Errors: []int{http.StatusNotFound}, Security: security}, h.listAttachments)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/attachments/{id}",
 		OperationID: "getAttachment", Summary: "Download an attachment", Tags: []string{"Attachments"},
-		Description: "The attachment's bytes, always as application/octet-stream; the type its sender gave it is " +
-			"listAttachments' content_type. Range and conditional requests are answered (206, 304, 412, 416).",
-		MediaType: "application/octet-stream",
-		Headers: map[string]oapifly.ResponseHeader{
-			"Content-Disposition": {Description: "Download as an attachment, with a safely encoded filename.", Required: true},
-			"Content-Length": {Description: "The number of bytes in the complete attachment.", Required: true,
-				Type: oapifly.TypeOf[int64]()},
-			"Accept-Ranges": {Description: "Byte ranges are supported.", Required: true},
-		},
+		Description: "The attachment's bytes are application/octet-stream; listAttachments' content_type is the sender's declared type. " +
+			"Range requests return a binary part or multipart/byteranges. Conditional requests can return bodyless 304 or 412; malformed or non-overlapping ranges return plain-text 416.",
+		MediaType: "application/octet-stream", Headers: attachmentDownloadHeaders(), Responses: attachmentConditionalResponses(),
 		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: security}, h.getAttachment)
 }
 
