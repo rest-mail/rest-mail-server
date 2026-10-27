@@ -104,7 +104,7 @@ func browserFixture(t *testing.T, csrfGuard, secure bool, csrfFault ...string) *
 		if r.Header.Get("Authorization") != "" {
 			t.Error("browser proof sent a bearer credential")
 		}
-		if csrfGuard && r.Method != http.MethodGet {
+		if csrfGuard && r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
 			cookie, err := r.Cookie(auth.CSRFCookieName)
 			header := r.Header.Get(auth.CSRFHeaderName)
 			invalid := header == "" || err != nil || cookie.Value != header
@@ -142,6 +142,7 @@ func fixtureDescription() description {
 	return description{Security: security, Paths: map[string]map[string]operation{
 		"/api/v1/accounts/{id}/folders": {
 			"get": {OperationID: "listFolders"}, "post": {OperationID: "createFolder"},
+			"head": {OperationID: "headFolders"}, "options": {OperationID: "folderOptions"},
 		},
 		"/api/v1/messages/{id}": {
 			"get": {OperationID: "getMessage"}, "patch": {OperationID: "updateMessage"}, "delete": {OperationID: "deleteMessage"},
@@ -169,7 +170,7 @@ func TestBrowserSessionProof(t *testing.T) {
 			t.Fatal("public operation classified as cookie-protected")
 		}
 	}
-	for _, operation := range []string{"createFolder", "updateMessage", "deleteMessage"} {
+	for _, operation := range []string{"listFolders", "headFolders", "folderOptions", "getMessage", "accountEvents", "createFolder", "updateMessage", "deleteMessage"} {
 		for _, variant := range []csrfVariant{csrfMissing, csrfMismatched, csrfCookieMissing} {
 			if !variants[operation][string(variant)] {
 				t.Errorf("missing %s receipt for %s", variant, operation)

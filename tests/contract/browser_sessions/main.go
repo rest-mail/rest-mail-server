@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 	"regexp"
@@ -119,15 +120,37 @@ func (b *browser) call(method, path string, body []byte, csrf csrfVariant) (*htt
 // Never print a response body: login and refresh carry credentials in headers.
 func readResponse(resp *http.Response) (map[string]interface{}, error) {
 	defer resp.Body.Close()
-	if strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {
+	mediaType := ""
+	if header := resp.Header.Get("Content-Type"); header != "" {
+		var err error
+		mediaType, _, err = mime.ParseMediaType(header)
+		if err != nil {
+			return nil, errors.New("invalid response media type")
+		}
+	}
+	if mediaType == "text/event-stream" {
 		return nil, nil
 	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	// Read one byte beyond the allowance so a truncated valid prefix cannot pass.
+	const maxResponseBytes = 1 << 20
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
-		return nil, err
+		return nil, errors.New("cannot read response")
+	}
+	if len(data) > maxResponseBytes {
+		return nil, errors.New("response exceeds byte limit")
+	}
+	if mediaType != "application/json" && !strings.HasSuffix(mediaType, "+json") {
+		return nil, nil
+	}
+	if len(data) == 0 && (resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotModified ||
+		(resp.Request != nil && resp.Request.Method == http.MethodHead)) {
+		return nil, nil
 	}
 	var body map[string]interface{}
-	_ = json.Unmarshal(data, &body)
+	if json.Unmarshal(data, &body) != nil || body == nil {
+		return nil, errors.New("invalid JSON response object")
+	}
 	return body, nil
 }
 
@@ -190,7 +213,7 @@ func prove(endpoint string, spec description, fixture principal) (result report,
 			return resp, body, fmt.Errorf("%s: cannot read response", label)
 		}
 		if resp.StatusCode != status || (code != "" && errorCode(body) != code) {
-			return resp, body, fmt.Errorf("%s (%s): expected %d %s, got %d %s", label, variant, status, code, resp.StatusCode, errorCode(body))
+			return resp, body, fmt.Errorf("%s (%s): expected %d %s, got status %d or a different error code", label, variant, status, code, resp.StatusCode)
 		}
 		return resp, body, nil
 	}
@@ -276,8 +299,14 @@ func prove(endpoint string, spec description, fixture principal) (result report,
 			if e != nil || with.StatusCode >= 500 || with.StatusCode == 401 || errorCode(control) == "csrf_failed" {
 				return result, fmt.Errorf("%s: safe control failed (%d)", op.OperationID, with.StatusCode)
 			}
-			if _, _, err = check(op.OperationID, csrfMissing, strings.ToUpper(method), target, nil, with.StatusCode, errorCode(control)); err != nil {
-				return result, err
+			for _, variant := range []csrfVariant{csrfMissing, csrfMismatched, csrfCookieMissing} {
+				resp, body, e := check(op.OperationID, variant, strings.ToUpper(method), target, nil, with.StatusCode, "")
+				if e != nil {
+					return result, e
+				}
+				if errorCode(body) != errorCode(control) {
+					return result, fmt.Errorf("%s (%s): safe response error code differs from control (status %d)", op.OperationID, variant, resp.StatusCode)
+				}
 			}
 		}
 	}
