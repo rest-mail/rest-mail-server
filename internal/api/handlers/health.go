@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"time"
@@ -58,7 +59,7 @@ func (h *HealthHandler) health(r *http.Request, _ struct{}) (Health, error) {
 	// healthcheck (which carries no token) and external liveness probes keep
 	// working — the gate only controls how much detail is included.
 	if h.isAdmin(r) {
-		result.CertWarnings = h.checkCertExpiry()
+		result.CertWarnings = h.checkCertExpiry(r.Context())
 	}
 	return result, nil
 }
@@ -80,20 +81,21 @@ func (h *HealthHandler) isAdmin(r *http.Request) bool {
 	if err != nil || claims.SetupPending || h.db == nil {
 		return false
 	}
-	current, err := SessionCurrent(h.db)(claims.AccountID, claims.CredentialEpoch)
+	db := h.db.WithContext(r.Context())
+	current, err := SessionCurrent(db)(claims.AccountID, claims.CredentialEpoch)
 	if err != nil || !current {
 		return false
 	}
-	held, err := grants.Load(h.db, claims.AccountID, time.Now())
+	held, err := grants.Load(db, claims.AccountID, time.Now())
 	return err == nil && held.Allows(middleware.CapDomainsRead, grants.All)
 }
 
 // checkCertExpiry returns warnings for certificates expiring within 30 days.
-func (h *HealthHandler) checkCertExpiry() []CertWarning {
+func (h *HealthHandler) checkCertExpiry(ctx context.Context) []CertWarning {
 	threshold := time.Now().Add(30 * 24 * time.Hour)
 
 	var certs []models.Certificate
-	h.db.Preload("Domain").
+	h.db.WithContext(ctx).Preload("Domain").
 		Where("not_after < ?", threshold).
 		Find(&certs)
 
