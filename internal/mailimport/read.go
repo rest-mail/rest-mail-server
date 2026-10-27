@@ -160,31 +160,37 @@ func Mbox(ctx context.Context, source io.Reader, folder, format string, maxBytes
 		if err != nil {
 			return fmt.Errorf("mbox message %d has invalid headers", count)
 		}
-		if message.Header.Get("Content-Length") != "" {
+		if _, present := message.Header["Content-Length"]; present {
 			return errors.New("Content-Length-framed mbox is unsupported; export as From-framed mboxrd or RFC4155")
 		}
-		if message.Header.Get("X-IMAP") != "" {
+		if _, present := message.Header["X-Imap"]; present {
 			return errors.New("a Dovecot metadata-only mbox pseudo-message requires an IMAP export; it was not imported as mail")
 		}
-		if strings.TrimSpace(message.Header.Get("X-Keywords")) != "" {
-			return errors.New("mbox keywords are unsupported; they were not silently discarded")
+		for _, keywords := range message.Header["X-Keywords"] {
+			if strings.TrimSpace(keywords) != "" {
+				return errors.New("mbox keywords are unsupported; they were not silently discarded")
+			}
 		}
-		if strings.Contains(message.Header.Get("X-Status"), "D") {
+		// Header.Get sees only the first occurrence. Preserve supported flags
+		// from every occurrence, and refuse unsupported metadata wherever it is.
+		status := strings.Join(message.Header["Status"], "")
+		xStatus := strings.Join(message.Header["X-Status"], "")
+		if strings.Contains(xStatus, "D") {
 			return errors.New("mbox Deleted state is unsupported; the message was not silently hidden")
 		}
-		for _, metadata := range []struct{ name, allowed string }{{"Status", "RO"}, {"X-Status", "AFT"}} {
-			for _, flag := range message.Header.Get(metadata.name) {
+		for _, metadata := range []struct{ name, value, allowed string }{{"Status", status, "RO"}, {"X-Status", xStatus, "AFT"}} {
+			for _, flag := range metadata.value {
 				if !strings.ContainsRune(metadata.allowed, flag) {
 					return fmt.Errorf("mbox %s flag %q is unsupported; it was not silently discarded", metadata.name, flag)
 				}
 			}
 		}
 		flags := make([]string, 0, 5)
-		if strings.Contains(message.Header.Get("Status"), "R") {
+		if strings.Contains(status, "R") {
 			flags = append(flags, `\Seen`)
 		}
 		for _, pair := range []struct{ letter, flag string }{{"A", `\Answered`}, {"F", `\Flagged`}, {"T", `\Draft`}} {
-			if strings.Contains(message.Header.Get("X-Status"), pair.letter) {
+			if strings.Contains(xStatus, pair.letter) {
 				flags = append(flags, pair.flag)
 			}
 		}
@@ -194,7 +200,9 @@ func Mbox(ctx context.Context, source io.Reader, folder, format string, maxBytes
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		line, err := boundedLine(r, maxBytes+2)
+		// The From separator is framing, not message content. Even a tiny
+		// message limit needs room to read it; raw message bytes stay bounded below.
+		line, err := boundedLine(r, max(maxBytes+2, 4096))
 		if err != nil && !errors.Is(err, io.EOF) {
 			return err
 		}

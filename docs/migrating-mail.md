@@ -55,6 +55,11 @@ Deleted state, keywords, metadata-only pseudo-messages and Content-Length-framed
 variants are refused. Source headers remain in the imported raw message. Export
 format differences are not resolved by deleting or rewriting source data.
 
+Every occurrence of source metadata is checked. Supported flags across repeated
+`Status` and `X-Status` headers are combined; a later header cannot hide Deleted
+state, keywords, pseudo-message metadata or Content-Length framing. These checks
+leave the original headers intact.
+
 ## Limits, reruns and cutover
 
 Each request imports one message. The decoded message is limited by
@@ -62,6 +67,8 @@ Each request imports one message. The decoded message is limited by
 applies to its base64-encoded JSON representation. The CLI defaults to a 10 MiB
 source-message limit, adjustable with `--max-message-bytes` up to 1 GiB. Raising
 the CLI limit does not raise either server limit or the account's quota.
+For mbox, the From envelope separator is framing and does not count toward the
+source-message limit.
 
 `--dry-run` reads and validates source files without an API key or network calls.
 It does not prove server authorization, destination existence or available quota.
