@@ -686,7 +686,9 @@ the phase sends tenant `b`'s principals tenant `a`'s id and the other way
 round. Every answer must be 403 or 404 (#656); a success is an ownership
 bypass. Resources the description's links make, such as a folder or a contact,
 are made again for each cell as their owner. Only the `/api/v1/accounts/{id}`
-operations are selected, because the declared id is an account's.
+operations are selected, because the declared id is an account's, and the
+account list beside them: tenant `b`'s list of accounts must not contain tenant
+`a`'s account id, or the other way round.
 
 A second run sends the domain operations. `chore test:contract-domain-tenants`
 makes two domain administrators directly in the database: one of restmail.test
@@ -694,7 +696,12 @@ makes two domain administrators directly in the database: one of restmail.test
 `b`), each holding the admin role on its own domain only. Changing grants
 through the API takes a two-factor session, which no contract principal has.
 `ownership.py --domains` declares each tenant's domain id and selects the
-`/api/v1/admin/domains/{id}` operations. Its report is `ownership-domains`.
+`/api/v1/admin/domains/{id}` operations and the domain list, which must not
+show the other tenant's domain. It also sends the DKIM routes, whose id is the
+domain's, and the aliases, custom filters, pipelines and certificates a create
+links to, which the victim tenant's administrator makes again for each cell.
+Mailboxes, the queue, grants and bans take ids that no link makes and that are
+not a domain's, so they are not sent. Its report is `ownership-domains`.
 Tenant ids are keyed by parameter name, and the account run already declares
 `path.id`, so the domains need a run of their own.
 
