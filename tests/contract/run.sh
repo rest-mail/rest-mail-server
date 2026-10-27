@@ -43,15 +43,16 @@ mkdir -p "$out" "$logs"
 # live contract proof.
 served="$PWD/$out/openapi.json"
 export CONTRACT_SPEC="$PWD/openapi.yaml"
+names=(authorization)
+reset_run=()
 if [ "$phase" != authorization ]; then
-  # Do not report an earlier run's transactions after this run fails early.
+  reset_run=(--reset-run)
   names=(fuzz)
   if [ "$phase" = gate ]; then names=(examples coverage authorization browser-sessions); fi
-  for name in "${names[@]}"; do
-    rm -f "$out/$name.xml" "$out/$name.html" "$out/$name.md" "$out/$name.har" "$out/$name.json"
-  done
-  rm -f "$served"
 fi
+# Clear this invocation's reports before dependencies or tools can fail. An
+# authorization-only run keeps the gate's saved inputs, but not an old verdict.
+python3 tests/contract/report_files.py "${reset_run[@]}" "$out" "${names[@]}"
 # The full command prints once after authorization. Standalone phases summarize
 # only reports from this invocation, never a previous gate or fuzz run.
 if [ "${CONTRACT_DEFER_SUMMARY:-0}" != 1 ]; then

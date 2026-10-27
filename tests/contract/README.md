@@ -696,10 +696,14 @@ Lifecycle and scope gates remain #626.
 Each phase writes JUnit, JSON, HTML and Markdown to `.cache/contract/` (`examples.html`,
 `coverage.md`, …), and the run ends with a summary, also in
 `.cache/contract/summary.md`. The summary includes Vertrag's own operation
-counts and each operation/status exclusion with its reason; it also runs when
-a gate fails. The complete command prints it once, after the authorization
-report. Standalone gate and fuzz commands summarize only their own phases,
-so an earlier fuzz report cannot appear in a later gate verdict:
+counts and each operation/status exclusion with its reason. The complete command
+clears previous reports and generated run inputs before topology or fixture setup,
+and prints a fresh summary even if setup fails. Fixture credentials and other
+files are preserved. When setup succeeds, the summary prints once after the
+authorization report. Standalone phases clear their own previous reports and
+summarize only their own phases, including when a dependency or tool fails.
+Authorization keeps the preceding gate's saved inputs. An earlier run's results
+cannot appear as this invocation's verdict:
 
 ```
 | Phase | Transactions | Passed | Failed | Skipped |
