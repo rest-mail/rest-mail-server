@@ -10,11 +10,11 @@
 // verifies the client certificate (tls.RequireAndVerifyClientCert). The
 // certificate is, in effect, the gateway's password.
 //
-// The two builders below are the only place TLS material is loaded, so both the
-// API (server side) and the gateways (client side) agree on cipher/version
-// policy and on which CA anchors the internal trust domain. They are pure with
-// respect to the filesystem inputs and hold no global state, so they are unit
-// testable with fixtures.
+// The builders share cipher/version policy and the internal CA trust domain.
+// Serving and client keypairs reload from disk on new full TLS handshakes, with
+// checks bounded to five seconds. CA trust pools are fixed at startup; trust
+// anchor rotation still requires a coordinated restart. State is local to each
+// configuration, so the builders are unit testable with filesystem fixtures.
 package mtls
 
 import (
@@ -22,6 +22,8 @@ import (
 	"crypto/x509"
 	"fmt"
 	"os"
+
+	"github.com/restmail/restmail/internal/tlsfiles"
 )
 
 // ServerTLSConfig builds the *tls.Config for the API's internal mTLS listener.
@@ -38,7 +40,7 @@ func ServerTLSConfig(caCert, serverCert, serverKey string) (*tls.Config, error) 
 	if caCert == "" || serverCert == "" || serverKey == "" {
 		return nil, fmt.Errorf("internal mTLS server config requires a CA cert, server cert, and server key (got ca=%q cert=%q key=%q)", caCert, serverCert, serverKey)
 	}
-	cert, err := tls.LoadX509KeyPair(serverCert, serverKey)
+	loader, err := tlsfiles.New(serverCert, serverKey, tlsfiles.CheckInterval)
 	if err != nil {
 		return nil, fmt.Errorf("load internal mTLS server keypair: %w", err)
 	}
@@ -46,12 +48,20 @@ func ServerTLSConfig(caCert, serverCert, serverKey string) (*tls.Config, error) 
 	if err != nil {
 		return nil, fmt.Errorf("load internal mTLS client CA: %w", err)
 	}
-	return &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		ClientAuth:   tls.RequireAndVerifyClientCert,
-		ClientCAs:    pool,
-		MinVersion:   tls.VersionTLS12,
-	}, nil
+	cfg := &tls.Config{
+		GetCertificate: loader.GetCertificate,
+		ClientAuth:     tls.RequireAndVerifyClientCert,
+		ClientCAs:      pool,
+		MinVersion:     tls.VersionTLS12,
+	}
+	// Select this listener's configuration even when a caller clones it and
+	// installs a fallback certificate (as httptest.StartTLS does). Without SNI,
+	// TLS would otherwise serve that static pair without calling GetCertificate,
+	// bypassing both the internal identity and subsequent file reloads.
+	cfg.GetConfigForClient = func(*tls.ClientHelloInfo) (*tls.Config, error) {
+		return cfg, nil
+	}
+	return cfg, nil
 }
 
 // ClientTLSConfig builds the *tls.Config the gateways use when calling the API's
@@ -62,7 +72,7 @@ func ClientTLSConfig(caCert, clientCert, clientKey string) (*tls.Config, error) 
 	if caCert == "" || clientCert == "" || clientKey == "" {
 		return nil, fmt.Errorf("internal mTLS client config requires a CA cert, client cert, and client key (got ca=%q cert=%q key=%q)", caCert, clientCert, clientKey)
 	}
-	cert, err := tls.LoadX509KeyPair(clientCert, clientKey)
+	loader, err := tlsfiles.New(clientCert, clientKey, tlsfiles.CheckInterval)
 	if err != nil {
 		return nil, fmt.Errorf("load internal mTLS client keypair: %w", err)
 	}
@@ -71,9 +81,9 @@ func ClientTLSConfig(caCert, clientCert, clientKey string) (*tls.Config, error) 
 		return nil, fmt.Errorf("load internal mTLS server CA: %w", err)
 	}
 	return &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		RootCAs:      pool,
-		MinVersion:   tls.VersionTLS12,
+		GetClientCertificate: loader.GetClientCertificate,
+		RootCAs:              pool,
+		MinVersion:           tls.VersionTLS12,
 	}, nil
 }
 

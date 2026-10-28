@@ -4,13 +4,13 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/restmail/restmail/internal/metrics"
+	"github.com/restmail/restmail/internal/tlsfiles"
 )
 
 // SNICertLoader provides SNI-based certificate selection by loading
@@ -23,7 +23,7 @@ type SNICertLoader struct {
 	primaryName     string
 	hosts           func(name string) (bool, error)
 	mu              sync.RWMutex
-	cache           map[string]*tls.Certificate
+	cache           map[string]*tlsfiles.Loader
 	watcher         *fsnotify.Watcher
 	stopCh          chan struct{}
 }
@@ -77,7 +77,7 @@ func NewSNICertLoader(certDir string, fallback *tls.Certificate) *SNICertLoader 
 	return &SNICertLoader{
 		certDir:  certDir,
 		fallback: fallback,
-		cache:    make(map[string]*tls.Certificate),
+		cache:    make(map[string]*tlsfiles.Loader),
 	}
 }
 
@@ -100,7 +100,7 @@ func (l *SNICertLoader) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certifi
 
 	// Check cache
 	l.mu.RLock()
-	cert, cached := l.cache[name]
+	loader := l.cache[name]
 	hosts := l.hosts
 	primary := l.primaryName == name
 	l.mu.RUnlock()
@@ -110,25 +110,21 @@ func (l *SNICertLoader) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certifi
 		}
 		return nil, l.refuse(name, hosts, fmt.Errorf("primary certificate does not cover this name"))
 	}
-	if cached {
-		return cert, nil
-	}
-
-	// Try to load from disk
-	certPath := filepath.Join(l.certDir, name+".crt")
-	keyPath := filepath.Join(l.certDir, name+".key")
-
-	if _, err := os.Stat(certPath); err != nil {
-		// A single keypair whose SANs list this installation's host names is the
-		// usual arrangement, and for those names it is the right answer, not a
-		// substitute for one.
-		if certCovers(fallback, name) {
-			return fallback, nil
+	if loader == nil {
+		// Never evict a valid pair while a writer is between its two renames.
+		l.mu.Lock()
+		loader = l.cache[name]
+		if loader == nil {
+			var err error
+			loader, err = tlsfiles.New(filepath.Join(l.certDir, name+".crt"), filepath.Join(l.certDir, name+".key"), tlsfiles.CheckInterval)
+			// Unknown SNI names must not grow the cache without limit.
+			if err == nil {
+				l.cache[name] = loader
+			}
 		}
-		return nil, l.refuse(name, hosts, fmt.Errorf("no certificate file: %w", err))
+		l.mu.Unlock()
 	}
-
-	loaded, err := tls.LoadX509KeyPair(certPath, keyPath)
+	loaded, err := loader.GetCertificate(hello)
 	if err != nil {
 		if certCovers(fallback, name) {
 			return fallback, nil
@@ -136,13 +132,7 @@ func (l *SNICertLoader) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certifi
 		return nil, l.refuse(name, hosts, fmt.Errorf("loading the certificate and key: %w", err))
 	}
 
-	// Cache it
-	l.mu.Lock()
-	l.cache[name] = &loaded
-	l.mu.Unlock()
-
-	slog.Info("sni: loaded certificate", "domain", name)
-	return &loaded, nil
+	return loaded, nil
 }
 
 // refuse says why name cannot be served and returns the error that ends the
@@ -173,13 +163,15 @@ func (l *SNICertLoader) refuse(name string, hosts func(string) (bool, error), ca
 	return fmt.Errorf("no usable certificate for %s: %w", name, cause)
 }
 
-// Invalidate removes a domain's cached certificate so it reloads from disk
-// on the next TLS handshake.
+// Invalidate requests a bounded recheck without discarding the last usable pair.
+// Polling also discovers changes that do not generate directory watcher events.
 func (l *SNICertLoader) Invalidate(domain string) {
-	l.mu.Lock()
-	delete(l.cache, domain)
-	l.mu.Unlock()
-	slog.Info("sni: invalidated cached cert", "domain", domain)
+	l.mu.RLock()
+	loader := l.cache[strings.ToLower(domain)]
+	l.mu.RUnlock()
+	if loader != nil {
+		loader.Current()
+	}
 }
 
 // StartWatching begins monitoring the cert directory for file changes.

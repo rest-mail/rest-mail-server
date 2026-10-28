@@ -311,13 +311,16 @@ At [internal/gateway/queue/worker.go](../internal/gateway/queue/worker.go). Poll
 - Capability cache table with atomic upserts (`Clauses(clause.OnConflict{...})`) to avoid races between concurrent probes. It records only whether the MX speaks REST; the endpoint is discovered on every delivery.
 
 #### TLS / SNI
-- The primary `TLS_CERT_PATH` / `TLS_KEY_PATH` pair is checked on each new TLS
-  handshake. When renewal replaces both files, SMTP, IMAP, and POP3 serve the new
-  pair without a restart, including connections without SNI. During the two
-  file renames, a mismatched pair leaves the last complete pair in service and
-  is retried on the next handshake.
-- Per-domain cert/key pairs via `TLS_CERT_DIR`. SNI-based lookup at handshake time.
-- Hot reload via `fsnotify`: [internal/gateway/tlsutil/sni.go](../internal/gateway/tlsutil/sni.go) watches cert directory, invalidates cache entry on WRITE/CREATE. `StartWatching()` / `Stop()` lifecycle called from each gateway's main.go.
+- Primary `TLS_CERT_PATH` / `TLS_KEY_PATH` and per-domain `TLS_CERT_DIR` pairs
+  reload on new full TLS handshakes, checking files at most every five seconds
+  per loaded pair. SMTP, IMAP, POP3, and internal mTLS use the shared
+  [file loader](../internal/tlsfiles/loader.go). Symlink replacements are followed;
+  directory notifications are optional. No restart or signal is required.
+- A bad or half-written renewal logs an error and retains the last complete pair
+  until a successful retry. Existing connections keep their negotiated identity.
+  Internal CA trust pools still require a restart when trust anchors change.
+- For standalone issuance, scheduling, publication permissions, and validation,
+  follow the [Certbot integration guide](external-certificates.md).
 
 #### PROXY protocol
 Enabled via `PROXY_PROTOCOL_TRUSTED_CIDRS` (comma-separated). Uses pires/go-proxyproto. Trusted connections: parse header, rewrite `RemoteAddr` to real client IP. Untrusted or missing header: ignored. Safe in mixed environments. **SMTP gateway only** — the IMAP and POP3 gateways do not read PROXY headers. The header is read lazily on each connection's own goroutine (first read/write), not in the accept loop, so a slow proxy handshake cannot stall acceptance of other connections. See [docs/proxy-protocol.md](proxy-protocol.md) for HAProxy / nginx examples.
@@ -680,13 +683,17 @@ Implemented in slices; issue #153 remains open.
 ### 6.2 TLS / certs
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `TLS_CERT_PATH` | *(empty)* | Primary cert file; renewed pairs reload on new handshakes |
-| `TLS_KEY_PATH` | *(empty)* | Matching primary key file |
-| `TLS_CERT_DIR` | *(empty)* | Per-domain cert/key directory for SNI |
+| `TLS_CERT_PATH` | *(empty)* | Primary fullchain PEM; checks for replacements on handshakes at most every 5s |
+| `TLS_KEY_PATH` | *(empty)* | Matching PEM key; invalid replacements retain the previous pair and log an error |
+| `TLS_CERT_DIR` | *(empty)* | SNI `<domain>.crt` / `<domain>.key` pairs; same 5s reload contract |
 | `ACME_ENABLED` | `false` | Let's Encrypt auto-renewal |
 | `ACME_EMAIL` | *(empty)* | Contact email |
 | `ACME_DIRECTORY` | `https://acme-v02.api.letsencrypt.org/directory` | ACME directory URL |
 | `ACME_STAGING` | `false` | Use staging directory |
+
+For externally managed files, leave `ACME_ENABLED=false` and follow the
+[standalone Certbot integration](external-certificates.md). Its scheduler owns
+renewal; REST Mail consumes the files without starting another renewal process.
 
 For manifest deployments using `cert_provider: acme`, `chore instance:certs:issue`
 issues through HTTP-01 and saves the serving pair in the certs volume. Every

@@ -527,11 +527,14 @@ All configuration is done via environment variables. The API, gateways, and tool
 
 ### TLS and Certificates
 
+For standalone issuance and automated renewal, follow the
+[Certbot integration guide](docs/external-certificates.md).
+
 | Variable            | Default | Description                                    |
 |---------------------|---------|------------------------------------------------|
-| `TLS_CERT_PATH`     | *(empty)* | Path to TLS certificate file                 |
+| `TLS_CERT_PATH`     | *(empty)* | Fullchain PEM; reloads on handshakes with checks at most every 5s |
 | `TLS_KEY_PATH`      | *(empty)* | Path to TLS private key file                 |
-| `TLS_CERT_DIR`      | *(empty)* | Directory with per-domain cert/key pairs for SNI |
+| `TLS_CERT_DIR`      | *(empty)* | SNI cert/key directory; same 5s reload, retains good pairs on errors |
 | `ACME_ENABLED`      | `false`   | Enable ACME/Let's Encrypt auto-renewal       |
 | `ACME_EMAIL`        | *(empty)* | Contact email for ACME account               |
 | `ACME_STAGING`      | `false`   | Use Let's Encrypt staging directory          |
