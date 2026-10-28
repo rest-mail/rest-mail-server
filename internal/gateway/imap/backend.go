@@ -153,7 +153,11 @@ func (m *mailbox) Messages(folder string) ([]goimap.Message, error) {
 	}
 	out := make([]goimap.Message, 0, len(resp.Data))
 	for _, msg := range resp.Data {
-		out = append(out, toMessage(msg))
+		item := toMessage(msg)
+		// FETCH sends the downgraded form to a session that has not enabled
+		// UTF-8, so RFC822.SIZE counts that form's octets.
+		item.Size = msg.WireSizeFor(m.utf8)
+		out = append(out, item)
 	}
 	return out, nil
 }

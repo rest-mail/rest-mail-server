@@ -933,7 +933,7 @@ func (h *MessageHandler) sendMessageWithParts(r *http.Request, req sendMessageRe
 
 	// The Sent copy keeps the source that was sent, as a delivered copy does,
 	// so its raw source can be read (GET /messages/{id}/raw, IMAP, POP3).
-	if err := h.db.Model(&sentMsg).Updates(map[string]any{"raw_message": rawMessage, "raw_size": len(rawMessage)}).Error; err != nil {
+	if err := h.db.Model(&sentMsg).Updates(map[string]any{"raw_message": rawMessage, "raw_size": len(rawMessage), "downgraded_size": rmail.DowngradedSize(rawMessage)}).Error; err != nil {
 		slog.Warn("failed to store the sent message's raw source", "message_id", sentMsg.ID, "error", err)
 		if h.draftSend != nil {
 			return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to save sent message")
