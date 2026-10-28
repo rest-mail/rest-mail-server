@@ -1,5 +1,6 @@
-// Package auditanchor publishes small copies of the audit chain head by email.
-// The durable outbound queue handles delivery, retries and DKIM signing.
+// Package auditanchor publishes small copies of the audit chain head by email
+// and, when configured, to an HTTPS endpoint on another host. The durable
+// outbound queue handles email delivery, retries and DKIM signing.
 package auditanchor
 
 import (
@@ -45,18 +46,11 @@ func plan(server, sender string, recipients []string, now time.Time, head audit.
 	if !validHash(head.Hash) {
 		return nil, fmt.Errorf("invalid audit chain head")
 	}
-	if previous.Seq > 0 {
-		age := now.Sub(previous.OccurredAt)
-		if age < minimumInterval {
-			return nil, nil
-		}
-		burst := !changes.First.IsZero() && (now.Sub(changes.Last) >= quietPeriod || now.Sub(changes.First) >= minimumInterval)
-		if age < dailyInterval && !burst {
-			return nil, nil
-		}
+	if !due(now, previous, changes) {
+		return nil, nil
 	}
 	now = now.UTC().Truncate(time.Microsecond)
-	body := fmt.Sprintf("REST Mail audit anchor\r\nServer: %s\r\nTime: %s\r\nSeq: %d\r\nHash: %s\r\nPrevious-Seq: %d\r\nPrevious-Hash: %s\r\n", server, now.Format(time.RFC3339Nano), head.Seq, head.Hash, last.Seq, last.Hash)
+	body := anchorBody(server, now, head, last)
 	p := &publication{entry: models.AuditEntry{
 		OccurredAt: now, ActorKind: models.AuditActorSystem, Action: emailAction, Outcome: models.AuditOutcomeSuccess,
 		Target: models.AuditTarget{"seq": strconv.FormatInt(head.Seq, 10), "hash": head.Hash, "previous_seq": strconv.FormatInt(last.Seq, 10), "previous_hash": last.Hash, "delivery": "queued"},
@@ -78,6 +72,27 @@ func plan(server, sender string, recipients []string, now time.Time, head audit.
 	return p, nil
 }
 
+// due applies the shared schedule: a first anchor at once, then one a day,
+// plus one after a burst of administrative changes, never within an hour of
+// the previous one. previous is the last anchor published to the same target.
+func due(now time.Time, previous models.AuditEntry, changes changeWindow) bool {
+	if previous.Seq == 0 {
+		return true
+	}
+	age := now.Sub(previous.OccurredAt)
+	if age < minimumInterval {
+		return false
+	}
+	burst := !changes.First.IsZero() && (now.Sub(changes.Last) >= quietPeriod || now.Sub(changes.First) >= minimumInterval)
+	return age >= dailyInterval || burst
+}
+
+// anchorBody is the whole anchor: the chain head and the previous anchor, with
+// no log entries. Every target receives exactly this text.
+func anchorBody(server string, now time.Time, head, last audit.Anchor) string {
+	return fmt.Sprintf("REST Mail audit anchor\r\nServer: %s\r\nTime: %s\r\nSeq: %d\r\nHash: %s\r\nPrevious-Seq: %d\r\nPrevious-Hash: %s\r\n", server, now.Format(time.RFC3339Nano), head.Seq, head.Hash, last.Seq, last.Hash)
+}
+
 func validHash(hash string) bool {
 	if len(hash) != 64 {
 		return false
@@ -92,7 +107,7 @@ func previousHead(previous models.AuditEntry) (audit.Anchor, error) {
 	}
 	seq, err := strconv.ParseInt(previous.Target["seq"], 10, 64)
 	if err != nil || seq < 1 || seq >= previous.Seq || !validHash(previous.Target["hash"]) {
-		return audit.Anchor{}, fmt.Errorf("invalid previous email anchor at audit seq %d", previous.Seq)
+		return audit.Anchor{}, fmt.Errorf("invalid previous anchor at audit seq %d", previous.Seq)
 	}
 	return audit.Anchor{Seq: seq, Hash: previous.Target["hash"]}, nil
 }
