@@ -411,7 +411,7 @@ func clearTestData(tx *gorm.DB) error {
 		"DELETE FROM quarantine", "DELETE FROM vacation_configs", "DELETE FROM vacation_responses",
 		"DELETE FROM contacts", "DELETE FROM sieve_scripts", "DELETE FROM quota_usage",
 		"DELETE FROM credentials WHERE account_id NOT IN " + testDataAdmins,
-		"DELETE FROM grants WHERE scope LIKE 'mailbox:%' OR holder_id NOT IN " + testDataAdmins,
+		"DELETE FROM grants WHERE holder_kind = 'account' AND (scope LIKE 'mailbox:%' OR holder_id NOT IN " + testDataAdmins + ")",
 		"DELETE FROM aliases", "DELETE FROM message_traces",
 		"DELETE FROM custom_filters", "DELETE FROM bans",
 		"DELETE FROM restmail_capabilities", "DELETE FROM certificates",

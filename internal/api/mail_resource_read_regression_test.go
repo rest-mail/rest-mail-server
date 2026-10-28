@@ -28,6 +28,9 @@ func (c mailResourceReadConnection) Driver() driver.Driver { return c }
 func (c mailResourceReadConnection) Open(string) (driver.Conn, error) { return c, nil }
 
 func (c mailResourceReadConnection) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
+	if rows, ok := defaultServerCeilingRows(query, args); ok {
+		return rows, nil
+	}
 	if strings.Contains(query, "JOIN role_capabilities") {
 		rows, err := c.personalDataReadConnection.QueryContext(ctx, query, args)
 		if err == nil && c.mode == "normal" {

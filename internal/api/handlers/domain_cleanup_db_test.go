@@ -164,6 +164,7 @@ func TestDomainCleanupPostgresLifecycleRetentionAndRollback(t *testing.T) {
 	if err := audit.Append(db, &seedAudit); err != nil {
 		t.Fatal(err)
 	}
+	ensureDefaultServerCeiling(t, db)
 	held, err := cache.Held(reader.ID)
 	if err != nil || !held.Allows("domains:read", grants.Domain(target.Name)) {
 		t.Fatalf("warm permissions: %v", err)
@@ -191,8 +192,12 @@ func TestDomainCleanupPostgresLifecycleRetentionAndRollback(t *testing.T) {
 		t.Fatal("historical report identity/content changed")
 	}
 	var remaining []models.Grant
-	if err := db.Find(&remaining).Error; err != nil || len(remaining) != 1 || remaining[0].ID != foreign.ID {
+	if err := db.Where("holder_kind = ?", models.GrantHolderAccount).Find(&remaining).Error; err != nil || len(remaining) != 1 || remaining[0].ID != foreign.ID {
 		t.Fatalf("grant isolation: rows=%d err=%v", len(remaining), err)
+	}
+	var serverGrants int64
+	if err := db.Model(&models.Grant{}).Where("holder_kind = ?", models.GrantHolderServer).Count(&serverGrants).Error; err != nil || serverGrants != 1 {
+		t.Fatalf("domain cleanup changed the server ceiling: rows=%d err=%v", serverGrants, err)
 	}
 	var activations int64
 	if err := db.Model(&models.GrantActivation{}).Count(&activations).Error; err != nil || activations != 0 {

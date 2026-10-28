@@ -181,15 +181,19 @@ func IntersectScopes(a, b []string) []string {
 //
 // An owned account (models.Mailbox.OwnerID) holds only what its owner holds
 // too, read live the same way: narrowing the owner narrows it at once, and an
-// inactive owner leaves it holding nothing (#341, Decided 12).
+// inactive owner leaves it holding nothing (#341, Decided 12). The server's
+// live capability ceiling also bounds it, except for superadmin at "*".
 func Load(db *gorm.DB, accountID uint, now time.Time) (Held, error) {
 	held, _, err := load(db, accountID, now)
-	return held, err
+	if err != nil {
+		return Held{}, err
+	}
+	return withinServer(db, held, now)
 }
 
-// load is Load, and also the earliest time one of the grants or activations
-// it read expires (zero when none does), after which what it read is out of
-// date.
+// load reads actor grants before the server ceiling is applied, and also the
+// earliest expiry among grants or activations (zero when none expires). Only
+// this actor snapshot is cached; the server ceiling must always be read live.
 func load(db *gorm.DB, accountID uint, now time.Time) (Held, time.Time, error) {
 	return loadBounded(db, accountID, now, map[uint]bool{})
 }
@@ -313,7 +317,8 @@ func NewCache(db *gorm.DB, ttl time.Duration) *Cache {
 }
 
 // Held is what the holder holds now, from the cache or, when it has nothing
-// current, from the database.
+// current, from the database. Only actor grants are cached: the server ceiling
+// is read on every call, including cache hits and changes from other replicas.
 func (c *Cache) Held(accountID uint) (Held, error) {
 	key := accountID
 	now := c.now()
@@ -322,7 +327,7 @@ func (c *Cache) Held(accountID uint) (Held, error) {
 	gen := c.gen
 	c.mu.Unlock()
 	if ok && now.Before(cached.until) {
-		return cached.held, nil
+		return withinServer(c.db, cached.held, now)
 	}
 
 	held, expires, err := load(c.db, accountID, now)
@@ -343,7 +348,7 @@ func (c *Cache) Held(accountID uint) (Held, error) {
 		c.entries[key] = cachedHeld{held: held, until: until}
 	}
 	c.mu.Unlock()
-	return held, nil
+	return withinServer(c.db, held, now)
 }
 
 // Invalidate forgets everything the cache holds. Call it after any grant

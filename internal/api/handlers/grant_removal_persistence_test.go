@@ -76,6 +76,7 @@ func TestGrantRemovalPersistenceAndAtomicAudit(t *testing.T) {
 			create(&untouched)
 			untouchedActivation := models.GrantActivation{GrantID: untouched.ID, ActivatedAt: time.Now().Add(-time.Minute), ExpiresAt: time.Now().Add(time.Hour), Reason: "Other public activation"}
 			create(&untouchedActivation)
+			ensureDefaultServerCeiling(t, db)
 			cache := grants.NewCache(db, time.Minute)
 			held, err := cache.Held(holder.ID)
 			if err != nil || !held.Allows("mail:read", grants.Domain(d.Name)) {

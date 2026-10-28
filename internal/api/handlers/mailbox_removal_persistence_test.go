@@ -68,6 +68,7 @@ func TestMailboxRemovalPersistenceAndRollback(t *testing.T) {
 				row := row
 				create(&row)
 			}
+			ensureDefaultServerCeiling(t, db)
 			permissionCache := grants.NewCache(db, time.Minute)
 			sessionCache := NewSessionCache(db, time.Minute)
 			h := NewMailboxHandler(db, permissionCache, sessionCache)
