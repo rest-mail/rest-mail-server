@@ -15,8 +15,6 @@ silent: true
 
 vars:
   JS_FILTER_PROJECT: '{{.JS_FILTER_PROJECT | default "rest-mail"}}'
-  JS_FILTER_NETWORK: '{{.JS_FILTER_NETWORK | default "testbed_mailnet"}}'
-  JS_FILTER_IP: '{{.JS_FILTER_IP | default "10.99.0.22"}}'
   JS_FILTER_IMAGE_TAG: '{{.JS_FILTER_IMAGE_TAG | default "dev"}}'
   JS_FILTER_CONTAINER_NAME: '{{.JS_FILTER_PROJECT}}-js-filter'
   JS_FILTER_REGISTRY: '{{.JS_FILTER_REGISTRY | default "ghcr.io/rest-mail"}}'
@@ -43,7 +41,8 @@ tasks:
     deps: [build]
     cmds:
       - |
-        echo "  starting js-filter ({{.JS_FILTER_CONTAINER_NAME}} @ {{.JS_FILTER_IP}})"
+        sh "{{.TASKFILE_DIR}}/js-filter-network.sh" up "{{.JS_FILTER_PROJECT}}" || exit 1
+        echo "  starting js-filter ({{.JS_FILTER_CONTAINER_NAME}} on {{.JS_FILTER_PROJECT}}-js-filter-net)"
         docker rm -f {{.JS_FILTER_CONTAINER_NAME}} >$OUTPUT 2>&1 || true
         # ── OSI-6: contain the admin-authored JS mail-filter runner ──────────
         # Each filter script runs in its own QuickJS engine compiled to
@@ -64,15 +63,11 @@ tasks:
         # only *receives* /execute + /validate calls from the API). Filter
         # scripts can only fetch() hosts explicitly allow-listed by the app, and
         # NO allow-list is configured here (JS_FILTER_ALLOWED_HOSTS unset), so
-        # outbound HTTP is default-denied at the application layer. A dedicated
-        # `internal: true` network is the intended container-level backstop but
-        # is not adoptable from this repo alone: the API reaches the sidecar at
-        # its fixed mailnet IP (JS_FILTER_URL, tasks/api.yml) and bypasses
-        # Docker's embedded DNS, so the sidecar must stay on the
-        # mailnet at {{.JS_FILTER_IP}} to remain reachable. Moving it behind an
-        # internal network requires a testbed dnsmasq/addressing change — see PR
-        # notes (OSI-6 follow-up). Others on the mailnet can reach it, which is
-        # why it checks the token.
+        # outbound HTTP is default-denied at the application layer. The private
+        # --internal bridge is the container-level backstop: only this instance's
+        # API joins it, and the filter has no mailnet or published host port.
+        # Docker allocates the private address; tasks/api.yml inspects it at
+        # startup so the API keeps using the testbed-only DNS resolver.
         HARDENING="--security-opt no-new-privileges:true \
           --cap-drop ALL \
           --read-only --tmpfs /tmp:rw,noexec,nosuid,size=32m \
@@ -87,8 +82,7 @@ tasks:
         docker run -d --name {{.JS_FILTER_CONTAINER_NAME}} \
           $HARDENING \
           --restart unless-stopped \
-          --network {{.JS_FILTER_NETWORK}} \
-          --ip {{.JS_FILTER_IP}} \
+          --network "{{.JS_FILTER_PROJECT}}-js-filter-net" \
           --env-file "$SECRETS_ENV" \
           --health-cmd 'nc -z localhost 3100 || exit 1' \
           --health-interval 10s \
@@ -112,6 +106,16 @@ tasks:
     cmds:
       - task: down
       - task: up
+
+  network:up:
+    desc: Create or validate this instance's private no-egress filter network
+    cmds:
+      - sh "{{.TASKFILE_DIR}}/js-filter-network.sh" up "{{.JS_FILTER_PROJECT}}"
+
+  network:down:
+    desc: Remove this instance's private filter network after both services stop
+    cmds:
+      - sh "{{.TASKFILE_DIR}}/js-filter-network.sh" down "{{.JS_FILTER_PROJECT}}"
 
   # ════════════════════════════════════════════════════════
   # Diagnostics

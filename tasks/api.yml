@@ -42,8 +42,6 @@ vars:
   API_JWT_SECRET: '{{.API_JWT_SECRET | default "dev-secret-change-in-production"}}'
   API_MASTER_KEY: '{{.API_MASTER_KEY | default "dev-master-key-change-in-production"}}'
   API_JS_FILTER_TOKEN: '{{.API_JS_FILTER_TOKEN | default "dev-js-filter-token-change-in-production"}}'
-  # The sidecar by address: the testbed's DNS has no name for it.
-  API_JS_FILTER_URL: '{{.API_JS_FILTER_URL | default "http://10.99.0.22:3100"}}'
   # The testbed keeps every message's trace, not a sample, so a test can read
   # the trace of any message it sent.
   API_TRACE_SAMPLE_RATE: '{{.API_TRACE_SAMPLE_RATE | default "1"}}'
@@ -154,7 +152,11 @@ tasks:
         printf 'JWT_SECRET=%s\n' "{{.API_JWT_SECRET}}" >> "$SECRETS_ENV"
         printf 'MASTER_KEY=%s\n' "{{.API_MASTER_KEY}}" >> "$SECRETS_ENV"
         printf 'JS_FILTER_TOKEN=%s\n' "{{.API_JS_FILTER_TOKEN}}" >> "$SECRETS_ENV"
-        docker run -d --name {{.API_CONTAINER_NAME}} \
+        # Resolve only the sidecar through Docker inspection, leaving the
+        # mounted testbed resolver authoritative for every DNS query. Connect
+        # both networks before starting the API to avoid a sidecar startup race.
+        JS_FILTER_IP=$(sh "{{.TASKFILE_DIR}}/js-filter-network.sh" address "{{.API_PROJECT}}") || exit 1
+        docker create --name {{.API_CONTAINER_NAME}} \
           $HARDENING \
           --restart unless-stopped \
           --network {{.API_NETWORK}} \
@@ -173,7 +175,7 @@ tasks:
           -e DB_USER={{.API_DB_USER}} \
           -e API_PORT={{.API_PORT}} \
           -e GATEWAY_HOSTNAME={{.API_RESTMAIL_HOSTNAME}} \
-          -e JS_FILTER_URL={{.API_JS_FILTER_URL}} \
+          -e JS_FILTER_URL="http://$JS_FILTER_IP:3100" \
           -e TRACE_SAMPLE_RATE={{.API_TRACE_SAMPLE_RATE}} \
           --env-file "$SECRETS_ENV" \
           -e ENVIRONMENT={{.API_ENVIRONMENT}} \
@@ -183,7 +185,9 @@ tasks:
           -e INTERNAL_MTLS_CA_CERT=/certs/internal-ca.crt \
           -e INTERNAL_MTLS_SERVER_CERT=/certs/internal-server.crt \
           -e INTERNAL_MTLS_SERVER_KEY=/certs/internal-server.key \
-          {{.API_IMAGE}} >$OUTPUT 2>&1
+          {{.API_IMAGE}} >$OUTPUT 2>&1 || exit 1
+        docker network connect "{{.API_PROJECT}}-js-filter-net" {{.API_CONTAINER_NAME}} >$OUTPUT 2>&1 || exit 1
+        docker start {{.API_CONTAINER_NAME}} >$OUTPUT 2>&1
 
   down:
     desc: Stop and remove the api container (preserves the attachments volume)
