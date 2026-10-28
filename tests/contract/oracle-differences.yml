@@ -3424,3 +3424,23 @@
 - operation: verifyDelivery
   difference: "response 429: generated only"
   reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: getServerCapabilities
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: updateServerCapabilities
+  difference: "response 429: generated only"
+  reason: The admin routes throttle refused API keys at login's rate (429 rate_limited).
+- operation: updateServerCapabilities
+  difference: "response 400: generated only"
+  reason: A body that is not JSON is refused before validation (400 bad_request).
+- operation: updateServerCapabilities
+  difference: "request body application/json.required: openapi.yaml [\"capabilities\"], generated absent"
+  reason: >-
+    The handler tells a missing list apart from an empty one, which removes
+    every capability, so the field is optional to the binder and refused as
+    required (422) by the handler.
+- operation: updateServerCapabilities
+  difference: "request body application/json.properties.capabilities.type: openapi.yaml \"array\", generated [\"array\",\"null\"]"
+  reason: >-
+    The handler tells a missing list apart from an empty one; a null list is
+    refused as required (422) by the handler.

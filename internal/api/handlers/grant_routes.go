@@ -76,4 +76,14 @@ func (h *GrantHandler) Register(rs endpoint.Routes, checks GrantRouteChecks) {
 		OperationID: "makeGrantEligible", Summary: "Make an active grant eligible", Tags: tags,
 		Errors:     []int{http.StatusForbidden, http.StatusNotFound, http.StatusConflict},
 		Middleware: []endpoint.Middleware{checks.SessionOnly, checks.AuthThrottle}}, h.makeEligible)
+	// The installation-wide capability ceiling: superadmin only, checked in the
+	// handler, since administrators pass the capability checks here.
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/server-capabilities",
+		OperationID: "getServerCapabilities", Summary: "The server capability ceiling", Tags: tags,
+		Errors:     []int{http.StatusForbidden},
+		Middleware: []endpoint.Middleware{checks.SessionOnly, checks.At(middleware.CapUsersRead)}}, h.serverCapabilities)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPut, Path: "/api/v1/admin/server-capabilities",
+		OperationID: "updateServerCapabilities", Summary: "Replace the server capability ceiling", Tags: tags,
+		Errors:     []int{http.StatusForbidden, http.StatusConflict},
+		Middleware: []endpoint.Middleware{checks.SessionOnly, checks.At(middleware.CapUsersWrite), twoFactor}}, h.updateServerCapabilities)
 }
