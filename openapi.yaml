@@ -4327,6 +4327,17 @@ paths:
         - BearerAuth: [domains:read]
         - APIKeyAuth: [domains:read]
       summary: List all domains
+      parameters:
+        - name: limit
+          in: query
+          description: Page size. Omitted or non-positive values use 50; values above 200 are capped at 200.
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          description: Number of domains to skip in name order. Omitted or negative values use 0.
+          schema:
+            type: integer
       responses:
         "200":
           description: Domain list

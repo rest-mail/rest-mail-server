@@ -54,14 +54,6 @@
     A domain always carries dkim_selector, empty while it has no key, so it is required.
     openapi.yaml marks it optional.
 - operation: listDomains
-  difference: "parameter query limit: generated only"
-  reason: >-
-    The list reads limit (default 50, at most the list cap) and offset, as every admin list
-    does. openapi.yaml does not document them for this one.
-- operation: listDomains
-  difference: "parameter query offset: generated only"
-  reason: The list reads limit and offset, as every admin list does.
-- operation: listDomains
   difference: "response 200 application/json.properties.pagination: openapi.yaml absent, generated *"
   reason: >-
     The list answers its pagination, as every list does (respond.List). openapi.yaml leaves it
