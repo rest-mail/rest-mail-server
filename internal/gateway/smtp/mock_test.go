@@ -13,6 +13,7 @@ import (
 
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 	"github.com/restmail/restmail/internal/gateway/connlimiter"
+	rmail "github.com/restmail/restmail/internal/mail"
 	"github.com/restmail/restmail/internal/mtls/mtlstest"
 	"github.com/restmail/restmail/internal/outbound"
 )
@@ -171,8 +172,12 @@ type mockStore struct {
 	unusable      map[uint]bool
 	credentialErr error
 	enqueueErr    error // forced EnqueueOutbound error
-	persistErr    error // forced PersistSubmittedMessage error
-	prepareErr    error // forced PrepareSubmitted error
+	// policies maps a domain to its sending policy; policyErr is a forced
+	// SendingPolicy error.
+	policies   map[string]string
+	policyErr  error
+	persistErr error // forced PersistSubmittedMessage error
+	prepareErr error // forced PrepareSubmitted error
 
 	enqueued  []OutboundMessage
 	persisted []SubmittedMessage
@@ -203,6 +208,15 @@ func (s *mockStore) preparedCount() int {
 
 func newMockStore() *mockStore {
 	return &mockStore{authorized: map[string]bool{}}
+}
+
+func (s *mockStore) SendingPolicy(address string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.policyErr != nil {
+		return "", s.policyErr
+	}
+	return s.policies[rmail.DomainFromAddress(address)], nil
 }
 
 func (s *mockStore) SenderAuthorized(_ uint, from string) (bool, error) {

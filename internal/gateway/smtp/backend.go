@@ -46,6 +46,10 @@ type Store interface {
 	// EnqueueOutbound appends a message to the outbound delivery queue for the
 	// queue worker to deliver to a remote MX.
 	EnqueueOutbound(msg OutboundMessage) error
+	// SendingPolicy is the sending policy of the domain an address is on
+	// (models.SendingPolicyBulk, models.SendingPolicyTransactional), or "" when
+	// it has none or is not a domain this server hosts (#144).
+	SendingPolicy(address string) (string, error)
 	// CredentialUsable reports whether the app password a session signed in
 	// with can still be used: not revoked, not expired, its mailbox active.
 	// Checked before each message, so revoking one stops it sending at once.

@@ -1,6 +1,7 @@
 package smtp
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -8,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/mail"
 	"strings"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 	gosmtp "github.com/rest-mail/go-smtp/pkg/smtp"
 	smtpserver "github.com/rest-mail/go-smtp/pkg/smtp/server"
 
+	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 	"github.com/restmail/restmail/internal/gateway/connlimiter"
 	rmail "github.com/restmail/restmail/internal/mail"
@@ -455,6 +458,42 @@ func (s *session) authorizeFromHeader(fromAddr string) error {
 	return nil
 }
 
+// followSendingPolicy holds an authenticated submission to the sending policy
+// of its From domain, as the send API holds a message it composes (#144): mail
+// from a bulk domain must carry a List-Unsubscribe header, and mail from a
+// transactional domain must not. A policy that cannot be read is a temporary
+// refusal, so the client retries rather than the rule being skipped.
+func (s *session) followSendingPolicy(fromAddr string, data []byte) error {
+	policy, err := s.store.SendingPolicy(fromAddr)
+	if err != nil {
+		slog.Error("smtp: could not read the sending policy", "header_from", maskEmail(fromAddr), "error", err)
+		return &gosmtp.SMTPError{
+			Code:         451,
+			EnhancedCode: gosmtp.EnhancedCode{4, 3, 0},
+			Message:      "Could not check the domain's sending policy, try again later",
+		}
+	}
+	unsubscribe := false
+	if msg, perr := mail.ReadMessage(bytes.NewReader(data)); perr == nil {
+		unsubscribe = strings.TrimSpace(msg.Header.Get("List-Unsubscribe")) != ""
+	}
+	switch {
+	case policy == models.SendingPolicyBulk && !unsubscribe:
+		return &gosmtp.SMTPError{
+			Code:         550,
+			EnhancedCode: gosmtp.EnhancedCode{5, 7, 1},
+			Message:      "This domain sends bulk mail: a List-Unsubscribe header is required",
+		}
+	case policy == models.SendingPolicyTransactional && unsubscribe:
+		return &gosmtp.SMTPError{
+			Code:         550,
+			EnhancedCode: gosmtp.EnhancedCode{5, 7, 1},
+			Message:      "This domain sends transactional mail: a List-Unsubscribe header is not allowed",
+		}
+	}
+	return nil
+}
+
 // maySendAs accepts the login spelling or another spelling that resolves to
 // the same mailbox ID. Only a password session may use grants to send as a
 // different mailbox; app passwords remain scoped to their own identity.
@@ -574,6 +613,9 @@ func (s *session) Data(r io.Reader) error {
 	// spoof commits nothing.
 	if s.isSubmission && s.authenticated {
 		if err := s.authorizeFromHeader(fromAddr); err != nil {
+			return err
+		}
+		if err := s.followSendingPolicy(fromAddr, data); err != nil {
 			return err
 		}
 	}
