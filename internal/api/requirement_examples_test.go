@@ -61,7 +61,7 @@ func TestRequirementExamplesThroughTheProductionRouter(t *testing.T) {
 	}
 	jwt := auth.NewJWTService(routerTestSecret, 5*time.Minute, 24*time.Hour)
 	cfg := &config.Config{Environment: "test", APIMaxBodyBytes: requirementBodyCap, MasterKey: accessMasterKey,
-		TOTP2FAEnabled: true, GatewayHostname: "mail.example.com"}
+		TOTP2FAEnabled: true, GatewayHostname: "mail.example.com", RecoveryEmailBaseURL: "https://mail.example.com"}
 	// The session and grant checks are chosen when a router is built: the package's
 	// seams stand them aside for stubbed, and useRealGrants puts the real ones back
 	// for the router whose session store cannot be read.

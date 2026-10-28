@@ -211,6 +211,9 @@ api:
   # (`restmail status --key`): how a deploy is confirmed from outside. They can
   # do nothing else; owner keys can read it too. Not secret.
   statusKeys: ""
+  # User-facing HTTPS API origin, without /api. Required for recovery email
+  # delivery; the outbound worker uses the account domain's normal mail route.
+  recoveryEmailBaseURL: ""
   # Push notifications to the REST Mail iPhone app. Off by default. When on, the
   # server tells a signed-in phone that mail has reached an inbox, with the
   # account and its unread count and nothing of the mail: the app fetches that

@@ -192,3 +192,9 @@ func (b *FailureBudget) Available(key string) (bool, time.Duration) {
 func (b *FailureBudget) Charge(key string) {
 	b.rl.allow(key)
 }
+
+// Take atomically reserves a request, including successful ones. Recovery
+// delivery uses it so concurrent requests cannot overrun an address's budget.
+func (b *FailureBudget) Take(key string) (bool, time.Duration) {
+	return b.rl.allow(key)
+}

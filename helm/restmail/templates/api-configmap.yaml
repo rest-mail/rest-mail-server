@@ -9,6 +9,7 @@ data:
   RESTMAIL_AUDIT_ANCHOR_EMAIL_ENABLED: {{ .Values.api.auditAnchorEmail.enabled | quote }}
   RESTMAIL_AUDIT_ANCHOR_EMAIL_TO: {{ .Values.api.auditAnchorEmail.to | quote }}
   API_PORT: {{ .Values.api.port | quote }}
+  RESTMAIL_RECOVERY_EMAIL_BASE_URL: {{ .Values.api.recoveryEmailBaseURL | default "" | quote }}
   # Public HTTPS delivery host advertised by /.well-known/restmail (#291).
   GATEWAY_HOSTNAME: {{ .Values.mailserver.hostname | quote }}
   ENVIRONMENT: {{ .Values.api.environment | quote }}

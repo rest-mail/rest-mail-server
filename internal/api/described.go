@@ -199,7 +199,8 @@ var exampleRequirements = map[string][]string{
 		"active_grant", "active_policy", "calendar_invitation", "discarding_pipeline", "eligible_grant",
 		"enrolled_authenticator", "enrollment_disabled", "event_stream", "existing_grant", "existing_link", "existing_policy", "existing_script",
 		"full_mailbox", "future_time", "hosted_restmail_domain", "known_password", "mail_host_unconfigured", "own_account", "owner_key",
-		"pending_enrollment", "quarantined_message", "two_factor_off", "two_factor_session",
+		"pending_enrollment", "pending_recovery_email", "quarantined_message", "recovery_email_token",
+		"two_factor_off", "two_factor_session", "verified_recovery_email",
 	},
 }
 
