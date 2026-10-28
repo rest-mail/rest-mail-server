@@ -162,6 +162,7 @@ func TestQueueTraceReadExamples(t *testing.T) {
 		}
 		for name, pair := range pairs[operation] {
 			t.Run(operation+"/"+name, func(t *testing.T) {
+				examplepairs.Proven(t, operation, name)
 				handler, ok := routers[name]
 				if !ok {
 					t.Fatalf("no scenario for %s", name)

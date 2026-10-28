@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -51,7 +53,10 @@ func (h *SearchHandler) search(r *http.Request, in searchRequest) (endpoint.List
 
 	mailboxID, err := resolveAccountMailbox(h.db, uint(in.ID), claims, models.CapMailRead)
 	if err != nil {
-		return endpoint.List[Message]{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Account not found")
+		if errors.Is(err, errNoAccess) {
+			return endpoint.List[Message]{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Account not found")
+		}
+		return endpoint.List[Message]{}, fmt.Errorf("resolve the searched account: %w", err)
 	}
 
 	query := h.db.Model(&models.Message{}).Where("mailbox_id = ? AND is_deleted = false", mailboxID)
@@ -94,8 +99,12 @@ func (h *SearchHandler) search(r *http.Request, in searchRequest) (endpoint.List
 	var messages []models.Message
 	var total int64
 
-	query.Count(&total)
-	query.Order("received_at DESC").Limit(limit).Find(&messages)
+	if err := query.Count(&total).Error; err != nil {
+		return endpoint.List[Message]{}, fmt.Errorf("count search results: %w", err)
+	}
+	if err := query.Order("received_at DESC").Limit(limit).Find(&messages).Error; err != nil {
+		return endpoint.List[Message]{}, fmt.Errorf("read search results: %w", err)
+	}
 
 	return endpoint.List[Message]{Data: messagesOf(messages), Pagination: &respond.Pagination{
 		HasMore: int64(limit) < total,

@@ -63,6 +63,7 @@ func TestHealthExamplesMatchRegisteredResponses(t *testing.T) {
 	for _, name := range []string{"available", "database_connection_unavailable", "database_ping_failed", "internal_error"} {
 		t.Run(name, func(t *testing.T) {
 			pair, ok := pairs["getHealth"][name]
+			examplepairs.Proven(t, "getHealth", name)
 			if !ok {
 				t.Fatal("the named health pair is missing")
 			}

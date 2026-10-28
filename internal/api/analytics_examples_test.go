@@ -84,6 +84,7 @@ func TestAnalyticsExamplesMatchRegisteredResponses(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			pair, ok := pairs["getPipelineAnalytics"][tc.name]
+			examplepairs.Proven(t, "getPipelineAnalytics", tc.name)
 			if !ok {
 				t.Fatal("named analytics pair is missing")
 			}

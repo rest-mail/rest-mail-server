@@ -26,6 +26,7 @@ func TestMessageRemovalExamples(t *testing.T) {
 	}
 	for name, pair := range pairs["deleteMessage"] {
 		t.Run(name, func(t *testing.T) {
+			examplepairs.Proven(t, "deleteMessage", name)
 			s, ok := f.scenarios[name]
 			if !ok {
 				t.Fatalf("missing scenario:%s", name)

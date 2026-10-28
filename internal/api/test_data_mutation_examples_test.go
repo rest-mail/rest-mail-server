@@ -25,6 +25,7 @@ func TestTestDataMutationExamples(t *testing.T) {
 		}
 		for name, pair := range pairs[op] {
 			t.Run(op+"/"+name, func(t *testing.T) {
+				examplepairs.Proven(t, op, name)
 				s, ok := f[name]
 				if !ok {
 					t.Fatalf("missing scenario%s", name)

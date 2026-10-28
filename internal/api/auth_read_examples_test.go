@@ -82,6 +82,7 @@ func TestAuthenticatedReadExamplesMatchRegisteredRefusals(t *testing.T) {
 			}
 			t.Run(operation+"/"+name, func(t *testing.T) {
 				pair, ok := pairs[operation][name]
+				examplepairs.Proven(t, operation, name)
 				if !ok {
 					t.Fatal("the named refusal pair is missing")
 				}
@@ -124,6 +125,7 @@ func TestCapabilitiesExampleMatchesRegisteredRows(t *testing.T) {
 	rr := httptest.NewRecorder()
 	router.ServeHTTP(rr, req)
 	pair := pairs["listCapabilities"]["available"]
+	examplepairs.Proven(t, "listCapabilities", "available")
 	if rr.Code != pair.Response.Status {
 		t.Fatalf("capability read = %d: %s", rr.Code, rr.Body.String())
 	}

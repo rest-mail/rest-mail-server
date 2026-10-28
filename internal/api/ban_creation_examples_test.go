@@ -28,6 +28,7 @@ func TestBanCreationExamples(t *testing.T) {
 	}
 	for name, pair := range pairs["createBan"] {
 		t.Run(name, func(t *testing.T) {
+			examplepairs.Proven(t, "createBan", name)
 			s, ok := f[name]
 			if !ok {
 				t.Fatalf("missing scenario%s", name)

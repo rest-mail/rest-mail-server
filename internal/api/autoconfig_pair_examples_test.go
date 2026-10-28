@@ -84,6 +84,7 @@ func TestMozillaExamplesMatchRegisteredResponses(t *testing.T) {
 		for name, status := range statuses {
 			t.Run(operation+"/"+name, func(t *testing.T) {
 				pair, ok := pairs[operation][name]
+				examplepairs.Proven(t, operation, name)
 				if !ok {
 					t.Fatal("named autoconfig pair is missing")
 				}

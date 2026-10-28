@@ -195,6 +195,7 @@ func TestDraftLifecycleNamedExamples(t *testing.T) {
 		for _, name := range names {
 			t.Run(operation+"/"+name, func(t *testing.T) {
 				pair, ok := pairs[operation][name]
+				examplepairs.Proven(t, operation, name)
 				if !ok || len(pair.Response.Body) == 0 {
 					t.Fatal("the named request/response pair is incomplete")
 				}

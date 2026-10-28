@@ -164,6 +164,13 @@ jobs:
           DB_NAME: restmail_test
           DB_USER: restmail
           DB_PASS: restmail
+          # The in-process example tests write the pairs they proved here (#1237).
+          RESTMAIL_EXAMPLE_PROOFS: ${{ runner.temp }}/example-proofs.json
+
+      # A pair that needs setup (requires) is not sent by the live contract run, so an
+      # in-process test must prove it; this fails on any that none did (#1237).
+      - name: Every example that needs setup is proven
+        run: python3 scripts/example_proofs.py openapi-example.json "$RUNNER_TEMP/example-proofs.json"
 
       - name: Upload coverage report
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

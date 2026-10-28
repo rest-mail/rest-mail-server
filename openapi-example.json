@@ -152,7 +152,7 @@
     },
     "unavailable": {
       "requires": {
-        "fault": "session_store"
+        "state": "enrollment_disabled"
       },
       "request": {
         "body": {
@@ -209,7 +209,7 @@
         "body": {
           "error": {
             "code": "internal_error",
-            "message": "Internal server error"
+            "message": "Failed to check account access"
           }
         },
         "mediaType": "application/json"
@@ -273,7 +273,7 @@
       },
       "response": {
         "status": 200,
-        "body": "event: ping\ndata: {}\n\n",
+        "body": "id: 1\nevent: ping\ndata: {}\n\n",
         "mediaType": "text/event-stream"
       }
     },
@@ -348,6 +348,22 @@
               {
                 "scope": "domain:example.com",
                 "capability": "domains:read"
+              },
+              {
+                "scope": "mailbox:admin@example.com",
+                "capability": "mail:read"
+              },
+              {
+                "scope": "mailbox:admin@example.com",
+                "capability": "mail:send"
+              },
+              {
+                "scope": "mailbox:admin@example.com",
+                "capability": "mail:write"
+              },
+              {
+                "scope": "mailbox:admin@example.com",
+                "capability": "mailbox:manage"
               }
             ]
           }
@@ -408,6 +424,11 @@
       "request": {
         "path": {
           "id": 1
+        },
+        "body": {
+          "reason": "Rotate the DKIM key",
+          "minutes": 60,
+          "totp_code": "123456"
         }
       },
       "response": {
@@ -415,7 +436,7 @@
         "body": {
           "error": {
             "code": "internal_error",
-            "message": "Internal server error"
+            "message": "Failed to change grants"
           }
         },
         "mediaType": "application/json"
@@ -504,6 +525,11 @@
       "request": {
         "path": {
           "id": 1
+        },
+        "body": {
+          "reason": "Rotate the DKIM key",
+          "minutes": 60,
+          "totp_code": "123456"
         }
       },
       "response": {
@@ -546,6 +572,11 @@
       "request": {
         "path": {
           "id": 1
+        },
+        "body": {
+          "reason": "Rotate the DKIM key",
+          "minutes": 60,
+          "totp_code": "123456"
         }
       },
       "response": {
@@ -567,6 +598,11 @@
       "request": {
         "path": {
           "id": 1
+        },
+        "body": {
+          "reason": "Rotate the DKIM key",
+          "minutes": 60,
+          "totp_code": "123456"
         }
       },
       "response": {
@@ -1137,10 +1173,10 @@
       }
     },
     "internal_error": {
-      "summary": "An unexpected handler failure uses the shared error envelope",
-      "description": "Checked through the production endpoint error adapter; a healthy discovery GET cannot deliberately provoke this fault.",
+      "summary": "The shared error adapter sanitizes an unexpected failure",
+      "description": "The endpoint layer advertises a fallback 500. This pair proves its shared response adapter directly; it does not claim that this operation queries a database.",
       "requires": {
-        "fault": "database"
+        "fault": "error_adapter"
       },
       "request": {},
       "response": {
@@ -2348,7 +2384,12 @@
       "requires": {
         "fault": "database"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "current_password": "the current password",
+          "new_password": "a new password of my own"
+        }
+      },
       "response": {
         "status": 500,
         "body": {
@@ -2365,7 +2406,12 @@
       "requires": {
         "limit": "rate"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "current_password": "the current password",
+          "new_password": "a new password of my own"
+        }
+      },
       "response": {
         "status": 429,
         "body": {
@@ -2426,7 +2472,12 @@
       "requires": {
         "fault": "session_store"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "current_password": "the current password",
+          "new_password": "a new password of my own"
+        }
+      },
       "response": {
         "status": 503,
         "body": {
@@ -2443,7 +2494,12 @@
       "requires": {
         "principal": "anonymous"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "current_password": "the current password",
+          "new_password": "a new password of my own"
+        }
+      },
       "response": {
         "status": 401,
         "body": {
@@ -2824,7 +2880,11 @@
       "requires": {
         "fault": "database"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "totp_code": "123456"
+        }
+      },
       "response": {
         "status": 500,
         "body": {
@@ -2862,7 +2922,11 @@
       "requires": {
         "limit": "rate"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "totp_code": "123456"
+        }
+      },
       "response": {
         "status": 429,
         "body": {
@@ -2896,7 +2960,11 @@
       "requires": {
         "fault": "session_store"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "totp_code": "123456"
+        }
+      },
       "response": {
         "status": 503,
         "body": {
@@ -2913,7 +2981,11 @@
       "requires": {
         "principal": "anonymous"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "totp_code": "123456"
+        }
+      },
       "response": {
         "status": 401,
         "body": {
@@ -3718,7 +3790,7 @@
       }
     },
     "credential": {
-      "summary": "A request made with a credential cannot manage credentials",
+      "summary": "HTTP Basic credentials cannot authenticate a session-only route",
       "requires": {
         "principal": "without_capability"
       },
@@ -3731,11 +3803,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 401,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Sign in with your password to manage app passwords"
+            "code": "unauthorized",
+            "message": "Invalid authorization header format"
           }
         },
         "mediaType": "application/json"
@@ -5483,13 +5555,23 @@
       "requires": {
         "fault": "database"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "holder": {
+            "kind": "account",
+            "id": 2
+          },
+          "role": "admin",
+          "scope": "domain:example.com",
+          "mode": "eligible"
+        }
+      },
       "response": {
         "status": 500,
         "body": {
           "error": {
             "code": "internal_error",
-            "message": "Internal server error"
+            "message": "Failed to change grants"
           }
         },
         "mediaType": "application/json"
@@ -5575,7 +5657,17 @@
       "requires": {
         "fault": "session_store"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "holder": {
+            "kind": "account",
+            "id": 2
+          },
+          "role": "admin",
+          "scope": "domain:example.com",
+          "mode": "eligible"
+        }
+      },
       "response": {
         "status": 503,
         "body": {
@@ -5592,7 +5684,17 @@
       "requires": {
         "principal": "anonymous"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "holder": {
+            "kind": "account",
+            "id": 2
+          },
+          "role": "admin",
+          "scope": "domain:example.com",
+          "mode": "eligible"
+        }
+      },
       "response": {
         "status": 401,
         "body": {
@@ -5903,7 +6005,7 @@
         "body": {
           "error": {
             "code": "internal_error",
-            "message": "Internal server error"
+            "message": "Failed to change grants"
           }
         },
         "mediaType": "application/json"
@@ -6073,6 +6175,22 @@
               {
                 "scope": "domain:example.com",
                 "capability": "domains:read"
+              },
+              {
+                "scope": "mailbox:admin@example.com",
+                "capability": "mail:read"
+              },
+              {
+                "scope": "mailbox:admin@example.com",
+                "capability": "mail:send"
+              },
+              {
+                "scope": "mailbox:admin@example.com",
+                "capability": "mail:write"
+              },
+              {
+                "scope": "mailbox:admin@example.com",
+                "capability": "mailbox:manage"
               }
             ]
           }
@@ -9098,13 +9216,20 @@
       "requires": {
         "fault": "database"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "address": "admin@restmail.test",
+          "sender": "sender@example.net",
+          "subject": "Subject",
+          "body_text": "Hello"
+        }
+      },
       "response": {
         "status": 500,
         "body": {
           "error": {
             "code": "internal_error",
-            "message": "Internal server error"
+            "message": "Failed to look up mailbox"
           }
         },
         "mediaType": "application/json"
@@ -9213,10 +9338,10 @@
       }
     },
     "internal_error": {
-      "summary": "An unexpected handler failure uses the shared error envelope",
-      "description": "Checked through the production endpoint error adapter; a healthy discovery GET cannot deliberately provoke this fault.",
+      "summary": "The shared error adapter sanitizes an unexpected failure",
+      "description": "The endpoint layer advertises a fallback 500. This pair proves its shared response adapter directly; it does not claim that this operation queries a database.",
       "requires": {
-        "fault": "database"
+        "fault": "error_adapter"
       },
       "request": {},
       "response": {
@@ -9308,7 +9433,11 @@
       "requires": {
         "fault": "database"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "totp_code": "123456"
+        }
+      },
       "response": {
         "status": 500,
         "body": {
@@ -9325,7 +9454,11 @@
       "requires": {
         "limit": "rate"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "totp_code": "123456"
+        }
+      },
       "response": {
         "status": 429,
         "body": {
@@ -9359,7 +9492,11 @@
       "requires": {
         "fault": "session_store"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "totp_code": "123456"
+        }
+      },
       "response": {
         "status": 503,
         "body": {
@@ -9376,7 +9513,11 @@
       "requires": {
         "principal": "anonymous"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "totp_code": "123456"
+        }
+      },
       "response": {
         "status": 401,
         "body": {
@@ -10216,7 +10357,7 @@
     },
     "mime_too_large": {
       "requires": {
-        "body": "over_cap"
+        "limit": "message_size"
       },
       "request": {
         "path": {
@@ -10372,7 +10513,7 @@
         "body": {
           "error": {
             "code": "unauthorized",
-            "message": "Invalid or expired token"
+            "message": "Missing authorization header"
           }
         },
         "mediaType": "application/json"
@@ -12376,7 +12517,7 @@
       "summary": "The configured database handle cannot provide a connection pool",
       "description": "Fault precondition: database pool acquisition fails. The public response does not disclose connection configuration.",
       "requires": {
-        "fault": "session_store"
+        "fault": "database_pool"
       },
       "request": {},
       "response": {
@@ -12391,10 +12532,10 @@
       }
     },
     "internal_error": {
-      "summary": "Unexpected handler errors use the shared sanitized envelope",
-      "description": "Checked through the production endpoint error adapter. The normal liveness probe returns503 for its expected database failures.",
+      "summary": "The shared error adapter sanitizes an unexpected failure",
+      "description": "The endpoint layer advertises a fallback 500. This pair proves its shared response adapter directly; it does not claim that this operation queries a database.",
       "requires": {
-        "fault": "database"
+        "fault": "error_adapter"
       },
       "request": {},
       "response": {
@@ -15616,7 +15757,7 @@
     },
     "unavailable": {
       "requires": {
-        "fault": "session_store"
+        "state": "enrollment_disabled"
       },
       "request": {
         "path": {
@@ -21088,7 +21229,7 @@
         "body": {
           "error": {
             "code": "internal_error",
-            "message": "Internal server error"
+            "message": "Failed to verify the password"
           }
         },
         "mediaType": "application/json"
@@ -21207,10 +21348,15 @@
     },
     "internal_error": {
       "summary": "A database fault is not a client error",
+      "description": "The harness signs a current refresh token before making its database store fail.",
       "requires": {
         "fault": "database"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "refresh_token": "fixture-refresh-token"
+        }
+      },
       "response": {
         "status": 500,
         "body": {
@@ -21329,6 +21475,9 @@
       "request": {
         "path": {
           "id": 1
+        },
+        "body": {
+          "totp_code": "123456"
         }
       },
       "response": {
@@ -21336,7 +21485,7 @@
         "body": {
           "error": {
             "code": "internal_error",
-            "message": "Internal server error"
+            "message": "Failed to change grants"
           }
         },
         "mediaType": "application/json"
@@ -21454,6 +21603,22 @@
               {
                 "scope": "domain:example.com",
                 "capability": "domains:read"
+              },
+              {
+                "scope": "mailbox:admin@example.com",
+                "capability": "mail:read"
+              },
+              {
+                "scope": "mailbox:admin@example.com",
+                "capability": "mail:send"
+              },
+              {
+                "scope": "mailbox:admin@example.com",
+                "capability": "mail:write"
+              },
+              {
+                "scope": "mailbox:admin@example.com",
+                "capability": "mailbox:manage"
               }
             ]
           }
@@ -21469,6 +21634,9 @@
       "request": {
         "path": {
           "id": 1
+        },
+        "body": {
+          "totp_code": "123456"
         }
       },
       "response": {
@@ -21511,6 +21679,9 @@
       "request": {
         "path": {
           "id": 1
+        },
+        "body": {
+          "totp_code": "123456"
         }
       },
       "response": {
@@ -21532,6 +21703,9 @@
       "request": {
         "path": {
           "id": 1
+        },
+        "body": {
+          "totp_code": "123456"
         }
       },
       "response": {
@@ -21603,7 +21777,7 @@
     "mail_host_unconfigured": {
       "summary": "No configured mail host can be advertised",
       "requires": {
-        "fault": "session_store"
+        "state": "mail_host_unconfigured"
       },
       "request": {
         "query": {
@@ -21726,7 +21900,7 @@
       "summary": "No mail host can be advertised",
       "description": "No valid mail host is configured. The handler refuses before querying the domain database, because there is no endpoint to advertise.",
       "requires": {
-        "fault": "session_store"
+        "state": "mail_host_unconfigured"
       },
       "request": {
         "query": {
@@ -21809,7 +21983,7 @@
       "summary": "No mail host can be advertised",
       "description": "No valid mail host is configured. The handler refuses before querying the domain database, because there is no endpoint to advertise.",
       "requires": {
-        "fault": "session_store"
+        "state": "mail_host_unconfigured"
       },
       "request": {
         "query": {
@@ -21886,10 +22060,10 @@
       }
     },
     "internal_error": {
-      "summary": "An unexpected handler failure uses the shared error envelope",
-      "description": "This fault response is exercised through the endpoint error adapter; a healthy GET does not provoke it. Metrics additionally exercises a failing scrape.",
+      "summary": "The shared error adapter sanitizes an unexpected failure",
+      "description": "The endpoint layer advertises a fallback 500. This pair proves its shared response adapter directly; it does not claim that this operation queries a database.",
       "requires": {
-        "fault": "database"
+        "fault": "error_adapter"
       },
       "request": {},
       "response": {
@@ -21915,10 +22089,10 @@
       }
     },
     "internal_error": {
-      "summary": "An unexpected handler failure uses the shared error envelope",
-      "description": "This fault response is exercised through the endpoint error adapter; a healthy GET does not provoke it. Metrics additionally exercises a failing scrape.",
+      "summary": "The shared error adapter sanitizes an unexpected failure",
+      "description": "The endpoint layer advertises a fallback 500. This pair proves its shared response adapter directly; it does not claim that this operation queries a database.",
       "requires": {
-        "fault": "database"
+        "fault": "error_adapter"
       },
       "request": {},
       "response": {
@@ -21945,7 +22119,7 @@
         "body": {
           "error": {
             "code": "internal_error",
-            "message": "Internal server error"
+            "message": "Failed to read owner key registry"
           }
         },
         "mediaType": "application/json"
@@ -22023,13 +22197,19 @@
       "requires": {
         "fault": "database"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "challenge": "c2lnbiB0aGlzIGNoYWxsZW5nZQ",
+          "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample status@example",
+          "signature": "c2lnbmF0dXJl"
+        }
+      },
       "response": {
         "status": 500,
         "body": {
           "error": {
             "code": "internal_error",
-            "message": "Internal server error"
+            "message": "Failed to read owner key registry"
           }
         },
         "mediaType": "application/json"
@@ -22083,7 +22263,13 @@
       "requires": {
         "limit": "rate"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "challenge": "c2lnbiB0aGlzIGNoYWxsZW5nZQ",
+          "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample status@example",
+          "signature": "c2lnbmF0dXJl"
+        }
+      },
       "response": {
         "status": 429,
         "body": {
@@ -22164,17 +22350,23 @@
       }
     },
     "unauthenticated": {
-      "summary": "No credential is sent",
+      "summary": "An invalid ownership challenge cannot authenticate the caller",
       "requires": {
         "principal": "anonymous"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "challenge": "c2lnbiB0aGlzIGNoYWxsZW5nZQ",
+          "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample status@example",
+          "signature": "c2lnbmF0dXJl"
+        }
+      },
       "response": {
         "status": 401,
         "body": {
           "error": {
-            "code": "unauthorized",
-            "message": "Missing authorization header"
+            "code": "invalid_challenge",
+            "message": "the challenge is not valid: unknown, expired, or already answered"
           }
         },
         "mediaType": "application/json"
@@ -22204,13 +22396,21 @@
       "requires": {
         "fault": "database"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "purpose": "reset-admin",
+          "address": "admin@restmail.test",
+          "challenge": "c2lnbiB0aGlzIGNoYWxsZW5nZQ",
+          "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample owner@example",
+          "signature": "c2lnbmF0dXJl"
+        }
+      },
       "response": {
         "status": 500,
         "body": {
           "error": {
             "code": "internal_error",
-            "message": "Internal server error"
+            "message": "Failed to read owner key registry"
           }
         },
         "mediaType": "application/json"
@@ -22347,7 +22547,15 @@
       "requires": {
         "limit": "rate"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "purpose": "reset-admin",
+          "address": "admin@restmail.test",
+          "challenge": "c2lnbiB0aGlzIGNoYWxsZW5nZQ",
+          "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample owner@example",
+          "signature": "c2lnbmF0dXJl"
+        }
+      },
       "response": {
         "status": 429,
         "body": {
@@ -22377,17 +22585,25 @@
       }
     },
     "unauthenticated": {
-      "summary": "No credential is sent",
+      "summary": "An invalid ownership challenge cannot authenticate the caller",
       "requires": {
         "principal": "anonymous"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "purpose": "reset-admin",
+          "address": "admin@restmail.test",
+          "challenge": "c2lnbiB0aGlzIGNoYWxsZW5nZQ",
+          "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample owner@example",
+          "signature": "c2lnbmF0dXJl"
+        }
+      },
       "response": {
         "status": 401,
         "body": {
           "error": {
-            "code": "unauthorized",
-            "message": "Missing authorization header"
+            "code": "invalid_challenge",
+            "message": "the challenge is not valid: unknown, expired, or already answered"
           }
         },
         "mediaType": "application/json"
@@ -22553,7 +22769,7 @@
     "setup_failure": {
       "summary": "Setup failure",
       "requires": {
-        "fault": "database"
+        "fault": "database_pool"
       },
       "request": {
         "body": {
@@ -22647,7 +22863,7 @@
       }
     },
     "internal_error": {
-      "summary": "A database fault is not a client error",
+      "summary": "A database failure prevents HTTP Basic credential verification",
       "requires": {
         "fault": "database"
       },
@@ -22657,11 +22873,11 @@
         }
       },
       "response": {
-        "status": 500,
+        "status": 503,
         "body": {
           "error": {
-            "code": "internal_error",
-            "message": "Internal server error"
+            "code": "unavailable",
+            "message": "Could not verify the credential"
           }
         },
         "mediaType": "application/json"
@@ -23400,13 +23616,21 @@
       "requires": {
         "fault": "database"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "email": "admin@restmail.test",
+          "recovery_code": "AAAA-BBBB-CCCC",
+          "new_password": "a new password of my own",
+          "client": "native",
+          "totp_code": "123456"
+        }
+      },
       "response": {
         "status": 500,
         "body": {
           "error": {
             "code": "internal_error",
-            "message": "Internal server error"
+            "message": "Failed to read the account"
           }
         },
         "mediaType": "application/json"
@@ -23417,7 +23641,14 @@
       "requires": {
         "limit": "rate"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "email": "admin@restmail.test",
+          "recovery_code": "AAAA-BBBB-CCCC",
+          "new_password": "a new password of my own",
+          "client": "native"
+        }
+      },
       "response": {
         "status": 429,
         "body": {
@@ -23439,7 +23670,8 @@
           "email": "admin@restmail.test",
           "recovery_code": "AAAA-BBBB-CCCC",
           "new_password": "a new password of my own",
-          "client": "native"
+          "client": "native",
+          "totp_code": "123456"
         }
       },
       "response": {
@@ -23454,7 +23686,25 @@
             },
             "access_token": "example-access-token",
             "refresh_token": "example-refresh-token",
-            "refresh_expires_in": 604800
+            "refresh_expires_in": 604800,
+            "scoped_capabilities": [
+              {
+                "scope": "mailbox:admin@restmail.test",
+                "capability": "mail:read"
+              },
+              {
+                "scope": "mailbox:admin@restmail.test",
+                "capability": "mail:send"
+              },
+              {
+                "scope": "mailbox:admin@restmail.test",
+                "capability": "mail:write"
+              },
+              {
+                "scope": "mailbox:admin@restmail.test",
+                "capability": "mailbox:manage"
+              }
+            ]
           }
         },
         "mediaType": "application/json"
@@ -23478,17 +23728,25 @@
       }
     },
     "unauthenticated": {
-      "summary": "No credential is sent",
+      "summary": "Unknown account credentials are refused without a session",
       "requires": {
         "principal": "anonymous"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "email": "admin@restmail.test",
+          "recovery_code": "AAAA-BBBB-CCCC",
+          "new_password": "a new password of my own",
+          "client": "native",
+          "totp_code": "123456"
+        }
+      },
       "response": {
         "status": 401,
         "body": {
           "error": {
-            "code": "unauthorized",
-            "message": "Missing authorization header"
+            "code": "recovery_failed",
+            "message": "Invalid address, authenticator code or recovery code"
           }
         },
         "mediaType": "application/json"
@@ -23515,12 +23773,13 @@
     },
     "internal_error": {
       "summary": "A database fault is not a client error",
+      "description": "The harness signs a current refresh token before making its database store fail.",
       "requires": {
         "fault": "database"
       },
       "request": {
         "body": {
-          "refresh_token": "contract-invalid-token"
+          "refresh_token": "fixture-refresh-token"
         }
       },
       "response": {
@@ -23528,7 +23787,7 @@
         "body": {
           "error": {
             "code": "internal_error",
-            "message": "Internal server error"
+            "message": "Failed to verify the session"
           }
         },
         "mediaType": "application/json"
@@ -23811,7 +24070,7 @@
         "body": {
           "error": {
             "code": "forbidden",
-            "message": "Insufficient permissions"
+            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -24734,13 +24993,19 @@
       "requires": {
         "fault": "database"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "token": "example-reset-token",
+          "password": "a new password of my own",
+          "client": "native"
+        }
+      },
       "response": {
         "status": 500,
         "body": {
           "error": {
             "code": "internal_error",
-            "message": "Internal server error"
+            "message": "Failed to redeem the token"
           }
         },
         "mediaType": "application/json"
@@ -24751,7 +25016,13 @@
       "requires": {
         "limit": "rate"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "token": "example-reset-token",
+          "password": "a new password of my own",
+          "client": "native"
+        }
+      },
       "response": {
         "status": 429,
         "body": {
@@ -24804,24 +25075,33 @@
             },
             "access_token": "example-access-token",
             "refresh_token": "example-refresh-token",
-            "refresh_expires_in": 604800
+            "refresh_expires_in": 604800,
+            "setup_required": [
+              "two_factor"
+            ]
           }
         },
         "mediaType": "application/json"
       }
     },
     "unauthenticated": {
-      "summary": "No credential is sent",
+      "summary": "An invalid reset token cannot authenticate the caller",
       "requires": {
         "principal": "anonymous"
       },
-      "request": {},
+      "request": {
+        "body": {
+          "token": "example-reset-token",
+          "password": "a new password of my own",
+          "client": "native"
+        }
+      },
       "response": {
         "status": 401,
         "body": {
           "error": {
-            "code": "unauthorized",
-            "message": "Missing authorization header"
+            "code": "invalid_token",
+            "message": "the token is not valid: unknown, already used, or expired"
           }
         },
         "mediaType": "application/json"
@@ -25013,6 +25293,10 @@
       "request": {
         "path": {
           "id": 1
+        },
+        "body": {
+          "from": "admin@restmail.test",
+          "response": "ACCEPTED"
         }
       },
       "response": {
@@ -25084,6 +25368,10 @@
       "request": {
         "path": {
           "id": 1
+        },
+        "body": {
+          "from": "admin@restmail.test",
+          "response": "ACCEPTED"
         }
       },
       "response": {
@@ -25126,6 +25414,10 @@
       "request": {
         "path": {
           "id": 1
+        },
+        "body": {
+          "from": "admin@restmail.test",
+          "response": "ACCEPTED"
         }
       },
       "response": {
@@ -25147,6 +25439,10 @@
       "request": {
         "path": {
           "id": 1
+        },
+        "body": {
+          "from": "admin@restmail.test",
+          "response": "ACCEPTED"
         }
       },
       "response": {
@@ -25181,10 +25477,10 @@
       }
     },
     "internal_error": {
-      "summary": "An unexpected handler failure uses the shared error envelope",
-      "description": "This fault response is exercised through the endpoint error adapter; a healthy GET does not provoke it. Metrics additionally exercises a failing scrape.",
+      "summary": "The shared error adapter sanitizes an unexpected failure",
+      "description": "The endpoint layer advertises a fallback 500. This pair proves its shared response adapter directly; it does not claim that this operation queries a database.",
       "requires": {
-        "fault": "database"
+        "fault": "error_adapter"
       },
       "request": {},
       "response": {
@@ -25334,7 +25630,7 @@
       }
     },
     "internal_error": {
-      "summary": "A database fault is not a client error",
+      "summary": "A database failure defers delivery for retry",
       "requires": {
         "fault": "database"
       },
@@ -25351,11 +25647,11 @@
         }
       },
       "response": {
-        "status": 500,
+        "status": 503,
         "body": {
           "error": {
-            "code": "internal_error",
-            "message": "Internal server error"
+            "code": "deferred",
+            "message": "Message deferred, retry later"
           }
         },
         "mediaType": "application/json"
@@ -25540,7 +25836,7 @@
     "unconfigured": {
       "summary": "The server has no valid public discovery hostname",
       "requires": {
-        "fault": "session_store"
+        "state": "mail_host_unconfigured"
       },
       "request": {
         "query": {
@@ -26313,7 +26609,7 @@
         "body": {
           "error": {
             "code": "internal_error",
-            "message": "Internal server error"
+            "message": "Failed to check the sender"
           }
         },
         "mediaType": "application/json"
@@ -26440,27 +26736,6 @@
     }
   },
   "searchMessages": {
-    "csrf_mismatch": {
-      "summary": "A cookie session sends no CSRF header",
-      "requires": {
-        "principal": "without_capability"
-      },
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "csrf_failed",
-            "message": "Missing or invalid CSRF token"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
     "found": {
       "summary": "Messages matching the query",
       "request": {
@@ -26823,7 +27098,7 @@
         "body": {
           "error": {
             "code": "internal_error",
-            "message": "Internal server error"
+            "message": "Failed to read draft"
           }
         },
         "mediaType": "application/json"
@@ -27109,7 +27384,7 @@
         "body": {
           "error": {
             "code": "internal_error",
-            "message": "Internal server error"
+            "message": "Failed to check the sender"
           }
         },
         "mediaType": "application/json"
@@ -29346,10 +29621,10 @@
       }
     },
     "internal_error": {
-      "summary": "An unexpected handler failure uses the shared error envelope",
-      "description": "This fault response is exercised through the endpoint error adapter; a healthy GET does not provoke it. Metrics additionally exercises a failing scrape.",
+      "summary": "The shared error adapter sanitizes an unexpected failure",
+      "description": "The endpoint layer advertises a fallback 500. This pair proves its shared response adapter directly; it does not claim that this operation queries a database.",
       "requires": {
-        "fault": "database"
+        "fault": "error_adapter"
       },
       "request": {},
       "response": {
@@ -29740,7 +30015,7 @@
     "execution_cancelled": {
       "summary": "Execution cancelled",
       "requires": {
-        "fault": "database"
+        "fault": "context_cancelled"
       },
       "request": {
         "body": {
@@ -30497,7 +30772,7 @@
         "body": {
           "error": {
             "code": "internal_error",
-            "message": "Internal server error"
+            "message": "Failed to look up linked account"
           }
         },
         "mediaType": "application/json"
@@ -31772,7 +32047,7 @@
         "body": {
           "error": {
             "code": "internal_error",
-            "message": "Internal server error"
+            "message": "Failed to read draft"
           }
         },
         "mediaType": "application/json"
@@ -32021,7 +32296,7 @@
         "body": {
           "error": {
             "code": "internal_error",
-            "message": "Internal server error"
+            "message": "Failed to update mailbox"
           }
         },
         "mediaType": "application/json"
@@ -32881,7 +33156,7 @@
     },
     "sidecar_invalid_json": {
       "requires": {
-        "fault": "database"
+        "fault": "sidecar_response"
       },
       "request": {
         "body": {

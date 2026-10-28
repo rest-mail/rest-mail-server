@@ -94,6 +94,7 @@ func TestSnapshotRestoreExamples(t *testing.T) {
 	}
 	for name, pair := range pairs["restoreTestSnapshot"] {
 		t.Run(name, func(t *testing.T) {
+			examplepairs.Proven(t, "restoreTestSnapshot", name)
 			s, ok := f[name]
 			if !ok {
 				t.Fatal("missing restore scenario")

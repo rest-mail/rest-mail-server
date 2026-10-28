@@ -46,6 +46,7 @@ func TestCertificateCreationExamples(t *testing.T) {
 	}
 	for name, pair := range pairs["createCertificate"] {
 		t.Run(name, func(t *testing.T) {
+			examplepairs.Proven(t, "createCertificate", name)
 			s, ok := f[name]
 			if !ok {
 				t.Fatal("missing certificate scenario")

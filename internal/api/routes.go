@@ -433,7 +433,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 			TTL:   2 * time.Hour,
 		}))
 	}
-	authH.RegisterSignIn(publicRoutes(r), signInChecks)
+	publicAuth := publicRoutes(r.With(middleware.MaxBodyBytes(cfg.APIMaxBodyBytes))).Describing(describedBodyCap)
+	authH.RegisterSignIn(publicAuth, signInChecks)
 	invitationH.RegisterPublic(publicRoutes(r.With(middleware.MaxBodyBytes(cfg.APIMaxBodyBytes))).Describing(describedBodyCap), signInChecks)
 	// Owners prove themselves with a key registered in PostgreSQL: sign a
 	// challenge, get a reset-admin token to redeem above. Throttled at
@@ -452,7 +453,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// The same challenge, signed for "status" with a key in
 	// RESTMAIL_STATUS_KEYS (or an owner key), reads the version, commit, build
 	// and start time: a deploy confirmed from outside. Same bucket.
-	ownerH.Register(publicRoutes(r), describedOwnerThrottle(ownerThrottle), describedAudit(auditLog))
+	ownerH.Register(publicAuth, describedOwnerThrottle(ownerThrottle), describedAudit(auditLog))
 
 	// What this server is, for anyone who can reach it: how `restmail status`
 	// and the app confirm what is running. Shares the owner endpoints' bucket,

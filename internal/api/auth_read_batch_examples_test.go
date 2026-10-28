@@ -184,6 +184,7 @@ func TestAuthenticatedReadBatchExamples(t *testing.T) {
 					t.Fatalf("got %d, want %d: %s", rr.Code, tc.status, rr.Body.String())
 				}
 				pair, ok := pairs[operation][tc.name]
+				examplepairs.Proven(t, operation, tc.name)
 				if !ok {
 					t.Fatal("named response pair is missing")
 				}

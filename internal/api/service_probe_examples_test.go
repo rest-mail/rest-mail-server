@@ -62,6 +62,7 @@ func TestServiceProbeExamples(t *testing.T) {
 	}
 	for name, pair := range pairs["probeServices"] {
 		t.Run(name, func(t *testing.T) {
+			examplepairs.Proven(t, "probeServices", name)
 			s, ok := f[name]
 			if !ok {
 				t.Fatal("missing service probe scenario")
@@ -146,6 +147,7 @@ func TestServiceProbeProductionBoundary(t *testing.T) {
 	}
 	for name, pair := range pairs["probeServices"] {
 		t.Run(name, func(t *testing.T) {
+			examplepairs.Proven(t, "probeServices", name)
 			rr := mailboxSessionEndingRequest(t, f["production"], http.MethodPost, serviceProbePath, pair.Request.Body)
 			if rr.Code != 404 {
 				t.Fatalf("production probe status%d want404", rr.Code)

@@ -31,6 +31,7 @@ func TestCustomFilterValidationExamples(t *testing.T) {
 	}
 	for name, pair := range pairs["validateCustomFilter"] {
 		t.Run(name, func(t *testing.T) {
+			examplepairs.Proven(t, "validateCustomFilter", name)
 			s, ok := f[name]
 			if !ok {
 				t.Fatalf("missing scenario%s", name)

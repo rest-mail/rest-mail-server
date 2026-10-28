@@ -37,6 +37,7 @@ func TestAutodiscoverExamplesMatchRegisteredResponses(t *testing.T) {
 	for name, tc := range autodiscoverExampleCases {
 		t.Run(name, func(t *testing.T) {
 			pair, ok := pairs["microsoftAutodiscover"][name]
+			examplepairs.Proven(t, "microsoftAutodiscover", name)
 			if !ok {
 				t.Fatal("named Autodiscover pair is missing")
 			}

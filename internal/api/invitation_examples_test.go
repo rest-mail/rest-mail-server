@@ -515,6 +515,7 @@ func TestInvitationCanonicalExamples(t *testing.T) {
 			recorded[tc.op][tc.name] = pair
 			if os.Getenv("RESTMAIL_INVITATION_RECORD") == "" {
 				want, ok := pairs[tc.op][tc.name]
+				examplepairs.Proven(t, tc.op, tc.name)
 				if !ok {
 					t.Fatal("canonical pair missing")
 				}

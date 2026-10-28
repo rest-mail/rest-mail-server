@@ -299,6 +299,7 @@ func TestTLSIngestionExamples(t *testing.T) {
 	}
 	for name, pair := range pairs["receiveTlsReport"] {
 		t.Run(name, func(t *testing.T) {
+			examplepairs.Proven(t, "receiveTlsReport", name)
 			s := tlsIngestionScenario(t, name)
 			body, media := tlsIngestionWire(name, pair)
 			start := time.Now()

@@ -252,7 +252,9 @@ func (f *forwardFixture) request(t *testing.T) *httptest.ResponseRecorder {
 	t.Helper()
 	r := httptest.NewRequest("POST", "/api/v1/messages/7/forward", strings.NewReader(`{"from":"sender@example.test","to":["target@remote.test"],"body_text":"please review"}`))
 	r.Header.Set("Content-Type", "application/json")
-	r.Header.Set("Authorization", "Bearer "+f.token)
+	if f.token != "" {
+		r.Header.Set("Authorization", "Bearer "+f.token)
+	}
 	w := httptest.NewRecorder()
 	f.router.ServeHTTP(w, r)
 	return w

@@ -179,6 +179,7 @@ func TestTestEmailSendExamples(t *testing.T) {
 	}
 	for name, pair := range pairs["sendTestEmail"] {
 		t.Run(name, func(t *testing.T) {
+			examplepairs.Proven(t, "sendTestEmail", name)
 			s, ok := f[name]
 			if !ok {
 				t.Fatal("missing test-send scenario")

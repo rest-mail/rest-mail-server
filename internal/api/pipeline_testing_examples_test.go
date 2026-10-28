@@ -73,6 +73,7 @@ func TestPipelineTestingExamples(t *testing.T) {
 	for op, path := range pipelineTestingPaths {
 		for name, pair := range pairs[op] {
 			t.Run(op+"/"+name, func(t *testing.T) {
+				examplepairs.Proven(t, op, name)
 				s, ok := f[name]
 				if !ok {
 					t.Fatal("missing preview scenario")
