@@ -204,6 +204,10 @@ exclude-matching:
   - '^/api/v1/accounts/link > .* > 400( >|$)'
   - '^/api/v1/accounts/\{id\} > .* > (400|422)( >|$)'
   - '^/api/v1/accounts/\{id\}/(threads|quota|search|quarantine|events|calendar-events)(/| >).* > (400|422)( >|$)'
+  # Send-limit management needs explicit invalid-body/path fixtures; the
+  # PostgreSQL handler tests exercise these, human 2FA and owner ceilings.
+  - '^/api/v1/accounts/\{id\}/(send-limits|held-messages)(/| >).* > (400|422)( >|$)'
+  - '^/api/v1/messages/scheduled/\{id\}/release > .* > (400|422)( >|$)'
   # Sieve's missing/null script 422s have named request/response pairs.
   - '^/api/v1/accounts/\{id\}/sieve(/| >).* > 400( >|$)'
   - '^/api/v1/accounts/\{id\}/credentials/.* > (400|422)( >|$)'
@@ -255,6 +259,9 @@ exclude-matching:
   # Nor a server capability ceiling read over the body cap or meeting a failed
   # database.
   - '^/api/v1/admin/server-capabilities > The server capability ceiling > (413|500)( >|$)'
+  # Limit holds require a spent persistent budget, absent from the healthy
+  # compose fixture. Normal 201 draft/forward transactions remain counted.
+  - '^/api/v1/messages/(draft/\{id\}/send|\{id\}/forward) > .* > 202( >|$)'
 
 # Each documented response has one example (#1236). One that says, in
 # x-requires, that proving it needs a principal, a body, a spent limit or a
@@ -337,6 +344,12 @@ surface:
     - operation: sendMessage
       status: "202"
       reason: "The contract's send example sends immediately; a scheduled request is not part of the examples phase. The scheduled branch is covered by the handler and DB tests, and the ordinary send is still counted."
+    - operation: sendDraft
+      status: "202"
+      reason: "A held draft requires an exhausted persistent budget; PostgreSQL handler tests prove retention, while the normal 201 remains counted."
+    - operation: forwardMessage
+      status: "202"
+      reason: "A held forward requires an exhausted persistent budget; PostgreSQL handler tests prove retained attachments, while the normal 201 remains counted."
     - status: "403"
       reason: "a refusal for a missing capability needs a principal without it: the authorization phase, not the admin's run"
     - status: "400"

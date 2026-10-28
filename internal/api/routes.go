@@ -29,6 +29,7 @@ import (
 	"github.com/restmail/restmail/internal/pipeline"
 	"github.com/restmail/restmail/internal/pipeline/filters" // register built-in filters via init() + DB-backed factories
 	"github.com/restmail/restmail/internal/ratelimit"
+	"github.com/restmail/restmail/internal/sendlimits"
 	"github.com/restmail/restmail/internal/trace"
 	"gorm.io/gorm"
 )
@@ -318,6 +319,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		cfg.APIMaxRecipientsPerMessage,
 		ratelimit.NewSubmissionLimiter(cfg.APISendRateLimitPerMinute, cfg.APISendRateLimitPerHour),
 	)
+	messageH.SetLayeredSendLimits(sendlimits.FromConfig(cfg.SendLimits))
 	// Push notifications (#363): off, with no devices routes, unless APNs is
 	// configured. New mail in an INBOX goes to the phones of the sessions that
 	// list the mailbox, and a logout takes its session's phones with it.
@@ -599,6 +601,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 			// used to sidestep it. Unlinking removes the caller's own grants on
 			// the account.
 			accountH.RegisterLinks(person, personChecks)
+			messageH.RegisterSendLimits(person, personChecks)
 
 			// Credentials (#344): an account's app passwords, its own or one it
 			// holds mailbox:manage on. The secret is in the answer to creating

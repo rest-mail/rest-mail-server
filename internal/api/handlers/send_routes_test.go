@@ -75,12 +75,14 @@ func TestSendDescribesEachOutcome(t *testing.T) {
 			http.StatusOK:       reflect.TypeOf(endpoint.Data[SendDiscarded]{}),
 		},
 		"sendDraft": {
-			http.StatusCreated: reflect.TypeOf(endpoint.Data[Message]{}),
-			http.StatusOK:      reflect.TypeOf(endpoint.Data[SendDiscarded]{}),
+			http.StatusCreated:  reflect.TypeOf(endpoint.Data[Message]{}),
+			http.StatusAccepted: reflect.TypeOf(endpoint.Data[ScheduledMessage]{}),
+			http.StatusOK:       reflect.TypeOf(endpoint.Data[SendDiscarded]{}),
 		},
 		"forwardMessage": {
-			http.StatusCreated: reflect.TypeOf(endpoint.Data[Message]{}),
-			http.StatusOK:      reflect.TypeOf(endpoint.Data[SendDiscarded]{}),
+			http.StatusCreated:  reflect.TypeOf(endpoint.Data[Message]{}),
+			http.StatusAccepted: reflect.TypeOf(endpoint.Data[ScheduledMessage]{}),
+			http.StatusOK:       reflect.TypeOf(endpoint.Data[SendDiscarded]{}),
 		},
 	}
 	for _, op := range reg.Endpoints() {

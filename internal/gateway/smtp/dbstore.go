@@ -10,6 +10,7 @@ import (
 	"github.com/restmail/restmail/internal/grants"
 	rmail "github.com/restmail/restmail/internal/mail"
 	"github.com/restmail/restmail/internal/outbound"
+	"github.com/restmail/restmail/internal/sendlimits"
 	"gorm.io/gorm"
 )
 
@@ -21,12 +22,18 @@ type dbStore struct {
 	db *gorm.DB
 	// masterKey decrypts a domain's at-rest DKIM key, as the queue worker's
 	// does (Worker.SetMasterKey). Empty only when encryption is disabled (dev).
-	masterKey string
+	masterKey  string
+	sendLimits *sendlimits.Service
 }
 
 // NewStore returns a database-backed Store for the SMTP gateway.
 func NewStore(db *gorm.DB, masterKey string) Store {
 	return &dbStore{db: db, masterKey: masterKey}
+}
+
+// NewLimitedStore shares the API's persistent submission budgets.
+func NewLimitedStore(db *gorm.DB, masterKey string, limits *sendlimits.Service) Store {
+	return &dbStore{db: db, masterKey: masterKey, sendLimits: limits}
 }
 
 func (s *dbStore) SenderMatchesAccount(accountID uint, from string) (bool, error) {
