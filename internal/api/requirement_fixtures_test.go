@@ -42,8 +42,14 @@ func (c requirementConnection) ExecContext(_ context.Context, q string, _ []driv
 	}
 	return nil, errors.New("unexpected requirement fixture write")
 }
-func (c requirementConnection) QueryContext(_ context.Context, q string, _ []driver.NamedValue) (driver.Rows, error) {
+func (c requirementConnection) QueryContext(_ context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
+	if rows, ok := defaultServerCeilingRows(q, args); ok {
+		return rows, nil
+	}
 	switch {
+	case c.operation == "sendDraft" && strings.Contains(q, `FROM "messages"`):
+		*c.faults++
+		return nil, errors.New("injected draft lookup database failure")
 	case strings.HasPrefix(c.operation, "search_"):
 		phase := strings.TrimPrefix(c.operation, "search_")
 		switch {
@@ -136,7 +142,7 @@ func requirementExampleSetup(t *testing.T, operation, name, requirement string, 
 			if err != nil {
 				t.Fatal(err)
 			}
-		case operation == "createAccount" || operation == "acceptInvitation" || (operation == "deliverMessage" && name == "deferred"):
+		case operation == "createAccount" || operation == "acceptInvitation" || operation == "sendDraft" || (operation == "deliverMessage" && name == "deferred"):
 			faults := 0
 			t.Cleanup(func() {
 				if faults != 1 {

@@ -30,6 +30,9 @@ func (c *grantRequirementConnection) Connect(context.Context) (driver.Conn, erro
 func (c *grantRequirementConnection) Driver() driver.Driver                        { return c }
 func (c *grantRequirementConnection) Open(string) (driver.Conn, error)             { return c, nil }
 func (c *grantRequirementConnection) QueryContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
+	if rows, ok := defaultServerCeilingRows(q, args); ok {
+		return rows, nil
+	}
 	switch {
 	case strings.Contains(q, "JOIN role_capabilities"):
 		capability, scope := "domains:read", "domain:example.com"
@@ -54,6 +57,8 @@ func (c *grantRequirementConnection) QueryContext(ctx context.Context, q string,
 			capability = "*"
 		}
 		return invitationRows([]string{"name"}, []driver.Value{capability}), nil
+	case strings.HasPrefix(q, "SELECT count(*)") && strings.Contains(q, `FROM "roles"`):
+		return invitationRows([]string{"count"}, []driver.Value{int64(0)}), nil // An account's role is not the server role.
 	case strings.Contains(q, `FROM "roles"`):
 		return invitationRows([]string{"id", "name"}, []driver.Value{int64(2), "admin"}), nil
 	case strings.Contains(q, `FROM "grants"`):

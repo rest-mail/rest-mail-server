@@ -33,6 +33,9 @@ func (c *mailRequirementConnection) Connect(context.Context) (driver.Conn, error
 func (c *mailRequirementConnection) Driver() driver.Driver                        { return c }
 func (c *mailRequirementConnection) Open(string) (driver.Conn, error)             { return c, nil }
 func (c *mailRequirementConnection) QueryContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
+	if rows, ok := defaultServerCeilingRows(q, args); ok {
+		return rows, nil
+	}
 	switch {
 	case strings.Contains(q, "JOIN role_capabilities"):
 		cols := []string{"scope", "capability", "expires_at", "activation_expires_at"}
@@ -129,6 +132,8 @@ func (c *mailRequirementConnection) QueryContext(ctx context.Context, q string, 
 		return invitationRows([]string{"id"}, []driver.Value{int64(51)}), nil
 	case strings.HasPrefix(q, `INSERT INTO "message_traces"`):
 		return invitationRows([]string{"id"}, []driver.Value{int64(61)}), nil
+	case strings.HasPrefix(q, "SELECT count(*)") && strings.Contains(q, `FROM "roles"`):
+		return invitationRows([]string{"count"}, []driver.Value{int64(0)}), nil // The linked account receives its owner role.
 	case strings.Contains(q, `FROM "roles"`):
 		return invitationRows([]string{"id", "name"}, []driver.Value{int64(3), "owner"}), nil
 	case strings.HasPrefix(q, `INSERT INTO "grants"`):

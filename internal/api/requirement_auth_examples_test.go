@@ -52,6 +52,9 @@ func (c *authRequirementConnection) Open(string) (driver.Conn, error)           
 func (c *authRequirementConnection) Begin() (driver.Tx, error)                    { return bulkQueueExampleTx{}, nil }
 
 func (c *authRequirementConnection) QueryContext(_ context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
+	if rows, ok := defaultServerCeilingRows(q, args); ok {
+		return rows, nil
+	}
 	switch {
 	case strings.Contains(q, "FROM audit_log"):
 		return invitationRows([]string{"seq", "hash"}), nil
