@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -29,5 +30,28 @@ func (cfg *Config) loadAuditAnchorEmail() error {
 			seen[address] = true
 		}
 	}
+	return nil
+}
+
+// loadAuditAnchorHTTPS accepts only https:// so an anchor cannot travel in the
+// clear or be altered on the way; a plain http:// endpoint stops the API.
+func (cfg *Config) loadAuditAnchorHTTPS() error {
+	endpoint := strings.TrimSpace(getEnv("RESTMAIL_AUDIT_ANCHOR_HTTPS_URL", ""))
+	token := strings.TrimSpace(getEnv("RESTMAIL_AUDIT_ANCHOR_HTTPS_TOKEN", ""))
+	if endpoint == "" {
+		if token != "" {
+			return fmt.Errorf("RESTMAIL_AUDIT_ANCHOR_HTTPS_TOKEN is set without RESTMAIL_AUDIT_ANCHOR_HTTPS_URL")
+		}
+		return nil
+	}
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil {
+		return fmt.Errorf("RESTMAIL_AUDIT_ANCHOR_HTTPS_URL must be an https:// URL with a host and no credentials")
+	}
+	if strings.ContainsAny(token, "\r\n") {
+		return fmt.Errorf("RESTMAIL_AUDIT_ANCHOR_HTTPS_TOKEN must be a single line")
+	}
+	cfg.AuditAnchorHTTPSURL = endpoint
+	cfg.AuditAnchorHTTPSToken = token
 	return nil
 }
