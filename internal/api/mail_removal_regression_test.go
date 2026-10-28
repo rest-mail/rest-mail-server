@@ -52,7 +52,7 @@ func (c mailRemovalConnection) QueryContext(ctx context.Context, q string, args 
 			}
 		}
 		if c.mode == "domain_manager" {
-			r.rows = append(r.rows, []driver.Value{"domain:example.com", "mail:write", nil, nil}, []driver.Value{"domain:example.com", "mail:send", nil, nil})
+			r.rows = append(r.rows, []driver.Value{"domain:example.com", "mail:write", nil, nil}, []driver.Value{"domain:example.com", "mail:send", nil, nil}, []driver.Value{"domain:example.com", "mail:send_as", nil, nil})
 		}
 		return r, nil
 	}
@@ -127,9 +127,9 @@ func newMailRemovalScenarios(t *testing.T, connections ...func(mailResourceReadC
 	extra := map[string]accountListKey{}
 	tokens := map[string]string{}
 	for name, permission := range map[string]auth.ScopedPermission{
-		"key_send":             {Capability: "mail:send", Scope: "mailbox:linked@example.com"},
-		"key_send_domain":      {Capability: "mail:send", Scope: "domain:example.com"},
-		"key_send_wrong_scope": {Capability: "mail:send", Scope: "mailbox:other@example.com"},
+		"key_send":             {Capability: "mail:send_as", Scope: "mailbox:linked@example.com"},
+		"key_send_domain":      {Capability: "mail:send_as", Scope: "domain:example.com"},
+		"key_send_wrong_scope": {Capability: "mail:send_as", Scope: "mailbox:other@example.com"},
 		"key_write":            {Capability: "mail:write", Scope: "mailbox:linked@example.com"},
 		"key_write_domain":     {Capability: "mail:write", Scope: "domain:example.com"},
 	} {

@@ -73,12 +73,16 @@ func (c *forwardConnection) QueryContext(ctx context.Context, q string, args []d
 		return nil, err
 	}
 	c.queries = append(c.queries, q)
+	if rows, ok := defaultServerCeilingRows(q, args); ok {
+		return rows, nil
+	}
 	if strings.Contains(q, "JOIN role_capabilities") {
 		cols := []string{"scope", "capability", "expires_at", "activation_expires_at"}
 		if c.mode == "denied" {
 			return invitationRows(cols), nil
 		}
-		return invitationRows(cols, []driver.Value{"*", "mail:read", nil, nil}, []driver.Value{"*", "mail:send", nil, nil}), nil
+		// The unique actor forwards from the fixture's sender mailbox.
+		return invitationRows(cols, []driver.Value{"*", "mail:read", nil, nil}, []driver.Value{"*", "mail:send", nil, nil}, []driver.Value{"mailbox:sender@example.test", "mail:send_as", nil, nil}), nil
 	}
 	if strings.HasPrefix(q, "SELECT count(*)") {
 		n := int64(0)
@@ -123,10 +127,9 @@ func (c *forwardConnection) QueryContext(ctx context.Context, q string, args []d
 			}
 		}
 		id, address := int64(1), "sender@example.test"
-		for _, arg := range args {
-			if n, ok := arg.Value.(int64); ok && (n == 1 || n == 12 || n == int64(c.actorID)) {
+		if len(args) > 0 {
+			if n, ok := args[0].Value.(int64); ok && (n == 1 || n == 12 || n == int64(c.actorID)) {
 				id = n
-				break
 			}
 		}
 		if id == 12 {

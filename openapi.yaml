@@ -3188,11 +3188,25 @@ paths:
       tags: [Messages]
       security:
         - CookieAuth: [mail:send]
+        - CookieAuth: [mail:send_as]
+        - CookieAuth: [mail:send_on_behalf]
         - BearerAuth: [mail:send]
+        - BearerAuth: [mail:send_as]
+        - BearerAuth: [mail:send_on_behalf]
         - APIKeyAuth: [mail:send]
+        - APIKeyAuth: [mail:send_as]
+        - APIKeyAuth: [mail:send_on_behalf]
         - BasicAuth: [mail:send]
+        - BasicAuth: [mail:send_as]
+        - BasicAuth: [mail:send_on_behalf]
       summary: Compose and send a new message
       description: >-
+        Sending from your own mailbox requires mail:send. Another mailbox in
+        From requires mail:send_as on that mailbox. Set on_behalf to true to
+        require mail:send_on_behalf instead: From stays the represented mailbox
+        and RFC 5322 Sender is the authenticated account’s stored address.
+        Read access grants neither mode. Both modes audit the actual account,
+        credential, represented mailbox and sending mode.
         The sender domain's `sending_policy` decides whether the message
         carries `list_unsubscribe`: a `bulk` domain's message without it is
         refused with 422 `list_unsubscribe_required`, and a `transactional`
@@ -3333,9 +3347,17 @@ paths:
       tags: [Messages]
       security:
         - CookieAuth: [mail:send]
+        - CookieAuth: [mail:send_as]
+        - CookieAuth: [mail:send_on_behalf]
         - BearerAuth: [mail:send]
+        - BearerAuth: [mail:send_as]
+        - BearerAuth: [mail:send_on_behalf]
         - APIKeyAuth: [mail:send]
+        - APIKeyAuth: [mail:send_as]
+        - APIKeyAuth: [mail:send_on_behalf]
         - BasicAuth: [mail:send]
+        - BasicAuth: [mail:send_as]
+        - BasicAuth: [mail:send_on_behalf]
       summary: Messages waiting to be sent later
       description: >-
         The pending and in-flight scheduled sends for this account, soonest
@@ -3363,9 +3385,17 @@ paths:
       tags: [Messages]
       security:
         - CookieAuth: [mail:send]
+        - CookieAuth: [mail:send_as]
+        - CookieAuth: [mail:send_on_behalf]
         - BearerAuth: [mail:send]
+        - BearerAuth: [mail:send_as]
+        - BearerAuth: [mail:send_on_behalf]
         - APIKeyAuth: [mail:send]
+        - APIKeyAuth: [mail:send_as]
+        - APIKeyAuth: [mail:send_on_behalf]
         - BasicAuth: [mail:send]
+        - BasicAuth: [mail:send_as]
+        - BasicAuth: [mail:send_on_behalf]
       summary: Cancel a message that has not been sent yet
       description: >-
         Only a message still waiting can be called back. One already being
@@ -3416,9 +3446,17 @@ paths:
       tags: [Messages]
       security:
         - CookieAuth: [mail:read, mail:send]
+        - CookieAuth: [mail:read, mail:send_as]
+        - CookieAuth: [mail:read, mail:send_on_behalf]
         - BearerAuth: [mail:read, mail:send]
+        - BearerAuth: [mail:read, mail:send_as]
+        - BearerAuth: [mail:read, mail:send_on_behalf]
         - APIKeyAuth: [mail:read, mail:send]
+        - APIKeyAuth: [mail:read, mail:send_as]
+        - APIKeyAuth: [mail:read, mail:send_on_behalf]
         - BasicAuth: [mail:read, mail:send]
+        - BasicAuth: [mail:read, mail:send_as]
+        - BasicAuth: [mail:read, mail:send_on_behalf]
       summary: Forward a message
       description: "The message (mail:read) is forwarded through the normal sender authorization, rate limit and outbound policy, with Fwd: and the note above its original header. Stored attachments, including empty and inline parts, are re-attached; the Sent copy owns independent attachment objects. The final signed MIME message is bounded by SMTP_MAX_MESSAGE_SIZE, and sender quota includes the copied parts. Sent, attachment references, quota and recipient work commit together. Unavailable or changed source objects fail the forward instead of dropping parts."
       requestBody:
@@ -3580,10 +3618,35 @@ paths:
       tags: [Drafts]
       security:
         - CookieAuth: [mail:write, mail:send]
+        - CookieAuth: [mail:write, mail:send_as]
+        - CookieAuth: [mail:write, mail:send_on_behalf]
         - BearerAuth: [mail:write, mail:send]
+        - BearerAuth: [mail:write, mail:send_as]
+        - BearerAuth: [mail:write, mail:send_on_behalf]
         - APIKeyAuth: [mail:write, mail:send]
+        - APIKeyAuth: [mail:write, mail:send_as]
+        - APIKeyAuth: [mail:write, mail:send_on_behalf]
         - BasicAuth: [mail:write, mail:send]
+        - BasicAuth: [mail:write, mail:send_as]
+        - BasicAuth: [mail:write, mail:send_on_behalf]
       summary: Send a saved draft
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: [object, "null"]
+              properties:
+                on_behalf:
+                  type: boolean
+                  description: Use mail:send_on_behalf and identify the actor in Sender; otherwise use mail:send_as for another mailbox.
+                list_unsubscribe:
+                  type: [object, "null"]
+                  properties:
+                    mailto:
+                      type: string
+                    https:
+                      type: string
       responses:
         "201":
           description: Draft sent
@@ -13205,6 +13268,12 @@ components:
       # No subject is a message with an empty Subject, as the handler sends it.
       required: [from, to]
       properties:
+        on_behalf:
+          type: boolean
+          description: >-
+            True selects mail:send_on_behalf on From's mailbox, with the actor's
+            own address in RFC 5322 Sender. False or omitted selects mail:send_as
+            for another mailbox, or mail:send for your own. Read access grants neither.
         from:
           type: string
           format: email
@@ -13328,6 +13397,12 @@ components:
       type: object
       required: [from, to]
       properties:
+        on_behalf:
+          type: boolean
+          description: >-
+            True selects mail:send_on_behalf on From's mailbox, with the actor's
+            own address in RFC 5322 Sender. False or omitted selects mail:send_as
+            for another mailbox, or mail:send for your own. Read access grants neither.
         from:
           type: string
           format: email

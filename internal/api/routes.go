@@ -653,7 +653,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		messageH.RegisterMessages(mail)
 		searchH.Register(mail)
 		attachmentH.Register(mail)
-		messageH.RegisterCompose(mail)
+		messageH.RegisterCompose(mail, audited)
 
 		// Contacts
 		contactH.RegisterContacts(publicRoutes(r).

@@ -569,9 +569,8 @@ func (h *MessageHandler) sendMessageWithParts(r *http.Request, req sendMessageRe
 			Message: "Account send rate limit exceeded; try again later", Header: http.Header{"Retry-After": {"60"}}}
 	}
 
-	// The sender must be an account the caller may send as: its own, or one
-	// it holds mail:send on (an account it owns or has linked).
-	sender, err := mayActAs(h.db, claims, req.From, models.CapMailSend)
+	// Own sending and the two delegated identities require distinct capabilities.
+	sender, err := maySendFrom(h.db.WithContext(r.Context()), claims, req.From, req.OnBehalf)
 	if err != nil {
 		if errors.Is(err, errNoAccess) {
 			return zero, endpoint.Refuse(http.StatusForbidden, "forbidden", "You are not authorized to send from this address")
@@ -579,6 +578,21 @@ func (h *MessageHandler) sendMessageWithParts(r *http.Request, req sendMessageRe
 		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to check the sender")
 	}
 	senderMailbox := *sender
+	req.From = senderMailbox.Address
+	if req.OnBehalf {
+		var actor models.Mailbox
+		if err := h.db.WithContext(r.Context()).First(&actor, claims.AccountID).Error; err != nil {
+			return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to check the sending account")
+		}
+		req.Sender = actor.Address
+	}
+	middleware.SetAuditTarget(r, "mailbox", senderMailbox.Address)
+	middleware.SetAuditTarget(r, "mailbox_id", strconv.FormatUint(uint64(senderMailbox.ID), 10))
+	mode := "send_as"
+	if req.OnBehalf {
+		mode = "send_on_behalf"
+	}
+	middleware.SetAuditTarget(r, "send_mode", mode)
 
 	// The sender domain's sending policy (#144): a transactional domain's mail
 	// carries no List-Unsubscribe field, and a bulk domain's always does. Either
@@ -899,6 +913,7 @@ func (h *MessageHandler) sendMessageWithParts(r *http.Request, req sendMessageRe
 
 	// Build raw RFC 2822 message for outbound queue entries.
 	rawMessage, rawErr := buildOutboundRaw(outboundMessage{
+		Sender:    req.Sender,
 		FromName:  senderMailbox.DisplayName,
 		From:      req.From,
 		To:        req.To,
@@ -1467,10 +1482,9 @@ func (h *MessageHandler) getQuota(r *http.Request, in accountPath) (Quota, error
 }
 
 // resolveSenderMailbox finds the mailbox the given from address is, if the
-// caller may send as it (mail:send): its own account's, or one it owns or has
-// linked. An app password sends only as its own.
+// caller may send as it: mail:send on itself, mail:send_as on another mailbox.
 func (h *MessageHandler) resolveSenderMailbox(from string, claims *auth.Claims) (*models.Mailbox, error) {
-	return mayActAs(h.db, claims, from, models.CapMailSend)
+	return maySendFrom(h.db, claims, from, false)
 }
 
 // SaveDraft creates a new draft message.
@@ -1653,6 +1667,7 @@ type sendDraftRequest struct {
 }
 
 type sendDraftBody struct {
+	OnBehalf bool `json:"on_behalf,omitempty"`
 	// ListUnsubscribe is the send API's: required on a bulk domain, refused on a
 	// transactional one.
 	ListUnsubscribe *apitypes.ListUnsubscribe `json:"list_unsubscribe,omitempty"`
@@ -1681,10 +1696,13 @@ func (h *MessageHandler) sendDraftInTransaction(r *http.Request, in sendDraftReq
 	_ = json.Unmarshal(draft.RecipientsCc, &ccList)
 
 	var listUnsubscribe *apitypes.ListUnsubscribe
+	var onBehalf bool
 	if in.Body != nil {
 		listUnsubscribe = in.Body.ListUnsubscribe
+		onBehalf = in.Body.OnBehalf
 	}
 	sent, err := h.sendMessage(r, sendMessageRequest{
+		OnBehalf:        onBehalf,
 		From:            draft.Sender,
 		To:              toList,
 		Cc:              ccList,
@@ -1788,6 +1806,7 @@ type forwardRequest struct {
 }
 
 type forwardBody struct {
+	OnBehalf bool     `json:"on_behalf,omitempty"`
 	From     string   `json:"from,omitempty"`
 	To       []string `json:"to,omitempty"`
 	BodyText string   `json:"body_text,omitempty"`
@@ -1825,6 +1844,7 @@ func (h *MessageHandler) forwardMessage(r *http.Request, in forwardRequest) (end
 		return zero, err
 	}
 	return h.sendMessageWithParts(r, sendMessageRequest{
+		OnBehalf:        req.OnBehalf,
 		From:            req.From,
 		To:              req.To,
 		Subject:         "Fwd: " + original.Subject,

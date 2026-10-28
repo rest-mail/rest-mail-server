@@ -42,6 +42,9 @@ func (d *draftSendDB) state() *draftSendState {
 	return &d.stored
 }
 func (d *draftSendDB) QueryContext(_ context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
+	if rows, ok := defaultServerCeilingRows(q, args); ok {
+		return rows, nil
+	}
 	s := d.state()
 	if rows, ok := defaultGrantRows(q); ok {
 		return rows, nil

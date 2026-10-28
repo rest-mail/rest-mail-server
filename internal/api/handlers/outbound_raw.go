@@ -16,6 +16,7 @@ import (
 // produces it talks to the database and runs the outbound pipeline, neither of
 // which a test of the message format should have to stand up.
 type outboundMessage struct {
+	Sender    string // RFC 5322 Sender for Send on Behalf; empty for Send As.
 	FromName  string
 	From      string
 	To        []string
@@ -58,6 +59,12 @@ func buildOutboundRaw(m outboundMessage) (string, error) {
 			Extra:     transformHeaders(m.Extra),
 		},
 		Body: outboundBody(m.BodyText, m.BodyHTML),
+	}
+	if m.Sender != "" {
+		if email.Headers.Extra == nil {
+			email.Headers.Extra = make(map[string]string)
+		}
+		email.Headers.Extra["Sender"] = m.Sender
 	}
 	if m.InReplyTo != "" {
 		email.Headers.InReplyTo = "<" + m.InReplyTo + ">"
@@ -134,7 +141,7 @@ func transformHeaders(extra map[string]string) map[string]string {
 	out := make(map[string]string, len(extra))
 	for name, value := range extra {
 		switch {
-		case strings.EqualFold(name, "DKIM-Signature"),
+		case strings.EqualFold(name, "Sender"), strings.EqualFold(name, "DKIM-Signature"),
 			strings.HasPrefix(strings.ToLower(name), "arc-"):
 			continue
 		}

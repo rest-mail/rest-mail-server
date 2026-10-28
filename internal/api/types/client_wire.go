@@ -55,6 +55,11 @@ type protocolSignInRequest struct {
 }
 
 type sendMessageRequest struct {
+	// OnBehalf uses From as the represented mailbox and the authenticated
+	// account's address as RFC 5322 Sender. Requires mail:send_on_behalf.
+	OnBehalf bool `json:"on_behalf,omitempty"`
+	// Sender is resolved by the server, never accepted from a request body.
+	Sender        string                  `json:"-"`
 	From          string                  `json:"from,omitempty"`
 	To            []string                `json:"to,omitempty"`
 	Cc            []string                `json:"cc,omitempty"`

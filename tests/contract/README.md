@@ -978,6 +978,13 @@ contains both generated documents and the JSON and Markdown comparison.
   schema change together with a security change requires both labels.
 - Additive changes need neither label.
 
+Send As and Send on Behalf add security alternatives and therefore require
+`permission-change`, even when the request changes are additive. Their
+`on_behalf` request fields are optional; own-mailbox clients can keep composing,
+forwarding and sending drafts with `mail:send` and the existing source-access
+permissions. `TestOwnMailboxLegacySendRequests` proves those requests, including
+a draft send with no body, without either new delegated capability.
+
 The existing required `CI` aggregate includes this job. Adding or removing a
 label reruns CI, so removing an acceptance label cannot leave the old verdict
 in place. No branch-protection settings are changed. External references are

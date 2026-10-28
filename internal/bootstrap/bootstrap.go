@@ -78,7 +78,9 @@ func EnsureRBAC(database *gorm.DB) error {
 		{Name: "agents:create", Description: "Create owned accounts (agents and sub accounts) on a domain", Resource: "agents", Action: "create"},
 		{Name: models.CapMailRead, Description: "Read a mailbox's mail", Resource: "mail", Action: "read"},
 		{Name: models.CapMailWrite, Description: "Change a mailbox's mail: folders, flags, drafts, contacts, filters", Resource: "mail", Action: "write"},
-		{Name: models.CapMailSend, Description: "Send as a mailbox", Resource: "mail", Action: "send"},
+		{Name: models.CapMailSend, Description: "Send from your own mailbox", Resource: "mail", Action: "send"},
+		{Name: models.CapMailSendAs, Description: "Send as the represented mailbox", Resource: "mail", Action: "send_as"},
+		{Name: models.CapMailSendOnBehalf, Description: "Send on behalf of the represented mailbox, identifying the actor in Sender", Resource: "mail", Action: "send_on_behalf"},
 		{Name: models.CapMailboxManage, Description: "Manage a mailbox's settings and credentials", Resource: "mailbox", Action: "manage"},
 	}
 
