@@ -149,6 +149,12 @@ api:
     # Comma-separated addresses; empty defaults to installation superadmins.
     # Prefer an independent mailbox, outside this server's storage.
     to: ""
+  # Optionally also POST each anchor to an append-only HTTPS endpoint on
+  # another host. Empty url = off; only https:// is accepted.
+  auditAnchorHTTPS:
+    url: ""
+    # Secret with key TOKEN, sent as a bearer token. Empty = no token.
+    existingSecret: ""
   replicaCount: 1
   image:
     repository: ghcr.io/rest-mail/api
