@@ -308,6 +308,17 @@ func main() {
 		anchorWorker = auditanchor.NewWorker(database, cfg.GatewayHostname, cfg.AuditAnchorEmailTo)
 		anchorWorker.Start()
 	}
+	// The optional second target runs on its own, so a failing endpoint never
+	// holds up the email anchors.
+	var httpsAnchorWorker *auditanchor.HTTPSWorker
+	if cfg.AuditAnchorHTTPSURL != "" {
+		httpsAnchorWorker, err = auditanchor.NewHTTPSWorker(database, cfg.GatewayHostname, cfg.AuditAnchorHTTPSURL, cfg.AuditAnchorHTTPSToken)
+		if err != nil {
+			slog.Error("audit anchor https", "error", err)
+			os.Exit(1)
+		}
+		httpsAnchorWorker.Start()
+	}
 
 	// Start quarantine digest worker
 	digestInterval := 24 * time.Hour
@@ -430,6 +441,9 @@ func main() {
 	grantSweeper.Shutdown()
 	if anchorWorker != nil {
 		anchorWorker.Shutdown()
+	}
+	if httpsAnchorWorker != nil {
+		httpsAnchorWorker.Shutdown()
 	}
 	quotaReconciler.Shutdown()
 	dmarcReporter.Shutdown()

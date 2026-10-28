@@ -100,16 +100,10 @@ func (w *Worker) Check(ctx context.Context, now time.Time) (bool, error) {
 		if head.Seq == 0 {
 			return nil
 		}
-		var changes changeWindow
-		if err := tx.Model(&models.AuditEntry{}).Select("MIN(occurred_at) AS first, MAX(occurred_at) AS last").
-			Where("seq > ? AND seq <= ? AND outcome = ?", last.Seq, head.Seq, models.AuditOutcomeSuccess).
-			Where(`(route LIKE '/api/v1/admin/%' AND method NOT IN ('GET', 'HEAD', 'OPTIONS')) OR action LIKE 'owner_keys.%' OR action LIKE 'grants.%'`).
-			Having("COUNT(*) > 0").
-			Scan(&changes).Error; err != nil {
+		changes, err := adminChanges(tx, last.Seq, head.Seq)
+		if err != nil {
 			return err
 		}
-		// HAVING omits an empty aggregate, leaving both times zero. Starting at
-		// last.Seq also includes changes committed between snapshot and publication.
 		owners, err := ownerAddresses(tx, now)
 		if err != nil {
 			return err
@@ -149,6 +143,20 @@ func (w *Worker) Check(ctx context.Context, now time.Time) (bool, error) {
 		slog.Info("audit anchor email queued")
 	}
 	return queued, nil
+}
+
+// adminChanges spans the successful administrative writes after the last
+// anchored seq. HAVING omits an empty aggregate, leaving both times zero.
+// Starting at the anchored seq rather than the previous publication's own seq
+// includes changes committed between that snapshot and its publication.
+func adminChanges(tx *gorm.DB, after, upTo int64) (changeWindow, error) {
+	var changes changeWindow
+	err := tx.Model(&models.AuditEntry{}).Select("MIN(occurred_at) AS first, MAX(occurred_at) AS last").
+		Where("seq > ? AND seq <= ? AND outcome = ?", after, upTo, models.AuditOutcomeSuccess).
+		Where(`(route LIKE '/api/v1/admin/%' AND method NOT IN ('GET', 'HEAD', 'OPTIONS')) OR action LIKE 'owner_keys.%' OR action LIKE 'grants.%'`).
+		Having("COUNT(*) > 0").
+		Scan(&changes).Error
+	return changes, err
 }
 
 func ownerAddresses(tx *gorm.DB, now time.Time) ([]string, error) {
