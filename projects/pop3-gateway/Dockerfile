@@ -19,6 +19,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/pop3-gateway ./cmd/pop3-gateway
 # ── Stage 3: dev (hot reload via air) ────────────────────────────────
 # Source code is volume-mounted at /app by docker-compose.override.yml.
 FROM deps AS dev
+ENV ENVIRONMENT=development
 # air pinned (not @latest) for reproducible dev images (OSI-17).
 RUN go install github.com/air-verse/air@v1.67.2
 # The same unprivileged user as the prod image (#193). Go's build cache goes in

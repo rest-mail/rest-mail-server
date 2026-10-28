@@ -19,6 +19,7 @@
   "postCreateCommand": "go version && docker --version && claude install",
   "remoteUser": "vscode",
   "containerEnv": {
+    "ENVIRONMENT": "development",
     "ANTHROPIC_MODEL": "claude-sonnet-4-6"
   }
 }

@@ -71,6 +71,7 @@ func scratchDatabase(t *testing.T) *gorm.DB {
 	t.Setenv("DB_USER", cfg.DBUser)
 	t.Setenv("DB_PASS", cfg.DBPass)
 	t.Setenv("DB_SSLMODE", "disable")
+	t.Setenv("ENVIRONMENT", "test")
 	return scratch
 }
 
@@ -164,7 +165,7 @@ func TestOperator_UsageErrorsAreJSONWithStatus2(t *testing.T) {
 // the way, so a program can read it whole.
 func TestOperator_StderrIsOnlyTheError(t *testing.T) {
 	bootstrapAdmin(t, scratchDatabase(t))
-	t.Setenv("JWT_SECRET", "") // the development default: config.Load warns about it
+	t.Setenv("JWT_SECRET", "") // insecure secret: config.Load warns in test mode
 	if status, _, _ := run("mint-token", "--purpose", "reset-admin", "--address", adminAddress); status != exitOK {
 		t.Fatal("first mint failed")
 	}

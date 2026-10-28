@@ -522,7 +522,7 @@ All configuration is done via environment variables. The API, gateways, and tool
 | `API_HOST`          | `0.0.0.0`                      | REST API bind address                |
 | `JWT_SECRET`        | `dev-secret-change-in-production` | JWT signing key (required in prod) |
 | `MASTER_KEY`        | *(empty)*                      | AES key for encrypting private keys at rest (required in prod) |
-| `ENVIRONMENT`       | `development`                  | `development`, `production`, or `test` |
+| `ENVIRONMENT`       | `production`                   | Development/test runs must explicitly set `development` or `test` |
 | `LOG_LEVEL`         | `info`                         | Logging level (`debug`, `info`, `warn`, `error`) |
 
 ### TLS and Certificates

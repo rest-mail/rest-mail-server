@@ -55,8 +55,9 @@ func clearEnv(t *testing.T) {
 	}
 }
 
-func TestLoad_Defaults(t *testing.T) {
+func TestLoad_DevelopmentDefaults(t *testing.T) {
 	clearEnv(t)
+	t.Setenv("ENVIRONMENT", "development")
 
 	cfg, err := Load()
 	if err != nil {
@@ -186,6 +187,7 @@ func TestLoad_Defaults(t *testing.T) {
 func TestLoad_SecurityHeaders(t *testing.T) {
 	t.Run("disabled and custom max-age", func(t *testing.T) {
 		clearEnv(t)
+		t.Setenv("ENVIRONMENT", "development")
 		t.Setenv("SECURITY_HEADERS_ENABLED", "false")
 		t.Setenv("HSTS_MAX_AGE_SECONDS", "31536000")
 		cfg, err := Load()
@@ -202,6 +204,7 @@ func TestLoad_SecurityHeaders(t *testing.T) {
 
 	t.Run("zero max-age allowed (HSTS omitted)", func(t *testing.T) {
 		clearEnv(t)
+		t.Setenv("ENVIRONMENT", "development")
 		t.Setenv("HSTS_MAX_AGE_SECONDS", "0")
 		cfg, err := Load()
 		if err != nil {
@@ -214,6 +217,7 @@ func TestLoad_SecurityHeaders(t *testing.T) {
 
 	t.Run("negative max-age is a startup error", func(t *testing.T) {
 		clearEnv(t)
+		t.Setenv("ENVIRONMENT", "development")
 		t.Setenv("HSTS_MAX_AGE_SECONDS", "-1")
 		if _, err := Load(); err == nil {
 			t.Fatal("Load() = nil error, want error for negative HSTS max-age")
@@ -222,6 +226,7 @@ func TestLoad_SecurityHeaders(t *testing.T) {
 
 	t.Run("malformed max-age is a startup error", func(t *testing.T) {
 		clearEnv(t)
+		t.Setenv("ENVIRONMENT", "development")
 		t.Setenv("HSTS_MAX_AGE_SECONDS", "abc")
 		if _, err := Load(); err == nil {
 			t.Fatal("Load() = nil error, want error for malformed HSTS max-age")
@@ -232,6 +237,7 @@ func TestLoad_SecurityHeaders(t *testing.T) {
 func TestLoad_GatewayMetricsPorts(t *testing.T) {
 	t.Run("override", func(t *testing.T) {
 		clearEnv(t)
+		t.Setenv("ENVIRONMENT", "development")
 		t.Setenv("SMTP_METRICS_PORT", "19091")
 		t.Setenv("IMAP_METRICS_PORT", "19092")
 		t.Setenv("POP3_METRICS_PORT", "19093")
@@ -248,6 +254,7 @@ func TestLoad_GatewayMetricsPorts(t *testing.T) {
 
 	t.Run("zero disables", func(t *testing.T) {
 		clearEnv(t)
+		t.Setenv("ENVIRONMENT", "development")
 		t.Setenv("SMTP_METRICS_PORT", "0")
 
 		cfg, err := Load()
@@ -261,6 +268,7 @@ func TestLoad_GatewayMetricsPorts(t *testing.T) {
 
 	t.Run("out of range errors", func(t *testing.T) {
 		clearEnv(t)
+		t.Setenv("ENVIRONMENT", "development")
 		t.Setenv("IMAP_METRICS_PORT", "70000")
 
 		if _, err := Load(); err == nil {
@@ -271,6 +279,7 @@ func TestLoad_GatewayMetricsPorts(t *testing.T) {
 
 func TestLoad_OverrideEnvVars(t *testing.T) {
 	clearEnv(t)
+	t.Setenv("ENVIRONMENT", "development")
 
 	t.Setenv("DB_HOST", "dbserver.example.com")
 	t.Setenv("API_PORT", "9090")
@@ -393,6 +402,7 @@ func TestAPIAddr(t *testing.T) {
 
 func TestLoad_IntParsing(t *testing.T) {
 	clearEnv(t)
+	t.Setenv("ENVIRONMENT", "development")
 
 	// Set DB_PORT to a non-numeric value; getEnvInt should fall back to the default.
 	t.Setenv("DB_PORT", "not-a-number")
@@ -411,6 +421,7 @@ func TestLoad_IntParsing(t *testing.T) {
 
 func TestLoad_SMTPMaxMessageSize_Default(t *testing.T) {
 	clearEnv(t)
+	t.Setenv("ENVIRONMENT", "development")
 
 	cfg, err := Load()
 	if err != nil {
@@ -432,6 +443,7 @@ func TestLoad_SMTPMaxMessageSize_Default(t *testing.T) {
 
 func TestLoad_SMTPMaxMessageSize_AdminValueRespected(t *testing.T) {
 	clearEnv(t)
+	t.Setenv("ENVIRONMENT", "development")
 
 	// Any positive value is respected — 128 MB, 1 GB, the admin's choice.
 	for _, want := range []int64{1024, 128 * 1000 * 1000, 1 << 30} {
@@ -448,6 +460,7 @@ func TestLoad_SMTPMaxMessageSize_AdminValueRespected(t *testing.T) {
 
 func TestLoad_SMTPMaxMessageSize_Invalid(t *testing.T) {
 	clearEnv(t)
+	t.Setenv("ENVIRONMENT", "development")
 
 	// Zero/negative → startup error (a max must always exist), and unlike the
 	// lenient getEnvInt pattern a malformed value is also an error rather than
@@ -480,6 +493,7 @@ func TestSMTPMaxMessageSizeWarning(t *testing.T) {
 
 func TestLoad_SMTPTransferRate_Defaults(t *testing.T) {
 	clearEnv(t)
+	t.Setenv("ENVIRONMENT", "development")
 
 	cfg, err := Load()
 	if err != nil {
@@ -511,6 +525,7 @@ func TestLoad_SMTPTransferRate_Defaults(t *testing.T) {
 
 func TestLoad_SMTPTransferRate_Overrides(t *testing.T) {
 	clearEnv(t)
+	t.Setenv("ENVIRONMENT", "development")
 
 	t.Setenv("SMTP_MIN_TRANSFER_RATE", "32768")
 	t.Setenv("SMTP_TRANSFER_GRACE_PERIOD", "10")
@@ -533,6 +548,7 @@ func TestLoad_SMTPTransferRate_Overrides(t *testing.T) {
 
 func TestLoad_SMTPTransferRate_ZeroDisablesFloor(t *testing.T) {
 	clearEnv(t)
+	t.Setenv("ENVIRONMENT", "development")
 
 	// Explicit 0 disables the average-rate floor (the stall timeout still
 	// applies at runtime) — it must load cleanly, not error.
@@ -548,10 +564,12 @@ func TestLoad_SMTPTransferRate_ZeroDisablesFloor(t *testing.T) {
 
 func TestLoad_SMTPTransferRate_Invalid(t *testing.T) {
 	clearEnv(t)
+	t.Setenv("ENVIRONMENT", "development")
 
 	// Negative or malformed rate → startup error (never a silent fallback).
 	for _, bad := range []string{"-1", "16k", "banana"} {
 		clearEnv(t)
+		t.Setenv("ENVIRONMENT", "development")
 		t.Setenv("SMTP_MIN_TRANSFER_RATE", bad)
 		if _, err := Load(); err == nil {
 			t.Errorf("Load() with SMTP_MIN_TRANSFER_RATE=%q should fail", bad)
@@ -561,11 +579,13 @@ func TestLoad_SMTPTransferRate_Invalid(t *testing.T) {
 	// malformed (including duration syntax — the unit is seconds) all fail.
 	for _, bad := range []string{"0", "-5", "1m", "abc"} {
 		clearEnv(t)
+		t.Setenv("ENVIRONMENT", "development")
 		t.Setenv("SMTP_TRANSFER_GRACE_PERIOD", bad)
 		if _, err := Load(); err == nil {
 			t.Errorf("Load() with SMTP_TRANSFER_GRACE_PERIOD=%q should fail", bad)
 		}
 		clearEnv(t)
+		t.Setenv("ENVIRONMENT", "development")
 		t.Setenv("SMTP_TRANSFER_STALL_TIMEOUT", bad)
 		if _, err := Load(); err == nil {
 			t.Errorf("Load() with SMTP_TRANSFER_STALL_TIMEOUT=%q should fail", bad)
@@ -575,6 +595,7 @@ func TestLoad_SMTPTransferRate_Invalid(t *testing.T) {
 
 func TestLoad_DurationParsing(t *testing.T) {
 	clearEnv(t)
+	t.Setenv("ENVIRONMENT", "development")
 
 	t.Setenv("JWT_ACCESS_EXPIRY", "30m")
 
@@ -589,6 +610,7 @@ func TestLoad_DurationParsing(t *testing.T) {
 
 	// Verify that an invalid duration falls back to the default.
 	clearEnv(t)
+	t.Setenv("ENVIRONMENT", "development")
 	t.Setenv("JWT_ACCESS_EXPIRY", "invalid-duration")
 
 	cfg, err = Load()
@@ -607,6 +629,7 @@ func TestLoad_DurationParsing(t *testing.T) {
 // their documented defaults when unset.
 func TestLoad_ObservabilityDefaults(t *testing.T) {
 	clearEnv(t)
+	t.Setenv("ENVIRONMENT", "development")
 
 	cfg, err := Load()
 	if err != nil {
@@ -633,6 +656,7 @@ func TestLoad_ObservabilityDefaults(t *testing.T) {
 // TestLoad_ObservabilityOverrides verifies valid explicit values are honored.
 func TestLoad_ObservabilityOverrides(t *testing.T) {
 	clearEnv(t)
+	t.Setenv("ENVIRONMENT", "development")
 	t.Setenv("TRACE_RETENTION_DAYS", "14")
 	t.Setenv("TRACE_SAMPLE_RATE", "0.25")
 	t.Setenv("TRACE_MAX_ROWS", "500000")
@@ -678,6 +702,7 @@ func TestLoad_ObservabilityValidation(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			clearEnv(t)
+			t.Setenv("ENVIRONMENT", "development")
 			t.Setenv(tc.key, tc.val)
 			if _, err := Load(); err == nil {
 				t.Errorf("Load() with %s=%q: expected error, got nil", tc.key, tc.val)
@@ -691,6 +716,7 @@ func TestLoad_ObservabilityValidation(t *testing.T) {
 func TestLoad_SampleRateBoundaries(t *testing.T) {
 	for _, rate := range []string{"0", "0.0", "1", "1.0"} {
 		clearEnv(t)
+		t.Setenv("ENVIRONMENT", "development")
 		t.Setenv("TRACE_SAMPLE_RATE", rate)
 		if _, err := Load(); err != nil {
 			t.Errorf("Load() with TRACE_SAMPLE_RATE=%q: unexpected error %v", rate, err)
@@ -701,6 +727,7 @@ func TestLoad_SampleRateBoundaries(t *testing.T) {
 // TestLoad_MaxRowsZeroDisablesBackstop confirms 0 is accepted (disables the cap).
 func TestLoad_MaxRowsZeroDisablesBackstop(t *testing.T) {
 	clearEnv(t)
+	t.Setenv("ENVIRONMENT", "development")
 	t.Setenv("TRACE_MAX_ROWS", "0")
 	cfg, err := Load()
 	if err != nil {
@@ -717,6 +744,7 @@ func TestLoad_MaxRowsZeroDisablesBackstop(t *testing.T) {
 // documented defaults (enabled, escalating) when unset.
 func TestLoad_TarpitDefaults(t *testing.T) {
 	clearEnv(t)
+	t.Setenv("ENVIRONMENT", "development")
 
 	cfg, err := Load()
 	if err != nil {
@@ -749,6 +777,7 @@ func TestLoad_TarpitDefaults(t *testing.T) {
 // and an integer soft limit.
 func TestLoad_TarpitOverrides(t *testing.T) {
 	clearEnv(t)
+	t.Setenv("ENVIRONMENT", "development")
 	t.Setenv("SMTP_TARPIT_BASE", "500ms")
 	t.Setenv("SMTP_TARPIT_SOFT_LIMIT", "5")
 	t.Setenv("SMTP_TARPIT_MAX", "30s")
@@ -781,6 +810,7 @@ func TestLoad_TarpitOverrides(t *testing.T) {
 // disable knob is honored and range checks do not apply.
 func TestLoad_TarpitDisabledSkipsValidation(t *testing.T) {
 	clearEnv(t)
+	t.Setenv("ENVIRONMENT", "development")
 	t.Setenv("SMTP_TARPIT_ENABLED", "false")
 	t.Setenv("RESTMAIL_TARPIT_ENABLED", "false")
 	// Even a nonsensical (max < base) pairing is tolerated when disabled.
@@ -815,6 +845,7 @@ func TestLoad_TarpitInvalid(t *testing.T) {
 	}
 	for _, tc := range bad {
 		clearEnv(t)
+		t.Setenv("ENVIRONMENT", "development")
 		t.Setenv(tc.key, tc.val)
 		if _, err := Load(); err == nil {
 			t.Errorf("Load() with %s=%q should fail", tc.key, tc.val)

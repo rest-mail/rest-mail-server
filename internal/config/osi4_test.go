@@ -185,7 +185,7 @@ func TestOSI4_ProductionRejectsInsecure(t *testing.T) {
 
 // TestOSI4_DevelopmentWarnsButBoots asserts that every insecure case that would
 // fail in production only warns (and still boots) in development — the testbed/
-// e2e default — so enforcement is strictly gated on ENVIRONMENT=production.
+// e2e's explicit choice — so enforcement is strictly gated on ENVIRONMENT=production.
 func TestOSI4_DevelopmentWarnsButBoots(t *testing.T) {
 	goodDir := t.TempDir()
 	goodCert, goodKey := writeKeypair(t, goodDir)
@@ -208,7 +208,7 @@ func TestOSI4_DevelopmentWarnsButBoots(t *testing.T) {
 	for name, setup := range setups {
 		t.Run(name, func(t *testing.T) {
 			clearEnv(t)
-			// ENVIRONMENT unset -> "development" default.
+			t.Setenv("ENVIRONMENT", "development")
 			setup(t)
 
 			if _, err := Load(); err != nil {
