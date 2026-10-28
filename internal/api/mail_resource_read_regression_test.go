@@ -41,7 +41,7 @@ func (c mailResourceReadConnection) QueryContext(ctx context.Context, query stri
 	}
 	stamp := time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC)
 	if strings.Contains(query, `FROM "scheduled_sends"`) {
-		if len(args) != 3 || fmt.Sprint(args[0].Value) != "10" || args[1].Value != "pending" || args[2].Value != "sending" || !strings.Contains(query, "account_id =") || !strings.Contains(query, "status IN") || !strings.Contains(query, "ORDER BY send_at") {
+		if len(args) != 4 || fmt.Sprint(args[0].Value) != "10" || args[1].Value != "pending" || args[2].Value != "sending" || args[3].Value != "held" || !strings.Contains(query, "account_id =") || !strings.Contains(query, "status IN") || !strings.Contains(query, "ORDER BY send_at") {
 			return nil, errors.New("scheduled list lost owner, waiting states or ordering")
 		}
 		if c.mode == "list_failure" {

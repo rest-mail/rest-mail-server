@@ -14,6 +14,7 @@ import (
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/db/repositories"
 	"gorm.io/gorm"
 )
 
@@ -73,12 +74,14 @@ func (s *ScheduledSender) run() {
 	defer close(s.done)
 	ticker := time.NewTicker(scheduledSendInterval)
 	defer ticker.Stop()
+	s.h.dispatchSendLimitNotices(context.Background())
 	for {
 		select {
 		case <-s.stop:
 			return
 		case <-ticker.C:
 			s.h.runScheduledSends(context.Background())
+			s.h.dispatchSendLimitNotices(context.Background())
 		}
 	}
 }
@@ -123,16 +126,32 @@ func (h *MessageHandler) deliverScheduled(ctx context.Context, row models.Schedu
 	}
 	req.ScheduledAt = nil
 
-	// Give the send its own budget, and the account the request was made
-	// with. CredentialKind is deliberately empty: this is not an app password
-	// session, so the account's own grants decide what it may send as.
+	// Give the send its own request budget and restore its submitting identity.
+	// A credential is checked live again, with its current scope; sessions use
+	// the account's current grants. Neither replay is a human-2FA session.
 	sendCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
-	sendCtx = context.WithValue(sendCtx, middleware.ClaimsKey, &auth.Claims{AccountID: row.AccountID})
+	claims := &auth.Claims{AccountID: row.AccountID, SessionID: row.SessionID}
+	if row.CredentialID != 0 {
+		var cred models.Credential
+		if err := h.db.WithContext(sendCtx).First(&cred, row.CredentialID).Error; err != nil || cred.AccountID != row.AccountID || !cred.Usable(time.Now()) {
+			h.finishScheduled(row.ID, "failed", 0, "The submitting credential is no longer usable")
+			return
+		}
+		claims.CredentialID, claims.CredentialKind = cred.ID, cred.Kind
+		if cred.Kind == models.CredentialKindAPIKey {
+			claims = repositories.APIKeyClaims(&cred, &models.Mailbox{ID: row.AccountID})
+		}
+	}
+	sendCtx = context.WithValue(sendCtx, middleware.ClaimsKey, claims)
+	sendCtx = context.WithValue(sendCtx, heldSendIDKey{}, row.ID)
 
 	httpReq := httptest.NewRequest(http.MethodPost, "/api/v1/messages/send", nil).WithContext(sendCtx)
 	outcome, err := h.sendMessage(httpReq, req)
 	if err == nil {
+		if retained, ok := outcome.Value.(ScheduledMessage); ok && retained.Status == "held" {
+			return // reserveLayeredSend retained this very row; never mark it sent.
+		}
 		var messageID uint
 		if sent, ok := outcome.Value.(Message); ok {
 			messageID = sent.ID
@@ -214,7 +233,7 @@ func (h *MessageHandler) listScheduledSends(r *http.Request, _ struct{}) ([]Sche
 	}
 	var rows []models.ScheduledSend
 	if err := h.db.WithContext(r.Context()).
-		Where("account_id = ? AND status IN ?", claims.AccountID, []string{"pending", "sending"}).
+		Where("account_id = ? AND status IN ?", claims.AccountID, []string{"pending", "sending", "held"}).
 		Order("send_at").
 		Find(&rows).Error; err != nil {
 		return nil, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to list scheduled messages")
@@ -251,7 +270,7 @@ func (h *MessageHandler) cancelScheduledSend(r *http.Request, in scheduledPath) 
 		return endpoint.Empty{}, errNotSignedIn
 	}
 	var row models.ScheduledSend
-	err := h.db.WithContext(r.Context()).Where("id = ? AND account_id = ? AND status = ?", in.ID, claims.AccountID, "pending").Take(&row).Error
+	err := h.db.WithContext(r.Context()).Where("id = ? AND account_id = ? AND status IN ?", in.ID, claims.AccountID, []string{"pending", "held"}).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return endpoint.Empty{}, errNoScheduledSend
 	}
@@ -268,7 +287,7 @@ func (h *MessageHandler) cancelScheduledSend(r *http.Request, in scheduledPath) 
 		return endpoint.Empty{}, errNoScheduledSend
 	}
 	result := h.db.WithContext(r.Context()).Model(&models.ScheduledSend{}).
-		Where("id = ? AND status = ?", row.ID, "pending").
+		Where("id = ? AND status IN ?", row.ID, []string{"pending", "held"}).
 		Update("status", "cancelled")
 	if result.Error != nil {
 		return endpoint.Empty{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to cancel the scheduled message")

@@ -597,7 +597,9 @@ func (s *session) Data(r io.Reader) error {
 	// DATA stream is consumed) and before any recipient is delivered or queued, so a
 	// throttled message commits nothing. Only authenticated submission is limited;
 	// inbound-MX (port 25) has no account to key on.
-	if s.isSubmission && s.authenticated && !s.subLimiter.Allow(s.rateLimitKey()) {
+	budget, persistentBudget := s.store.(SubmissionBudget)
+	persistentBudget = persistentBudget && budget.PersistentSendLimits()
+	if s.isSubmission && s.authenticated && !persistentBudget && !s.subLimiter.Allow(s.rateLimitKey()) {
 		slog.Warn("smtp: submission rate limit exceeded",
 			"user", s.authEmail, "account_id", s.accountID, "event", "smtp_submission_rate_limited")
 		return &gosmtp.SMTPError{
@@ -623,6 +625,16 @@ func (s *session) Data(r io.Reader) error {
 		}
 		if err := s.followSendingPolicy(fromAddr, data); err != nil {
 			return err
+		}
+		if persistentBudget {
+			sender := s.mailFrom
+			if sender == "" {
+				sender = fromAddr
+			}
+			limited, err := budget.ReserveSubmission(SubmissionAttempt{AccountID: s.accountID, CredentialID: s.credentialID, Sender: sender, HeaderSender: fromAddr, Recipients: int64(len(s.rcptTo)), Remote: s.remoteAddr()})
+			if err != nil || limited {
+				return &gosmtp.SMTPError{Code: 451, EnhancedCode: gosmtp.EnhancedCode{4, 7, 1}, Message: "Sending temporarily held; retain this message and retry later"}
+			}
 		}
 	}
 

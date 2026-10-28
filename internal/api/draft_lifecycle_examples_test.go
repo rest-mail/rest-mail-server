@@ -220,6 +220,12 @@ func TestDraftLifecycleNamedExamples(t *testing.T) {
 
 func TestDraftLifecycleExamplesFitDescription(t *testing.T) {
 	for _, w := range describedRouters(t).generator("draft lifecycle").Report() {
+		// The normal fixture has capacity. A 202 hold needs a spent shared
+		// budget; TestLayeredDraftAndScheduledSendBecomeDurableHolds proves it
+		// against PostgreSQL, and vertrag.yml excludes only that status.
+		if w.OperationID == "sendDraft" && w.Status == "202" && w.Kind == oapifly.WarnExampleMissing {
+			continue
+		}
 		if _, selected := draftExampleNames[w.OperationID]; selected && (w.Kind == oapifly.WarnExampleInvalid || w.Kind == oapifly.WarnExampleOrphaned || (w.Kind == oapifly.WarnExampleMissing && !phaseStatuses[w.Status])) {
 			t.Errorf("%s/%s status %s: %s", w.OperationID, w.Example, w.Status, w.Message)
 		}

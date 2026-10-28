@@ -30,6 +30,7 @@ import (
 	"github.com/restmail/restmail/internal/outbound"
 	"github.com/restmail/restmail/internal/pipeline"
 	"github.com/restmail/restmail/internal/ratelimit"
+	"github.com/restmail/restmail/internal/sendlimits"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -49,6 +50,7 @@ type MessageHandler struct {
 	// every request).
 	maxRecipients int
 	sendLimiter   *ratelimit.SubmissionLimiter
+	layeredLimits *sendlimits.Service
 
 	// newMail is told of each message delivered into a mailbox's INBOX, to
 	// push to the phones of the sessions that list it (#363). Nil when push
@@ -564,7 +566,7 @@ func (h *MessageHandler) sendMessageWithParts(r *http.Request, req sendMessageRe
 	// throttled request enqueues nothing. A nil limiter (feature disabled) allows
 	// every request. Both the draft-send and forward paths delegate to SendMessage,
 	// so they inherit this cap.
-	if !h.sendLimiter.Allow(strconv.FormatUint(uint64(claims.AccountID), 10)) {
+	if h.layeredLimits == nil && !h.sendLimiter.Allow(strconv.FormatUint(uint64(claims.AccountID), 10)) {
 		return zero, &endpoint.Error{Status: http.StatusTooManyRequests, Code: "rate_limited",
 			Message: "Account send rate limit exceeded; try again later", Header: http.Header{"Retry-After": {"60"}}}
 	}
@@ -649,13 +651,15 @@ func (h *MessageHandler) sendMessageWithParts(r *http.Request, req sendMessageRe
 		}
 		toJSON, _ := json.Marshal(req.To)
 		row := models.ScheduledSend{
-			AccountID: claims.AccountID,
-			From:      req.From,
-			To:        models.JSONB(toJSON),
-			Subject:   req.Subject,
-			SendAt:    at,
-			Status:    "pending",
-			Request:   models.JSONB(body),
+			AccountID:    claims.AccountID,
+			CredentialID: claims.CredentialID,
+			SessionID:    claims.SessionID,
+			From:         req.From,
+			To:           models.JSONB(toJSON),
+			Subject:      req.Subject,
+			SendAt:       at,
+			Status:       "pending",
+			Request:      models.JSONB(body),
 		}
 		if err := h.db.Create(&row).Error; err != nil {
 			return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to store the scheduled message")
@@ -751,6 +755,9 @@ func (h *MessageHandler) sendMessageWithParts(r *http.Request, req sendMessageRe
 		}
 
 		outPipelineCtx := pipeline.WithDB(r.Context(), h.db)
+		if releasing, _ := r.Context().Value(releaseSendKey{}).(bool); releasing {
+			outPipelineCtx = sendlimits.WithHumanRelease(outPipelineCtx)
+		}
 		outResult, outErr := h.engine.Execute(outPipelineCtx, outPipelineCfg, outEmailJSON)
 		if outErr != nil {
 			return zero, endpoint.Refuse(http.StatusInternalServerError, "pipeline_error", "Outbound pipeline execution failed")
@@ -787,6 +794,13 @@ func (h *MessageHandler) sendMessageWithParts(r *http.Request, req sendMessageRe
 		case pipeline.ActionDefer:
 			outTraceBase.Outcome = outcomeDeferred
 			h.recordTrace(buildTrace(outTraceBase))
+			if h.layeredLimits != nil {
+				held, err := h.reserveLayeredSend(r, req, parts, senderMailbox.ID, "outbound_pipeline")
+				if err != nil {
+					return zero, err
+				}
+				return endpoint.Status[any]{Code: http.StatusAccepted, Value: *held}, nil
+			}
 			return zero, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Try again later")
 		case pipeline.ActionContinue:
 			// Stash the trace; recorded as "queued" after the sent Message row is
@@ -820,6 +834,16 @@ func (h *MessageHandler) sendMessageWithParts(r *http.Request, req sendMessageRe
 				// Capture headers a transform added for the raw message.
 				extraHeaders = outResult.FinalEmail.Headers.Extra
 			}
+		}
+	}
+
+	if h.layeredLimits != nil {
+		held, err := h.reserveLayeredSend(r, req, parts, senderMailbox.ID, "")
+		if err != nil {
+			return zero, err
+		}
+		if held != nil {
+			return endpoint.Status[any]{Code: http.StatusAccepted, Value: *held}, nil
 		}
 	}
 
