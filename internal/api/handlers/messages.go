@@ -31,14 +31,16 @@ import (
 	"github.com/restmail/restmail/internal/pipeline"
 	"github.com/restmail/restmail/internal/ratelimit"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type MessageHandler struct {
 	db        *gorm.DB
-	broker    *SSEBroker
+	broker    messageEventPublisher
 	engine    *pipeline.Engine
 	masterKey string
 	recorder  traceRecorder
+	draftSend *draftSendEffects
 
 	// Send-path abuse limits (#184), configured from config in routes.go. A single
 	// compromised webmail credential must not be able to fan out unlimited bulk
@@ -87,7 +89,11 @@ func (h *MessageHandler) forRequest(r *http.Request) *MessageHandler {
 }
 
 func NewMessageHandler(db *gorm.DB, broker *SSEBroker, engine *pipeline.Engine, masterKey string, recorder traceRecorder) *MessageHandler {
-	return &MessageHandler{db: db, broker: broker, engine: engine, masterKey: masterKey, recorder: recorder, forwardRoot: attachmentstore.FilesystemRoot, maxForwardBytes: config.DefaultSMTPMaxMessageSize}
+	h := &MessageHandler{db: db, engine: engine, masterKey: masterKey, recorder: recorder, forwardRoot: attachmentstore.FilesystemRoot, maxForwardBytes: config.DefaultSMTPMaxMessageSize}
+	if broker != nil {
+		h.broker = broker
+	}
+	return h
 }
 
 // SetSendLimits configures the send-path abuse limits (#184): the per-message
@@ -922,6 +928,9 @@ func (h *MessageHandler) sendMessageWithParts(r *http.Request, req sendMessageRe
 	// so its raw source can be read (GET /messages/{id}/raw, IMAP, POP3).
 	if err := h.db.Model(&sentMsg).Updates(map[string]any{"raw_message": rawMessage, "raw_size": len(rawMessage)}).Error; err != nil {
 		slog.Warn("failed to store the sent message's raw source", "message_id", sentMsg.ID, "error", err)
+		if h.draftSend != nil {
+			return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to save sent message")
+		}
 	}
 
 	// Deliver to each recipient in to + cc + bcc
@@ -995,6 +1004,9 @@ func (h *MessageHandler) sendMessageWithParts(r *http.Request, req sendMessageRe
 		})
 		if deliverErr != nil {
 			slog.Warn("local delivery failed for recipient", "recipient", local.address, "error", deliverErr)
+			if h.draftSend != nil {
+				return zero, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Try again later")
+			}
 		}
 	}
 
@@ -1639,14 +1651,14 @@ type sendDraftBody struct {
 	ListUnsubscribe *apitypes.ListUnsubscribe `json:"list_unsubscribe,omitempty"`
 }
 
-func (h *MessageHandler) sendDraft(r *http.Request, in sendDraftRequest) (endpoint.Status[any], error) {
+func (h *MessageHandler) sendDraftInTransaction(r *http.Request, in sendDraftRequest) (endpoint.Status[any], error) {
 	var zero endpoint.Status[any]
 	if middleware.GetClaims(r) == nil {
 		return zero, errNotSignedIn
 	}
 
 	var draft models.Message
-	if err := h.db.WithContext(r.Context()).Where("id = ? AND is_draft = ?", in.ID, true).First(&draft).Error; err != nil {
+	if err := h.db.WithContext(r.Context()).Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND is_draft = ?", in.ID, true).First(&draft).Error; err != nil {
 		return zero, draftLookupRefusal(err)
 	}
 	if err := h.draftAccess(r, &draft); err != nil {
@@ -1678,11 +1690,12 @@ func (h *MessageHandler) sendDraft(r *http.Request, in sendDraftRequest) (endpoi
 	if err != nil {
 		return zero, err
 	}
-	// Only a sent draft is deleted: a refused send keeps it to try again. The
-	// message is out by now, so the answer stays a success; a draft that could
-	// not be removed is logged, since it invites a second send (#1265).
+	// Removal, Sent, local deliveries and queue rows share the enclosing
+	// transaction. A failed removal must roll them all back before any worker
+	// can send the message, so the retained draft is safe to retry (#1265).
 	if err := removeSentDraft(r.Context(), h.db, &draft); err != nil {
-		slog.Error("send draft: the sent draft is still in Drafts", "draft_id", draft.ID, "mailbox_id", draft.MailboxID, "error", err)
+		slog.Error("send draft: could not remove draft; rolling back send", "draft_id", draft.ID, "mailbox_id", draft.MailboxID, "error", err)
+		return zero, endpoint.Refuse(http.StatusServiceUnavailable, "deferred", "Try again later")
 	}
 	return sent, nil
 }
@@ -1690,14 +1703,18 @@ func (h *MessageHandler) sendDraft(r *http.Request, in sendDraftRequest) (endpoi
 // sentDraftRemovalAttempts is how many times a sent draft's removal is tried.
 const sentDraftRemovalAttempts = 2
 
-// removeSentDraft deletes a draft that has just been sent. The send has
-// already happened, so the removal is not cancelled with the request that
-// asked for it, and a failure is tried once more before it is reported.
+// removeSentDraft retries cleanup independently of request cancellation. In a
+// draft send, the enclosing transaction is still request-bound: cancellation
+// rolls back the send as well. Each attempt has its own transaction/savepoint
+// so a failed DELETE does not leave PostgreSQL's transaction aborted.
 func removeSentDraft(ctx context.Context, db *gorm.DB, draft *models.Message) error {
 	ctx = context.WithoutCancel(ctx)
 	var err error
 	for range sentDraftRemovalAttempts {
-		if err = db.WithContext(ctx).Delete(draft).Error; err == nil {
+		err = db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			return tx.Delete(draft).Error
+		})
+		if err == nil {
 			return nil
 		}
 	}
