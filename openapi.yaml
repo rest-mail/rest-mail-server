@@ -222,6 +222,346 @@ security:
   - BearerAuth: []
 
 paths:
+  "/api/v1/auth/recover/email":
+    "post":
+      "description": "Supply the account address. The response is identical for unknown, disabled and unverified accounts. Every request uses the same per-address budget (five, then one per 15 minutes), in addition to the shared per-IP authentication throttle. Links expire after 15 minutes; requesting another invalidates the previous link."
+      "operationId": "requestRecoveryEmail"
+      "requestBody":
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/requestRecoveryEmailRequest"
+        "required": true
+      "responses":
+        "200":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Data-passwordChanged"
+          "description": "OK"
+        "400":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ErrorResponse"
+          "description": "Bad Request"
+        "413":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ErrorResponse"
+          "description": "Request Entity Too Large"
+        "422":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ValidationErrorResponse"
+          "description": "Unprocessable Entity"
+        "429":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ErrorResponse"
+          "description": "Too Many Requests"
+          "headers":
+            "Retry-After":
+              "description": "Seconds until another request is allowed"
+              "required": true
+              "schema":
+                "type": "integer"
+        "500":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ErrorResponse"
+          "description": "Internal Server Error"
+        "503":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ErrorResponse"
+          "description": "Service Unavailable"
+      "security": []
+      "summary": "Request a password recovery link"
+      "tags":
+        - "Auth"
+  "/api/v1/auth/recover/email/redeem":
+    "post":
+      "description": "Redeems a verified recovery email token once. Changes the password and ends every session and app password atomically. The authenticator and recovery codes remain; sign in normally with the new password and any required second factor. Does not sign in or enroll new authentication methods."
+      "operationId": "redeemRecoveryEmail"
+      "requestBody":
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/redeemRecoveryEmailRequest"
+        "required": true
+      "responses":
+        "200":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Data-passwordChanged"
+          "description": "OK"
+        "400":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ErrorResponse"
+          "description": "Bad Request"
+        "401":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ErrorResponse"
+          "description": "Unauthorized"
+        "413":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ErrorResponse"
+          "description": "Request Entity Too Large"
+        "422":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ValidationErrorResponse"
+          "description": "Unprocessable Entity"
+        "429":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ErrorResponse"
+          "description": "rate_limited: too many requests to the shared authentication throttle"
+          "headers":
+            "Retry-After":
+              "description": "Seconds until a request may be made again"
+              "required": true
+              "schema":
+                "type": "integer"
+        "500":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ErrorResponse"
+          "description": "Internal Server Error"
+      "security": []
+      "summary": "Choose a new password with a recovery email link"
+      "tags":
+        - "Auth"
+  "/api/v1/auth/recovery-email":
+    "get":
+      "operationId": "getRecoveryEmail"
+      "responses":
+        "200":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Data-recoveryEmailStatus"
+          "description": "OK"
+        "401":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ErrorResponse"
+          "description": "unauthorized: no token, a bad one, or a session that has ended"
+        "403":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ErrorResponse"
+          "description": "Refused before the handler runs: setup_required (the account has not finished setup), csrf_failed (a cookie session's unsafe request without the CSRF header) or forbidden (the session lacks the capability)"
+        "413":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ErrorResponse"
+          "description": "request_too_large: the body is over the API's size cap"
+        "500":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ErrorResponse"
+          "description": "Internal Server Error"
+        "503":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ErrorResponse"
+          "description": "unavailable: the session check could not be made"
+      "security":
+        -
+          "CookieAuth": []
+        -
+          "BearerAuth": []
+      "summary": "Read your registered recovery email"
+      "tags":
+        - "Auth"
+    "post":
+      "description": "Requires a signed-in session and the current password. Replacing the address clears verification and invalidates previous email tokens. Verification lasts 15 minutes. Recovery address changes freeze for three days after email recovery."
+      "operationId": "registerRecoveryEmail"
+      "requestBody":
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/registerRecoveryEmailRequest"
+        "required": true
+      "responses":
+        "200":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Data-passwordChanged"
+          "description": "OK"
+        "400":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ErrorResponse"
+          "description": "Bad Request"
+        "401":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ErrorResponse"
+          "description": "unauthorized: no token, a bad one, or a session that has ended"
+        "403":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ErrorResponse"
+          "description": "Forbidden"
+        "413":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ErrorResponse"
+          "description": "Request Entity Too Large"
+        "422":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ValidationErrorResponse"
+          "description": "Unprocessable Entity"
+        "429":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ErrorResponse"
+          "description": "rate_limited: too many requests to the shared authentication throttle"
+          "headers":
+            "Retry-After":
+              "description": "Seconds until a request may be made again"
+              "required": true
+              "schema":
+                "type": "integer"
+        "500":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ErrorResponse"
+          "description": "Internal Server Error"
+        "503":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ErrorResponse"
+          "description": "Service Unavailable"
+      "security":
+        -
+          "CookieAuth": []
+        -
+          "BearerAuth": []
+      "summary": "Register an external recovery email before lockout"
+      "tags":
+        - "Auth"
+  "/api/v1/auth/recovery-email/link":
+    "get":
+      "operationId": "recoveryEmailLink"
+      "responses":
+        "200":
+          "content":
+            "text/html":
+              "schema":
+                "type": "string"
+          "description": "OK"
+        "413":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ErrorResponse"
+          "description": "request_too_large: the body is over the API's size cap"
+        "500":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ErrorResponse"
+          "description": "Internal Server Error"
+      "security": []
+      "summary": "Open a private recovery email link"
+      "tags":
+        - "Auth"
+  "/api/v1/auth/recovery-email/verify":
+    "post":
+      "operationId": "verifyRecoveryEmail"
+      "requestBody":
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/recoveryEmailTokenRequest"
+        "required": true
+      "responses":
+        "200":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/Data-passwordChanged"
+          "description": "OK"
+        "400":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ErrorResponse"
+          "description": "Bad Request"
+        "401":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ErrorResponse"
+          "description": "Unauthorized"
+        "413":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ErrorResponse"
+          "description": "Request Entity Too Large"
+        "422":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ValidationErrorResponse"
+          "description": "Unprocessable Entity"
+        "429":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ErrorResponse"
+          "description": "rate_limited: too many requests to the shared authentication throttle"
+          "headers":
+            "Retry-After":
+              "description": "Seconds until a request may be made again"
+              "required": true
+              "schema":
+                "type": "integer"
+        "500":
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/ErrorResponse"
+          "description": "Internal Server Error"
+      "security": []
+      "summary": "Verify a recovery email with its single-use link"
+      "tags":
+        - "Auth"
   # ═══════════════════════════════════════════════════════════════
   # Health
   # ═══════════════════════════════════════════════════════════════
@@ -11091,6 +11431,90 @@ components:
             $ref: "#/components/schemas/ValidationErrorResponse"
 
   schemas:
+    "requestRecoveryEmailRequest":
+      "additionalProperties": false
+      "properties":
+        "email":
+          "format": "email"
+          "maxLength": 255
+          "type": "string"
+      "required":
+        - "email"
+      "type": "object"
+    "Data-passwordChanged":
+      "additionalProperties": false
+      "properties":
+        "data":
+          "$ref": "#/components/schemas/passwordChanged"
+      "required":
+        - "data"
+      "type": "object"
+    "passwordChanged":
+      "additionalProperties": false
+      "properties":
+        "message":
+          "type": "string"
+      "required":
+        - "message"
+      "type": "object"
+    "redeemRecoveryEmailRequest":
+      "additionalProperties": false
+      "properties":
+        "new_password":
+          "maxLength": 72
+          "minLength": 12
+          "type": "string"
+        "token":
+          "maxLength": 128
+          "minLength": 1
+          "type": "string"
+      "required":
+        - "token"
+        - "new_password"
+      "type": "object"
+    "Data-recoveryEmailStatus":
+      "additionalProperties": false
+      "properties":
+        "data":
+          "$ref": "#/components/schemas/recoveryEmailStatus"
+      "required":
+        - "data"
+      "type": "object"
+    "recoveryEmailStatus":
+      "additionalProperties": false
+      "properties":
+        "email":
+          "type": "string"
+        "verified":
+          "type": "boolean"
+      "required":
+        - "email"
+        - "verified"
+      "type": "object"
+    "registerRecoveryEmailRequest":
+      "additionalProperties": false
+      "properties":
+        "current_password":
+          "minLength": 1
+          "type": "string"
+        "email":
+          "format": "email"
+          "maxLength": 255
+          "type": "string"
+      "required":
+        - "email"
+        - "current_password"
+      "type": "object"
+    "recoveryEmailTokenRequest":
+      "additionalProperties": false
+      "properties":
+        "token":
+          "maxLength": 128
+          "minLength": 1
+          "type": "string"
+      "required":
+        - "token"
+      "type": "object"
     ForwardRefusalResponse:
       {
         "additionalProperties": false,

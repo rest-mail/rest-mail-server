@@ -67,7 +67,11 @@ func SecurityHeaderValues(cfg SecurityHeadersConfig, path string) http.Header {
 	}
 	// Strict CSP for the API; a Swagger-UI-compatible policy for the
 	// bundled docs so the docs page is not blanked.
-	if strings.HasPrefix(path, "/api/docs") {
+	if path == "/api/v1/auth/recovery-email/link" {
+		// The static fragment-link page adds its stricter script hash CSP.
+		// Both policies apply; this one permits that script and same-origin POSTs.
+		h.Set("Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+	} else if strings.HasPrefix(path, "/api/docs") {
 		h.Set("Content-Security-Policy", docsCSP)
 	} else {
 		h.Set("Content-Security-Policy", apiCSP)

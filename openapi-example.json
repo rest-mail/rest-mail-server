@@ -14594,6 +14594,37 @@
       }
     }
   },
+  "getRecoveryEmail": {
+    "unregistered": {
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "email": "",
+            "verified": false
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "verified": {
+      "requires": {
+        "state": "verified_recovery_email"
+      },
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "email": "backup@external.test",
+            "verified": true
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "getSieveScript": {
     "found": {
       "summary": "A linked account is readable through its mailbox grant",
@@ -24261,6 +24292,164 @@
       }
     }
   },
+  "recoveryEmailLink": {
+    "page": {
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": "\u003c!doctype html\u003e\u003chtml lang=\"en\"\u003e\u003cmeta charset=\"utf-8\"\u003e\u003cmeta name=\"viewport\" content=\"width=device-width,initial-scale=1\"\u003e\u003ctitle\u003eREST Mail account recovery\u003c/title\u003e\u003cmain\u003e\u003ch1\u003eAccount recovery\u003c/h1\u003e\u003cp id=\"message\" role=\"status\"\u003eConfirm the action below to use your private link.\u003c/p\u003e\u003cform id=\"recovery\"\u003e\u003clabel\u003eNew password \u003cinput id=\"password\" type=\"password\" autocomplete=\"new-password\" minlength=\"12\" maxlength=\"72\"\u003e\u003c/label\u003e\u003cbutton id=\"submit\" type=\"submit\"\u003eContinue\u003c/button\u003e\u003c/form\u003e\u003cp\u003eAfter changing your password, sign in through your usual mail app. Your existing second factor still applies.\u003c/p\u003e\u003c/main\u003e\u003cscript\u003e\nlet token = location.hash.slice(1);\nconst mode = new URLSearchParams(location.search).get('mode');\nhistory.replaceState(null, '', location.pathname);\nconst form = document.getElementById('recovery');\nconst message = document.getElementById('message');\nconst password = document.getElementById('password');\nconst button = document.getElementById('submit');\nif (!token || !['verify','recover'].includes(mode)) {\n message.textContent = 'Invalid link. Request another link.'; form.hidden = true;\n} else {\n password.parentElement.hidden = mode !== 'recover';\n password.required = mode === 'recover';\n button.textContent = mode === 'verify' ? 'Verify recovery email' : 'Change password';\n form.addEventListener('submit', async event =\u003e {\n  event.preventDefault(); button.disabled = true;\n  const body = { token };\n  if (mode === 'recover') body.new_password = password.value;\n  try {\n   const response = await fetch(mode === 'verify' ? '/api/v1/auth/recovery-email/verify' : '/api/v1/auth/recover/email/redeem', {\n    method: 'POST', credentials: 'omit', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)\n   });\n   const result = await response.json();\n   message.textContent = response.ok ? result.data.message : result.error.message;\n   if (response.ok) { form.hidden = true; password.value = ''; token = ''; } else { button.disabled = false; }\n  } catch (_) { message.textContent = 'Request failed. Please try again.'; button.disabled = false; }\n });\n}\n\u003c/script\u003e\u003c/html\u003e",
+        "mediaType": "text/html"
+      }
+    }
+  },
+  "redeemRecoveryEmail": {
+    "body_array": {
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "body": {
+          "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "new_password": "newly chosen password"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_field": {
+      "request": {
+        "body": {
+          "token": 3,
+          "new_password": "newly chosen password"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "token": "must be a string"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_token": {
+      "request": {
+        "body": {
+          "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "new_password": "newly chosen password"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "invalid_token",
+            "message": "the token is not valid: unknown, already used, or expired"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "body": {
+          "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "new_password": "newly chosen password"
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "body": {
+          "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "new_password": "newly chosen password"
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "success": {
+      "requires": {
+        "state": "recovery_email_token"
+      },
+      "request": {
+        "body": {
+          "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "new_password": "newly chosen password"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "message": "Password changed. Sign in again with the new password and your existing second factor."
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "refreshToken": {
     "body_array": {
       "summary": "The body is not a JSON object",
@@ -24474,6 +24663,178 @@
             "created_at": "2026-01-01T00:00:00Z"
           }
         }
+      }
+    }
+  },
+  "registerRecoveryEmail": {
+    "body_array": {
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "body": {
+          "email": "backup@external.test",
+          "current_password": "original password chosen"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_field": {
+      "request": {
+        "body": {
+          "email": 3,
+          "current_password": "original password chosen"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "email": "must be a string"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_password": {
+      "requires": {
+        "state": "known_password"
+      },
+      "request": {
+        "body": {
+          "email": "backup@external.test",
+          "current_password": "original password chosen"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "invalid_password",
+            "message": "Current password is incorrect"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "body": {
+          "email": "backup@external.test",
+          "current_password": "original password chosen"
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "body": {
+          "email": "backup@external.test",
+          "current_password": "original password chosen"
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "success": {
+      "requires": {
+        "state": "known_password"
+      },
+      "request": {
+        "body": {
+          "email": "backup@external.test",
+          "current_password": "original password chosen"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "message": "Verification link sent. The address cannot recover your account until verified."
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthorized": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "body": {
+          "email": "backup@external.test",
+          "current_password": "original password chosen"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },
@@ -25451,6 +25812,146 @@
           "error": {
             "code": "internal_error",
             "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "requestRecoveryEmail": {
+    "body_array": {
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "database_unavailable": {
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "body": {
+          "email": "person@example.test"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "message": "If this account has a verified recovery email, a recovery link will be sent."
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_field": {
+      "request": {
+        "body": {
+          "email": 3
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "email": "must be a string"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "body": {
+          "email": "person@example.test"
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "body": {
+          "email": "person@example.test"
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "success": {
+      "requires": {
+        "state": "verified_recovery_email"
+      },
+      "request": {
+        "body": {
+          "email": "person@example.test"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "message": "If this account has a verified recovery email, a recovery link will be sent."
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unknown_account": {
+      "request": {
+        "body": {
+          "email": "unknown@example.test"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "message": "If this account has a verified recovery email, a recovery link will be sent."
           }
         },
         "mediaType": "application/json"
@@ -34340,6 +34841,148 @@
           "error": {
             "code": "unauthorized",
             "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "verifyRecoveryEmail": {
+    "body_array": {
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "body": {
+          "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_field": {
+      "request": {
+        "body": {
+          "token": 3
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "token": "must be a string"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_token": {
+      "request": {
+        "body": {
+          "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "invalid_token",
+            "message": "the token is not valid: unknown, already used, or expired"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "body": {
+          "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "body": {
+          "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "success": {
+      "requires": {
+        "state": "pending_recovery_email"
+      },
+      "request": {
+        "body": {
+          "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "message": "Recovery email verified."
           }
         },
         "mediaType": "application/json"

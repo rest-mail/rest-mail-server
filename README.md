@@ -545,6 +545,7 @@ For standalone issuance and automated renewal, follow the
 |-------------------------------|--------------------|-------------------------------|
 | `GATEWAY_HOSTNAME`            | `localhost`        | Hostname announced by gateways |
 | `API_BASE_URL`                | `http://localhost:8080` | Internal API URL for gateways |
+| `RESTMAIL_RECOVERY_EMAIL_BASE_URL` | empty | User-facing HTTPS API origin for recovery links, e.g. `https://mail.example.com` (no `/api` suffix). Required for registering or sending recovery email links; outbound mail must be running. Helm: `api.recoveryEmailBaseURL`. |
 | `SMTP_PORT_INBOUND`           | `25`               | SMTP inbound port             |
 | `SMTP_PORT_SUBMISSION`        | `587`              | SMTP submission port          |
 | `SMTP_PORT_SUBMISSION_TLS`    | `465`              | SMTP implicit TLS port        |

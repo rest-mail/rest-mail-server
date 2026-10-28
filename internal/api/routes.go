@@ -178,6 +178,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 
 	healthH := handlers.NewHealthHandler(db, jwtService)
 	authH := handlers.NewAuthHandler(db, jwtService, cfg.MasterKey, sessions)
+	recoveryEmailH := handlers.NewRecoveryEmailHandler(db, authH, cfg.RecoveryEmailBaseURL)
 	invitationH := handlers.NewInvitationHandler(db, authH, cfg.TOTP2FAEnabled && cfg.MasterKey != "")
 	twofaH := handlers.NewTwoFactorHandler(db, cfg.MasterKey, cfg.TOTP2FAEnabled, sessions)
 	domainH := handlers.NewDomainHandler(db, dnsProvider, grantCache)
@@ -435,6 +436,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	}
 	publicAuth := publicRoutes(r.With(middleware.MaxBodyBytes(cfg.APIMaxBodyBytes))).Describing(describedBodyCap)
 	authH.RegisterSignIn(publicAuth, signInChecks)
+	recoveryEmailH.RegisterPublic(publicAuth, signInChecks)
 	invitationH.RegisterPublic(publicRoutes(r.With(middleware.MaxBodyBytes(cfg.APIMaxBodyBytes))).Describing(describedBodyCap), signInChecks)
 	// Owners prove themselves with a key registered in PostgreSQL: sign a
 	// challenge, get a reset-admin token to redeem above. Throttled at
@@ -581,6 +583,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 			person := publicRoutes(r).
 				Describing(describedPersonSession).
 				DescribingWhen(middleware.CSRFProtectsMethod, describedCSRF).Describing(describedBodyCap, describedSetupDone)
+			recoveryEmailH.RegisterOwn(person, personChecks)
 
 			// Accounts (#347). Creating one needs mailboxes:write covering its
 			// domain, and makes the creator its owner; the account, its grant

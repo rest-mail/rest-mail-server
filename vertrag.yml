@@ -36,6 +36,7 @@ auth:
     - '/api/v1/auth/logout > Log out — revoke the session and clear the auth cookies > 204'
     - '/api/v1/auth/2fa > Read your authenticator status > 401 > application/json'
     - '/api/v1/auth/2fa/enroll > Start an authenticator enrollment > 401 > application/json'
+    - '/api/v1/auth/recovery-email > Read your registered recovery email > 401 > application/json'
     - '/api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 200 > application/json'
     - '/api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 400 > application/json'
     - '/api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 401 > application/json'
@@ -192,7 +193,8 @@ exclude-matching:
   - '^/api/v1/admin/domains/\{id\}/(allowlist|blocklist|suppressions)(/| >).* > 404( >|$)'
   - '^/api/v1/admin/domains/\{id\}/(mta-sts|relay) > (Create|Set|Delete).* > 404( >|$)'
   - '^/api/v1/admin/certificates/\{id\} > Delete a certificate > 404( >|$)'
-  - '^/api/v1/auth/(logout|refresh|reset|recover|owner/[a-z]+|2fa/[a-z]+|password) > .* > (400|422)( >|$)'
+  # Recovery email's four POST routes also lack named refusal pairs (#386).
+  - '^/api/v1/auth/(logout|refresh|reset|recover(/email(/redeem)?)?|recovery-email(/verify)?|owner/[a-z]+|2fa/[a-z]+|password) > .* > (400|422)( >|$)'
   - '^/api/v1/devices(/| >).* > (400|422)( >|$)'
   - '^/api/v1/messages/(\{id\}|draft|deliver)(/| >).* > (400|422)( >|$)'
   - '^/api/v1/accounts/link > .* > 400( >|$)'
@@ -256,6 +258,9 @@ exclude-matching:
   - '^/api/v1/(admin/mailboxes/\{id\}|auth)/invitation > .* > (413|500)( >|$)'
   # Nor a message import over the cap or meeting a failed database.
   - '^/api/v1/accounts/\{id\}/messages/import > .* > (413|500)( >|$)'
+  # Nor a recovery email read or link page over the body cap or meeting a
+  # failed database or response write.
+  - '^/api/v1/auth/recovery-email(/link)? > .* > (413|500)( >|$)'
 
 # Each documented response has one example (#1236). One that says, in
 # x-requires, that proving it needs a principal, a body, a spent limit or a
@@ -406,6 +411,18 @@ surface:
     - operation: importMessage
       status: "500"
       reason: "A failed insert, quota or audit write needs a fault-injected database (#1166); handler tests cover it."
+    - operation: getRecoveryEmail
+      status: "413"
+      reason: "The router's body cap answers before the handler, and the read is a GET the run sends without a body (#1166)."
+    - operation: getRecoveryEmail
+      status: "500"
+      reason: "A failed recovery method read needs a fault-injected database (#1166)."
+    - operation: recoveryEmailLink
+      status: "413"
+      reason: "The router's body cap answers before the handler, and the link page is a GET the run sends without a body (#1166)."
+    - operation: recoveryEmailLink
+      status: "500"
+      reason: "The page is static; only a failed response write answers 500, which needs fault injection (#1166)."
 
 # The HAR records the traffic for the secret scan (tests/contract/secret_scan.py, #673).
 reporter: [cli, junit, har]

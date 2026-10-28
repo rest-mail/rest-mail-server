@@ -49,6 +49,9 @@ vars:
   API_ENVIRONMENT: '{{.API_ENVIRONMENT | default "development"}}'
   API_MAILNET_ONLY: '{{.API_MAILNET_ONLY | default "false"}}'
   API_PROXY_HOST: '{{.API_PROXY_HOST | default "restmail.localhost"}}'
+  # Recovery links point at the HTTPS origin users reach the API through; the
+  # API refuses email recovery without one.
+  API_RECOVERY_EMAIL_BASE_URL: '{{.API_RECOVERY_EMAIL_BASE_URL | default (printf "https://%s" .API_PROXY_HOST)}}'
   # Internal mTLS (gateway → API). Off by default; when "true" the API serves
   # the gateway-facing routes on API_INTERNAL_MTLS_PORT requiring a client cert
   # from the internal CA. `chore instance:mtls:issue` issues them into
@@ -175,6 +178,7 @@ tasks:
           -e DB_USER={{.API_DB_USER}} \
           -e API_PORT={{.API_PORT}} \
           -e GATEWAY_HOSTNAME={{.API_RESTMAIL_HOSTNAME}} \
+          -e RESTMAIL_RECOVERY_EMAIL_BASE_URL={{.API_RECOVERY_EMAIL_BASE_URL}} \
           -e JS_FILTER_URL="http://$JS_FILTER_IP:3100" \
           -e TRACE_SAMPLE_RATE={{.API_TRACE_SAMPLE_RATE}} \
           --env-file "$SECRETS_ENV" \
