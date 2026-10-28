@@ -128,12 +128,17 @@ func (h *MessageHandler) commitForward(r *http.Request, req sendMessageRequest, 
 		parts[i].Content = base64.StdEncoding.EncodeToString(data)
 		parts[i].Size = int64(len(data))
 	}
-	raw, err := buildOutboundRaw(outboundMessage{FromName: sender.DisplayName, From: req.From, To: req.To, Cc: req.Cc, Subject: req.Subject, BodyText: req.BodyText, BodyHTML: req.BodyHTML, MessageID: sent.MsgID, InReplyTo: req.InReplyTo, Date: sent.ReceivedAt, Extra: extra, Attachments: parts})
+	raw, err := buildOutboundRaw(outboundMessage{FromName: sender.DisplayName, From: req.From, To: req.To, Cc: req.Cc, Subject: req.Subject, BodyText: req.BodyText, BodyHTML: req.BodyHTML, MessageID: sent.MsgID, InReplyTo: req.InReplyTo, Date: sent.ReceivedAt, Extra: withListUnsubscribe(extra, req.ListUnsubscribe), Attachments: parts})
 	if err != nil {
 		return zero, endpoint.Refuse(500, "internal_error", "Failed to build the forwarded message")
 	}
+	unsigned := raw
 	raw, err = h.signOutboundDKIM(rmail.DomainFromAddress(req.From), raw)
 	if err != nil {
+		return zero, endpoint.Refuse(503, "deferred", "Try again later")
+	}
+	// As for a send: a one-click claim must not leave unsigned (#144).
+	if req.ListUnsubscribe != nil && req.ListUnsubscribe.HTTPS != "" && raw == unsigned {
 		return zero, endpoint.Refuse(503, "deferred", "Try again later")
 	}
 	if int64(len(raw)) > h.maxForwardBytes {

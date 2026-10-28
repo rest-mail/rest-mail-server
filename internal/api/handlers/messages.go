@@ -1767,6 +1767,9 @@ type forwardBody struct {
 	From     string   `json:"from,omitempty"`
 	To       []string `json:"to,omitempty"`
 	BodyText string   `json:"body_text,omitempty"`
+	// ListUnsubscribe is the send API's: a forward from a bulk domain needs it, and one from
+	// a transactional domain may not carry it (#144).
+	ListUnsubscribe *apitypes.ListUnsubscribe `json:"list_unsubscribe,omitempty"`
 }
 
 // forwardMessage forwards an existing message to new recipients, through sendMessage.
@@ -1791,11 +1794,12 @@ func (h *MessageHandler) forwardMessage(r *http.Request, in forwardRequest) (end
 		return zero, err
 	}
 	return h.sendMessageWithParts(r, sendMessageRequest{
-		From:     req.From,
-		To:       req.To,
-		Subject:  "Fwd: " + original.Subject,
-		BodyText: fwdText,
-		BodyHTML: fwdHTML,
+		From:            req.From,
+		To:              req.To,
+		Subject:         "Fwd: " + original.Subject,
+		BodyText:        fwdText,
+		BodyHTML:        fwdHTML,
+		ListUnsubscribe: req.ListUnsubscribe,
 	}, parts)
 }
 
