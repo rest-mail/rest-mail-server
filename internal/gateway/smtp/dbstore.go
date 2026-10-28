@@ -2,6 +2,7 @@ package smtp
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/restmail/restmail/internal/db/models"
@@ -118,6 +119,18 @@ func (s *dbStore) CredentialUsable(credentialID uint) (bool, error) {
 // does.
 func (s *dbStore) PrepareSubmitted(sender, raw string) (string, error) {
 	return outbound.Prepare(s.db, s.masterKey, rmail.DomainFromAddress(sender), raw)
+}
+
+// SendingPolicy reads the sending policy of the domain the address is on.
+func (s *dbStore) SendingPolicy(address string) (string, error) {
+	var policies []string
+	err := s.db.Model(&models.Domain{}).
+		Where("name = ?", strings.ToLower(rmail.DomainFromAddress(address))).
+		Pluck("sending_policy", &policies).Error
+	if err != nil || len(policies) == 0 {
+		return "", err
+	}
+	return policies[0], nil
 }
 
 // EnqueueOutbound inserts the message into the outbound queue with the same
