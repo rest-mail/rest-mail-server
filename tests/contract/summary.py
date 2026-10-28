@@ -19,6 +19,7 @@ PHASES = (
     ("authorization", "authorization (report only)"),
     ("ownership", "ownership (report only)"),
     ("ownership-domains", "ownership of domains (report only)"),
+    ("ownership-mailboxes", "ownership of mailboxes (report only)"),
     ("fuzz", "fuzz (report only)"),
 )
 

@@ -47,12 +47,12 @@ mkdir -p "$out" "$logs"
 served="$PWD/$out/openapi.json"
 export CONTRACT_SPEC="$PWD/openapi.yaml"
 names=("$phase")
-if [ "$phase" = ownership ]; then names=(ownership ownership-domains); fi
+if [ "$phase" = ownership ]; then names=(ownership ownership-domains ownership-mailboxes); fi
 reset_run=()
 if [ "$phase" != authorization ] && [ "$phase" != ownership ]; then
   reset_run=(--reset-run)
   names=(fuzz)
-  if [ "$phase" = gate ]; then names=(examples coverage authorization ownership ownership-domains browser-sessions); fi
+  if [ "$phase" = gate ]; then names=(examples coverage authorization ownership ownership-domains ownership-mailboxes browser-sessions); fi
 fi
 # Clear this invocation's reports before dependencies or tools can fail. An
 # authorization or ownership run keeps the gate's saved inputs, but not an old
@@ -140,22 +140,25 @@ ownership)
     >"$logs/contract-ownership.log" 2>&1 || code=$?
   cat "$logs/contract-ownership.log"
   echo "vertrag ownership exited $code (report only)"
-  # The domain administrators, in a run of their own: tenant ids are keyed by
-  # parameter name, and the account run already declares path.id.
-  domains=.cache/contract/domain-tenants.json
-  if [ -s "$domains" ]; then
-    python3 -B tests/contract/ownership.py --domains "$CONTRACT_SPEC" "$out/vertrag-run.yml" \
-      "$domains" "$out/vertrag-ownership-domains.yml" "$out/ownership-domains.xml"
-    python3 -B tests/contract/reports.py "$out/vertrag-ownership-domains.yml" "$out/vertrag-ownership-domains.yml" "$out/ownership-domains" "${narrowed[@]}"
-    domain_code=0
-    "$CONTRACT_VERTRAG" run --config "$out/vertrag-ownership-domains.yml" --sequence --phases ownership "${select[@]}" \
-      >"$logs/contract-ownership-domains.log" 2>&1 || domain_code=$?
-    cat "$logs/contract-ownership-domains.log"
-    echo "vertrag ownership of domains exited $domain_code (report only)"
-    if [ "$code" -eq 0 ]; then code=$domain_code; fi
-  else
-    echo "no domain tenants in $domains (chore test:contract-domain-tenants): the domain run is not sent"
-  fi
+  # The domain administrators, in runs of their own: tenant ids are keyed by
+  # parameter name, so each kind of id they declare (their domain's, their own
+  # mailbox's) needs a run, as the account run already declares path.id.
+  tenants=.cache/contract/domain-tenants.json
+  for kind in domains mailboxes; do
+    if [ ! -s "$tenants" ]; then
+      echo "no domain tenants in $tenants (chore test:contract-domain-tenants): the $kind run is not sent"
+      continue
+    fi
+    python3 -B tests/contract/ownership.py "--$kind" "$CONTRACT_SPEC" "$out/vertrag-run.yml" \
+      "$tenants" "$out/vertrag-ownership-$kind.yml" "$out/ownership-$kind.xml"
+    python3 -B tests/contract/reports.py "$out/vertrag-ownership-$kind.yml" "$out/vertrag-ownership-$kind.yml" "$out/ownership-$kind" "${narrowed[@]}"
+    kind_code=0
+    "$CONTRACT_VERTRAG" run --config "$out/vertrag-ownership-$kind.yml" --sequence --phases ownership "${select[@]}" \
+      >"$logs/contract-ownership-$kind.log" 2>&1 || kind_code=$?
+    cat "$logs/contract-ownership-$kind.log"
+    echo "vertrag ownership of $kind exited $kind_code (report only)"
+    if [ "$code" -eq 0 ]; then code=$kind_code; fi
+  done
   exit "$code"
   ;;
 fuzz)

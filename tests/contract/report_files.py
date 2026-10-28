@@ -9,6 +9,7 @@ PHASES = (
     "authorization",
     "ownership",
     "ownership-domains",
+    "ownership-mailboxes",
     "fuzz",
     "browser-sessions",
 )
@@ -21,6 +22,7 @@ RUN_FILES = (
     "vertrag-authorization.yml",
     "vertrag-ownership.yml",
     "vertrag-ownership-domains.yml",
+    "vertrag-ownership-mailboxes.yml",
 )
 
 

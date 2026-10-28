@@ -204,5 +204,52 @@ class DomainOwnershipConfig(unittest.TestCase):
         self.assertEqual(generated["output"], ["", os.path.abspath(report)])
 
 
+class MailboxOwnershipConfig(unittest.TestCase):
+    def test_each_administrator_is_sent_the_other_tenants_mailbox(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            spec = root / "openapi.yaml"
+            spec.write_text(yaml.safe_dump({"paths": {}}))
+            config = root / "vertrag.yml"
+            config.write_text(yaml.safe_dump({"hookfiles": "./hooks.py"}))
+            tenants = root / "domain-tenants.json"
+            tenants.write_text(
+                json.dumps(
+                    {
+                        "a": {
+                            "address": "a@restmail.test",
+                            "domain_id": 1,
+                            "mailbox_id": 31,
+                        },
+                        "b": {
+                            "address": "b@contract-other.test",
+                            "domain_id": 6,
+                            "mailbox_id": 32,
+                        },
+                    }
+                )
+            )
+            out = root / "generated.yml"
+            report = root / "ownership-mailboxes.xml"
+            self.assertEqual(
+                ownership.mailboxes(
+                    str(spec), str(config), str(tenants), str(out), str(report)
+                ),
+                0,
+            )
+            generated = yaml.safe_load(out.read_text())
+        self.assertEqual(
+            {t: v["ids"] for t, v in generated["tenants"].items()},
+            {"a": {"path.id": "31"}, "b": {"path.id": "32"}},
+        )
+        selected = re.compile(generated["only-matching"][0])
+        for name, sent in [
+            ("/api/v1/admin/mailboxes/{id} > Get a mailbox > 200", True),
+            ("/api/v1/admin/mailboxes > List mailboxes > 200", True),
+            ("/api/v1/admin/domains/{id} > Get a domain > 200", False),
+        ]:
+            self.assertEqual(bool(selected.search(name)), sent, name)
+
+
 if __name__ == "__main__":
     unittest.main()

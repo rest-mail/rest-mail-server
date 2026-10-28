@@ -281,7 +281,7 @@ class ContractCommand(unittest.TestCase):
                 "run:authorization --tag Domains",
                 "chore:test:contract-domain-tenants",
                 "run:ownership --tag Domains",
-                "summary:tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains",
+                "summary:tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes",
             ],
         )
 
@@ -301,7 +301,7 @@ class ContractCommand(unittest.TestCase):
             [
                 "pin",
                 "chore:test:contract-fixtures",
-                "summary:tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains",
+                "summary:tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes",
             ],
         )
 
@@ -334,7 +334,7 @@ class ContractCommand(unittest.TestCase):
             calls,
             [
                 "pin",
-                "summary:tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains",
+                "summary:tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes",
             ],
         )
         self.assertNotIn("previous", artifacts["summary.md"])

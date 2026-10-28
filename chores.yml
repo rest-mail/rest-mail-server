@@ -581,7 +581,7 @@ tasks:
         set -eu
         python3 -B tests/contract/report_files.py --reset-run .cache/contract
         export CONTRACT_DEFER_SUMMARY=1
-        trap 'python3 -B tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains' EXIT
+        trap 'python3 -B tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes' EXIT
         CONTRACT_VERTRAG="$(python3 -B scripts/vertrag_pin.py ensure .cache/bin)"
         export CONTRACT_VERTRAG
         export RESTMAIL_VERTRAG_BINARY="$CONTRACT_VERTRAG"
