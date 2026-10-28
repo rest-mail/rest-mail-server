@@ -32,6 +32,8 @@ func TestForward_TakesListUnsubscribe(t *testing.T) {
 // carrying the header, as a send is.
 func TestForward_FollowsTheDomainSendingPolicy(t *testing.T) {
 	h, _, _ := seedSigningDomain(t, "forward-policy")
+	// The forward size limit the server sets at start (config.DefaultSMTPMaxMessageSize).
+	h.SetForwardStorage(0, nil)
 	domain := fmt.Sprintf("forward-bulk-%d.test", time.Now().UnixNano())
 	if err := h.db.Create(&models.Domain{Name: domain, SendingPolicy: models.SendingPolicyBulk}).Error; err != nil {
 		t.Fatalf("seed the domain: %v", err)
