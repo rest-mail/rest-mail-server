@@ -48,12 +48,20 @@ func ServerTLSConfig(caCert, serverCert, serverKey string) (*tls.Config, error) 
 	if err != nil {
 		return nil, fmt.Errorf("load internal mTLS client CA: %w", err)
 	}
-	return &tls.Config{
+	cfg := &tls.Config{
 		GetCertificate: loader.GetCertificate,
 		ClientAuth:     tls.RequireAndVerifyClientCert,
 		ClientCAs:      pool,
 		MinVersion:     tls.VersionTLS12,
-	}, nil
+	}
+	// Select this listener's configuration even when a caller clones it and
+	// installs a fallback certificate (as httptest.StartTLS does). Without SNI,
+	// TLS would otherwise serve that static pair without calling GetCertificate,
+	// bypassing both the internal identity and subsequent file reloads.
+	cfg.GetConfigForClient = func(*tls.ClientHelloInfo) (*tls.Config, error) {
+		return cfg, nil
+	}
+	return cfg, nil
 }
 
 // ClientTLSConfig builds the *tls.Config the gateways use when calling the API's
