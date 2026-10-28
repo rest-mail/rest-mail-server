@@ -113,10 +113,9 @@ func TestPublicReadExamplesMatchRegisteredResponses(t *testing.T) {
 	}
 }
 
-// A healthy request cannot make these read-only handlers fail on demand. Their
-// named 500 bodies are proved through the shared production error adapter; the
-// metrics case also reaches it through a real failed scrape. No fault switch is
-// exposed by the production API.
+// A failed scrape has a real sanitized error response. The other public reads
+// above succeed on a failing database. Their fallback 500 examples describe the
+// shared error adapter, rather than claiming that these handlers query SQL.
 func TestPublicReadFailureExamplesMatchErrorAdapter(t *testing.T) {
 	pairs, err := examplepairs.Read()
 	if err != nil {
@@ -145,6 +144,14 @@ func TestPublicReadFailureExamplesMatchErrorAdapter(t *testing.T) {
 			assertPublicExampleBody(t, pair.Response.Body, rr.Body.Bytes())
 		})
 	}
+	t.Run("shared_error_adapter", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		endpoint.WriteError(rr, errors.New("dependency details must stay private"))
+		if rr.Code != http.StatusInternalServerError {
+			t.Fatalf("got %d, want 500", rr.Code)
+		}
+		assertPublicExampleBody(t, []byte(`{"error":{"code":"internal_error","message":"Internal server error"}}`), rr.Body.Bytes())
+	})
 }
 
 func assertPublicExampleBody(t *testing.T, expected, actual []byte) {

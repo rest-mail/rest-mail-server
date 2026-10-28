@@ -193,12 +193,12 @@ func describe(registry *endpoint.Registry, version string) *oapifly.Generator {
 var exampleRequirements = map[string][]string{
 	"principal": {"anonymous", "without_capability"},
 	"body":      {"over_cap", "malformed"},
-	"limit":     {"rate"},
-	"fault":     {"database", "session_store", "permission_store"},
+	"limit":     {"rate", "message_size"},
+	"fault":     {"database", "database_pool", "session_store", "permission_store", "context_cancelled", "sidecar_response", "error_adapter"},
 	"state": {
 		"active_grant", "calendar_invitation", "discarding_pipeline", "eligible_grant",
-		"enrolled_authenticator", "event_stream", "existing_grant", "existing_link",
-		"full_mailbox", "future_time", "known_password", "own_account", "owner_key",
+		"enrolled_authenticator", "enrollment_disabled", "event_stream", "existing_grant", "existing_link",
+		"full_mailbox", "future_time", "known_password", "mail_host_unconfigured", "own_account", "owner_key",
 		"pending_enrollment", "quarantined_message", "two_factor_off", "two_factor_session",
 	},
 }
