@@ -1614,6 +1614,489 @@ paths:
         "404":
           description: No such app password of this account, or already revoked
 
+  "/api/v1/accounts/{id}/client-secrets":
+    {
+      "get": {
+        "operationId": "listClientSecrets",
+        "parameters": [
+          {
+            "example": 1,
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientSecretListResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "unauthorized: no token, a bad one, or a session that has ended"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "request_too_large: the body is over the API's size cap"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "unavailable: the session check could not be made"
+          }
+        },
+        "security": [
+          {
+            "CookieAuth": [
+              "mailbox:manage"
+            ]
+          },
+          {
+            "BearerAuth": [
+              "mailbox:manage"
+            ]
+          }
+        ],
+        "summary": "List an account's client secrets",
+        "tags": [
+          "Credentials"
+        ]
+      },
+      "post": {
+        "description": "Requires a human session signed in with a second factor, the current password, and mailbox:manage on the account. Returns client_id and client_secret once; stores only the secret hash. Permissions must be within both the creator's and the account's live grants. The client-secret tier accepts mail:read, mail:write, mail:send and mail:receive; domains:read, mailboxes:read and pipelines:read/write/delete require a domain scope. It rejects all other capabilities, including account/credential creation, granting, password/2FA, audit, retention and server-ceiling controls. expires_at defaults to 90 days. Credential creation is audited as client_secrets.create with actor and credential id. Client secrets exchange at /api/v1/oauth/token; they are never accepted as bearer API keys or mail-client passwords.",
+        "operationId": "createClientSecret",
+        "parameters": [
+          {
+            "example": 1,
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateClientSecretRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateClientSecretResponse"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "unauthorized: no token, a bad one, or a session that has ended"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "rate_limited: too many requests to the shared authentication throttle",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until a request may be made again",
+                "required": true,
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "unavailable: the session check could not be made"
+          }
+        },
+        "security": [
+          {
+            "CookieAuth": [
+              "mailbox:manage"
+            ]
+          },
+          {
+            "BearerAuth": [
+              "mailbox:manage"
+            ]
+          }
+        ],
+        "summary": "Make a scoped OAuth client secret",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    }
+
+  "/api/v1/accounts/{id}/client-secrets/{credential_id}":
+    {
+      "delete": {
+        "operationId": "revokeClientSecret",
+        "parameters": [
+          {
+            "example": 1,
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "example": 1,
+            "in": "path",
+            "name": "credential_id",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "unauthorized: no token, a bad one, or a session that has ended"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "request_too_large: the body is over the API's size cap"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "unavailable: the session check could not be made"
+          }
+        },
+        "security": [
+          {
+            "CookieAuth": [
+              "mailbox:manage"
+            ]
+          },
+          {
+            "BearerAuth": [
+              "mailbox:manage"
+            ]
+          }
+        ],
+        "summary": "Revoke a client secret and its tokens",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    }
+
+  "/api/v1/oauth/token":
+    {
+      "post": {
+        "description": "RFC 6749 client_credentials grant. Send grant_type=client_credentials and authenticate with the credential's public client_id and client_secret, either in this form or with HTTP Basic (never both). Returns a 300-second bearer access token, without a refresh token or human two-factor authentication. Permissions are selected at credential creation; a scope request is refused. Every use reloads the credential and live account grants, so revocation, expiry, account disablement and removed grants take effect on the next request. Shares the sign-in throttle. Successful issue is audited as oauth.token_issue with the actor and credential id. Responses are Cache-Control: no-store and Pragma: no-cache.",
+        "operationId": "issueClientCredentialsToken",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthTokenResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "rate_limited: too many requests to the shared authentication throttle",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until a request may be made again",
+                "required": true,
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthError"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [],
+        "summary": "Exchange a client secret for a five-minute access token",
+        "tags": [
+          "Auth"
+        ]
+      }
+    }
   /api/v1/accounts/{id}/api-keys:
     parameters:
       - $ref: "#/components/parameters/AccountId"
@@ -11016,6 +11499,259 @@ components:
             $ref: "#/components/schemas/ValidationErrorResponse"
 
   schemas:
+    "ClientSecretListResponse":
+      {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ClientSecret"
+            },
+            "type": "array"
+          },
+          "pagination": {
+            "oneOf": [
+              {
+                  "$ref": "#/components/schemas/ClientSecretPagination"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      }
+
+    "ClientSecret":
+      {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "integer"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "last_used_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "permissions": {
+            "items": {
+              "$ref": "#/components/schemas/ScopedPermission"
+            },
+            "type": "array"
+          },
+          "public_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "public_id",
+          "created_at",
+          "last_used_at",
+          "expires_at",
+          "permissions"
+        ],
+        "type": "object"
+      }
+
+    "CreateClientSecretRequest":
+      {
+        "additionalProperties": false,
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+          "permissions": {
+            "items": {
+              "$ref": "#/components/schemas/ClientSecretRequestedPermission"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      }
+
+    "ClientSecretRequestedPermission":
+      {
+        "additionalProperties": false,
+        "properties": {
+          "capability": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+
+    "CreateClientSecretResponse":
+      {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CreatedClientSecret"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      }
+
+    "CreatedClientSecret":
+      {
+        "additionalProperties": false,
+        "properties": {
+          "client_id": {
+            "type": "string"
+          },
+          "client_secret": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "integer"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "last_used_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "permissions": {
+            "items": {
+              "$ref": "#/components/schemas/ScopedPermission"
+            },
+            "type": "array"
+          },
+          "public_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "public_id",
+          "created_at",
+          "last_used_at",
+          "expires_at",
+          "permissions",
+          "client_id",
+          "client_secret"
+        ],
+        "type": "object"
+      }
+
+    "OAuthTokenResponse":
+      {
+        "additionalProperties": false,
+        "properties": {
+          "access_token": {
+            "type": "string"
+          },
+          "expires_in": {
+            "type": "integer"
+          },
+          "token_type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "token_type",
+          "expires_in"
+        ],
+        "type": "object"
+      }
+
+    "OAuthError":
+      {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "error_description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error",
+          "error_description"
+        ],
+        "type": "object"
+      }
+    ClientSecretPagination:
+      type: object
+      additionalProperties: false
+      required: [has_more]
+      properties:
+        cursor:
+          type: string
+        has_more:
+          type: boolean
+        total:
+          type: integer
+          format: int64
+
     ForwardRefusalResponse:
       {
         "additionalProperties": false,

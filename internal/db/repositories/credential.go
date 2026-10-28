@@ -147,11 +147,11 @@ func (r *CredentialRepository) RevokeKinds(accountID uint, now time.Time, kinds 
 	return revoked, nil
 }
 
-// RevokeAppPasswords revokes every unrevoked app password and API key of the
+// RevokeAppPasswords revokes every unrevoked app password, API key and client secret of the
 // account's, expired ones too, and returns them: what a new password does,
 // since whoever knew the old one could have made them.
 func (r *CredentialRepository) RevokeAppPasswords(accountID uint, now time.Time) ([]models.Credential, error) {
-	return r.RevokeKinds(accountID, now, models.CredentialKindAppPassword, models.CredentialKindAPIKey)
+	return r.RevokeKinds(accountID, now, models.CredentialKindAppPassword, models.CredentialKindAPIKey, models.CredentialKindClientSecret)
 }
 
 // SetPassword makes hash the account's one password: every password it had is

@@ -196,10 +196,10 @@ var exampleRequirements = map[string][]string{
 	"limit":     {"rate"},
 	"fault":     {"database", "session_store", "permission_store"},
 	"state": {
-		"active_grant", "calendar_invitation", "discarding_pipeline", "eligible_grant",
+		"active_grant", "calendar_invitation", "client_secret", "discarding_pipeline", "eligible_grant",
 		"enrolled_authenticator", "event_stream", "existing_grant", "existing_link",
 		"full_mailbox", "future_time", "known_password", "own_account", "owner_key",
-		"pending_enrollment", "quarantined_message", "two_factor_off", "two_factor_session",
+		"pending_enrollment", "quarantined_message", "revoked_client_secret", "two_factor_off", "two_factor_session",
 	},
 }
 

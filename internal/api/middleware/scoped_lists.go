@@ -40,12 +40,12 @@ func CapabilityScopes(r *http.Request, capability string) ([]string, bool) {
 
 func permittedScopes(h grants.Held, claims *auth.Claims, capability string) []string {
 	scopes := h.Scopes(capability)
-	if !claims.IsAPIKey() {
+	if !claims.IsScopedCredential() {
 		return scopes
 	}
 	var keyScopes []string
 	for _, p := range claims.APIKeyPermissions {
-		if p.Capability == capability {
+		if p.Capability == capability && (claims.CredentialKind != auth.CredentialKindClientSecret || auth.ClientSecretPermissionAllowed(p)) {
 			keyScopes = append(keyScopes, p.Scope)
 		}
 	}
@@ -63,7 +63,7 @@ func RequireCapabilityOnList(held HeldGrants, capability string) func(http.Handl
 				writeError(w, 401, "unauthorized", "Authentication required")
 				return
 			}
-			if claims.CredentialID != 0 && !claims.IsAPIKey() {
+			if claims.CredentialID != 0 && !claims.IsScopedCredential() {
 				writeError(w, 403, "forbidden", "Sign in to do this")
 				return
 			}

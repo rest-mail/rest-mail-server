@@ -25,7 +25,7 @@ const (
 // key; models.CredentialKindAPIKey is the same.
 const CredentialKindAPIKey = "api_key"
 
-// ScopedPermission is one capability an API key may use, at one scope: "*",
+// ScopedPermission is one capability a machine credential may use, at one scope: "*",
 // "domain:<name>" or "mailbox:<address>", as grants are scoped.
 type ScopedPermission struct {
 	Capability string `json:"capability"`

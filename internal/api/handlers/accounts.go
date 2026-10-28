@@ -170,7 +170,7 @@ func (h *AccountHandler) list(r *http.Request, _ struct{}) (endpoint.List[accoun
 			accounts = append(accounts, toAccountResponse(&others[i], own.ID))
 		}
 	}
-	if claims.IsAPIKey() {
+	if claims.IsScopedCredential() {
 		visible := make([]accountResponse, 0, len(accounts))
 		for _, account := range accounts {
 			if !middleware.CredentialAllows(claims, models.CapMailRead, grants.Mailbox(account.Address)) {
