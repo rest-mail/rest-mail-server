@@ -16,7 +16,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
-	"github.com/restmail/restmail/internal/auth"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -136,7 +135,9 @@ func liveAccountRequest(t *testing.T, index int) *http.Request {
 	route := liveAccountRoutes[index]
 	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), liveAccountContextKey{}, true), 3*time.Second)
 	t.Cleanup(cancel)
-	ctx = context.WithValue(ctx, middleware.ClaimsKey, &auth.Claims{AccountID: 1, SessionID: "session-one"})
+	claims := freshTwoFactorClaims(1, "")
+	claims.SessionID = "session-one"
+	ctx = context.WithValue(ctx, middleware.ClaimsKey, claims)
 	r := httptest.NewRequest(route.method, route.path, strings.NewReader(route.body)).WithContext(ctx)
 	r.Header.Set("Content-Type", "application/json")
 	return r

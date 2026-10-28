@@ -70,6 +70,9 @@ var errInvitationUnavailable = endpoint.Refuse(http.StatusServiceUnavailable, "u
 
 func (h *InvitationHandler) issue(r *http.Request, in adminAddressPath) (endpoint.Headed[invitationResponse], error) {
 	var zero endpoint.Headed[invitationResponse]
+	if err := RequireFreshTwoFactor(r); err != nil {
+		return zero, err
+	}
 	if !h.enrollmentAvailable {
 		return zero, errInvitationUnavailable
 	}

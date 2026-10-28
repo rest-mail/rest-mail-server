@@ -10,7 +10,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/middleware"
-	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/pipeline/filters"
 	"gorm.io/gorm"
@@ -84,7 +83,7 @@ func authzRequest(method, target string, accountID uint, params map[string]strin
 	for k, v := range params {
 		rctx.URLParams.Add(k, v)
 	}
-	claims := &auth.Claims{AccountID: accountID}
+	claims := freshTwoFactorClaims(accountID, "")
 	ctx := context.WithValue(context.Background(), chi.RouteCtxKey, rctx)
 	ctx = context.WithValue(ctx, middleware.ClaimsKey, claims)
 

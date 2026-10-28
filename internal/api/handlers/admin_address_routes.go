@@ -161,6 +161,8 @@ func (h *AliasHandler) Register(rs endpoint.Routes, checks AliasRouteChecks) {
 // mailboxGrantError preserves the grant API's reachable deletion refusals.
 func mailboxGrantError(err error) error {
 	switch {
+	case isEndpointError(err):
+		return err
 	case errors.Is(err, errTwoFactorRequired):
 		return endpoint.Refuse(http.StatusForbidden, "two_factor_required", "Changing grants needs a session signed in with two-factor authentication: sign in again with your code")
 	case errors.Is(err, errNoSuchGrant):

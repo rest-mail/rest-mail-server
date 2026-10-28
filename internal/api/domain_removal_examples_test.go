@@ -22,8 +22,8 @@ func TestDomainRemovalExamples(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(pairs["deleteDomain"]) != 34 {
-		t.Fatalf("domain removal pairs:%d want34", len(pairs["deleteDomain"]))
+	if len(pairs["deleteDomain"]) != 35 {
+		t.Fatalf("domain removal pairs:%d want35", len(pairs["deleteDomain"]))
 	}
 	for name, pair := range pairs["deleteDomain"] {
 		t.Run(name, func(t *testing.T) {
@@ -93,7 +93,7 @@ func TestDomainRemovalExamples(t *testing.T) {
 			}
 			wantCounts := ""
 			switch {
-			case rr.Code == 204 || name == "delete_unavailable" || name == "has_aliases" || name == "alias_count_unavailable":
+			case rr.Code == 204 || name == "two_factor_required" || name == "delete_unavailable" || name == "has_aliases" || name == "alias_count_unavailable":
 				wantCounts = "mailboxes,aliases"
 			case name == "has_accounts" || name == "account_count_unavailable":
 				wantCounts = "mailboxes"

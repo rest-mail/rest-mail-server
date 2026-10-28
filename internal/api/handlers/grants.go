@@ -226,8 +226,8 @@ func (h *GrantHandler) create(r *http.Request, req createGrantRequest) (grantRes
 // DELETE /api/v1/admin/grants/{id}
 func (h *GrantHandler) delete(r *http.Request, req grantPath) (endpoint.Empty, error) {
 	claims := middleware.GetClaims(r)
-	if claims == nil || !claims.HasAMR(auth.AMROTP) {
-		return endpoint.Empty{}, grantChangeError(errTwoFactorRequired)
+	if err := RequireTwoFactor(r); err != nil {
+		return endpoint.Empty{}, err
 	}
 	err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
 		if err := grants.Lock(tx); err != nil {
@@ -259,12 +259,12 @@ var (
 // requireTwoFactor refuses, and says so, a session that did not sign in with
 // a second factor: changing grants needs a person (#341, Decided 5), and only a
 // person's session can carry one.
-func requireTwoFactor(w http.ResponseWriter, claims *auth.Claims) bool {
-	if claims != nil && claims.HasAMR(auth.AMROTP) {
-		return true
+func requireTwoFactor(w http.ResponseWriter, r *http.Request) bool {
+	if err := RequireTwoFactor(r); err != nil {
+		grantChangeFailed(w, err)
+		return false
 	}
-	grantChangeFailed(w, errTwoFactorRequired)
-	return false
+	return true
 }
 
 // grantChange makes grant changes for the account a request comes from: each
@@ -276,6 +276,21 @@ type grantChange struct {
 }
 
 func (c grantChange) add(tx *gorm.DB, g *models.Grant, status int) error {
+	if err := RequireTwoFactor(c.r); err != nil {
+		return err
+	}
+	caps, err := grants.RoleCapabilities(tx, g.RoleID)
+	if err != nil {
+		return err
+	}
+	for _, capability := range caps {
+		if freshGrantCapability(capability) {
+			if err := RequireFreshTwoFactor(c.r); err != nil {
+				return err
+			}
+			break
+		}
+	}
 	if err := grants.Authorize(tx, c.claims.AccountID, g.RoleID, g.Scope); err != nil {
 		return err
 	}
@@ -285,6 +300,9 @@ func (c grantChange) add(tx *gorm.DB, g *models.Grant, status int) error {
 }
 
 func (c grantChange) remove(tx *gorm.DB, g *models.Grant, status int) error {
+	if err := RequireTwoFactor(c.r); err != nil {
+		return err
+	}
 	if err := grants.Authorize(tx, c.claims.AccountID, g.RoleID, g.Scope); err != nil {
 		return err
 	}
@@ -311,6 +329,8 @@ func grantChangeError(err error) error {
 	switch {
 	case err == nil:
 		return nil
+	case isEndpointError(err):
+		return err
 	case errors.Is(err, errNoSuchHolder):
 		return endpoint.Invalid(map[string]string{"holder": "no such account"})
 	case errors.Is(err, errNoSuchRole):

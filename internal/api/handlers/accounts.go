@@ -279,11 +279,15 @@ func (h *AccountHandler) create(r *http.Request, req createAccountRequest) (acco
 		!middleware.CredentialAllows(claims, need, grants.Domain(domainName)) {
 		return accountResponse{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "You cannot create accounts on "+domainName)
 	}
-	// An owned account is made by a person: a session that signed in with a
-	// second factor, which no machine credential ever is.
-	if req.Owned && !claims.TwoFactor {
-		return accountResponse{}, endpoint.Refuse(http.StatusForbidden, "two_factor_required",
-			"Creating an owned account needs a session that signed in with a second factor")
+	// Creating any account needs a person who proved a second factor.
+	// Installing its first credential additionally needs recent proof.
+	if err := RequireTwoFactor(r); err != nil {
+		return accountResponse{}, err
+	}
+	if req.Password != "" || req.PasswordHash != "" {
+		if err := RequireFreshTwoFactor(r); err != nil {
+			return accountResponse{}, err
+		}
 	}
 
 	var domain models.Domain
@@ -445,6 +449,9 @@ type linkAccountRequest struct {
 // renew that session and send the guess again (#385).
 // POST /api/v1/accounts/link {"address", "password", "display_name"?}
 func (h *AccountHandler) link(r *http.Request, req linkAccountRequest) (accountResponse, error) {
+	if err := RequireFreshTwoFactor(r); err != nil {
+		return accountResponse{}, err
+	}
 	h = h.forRequest(r)
 	claims := middleware.GetClaims(r)
 	if claims == nil {
@@ -512,10 +519,13 @@ func (h *AccountHandler) link(r *http.Request, req linkAccountRequest) (accountR
 }
 
 // UnlinkAccount removes the session's own grants on another account: giving
-// up access needs nothing more. Each removal is recorded as a grants.delete
+// up access needs a human 2FA session. Each removal is recorded as a grants.delete
 // entry, in the same transaction. Its own account cannot be unlinked.
 // DELETE /api/v1/accounts/{id}
 func (h *AccountHandler) unlink(r *http.Request, in accountPath) (endpoint.Empty, error) {
+	if err := RequireTwoFactor(r); err != nil {
+		return endpoint.Empty{}, err
+	}
 	claims := middleware.GetClaims(r)
 	if claims == nil {
 		return endpoint.Empty{}, errAuthenticationRequired

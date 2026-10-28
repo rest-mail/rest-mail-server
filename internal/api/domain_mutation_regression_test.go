@@ -30,6 +30,7 @@ type domainMutationConnection struct {
 	reads       int
 	current     map[string]driver.Value
 	createdName string
+	finiteQuota bool
 }
 
 func (c *domainMutationConnection) Connect(context.Context) (driver.Conn, error) { return c, nil }
@@ -136,6 +137,9 @@ func (c *domainMutationConnection) QueryContext(ctx context.Context, q string, a
 		if c.current == nil {
 			c.current = map[string]driver.Value{"id": id, "name": "example.org", "server_type": "restmail", "active": id == 2, "default_quota_bytes": int64(0), "dkim_selector": "", "sending_policy": "", "dmarc_policy": "none", "created_at": sieveInstallationTime, "updated_at": sieveInstallationTime}
 		}
+		if c.finiteQuota {
+			c.current["default_quota_bytes"] = int64(100)
+		}
 		f := c.current
 		r.rows = [][]driver.Value{{f["id"], f["name"], f["server_type"], f["active"], f["default_quota_bytes"], f["dkim_selector"], "private-domain-fixture", f["sending_policy"], f["dmarc_policy"], f["created_at"], f["updated_at"]}}
 		return r, nil
@@ -229,6 +233,7 @@ func newDomainMutationScenarios(t *testing.T) map[string]bulkQueueExampleScenari
 			c.reads = 0
 			c.current = nil
 			c.createdName = ""
+			c.finiteQuota = req.Header.Get("X-Example-Finite-Quota") == "true"
 			r.Public.ServeHTTP(w, req)
 		}), token}, store}
 	}
@@ -279,6 +284,11 @@ func newDomainMutationScenarios(t *testing.T) map[string]bulkQueueExampleScenari
 	out["scoped_missing"] = out["domain_scope"]
 	out["quota_null"] = normal
 	out["active_field"] = normal
+	out["two_factor_required"] = bulkQueueExampleScenario{accountReadScenario{http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r = r.Clone(r.Context())
+		r.Header.Set("X-Example-Finite-Quota", "true")
+		normal.handler.ServeHTTP(w, r)
+	}), token}, normal.store}
 	return out
 }
 

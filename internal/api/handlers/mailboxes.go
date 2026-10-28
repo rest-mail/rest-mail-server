@@ -11,7 +11,6 @@ import (
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	apitypes "github.com/restmail/restmail/internal/api/types"
-	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
 	"github.com/restmail/restmail/internal/grants"
@@ -125,6 +124,9 @@ func (h *MailboxHandler) update(r *http.Request, in updateMailboxInput) (Mailbox
 	var hashed string
 	var err error
 	if req.Password != nil {
+		if err := RequireFreshTwoFactor(r); err != nil {
+			return Mailbox{}, err
+		}
 		if len(*req.Password) < minChosenPasswordLength {
 			return Mailbox{}, endpoint.Invalid(map[string]string{"password": fmt.Sprintf("must be at least %d characters", minChosenPasswordLength)})
 		}
@@ -136,6 +138,11 @@ func (h *MailboxHandler) update(r *http.Request, in updateMailboxInput) (Mailbox
 		updates["display_name"] = *req.DisplayName
 	}
 	if req.QuotaBytes != nil {
+		if quotaRaised(mailbox.QuotaBytes, *req.QuotaBytes) {
+			if err := RequireTwoFactor(r); err != nil {
+				return Mailbox{}, err
+			}
+		}
 		updates["quota_bytes"] = *req.QuotaBytes
 	}
 	if req.Active != nil {
@@ -162,8 +169,19 @@ func (h *MailboxHandler) update(r *http.Request, in updateMailboxInput) (Mailbox
 				}
 			}
 			if len(cols) > 0 {
-				if err := tx.Model(&mailbox).Select(cols).Updates(updates).Error; err != nil {
-					return err
+				query := tx.Model(&mailbox).Select(cols)
+				quotaProof := RequireTwoFactor(r)
+				if req.QuotaBytes != nil && quotaProof != nil {
+					// Check against the value at the write too: a concurrent lower
+					// cap must not turn an ordinary decrease into a 2FA-free raise.
+					query = query.Where("quota_bytes <= 0 OR (? > 0 AND quota_bytes >= ?)", *req.QuotaBytes, *req.QuotaBytes)
+				}
+				result := query.Updates(updates)
+				if result.Error != nil {
+					return result.Error
+				}
+				if req.QuotaBytes != nil && quotaProof != nil && result.RowsAffected == 0 {
+					return quotaProof
 				}
 			}
 			// A new password replaces every password the account had, revokes
@@ -191,8 +209,7 @@ func (h *MailboxHandler) update(r *http.Request, in updateMailboxInput) (Mailbox
 			return reload(tx)
 		})
 		if err != nil {
-			var refusal *endpoint.Error
-			if errors.As(err, &refusal) {
+			if isEndpointError(err) {
 				return Mailbox{}, err
 			}
 			return Mailbox{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to update mailbox")
@@ -228,8 +245,8 @@ func (h *MailboxHandler) delete(r *http.Request, in adminAddressPath) (endpoint.
 		return endpoint.Empty{}, fmt.Errorf("find mailbox for deletion: %w", err)
 	}
 	claims := middleware.GetClaims(r)
-	if claims == nil || claims.CredentialID != 0 || !claims.HasAMR(auth.AMROTP) {
-		return endpoint.Empty{}, mailboxGrantError(errTwoFactorRequired)
+	if err := RequireTwoFactor(r); err != nil {
+		return endpoint.Empty{}, err
 	}
 
 	err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {

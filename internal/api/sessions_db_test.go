@@ -53,7 +53,13 @@ func newEpochFixture(t *testing.T) *epochFixture {
 		Scope: grants.All, Mode: models.GrantActive, GrantedByKind: models.AuditActorSystem, GrantedAt: time.Now()}).Error; err != nil {
 		t.Fatal(err)
 	}
-	f.admin = "Bearer " + f.signIn("admin@example.test", credentialTestPassword, "").access
+	adminSession := f.signIn("admin@example.test", credentialTestPassword, "")
+	adminSecret, _ := f.enrollTwoFactor(adminSession)
+	adminCode, err := auth.GenerateTOTPCode(adminSecret, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.admin = "Bearer " + f.signIn("admin@example.test", credentialTestPassword, adminCode).access
 	return f
 }
 
@@ -238,16 +244,12 @@ func TestSessionsEnd_EveryTokenIssuedBeforeIsRefused(t *testing.T) {
 			oldPassword := f.password
 
 			before := f.signIn(f.address, f.password, "")
-			var recovery string
-			if tc.twoFactor {
-				var secret string
-				secret, recovery = f.enrollTwoFactor(before)
-				code, err := auth.GenerateTOTPCode(secret, time.Now())
-				if err != nil {
-					t.Fatal(err)
-				}
-				before = f.signIn(f.address, f.password, code)
+			secret, recovery := f.enrollTwoFactor(before)
+			code, err := auth.GenerateTOTPCode(secret, time.Now())
+			if err != nil {
+				t.Fatal(err)
 			}
+			before = f.signIn(f.address, f.password, code)
 			app := f.appPassword(before)
 			// The session works, on the API and the event stream, until the change.
 			if got := f.folders(before); got != http.StatusOK {
@@ -283,13 +285,24 @@ func TestSessionsEnd_EveryTokenIssuedBeforeIsRefused(t *testing.T) {
 				}
 			}
 			if !tc.inSetup {
-				if got := f.protocolSignIn(f.password); got != http.StatusOK {
-					t.Errorf("gateway sign-in with the password now: %d, want 200", got)
+				wantPassword := http.StatusUnauthorized
+				if tc.name == "2FA turned off" {
+					wantPassword = http.StatusOK
+				}
+				if got := f.protocolSignIn(f.password); got != wantPassword {
+					t.Errorf("gateway sign-in with the password now: %d, want %d", got, wantPassword)
 				}
 			}
 
 			// A session signed in after the change works everywhere.
-			after := f.signIn(f.address, f.password, "")
+			afterCode := ""
+			if tc.name != "2FA turned off" {
+				afterCode, err = auth.GenerateTOTPCode(secret, time.Now())
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			after := f.signIn(f.address, f.password, afterCode)
 			if tc.inSetup {
 				if rr := f.do(http.MethodGet, "/api/v1/auth/2fa", "Bearer "+after.access, ""); rr.Code != http.StatusOK {
 					t.Errorf("setup with a token from after: %d %s", rr.Code, rr.Body.String())

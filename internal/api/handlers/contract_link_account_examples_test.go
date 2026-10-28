@@ -28,6 +28,7 @@ func TestLinkAccount_ExamplePairs(t *testing.T) {
 	want := map[string][]string{
 		"request": {"address_blank", "address_missing", "linked", "password_empty", "password_missing"},
 		"201":     {"linked"},
+		"403":     {"recent_two_factor_required", "two_factor_required"},
 		"422":     {"address_blank", "address_missing", "password_empty", "password_missing"},
 	}
 	got := map[string][]string{"request": names(requests)}
