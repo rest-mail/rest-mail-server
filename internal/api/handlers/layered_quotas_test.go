@@ -58,7 +58,10 @@ func TestOwnedQuotaCreationAndUpdate(t *testing.T) {
 	mh := NewMailboxHandler(db, nil, nil)
 	for _, cap := range []int{101, 50, 0, -1} {
 		rr := httptest.NewRecorder()
-		mailboxRoutes(mh).ServeHTTP(rr, httptest.NewRequest(http.MethodPatch, fmt.Sprintf("/api/v1/admin/mailboxes/%d", child.ID), strings.NewReader(fmt.Sprintf(`{"quota_bytes":%d}`, cap))))
+		r := httptest.NewRequest(http.MethodPatch, fmt.Sprintf("/api/v1/admin/mailboxes/%d", child.ID), strings.NewReader(fmt.Sprintf(`{"quota_bytes":%d}`, cap)))
+		// Lifting a cap loosens a limit, which needs a recent second factor.
+		r = r.WithContext(context.WithValue(r.Context(), middleware.ClaimsKey, freshTwoFactorClaims(fx.admin.ID, fx.admin.Address)))
+		mailboxRoutes(mh).ServeHTTP(rr, r)
 		want := http.StatusOK
 		if cap > 100 {
 			want = http.StatusUnprocessableEntity

@@ -23,7 +23,10 @@ import (
 // also takes the grant lock, reads the grants held on the domain (none here) and
 // clears the configuration the domain owns (#1141); those statements are
 // accepted, and the domain's own DELETE stays the one judged.
-type domainRemovalConnection struct{ domainMutationConnection }
+type domainRemovalConnection struct {
+	domainMutationConnection
+	scopedGrant bool
+}
 
 // The configuration tables removal clears by domain_id, in deletion order.
 var domainOwnedTables = []string{"pipelines", "custom_filters", "domain_sender_rules", "certificates", "dkim_rotation_keys", "mtasts_policies", "domain_relays", "suppressions"}
@@ -54,7 +57,13 @@ func (c *domainRemovalConnection) QueryContext(ctx context.Context, q string, ar
 	}
 	if strings.HasPrefix(q, `SELECT * FROM "grants" WHERE`) {
 		c.record(q, args)
+		if c.scopedGrant {
+			return importRows(map[string]any{"id": int64(21), "holder_kind": "account", "holder_id": int64(12), "role_id": int64(7), "scope": "domain:example.org", "mode": "active"}), nil
+		}
 		return &authReadSnapshotRows{columns: []string{"id"}}, nil
+	}
+	if c.scopedGrant && strings.Contains(q, `FROM "roles"`) {
+		return importRows(map[string]any{"id": int64(7), "name": "owner"}), nil
 	}
 	return c.domainMutationConnection.QueryContext(ctx, q, args)
 }
@@ -141,6 +150,7 @@ func newDomainRemovalScenarios(t *testing.T) map[string]bulkQueueExampleScenario
 			c.reads = 0
 			c.current = nil
 			c.createdName = ""
+			c.scopedGrant = req.Header.Get("X-Example-Scoped-Grant") == "true"
 			if req.Header.Get("X-Example-Cancel") == "after-domain-lookup" {
 				var ctx context.Context
 				ctx, cancel = context.WithCancel(req.Context())
@@ -234,6 +244,11 @@ func newDomainRemovalScenarios(t *testing.T) map[string]bulkQueueExampleScenario
 	out["cancelled_after_lookup"] = bulkQueueExampleScenario{accountReadScenario{http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r = r.Clone(r.Context())
 		r.Header.Set("X-Example-Cancel", "after-domain-lookup")
+		normal.handler.ServeHTTP(w, r)
+	}), token}, normal.store}
+	out["two_factor_required"] = bulkQueueExampleScenario{accountReadScenario{http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r = r.Clone(r.Context())
+		r.Header.Set("X-Example-Scoped-Grant", "true")
 		normal.handler.ServeHTTP(w, r)
 	}), token}, normal.store}
 	return out

@@ -679,10 +679,6 @@
   reason: >-
     Creating an alias that already exists returns 409 already_exists, as before. The oracle omits it.
 - operation: deleteMailbox
-  difference: "response 403 application/json: generated only"
-  reason: >-
-    Deleting an account can refuse removal of its grants with the existing grant errors (403 two_factor_required or grant_exceeds_held; 409 conflict or last_superadmin). The oracle lists the status without its JSON error envelope.
-- operation: deleteMailbox
   difference: "response 409 application/json: generated only"
   reason: >-
     Deleting an account can refuse removal of its grants with the existing grant errors (403 two_factor_required or grant_exceeds_held; 409 conflict or last_superadmin). The oracle lists the status without its JSON error envelope.

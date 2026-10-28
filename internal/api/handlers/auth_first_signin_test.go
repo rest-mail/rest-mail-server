@@ -245,8 +245,9 @@ func TestFirstSignIn_PasswordAndAuthenticatorUnlockTheAccount(t *testing.T) {
 	f := newFirstSignIn(t)
 	_, s := f.login(bootstrapPassword, "")
 
-	// Either order works; authenticator first here, from the same setup session.
+	// Enroll first, then prove that factor at sign-in before changing the password.
 	secret := f.enrollTOTP(t, s.AccessToken)
+	_, s = f.login(bootstrapPassword, totpNow(t, secret))
 	if rr := f.changePassword(s.AccessToken, bootstrapPassword, chosenPassword); rr.Code != http.StatusOK {
 		t.Fatalf("change password = %d %s", rr.Code, rr.Body)
 	}

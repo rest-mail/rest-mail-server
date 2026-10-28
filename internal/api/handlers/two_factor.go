@@ -264,6 +264,9 @@ type disableRequest struct {
 // sent), never 401: the session that sent it is still good (#392).
 // POST /api/v1/auth/2fa/disable
 func (h *TwoFactorHandler) disableOwn(r *http.Request, req disableRequest) (endpoint.Empty, error) {
+	if err := RequireFreshTwoFactor(r); err != nil {
+		return endpoint.Empty{}, err
+	}
 	h = h.forRequest(r)
 	accountID, _, ok := twoFactorOwner(middleware.GetClaims(r))
 	if !ok {

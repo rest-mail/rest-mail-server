@@ -14,7 +14,6 @@ import (
 
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
-	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/pipeline/filters"
 )
@@ -38,7 +37,7 @@ func quarantinePathOf(account, mid uint, suffix string) string {
 // quarantineRequest is a request from a session signed in to account.
 func quarantineRequest(method string, account uint, target string) *http.Request {
 	r := httptest.NewRequest(method, target, nil)
-	return r.WithContext(context.WithValue(r.Context(), middleware.ClaimsKey, &auth.Claims{AccountID: account}))
+	return r.WithContext(context.WithValue(r.Context(), middleware.ClaimsKey, freshTwoFactorClaims(account, "")))
 }
 
 // Ids and paging are bound before the account is looked up: a nil database proves nothing

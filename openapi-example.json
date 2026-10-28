@@ -206,7 +206,7 @@
       },
       "request": {
         "path": {
-          "id": 1
+          "id": 13
         }
       },
       "response": {
@@ -2686,6 +2686,28 @@
         "mediaType": "application/json"
       }
     },
+    "recent_two_factor_required": {
+      "summary": "A stale second-factor sign-in must authenticate again",
+      "requires": {
+        "state": "stale_two_factor_session"
+      },
+      "request": {
+        "body": {
+          "current_password": "the current password",
+          "new_password": "a new password of my own"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "recent_two_factor_required",
+            "message": "Sign in again with two-factor authentication: a recent second factor is required"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "requires": {
@@ -2747,6 +2769,29 @@
           "error": {
             "code": "unavailable",
             "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "two_factor_required": {
+      "summary": "A password-only session cannot perform this sensitive action",
+      "requires": {
+        "principal": "without_capability",
+        "state": "password_only_session"
+      },
+      "request": {
+        "body": {
+          "current_password": "the current password",
+          "new_password": "a new password of my own"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "two_factor_required",
+            "message": "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
           }
         },
         "mediaType": "application/json"
@@ -3444,7 +3489,7 @@
         "body": {
           "error": {
             "code": "two_factor_required",
-            "message": "Sign in with two-factor authentication to create API keys"
+            "message": "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
           }
         },
         "mediaType": "application/json"
@@ -3476,6 +3521,37 @@
           "error": {
             "code": "rate_limited",
             "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "recent_two_factor_required": {
+      "summary": "A stale second-factor sign-in must authenticate again",
+      "requires": {
+        "state": "stale_two_factor_session"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Invoice robot",
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "recent_two_factor_required",
+            "message": "Sign in again with two-factor authentication: a recent second factor is required"
           }
         },
         "mediaType": "application/json"
@@ -3538,6 +3614,38 @@
           "error": {
             "code": "unavailable",
             "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "two_factor_required": {
+      "summary": "A password-only session cannot perform this sensitive action",
+      "requires": {
+        "principal": "without_capability",
+        "state": "password_only_session"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Invoice robot",
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "mail:read",
+              "scope": "mailbox:robot@example.com"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "two_factor_required",
+            "message": "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
           }
         },
         "mediaType": "application/json"
@@ -3768,6 +3876,30 @@
           "error": {
             "code": "unavailable",
             "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "two_factor_required": {
+      "summary": "A password-only session cannot perform this sensitive action",
+      "requires": {
+        "principal": "without_capability",
+        "state": "password_only_session"
+      },
+      "request": {
+        "body": {
+          "address": "new-account@restmail.test",
+          "display_name": "New Account",
+          "password": "correct-horse-battery"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "two_factor_required",
+            "message": "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
           }
         },
         "mediaType": "application/json"
@@ -4192,6 +4324,30 @@
         "mediaType": "application/json"
       }
     },
+    "recent_two_factor_required": {
+      "summary": "A stale second-factor sign-in must authenticate again",
+      "requires": {
+        "state": "stale_two_factor_session"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "iPhone Mail"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "recent_two_factor_required",
+            "message": "Sign in again with two-factor authentication: a recent second factor is required"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "requires": {
@@ -4235,6 +4391,31 @@
           "error": {
             "code": "unavailable",
             "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "two_factor_required": {
+      "summary": "A password-only session cannot perform this sensitive action",
+      "requires": {
+        "principal": "without_capability",
+        "state": "password_only_session"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "iPhone Mail"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "two_factor_required",
+            "message": "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
           }
         },
         "mediaType": "application/json"
@@ -6089,6 +6270,33 @@
         "mediaType": "application/json"
       }
     },
+    "recent_two_factor_required": {
+      "summary": "A stale second-factor sign-in must authenticate again",
+      "requires": {
+        "state": "stale_two_factor_session"
+      },
+      "request": {
+        "body": {
+          "holder": {
+            "id": 2,
+            "kind": "account"
+          },
+          "mode": "active",
+          "role": "admin",
+          "scope": "domain:example.test"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "recent_two_factor_required",
+            "message": "Sign in again with two-factor authentication: a recent second factor is required"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "requires": {
@@ -6128,6 +6336,34 @@
           "error": {
             "code": "unavailable",
             "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "two_factor_required": {
+      "summary": "A password-only session cannot perform this sensitive action",
+      "requires": {
+        "principal": "without_capability",
+        "state": "password_only_session"
+      },
+      "request": {
+        "body": {
+          "holder": {
+            "id": 2,
+            "kind": "account"
+          },
+          "mode": "active",
+          "role": "admin",
+          "scope": "domain:example.test"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "two_factor_required",
+            "message": "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
           }
         },
         "mediaType": "application/json"
@@ -6655,6 +6891,28 @@
                 "capability": "mailbox:manage"
               }
             ]
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "two_factor_required": {
+      "summary": "A password-only session cannot perform this sensitive action",
+      "requires": {
+        "principal": "without_capability",
+        "state": "password_only_session"
+      },
+      "request": {
+        "path": {
+          "id": 7
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "two_factor_required",
+            "message": "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
           }
         },
         "mediaType": "application/json"
@@ -7893,6 +8151,28 @@
         "mediaType": "application/json"
       }
     },
+    "two_factor_required": {
+      "summary": "A password-only session cannot perform this sensitive action",
+      "requires": {
+        "principal": "without_capability",
+        "state": "password_only_session"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "two_factor_required",
+            "message": "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "unauthenticated": {
       "requires": {
         "principal": "anonymous"
@@ -8287,6 +8567,28 @@
         "mediaType": "application/json"
       }
     },
+    "two_factor_required": {
+      "summary": "A password-only session cannot perform this sensitive action",
+      "requires": {
+        "principal": "without_capability",
+        "state": "password_only_session"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "two_factor_required",
+            "message": "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "unauthenticated": {
       "requires": {
         "principal": "anonymous"
@@ -8475,6 +8777,28 @@
           "error": {
             "code": "unavailable",
             "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "two_factor_required": {
+      "summary": "A password-only session cannot perform this sensitive action",
+      "requires": {
+        "principal": "without_capability",
+        "state": "password_only_session"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "two_factor_required",
+            "message": "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
           }
         },
         "mediaType": "application/json"
@@ -9953,6 +10277,27 @@
         "mediaType": "application/json"
       }
     },
+    "recent_two_factor_required": {
+      "summary": "A stale second-factor sign-in must authenticate again",
+      "requires": {
+        "state": "stale_two_factor_session"
+      },
+      "request": {
+        "body": {
+          "totp_code": "123456"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "recent_two_factor_required",
+            "message": "Sign in again with two-factor authentication: a recent second factor is required"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "requires": {
@@ -9986,6 +10331,28 @@
           "error": {
             "code": "unavailable",
             "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "two_factor_required": {
+      "summary": "A password-only session cannot perform this sensitive action",
+      "requires": {
+        "principal": "without_capability",
+        "state": "password_only_session"
+      },
+      "request": {
+        "body": {
+          "totp_code": "123456"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "two_factor_required",
+            "message": "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
           }
         },
         "mediaType": "application/json"
@@ -16295,6 +16662,27 @@
         "mediaType": "application/json"
       }
     },
+    "recent_two_factor_required": {
+      "summary": "A stale second-factor sign-in must authenticate again",
+      "requires": {
+        "state": "stale_two_factor_session"
+      },
+      "request": {
+        "path": {
+          "id": 12
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "recent_two_factor_required",
+            "message": "Sign in again with two-factor authentication: a recent second factor is required"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "requires": {
         "body": "over_cap"
@@ -16310,6 +16698,28 @@
           "error": {
             "code": "request_too_large",
             "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "two_factor_required": {
+      "summary": "A password-only session cannot perform this sensitive action",
+      "requires": {
+        "principal": "without_capability",
+        "state": "password_only_session"
+      },
+      "request": {
+        "path": {
+          "id": 12
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "two_factor_required",
+            "message": "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
           }
         },
         "mediaType": "application/json"
@@ -16602,6 +17012,28 @@
         "mediaType": "application/json"
       }
     },
+    "recent_two_factor_required": {
+      "summary": "A stale second-factor sign-in must authenticate again",
+      "requires": {
+        "state": "stale_two_factor_session"
+      },
+      "request": {
+        "body": {
+          "address": "eve@restmail.test",
+          "password": "supplied-by-contract-hook"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "recent_two_factor_required",
+            "message": "Sign in again with two-factor authentication: a recent second factor is required"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "requires": {
@@ -16641,6 +17073,29 @@
           "error": {
             "code": "unavailable",
             "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "two_factor_required": {
+      "summary": "A password-only session cannot perform this sensitive action",
+      "requires": {
+        "principal": "without_capability",
+        "state": "password_only_session"
+      },
+      "request": {
+        "body": {
+          "address": "eve@restmail.test",
+          "password": "supplied-by-contract-hook"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "two_factor_required",
+            "message": "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
           }
         },
         "mediaType": "application/json"
@@ -17668,6 +18123,27 @@
         "mediaType": "application/json"
       }
     },
+    "recent_two_factor_required": {
+      "summary": "A stale second-factor sign-in must authenticate again",
+      "requires": {
+        "state": "stale_two_factor_session"
+      },
+      "request": {
+        "query": {
+          "limit": 20
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "recent_two_factor_required",
+            "message": "Sign in again with two-factor authentication: a recent second factor is required"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "description": "A current session sends Content-Length above APIMaxBodyBytes, including on this GET. The focused Vertrag test supplies a real oversized body; no typed body is declared.",
@@ -17729,6 +18205,28 @@
           "error": {
             "code": "setup_required",
             "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "two_factor_required": {
+      "summary": "A password-only session cannot perform this sensitive action",
+      "requires": {
+        "principal": "without_capability",
+        "state": "password_only_session"
+      },
+      "request": {
+        "query": {
+          "limit": 20
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "two_factor_required",
+            "message": "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
           }
         },
         "mediaType": "application/json"
@@ -25401,6 +25899,29 @@
         "mediaType": "application/json"
       }
     },
+    "two_factor_required": {
+      "summary": "Releasing held mail requires a human second factor",
+      "requires": {
+        "principal": "without_capability",
+        "state": "password_only_session"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "mid": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "two_factor_required",
+            "message": "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "unauthenticated": {
       "summary": "No credential is sent",
       "requires": {
@@ -27754,6 +28275,29 @@
         "mediaType": "application/json"
       }
     },
+    "two_factor_required": {
+      "summary": "A password-only session cannot perform this sensitive action",
+      "requires": {
+        "principal": "without_capability",
+        "state": "password_only_session"
+      },
+      "request": {
+        "path": {
+          "credential_id": 1,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "two_factor_required",
+            "message": "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "unauthenticated": {
       "requires": {
         "principal": "anonymous"
@@ -27947,6 +28491,29 @@
           "error": {
             "code": "unavailable",
             "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "two_factor_required": {
+      "summary": "A password-only session cannot perform this sensitive action",
+      "requires": {
+        "principal": "without_capability",
+        "state": "password_only_session"
+      },
+      "request": {
+        "path": {
+          "credential_id": 1,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "two_factor_required",
+            "message": "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
           }
         },
         "mediaType": "application/json"
@@ -32574,6 +33141,28 @@
         "mediaType": "application/json"
       }
     },
+    "two_factor_required": {
+      "summary": "A password-only session cannot perform this sensitive action",
+      "requires": {
+        "principal": "without_capability",
+        "state": "password_only_session"
+      },
+      "request": {
+        "path": {
+          "id": 2
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "two_factor_required",
+            "message": "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "unauthenticated": {
       "summary": "No credential is sent",
       "requires": {
@@ -33611,6 +34200,31 @@
         "mediaType": "application/json"
       }
     },
+    "two_factor_required": {
+      "summary": "A password-only session cannot perform this sensitive action",
+      "requires": {
+        "principal": "without_capability",
+        "state": "password_only_session"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "default_quota_bytes": 2147483648
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "two_factor_required",
+            "message": "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "unauthenticated": {
       "requires": {
         "principal": "anonymous"
@@ -34067,6 +34681,30 @@
         "mediaType": "application/json"
       }
     },
+    "recent_two_factor_required": {
+      "summary": "A stale second-factor sign-in must authenticate again",
+      "requires": {
+        "state": "stale_two_factor_session"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "password": "a-new-password-for-this-account"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "recent_two_factor_required",
+            "message": "Sign in again with two-factor authentication: a recent second factor is required"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "requires": {
@@ -34114,6 +34752,31 @@
           "error": {
             "code": "unavailable",
             "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "two_factor_required": {
+      "summary": "A password-only session cannot perform this sensitive action",
+      "requires": {
+        "principal": "without_capability",
+        "state": "password_only_session"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "password": "a-new-password-for-this-account"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "two_factor_required",
+            "message": "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
           }
         },
         "mediaType": "application/json"
@@ -35306,6 +35969,23 @@
         "mediaType": "application/json"
       }
     },
+    "recent_two_factor_required": {
+      "summary": "A stale second-factor sign-in must authenticate again",
+      "requires": {
+        "state": "stale_two_factor_session"
+      },
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "recent_two_factor_required",
+            "message": "Sign in again with two-factor authentication: a recent second factor is required"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "requires": {
         "body": "over_cap"
@@ -35333,6 +36013,24 @@
           "error": {
             "code": "unavailable",
             "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "two_factor_required": {
+      "summary": "A password-only session cannot perform this sensitive action",
+      "requires": {
+        "principal": "without_capability",
+        "state": "password_only_session"
+      },
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "two_factor_required",
+            "message": "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
           }
         },
         "mediaType": "application/json"

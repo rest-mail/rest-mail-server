@@ -223,7 +223,7 @@ func mailboxUpdate(t *testing.T, h *MailboxHandler, id uint, body string) *httpt
 	rctx.URLParams.Add("id", idStr)
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 	rr := httptest.NewRecorder()
-	mailboxRoutes(h).ServeHTTP(rr, req)
+	mailboxRoutes(h).ServeHTTP(rr, withClaims(req, freshTwoFactorClaims(id, "")))
 	return rr
 }
 
@@ -295,7 +295,7 @@ func TestMailboxDeleteRevokesSessions(t *testing.T) {
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ClaimsKey,
 		&auth.Claims{AccountID: mb.ID, Address: mb.Address, AMR: []string{auth.AMRPassword, auth.AMROTP}}))
 	rr := httptest.NewRecorder()
-	mailboxRoutes(mbH).ServeHTTP(rr, req)
+	mailboxRoutes(mbH).ServeHTTP(rr, withClaims(req, freshTwoFactorClaims(mb.ID, mb.Address)))
 	if rr.Code != http.StatusNoContent {
 		t.Fatalf("delete: expected 204, got %d (%s)", rr.Code, rr.Body.String())
 	}
@@ -405,7 +405,7 @@ func TestAccountPasswordChangeRevokesSessions(t *testing.T) {
 	change := func(current, next string) *httptest.ResponseRecorder {
 		body := `{"current_password":"` + current + `","new_password":"` + next + `"}`
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/password", bytes.NewBufferString(body))
-		req = req.WithContext(context.WithValue(req.Context(), middleware.ClaimsKey, &auth.Claims{AccountID: mb.ID, Address: mb.Address}))
+		req = req.WithContext(context.WithValue(req.Context(), middleware.ClaimsKey, freshTwoFactorClaims(mb.ID, mb.Address)))
 		rr := httptest.NewRecorder()
 		passwordChangeRoutes(h).ServeHTTP(rr, req)
 		return rr

@@ -15,7 +15,6 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/audit"
-	"github.com/restmail/restmail/internal/auth"
 	rmdb "github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/grants"
@@ -66,7 +65,7 @@ func TestDomainCleanupPostgresLifecycleRetentionAndRollback(t *testing.T) {
 	h := NewDomainHandler(db, nil, cache)
 	router := domainRoutes(h)
 	call := func(ctx context.Context, method, path, body string) *httptest.ResponseRecorder {
-		r := httptest.NewRequest(method, path, strings.NewReader(body)).WithContext(context.WithValue(ctx, middleware.ClaimsKey, &auth.Claims{AccountID: 1, Address: "admin@other.test"}))
+		r := httptest.NewRequest(method, path, strings.NewReader(body)).WithContext(context.WithValue(ctx, middleware.ClaimsKey, freshTwoFactorClaims(1, "admin@other.test")))
 		r.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, r)

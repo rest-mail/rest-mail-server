@@ -199,7 +199,7 @@ func TestMailStateRequirementExamples(t *testing.T) {
 			if c.readOnly {
 				actor, address = 10, "actor@other.test"
 			}
-			session, err := jwt.GenerateSession(actor, address, 0, []string{auth.AMRPassword}, false)
+			session, err := jwt.GenerateSession(actor, address, 0, []string{auth.AMRPassword, auth.AMROTP}, false)
 			if err != nil {
 				t.Fatal(err)
 			}

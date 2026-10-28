@@ -37,7 +37,7 @@ func (h *GrantHandler) Register(rs endpoint.Routes, checks GrantRouteChecks) {
 	twoFactor := endpoint.Middleware{
 		Wrap: func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if requireTwoFactor(w, middleware.GetClaims(r)) {
+				if requireTwoFactor(w, r) {
 					next.ServeHTTP(w, r)
 				}
 			})
@@ -70,7 +70,7 @@ func (h *GrantHandler) Register(rs endpoint.Routes, checks GrantRouteChecks) {
 		Middleware: []endpoint.Middleware{checks.SessionOnly, checks.AuthThrottle}}, h.activate)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/grants/{id}/deactivate",
 		OperationID: "deactivateGrant", Summary: "Switch a grant off", Tags: tags,
-		Errors:     []int{http.StatusNotFound, http.StatusConflict},
+		Errors:     []int{http.StatusForbidden, http.StatusNotFound, http.StatusConflict},
 		Middleware: []endpoint.Middleware{checks.SessionOnly}}, h.deactivate)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/grants/{id}/make-eligible",
 		OperationID: "makeGrantEligible", Summary: "Make an active grant eligible", Tags: tags,

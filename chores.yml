@@ -683,6 +683,7 @@ tasks:
           exit 1
         fi
         docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test --mfa-admin
+        python3 tests/contract/mfa_admin.py enroll "${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}"
 
   test:contract-link-fixture:
     desc: Prepare the generated link proof only after account-creation probes

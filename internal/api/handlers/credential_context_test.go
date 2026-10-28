@@ -139,7 +139,7 @@ func credentialContextRequest(t *testing.T, index int) *http.Request {
 	route := credentialContextRoutes[index]
 	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), credentialContextKey{}, true), 4*time.Second)
 	t.Cleanup(cancel)
-	claims := &auth.Claims{AccountID: 7, Address: "reader@example.test", TwoFactor: true}
+	claims := freshTwoFactorClaims(7, "reader@example.test")
 	if index == 6 {
 		claims.CredentialID = 11
 		claims.CredentialKind = "app_password"
@@ -277,7 +277,7 @@ func TestCredentialCreationPasswordAndGrantStagesFollowRequest(t *testing.T) {
 	for _, index := range []int{2, 3} {
 		base := append(credentialAccessSteps(), password...)
 		if index == 2 {
-			base = append(base, credentialSQLStep{sql: `FROM "credentials"`, columns: []string{"id"}}, credentialSQLStep{sql: `INSERT INTO "credentials"`, columns: []string{"id"}, values: []driver.Value{int64(21)}})
+			base = append(base, credentialSQLStep{sql: `INSERT INTO "credentials"`, columns: []string{"id"}, values: []driver.Value{int64(21)}})
 		} else {
 			access := credentialAccessSteps()[1:]
 			base = append(base, access...)
@@ -383,9 +383,7 @@ func TestCredentialSuccessfulWritesAndAuditUseRequestContext(t *testing.T) {
 		} else if index == 2 || index == 3 {
 			status = 201
 			base = append(base, password...)
-			if index == 2 {
-				base = append(base, credentialSQLStep{sql: `FROM "credentials"`, columns: []string{"id"}})
-			} else {
+			if index == 3 {
 				access := credentialAccessSteps()[1:]
 				base = append(base, access...)
 				base = append(base, access...)

@@ -79,7 +79,11 @@ func (c paginatedReadConnection) QueryContext(_ context.Context, query string, _
 
 func TestPaginatedReadExamples(t *testing.T) {
 	unavailable, failed, empty, jwt := paginatedReadRouters(t)
-	token := mailboxToken(t, jwt)
+	pair, err := jwt.GenerateSession(10, "user@example.com", 0, []string{auth.AMRPassword, auth.AMROTP}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := pair.AccessToken
 	pending, err := jwt.GenerateSession(10, "user@example.com", 0, []string{auth.AMRPassword}, true)
 	if err != nil {
 		t.Fatal(err)
@@ -151,7 +155,11 @@ func TestPaginatedReadExamplesWithVertrag(t *testing.T) {
 		t.Fatal(err)
 	}
 	unavailable, failed, empty, jwt := paginatedReadRouters(t)
-	token := mailboxToken(t, jwt)
+	pair, err := jwt.GenerateSession(10, "user@example.com", 0, []string{auth.AMRPassword, auth.AMROTP}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := pair.AccessToken
 	pending, err := jwt.GenerateSession(10, "user@example.com", 0, []string{auth.AMRPassword}, true)
 	if err != nil {
 		t.Fatal(err)

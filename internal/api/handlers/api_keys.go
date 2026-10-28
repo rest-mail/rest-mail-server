@@ -106,8 +106,8 @@ func (h *CredentialHandler) createScopedCredential(r *http.Request, in createAPI
 	if err != nil {
 		return createdAPIKey{}, err
 	}
-	if !claims.TwoFactor {
-		return createdAPIKey{}, endpoint.Refuse(http.StatusForbidden, "two_factor_required", "Sign in with two-factor authentication to create API keys")
+	if err := RequireFreshTwoFactor(r); err != nil {
+		return createdAPIKey{}, err
 	}
 	req := in.Body
 	req.Name = strings.TrimSpace(req.Name)
@@ -205,12 +205,12 @@ func (h *CredentialHandler) createScopedCredential(r *http.Request, in createAPI
 // accepted on the next request because the credential is checked every time.
 func (h *CredentialHandler) revokeAPIKey(r *http.Request, in credentialPath) (endpoint.Empty, error) {
 	h = h.forRequest(r)
-	claims, accountID, err := h.managedAccount(r, in.ID)
+	_, accountID, err := h.managedAccount(r, in.ID)
 	if err != nil {
 		return endpoint.Empty{}, err
 	}
-	if !claims.TwoFactor {
-		return endpoint.Empty{}, endpoint.Refuse(http.StatusForbidden, "two_factor_required", "Sign in with two-factor authentication to revoke API keys")
+	if err := RequireTwoFactor(r); err != nil {
+		return endpoint.Empty{}, err
 	}
 	id := in.CredentialID
 	err = h.db.Transaction(func(tx *gorm.DB) error {

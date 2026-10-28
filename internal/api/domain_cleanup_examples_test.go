@@ -255,7 +255,7 @@ func newDomainCleanupFixture(t *testing.T, mode string) *domainCleanupFixture {
 		t.Fatal(err)
 	}
 	jwt := auth.NewJWTService(routerTestSecret, 15*time.Minute, 7*24*time.Hour)
-	admin, err := jwt.GenerateSession(1, "admin@example.test", 0, []string{auth.AMRPassword}, false)
+	admin, err := jwt.GenerateSession(1, "admin@example.test", 0, []string{auth.AMRPassword, auth.AMROTP}, false)
 	if err != nil {
 		t.Fatal(err)
 	}

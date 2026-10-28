@@ -18,6 +18,7 @@ func TestAppPasswordCreate_ExamplePairs(t *testing.T) {
 	want := map[string][]string{
 		"request": {"created", "name_control", "name_empty", "name_missing", "name_too_long"},
 		"201":     {"created"},
+		"403":     {"recent_two_factor_required", "two_factor_required"},
 		"422":     {"name_control", "name_empty", "name_missing", "name_too_long"},
 	}
 	got := map[string][]string{"request": names(requests)}

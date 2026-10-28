@@ -116,6 +116,9 @@ func (h *GrantHandler) activate(r *http.Request, in activateGrantRequest) (escal
 		return escalationResponse{}, endpoint.Invalid(problems)
 	}
 
+	if err := RequireTwoFactor(r); err != nil {
+		return escalationResponse{}, err
+	}
 	var g models.Grant
 	var a *models.GrantActivation
 	err := h.db.Transaction(func(tx *gorm.DB) error {
@@ -140,9 +143,12 @@ func (h *GrantHandler) activate(r *http.Request, in activateGrantRequest) (escal
 }
 
 // deactivate switches one of the caller's grants off before its activation
-// runs out. It needs no second factor: it only takes access away.
+// runs out. Removing access needs a human 2FA session, without fresh proof.
 // POST /api/v1/admin/grants/{id}/deactivate
 func (h *GrantHandler) deactivate(r *http.Request, in grantPath) (escalationResponse, error) {
+	if err := RequireTwoFactor(r); err != nil {
+		return escalationResponse{}, err
+	}
 	h = h.forRequest(r)
 	claims := middleware.GetClaims(r)
 	var g models.Grant
@@ -176,6 +182,9 @@ type secondFactorRequest struct {
 // switch it on again.
 // POST /api/v1/admin/grants/{id}/make-eligible {"totp_code":"123456"}
 func (h *GrantHandler) makeEligible(r *http.Request, in eligibleGrantRequest) (escalationResponse, error) {
+	if err := RequireTwoFactor(r); err != nil {
+		return escalationResponse{}, err
+	}
 	h = h.forRequest(r)
 	claims := middleware.GetClaims(r)
 	req := in.Body
