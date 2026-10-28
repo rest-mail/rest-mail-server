@@ -21,6 +21,7 @@ import (
 	"github.com/restmail/restmail/internal/gateway/queue"
 	smtpgw "github.com/restmail/restmail/internal/gateway/smtp"
 	"github.com/restmail/restmail/internal/gateway/tlsutil"
+	"github.com/restmail/restmail/internal/grants"
 )
 
 // loadCACert adds the PEM CA bundle at path to the gateway's outbound HTTP
@@ -166,6 +167,16 @@ func main() {
 	database, err := db.WaitForDB(cfg, 60*time.Second)
 	if err != nil {
 		slog.Error("failed to connect to database", "error", err)
+		os.Exit(1)
+	}
+
+	// The operator override replaces the stored server ceiling here as it does
+	// in the API: SenderAuthorized reads grants in this process. It is checked
+	// against the capability vocabulary before mail listeners open, so a typo
+	// stops the gateway rather than widening the ceiling.
+	serverCapabilities, serverCapabilitiesSet := os.LookupEnv(grants.ServerCapabilitiesEnv)
+	if err := grants.ConfigureServerOverride(database, serverCapabilities, serverCapabilitiesSet); err != nil {
+		slog.Error("invalid server capability override", "error", err)
 		os.Exit(1)
 	}
 

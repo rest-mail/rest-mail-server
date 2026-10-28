@@ -170,6 +170,13 @@ func main() {
 		slog.Error("failed to create the built-in roles", "error", err)
 		os.Exit(1)
 	}
+	// An operator override replaces the stored server ceiling without any
+	// database write, for when the database itself cannot be trusted.
+	serverCapabilities, serverCapabilitiesSet := os.LookupEnv(grants.ServerCapabilitiesEnv)
+	if err := grants.ConfigureServerOverride(database, serverCapabilities, serverCapabilitiesSet); err != nil {
+		slog.Error("invalid server capability override", "error", err)
+		os.Exit(1)
+	}
 	credential, err := bootstrap.BootstrapFromConfig(cfg.BootstrapAdminPassword, cfg.BootstrapAdminPasswordHash)
 	if err != nil {
 		slog.Error("invalid bootstrap admin password", "error", err)
