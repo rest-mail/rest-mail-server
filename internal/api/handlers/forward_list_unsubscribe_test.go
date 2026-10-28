@@ -39,6 +39,13 @@ func TestForward_FollowsTheDomainSendingPolicy(t *testing.T) {
 		t.Fatalf("seed the domain: %v", err)
 	}
 	sender := seedSendingMailbox(t, h.db, domain, "news")
+	// A forward's Sent copy is charged to the sender's quota row, which every account has.
+	if err := h.db.AutoMigrate(&models.QuotaUsage{}); err != nil {
+		t.Fatalf("migrate quota usage: %v", err)
+	}
+	if err := h.db.Create(&models.QuotaUsage{MailboxID: sender.ID}).Error; err != nil {
+		t.Fatalf("seed the sender's quota usage: %v", err)
+	}
 	original := models.Message{MailboxID: sender.ID, Folder: "INBOX", Subject: "receipt", BodyText: "hello",
 		Sender: "shop@remote.test", RecipientsTo: models.JSONB(`["news@` + domain + `"]`), RecipientsCc: models.JSONB(`[]`)}
 	if err := h.db.Create(&original).Error; err != nil {
