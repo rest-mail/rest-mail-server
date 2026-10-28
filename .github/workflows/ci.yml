@@ -439,6 +439,21 @@ jobs:
             exit 1
           fi
 
+      - name: The sidecar's private network in Docker (#122)
+        working-directory: .
+        env:
+          RESTMAIL_JS_FILTER_LIVE: "1"
+          JS_FILTER_LIVE_IMAGE: rest-mail-js-filter:live-ci
+        run: |
+          set -euo pipefail
+          docker build -t "$JS_FILTER_LIVE_IMAGE" projects/js-filter-sidecar
+          python3 -m unittest discover -s scripts/tests -p test_js_filter_network_live.py -v 2>&1 | tee "$RUNNER_TEMP/jsfilter-live.log"
+          # The opt-in test skips without the variable; here it must run.
+          if grep -q 'skipped' "$RUNNER_TEMP/jsfilter-live.log"; then
+            echo "::error::the live js-filter network test was skipped" >&2
+            exit 1
+          fi
+
   first-start:
     name: First start
     # Proves, against the real image, the path a fresh install takes: the
