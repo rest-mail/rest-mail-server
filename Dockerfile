@@ -36,6 +36,7 @@ RUN COMMIT=${COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 # Source code is volume-mounted at /app by docker-compose.override.yml.
 # Air watches *.go files, rebuilds, and restarts the binary automatically.
 FROM deps AS dev
+ENV ENVIRONMENT=development
 # air pinned (not @latest) so the dev image is reproducible and its Go floor
 # stays aligned with the pinned golang base (OSI-17).
 RUN go install github.com/air-verse/air@v1.67.2

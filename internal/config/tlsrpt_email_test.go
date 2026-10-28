@@ -6,6 +6,7 @@ func TestLoadTLSReportAddress(t *testing.T) {
 	for _, address := range []string{"", "reports@example.test", " report@example.test ", "not-an-address", "Name <reports@example.test>", "a@example.test,b@example.test", "a@example.test\r\nBcc:x@example.test"} {
 		t.Run(address, func(t *testing.T) {
 			clearEnv(t)
+			t.Setenv("ENVIRONMENT", "development")
 			t.Setenv("TLSRPT_REPORT_ADDRESS", address)
 			cfg, err := Load()
 			valid := address == "" || address == "reports@example.test" || address == " report@example.test "

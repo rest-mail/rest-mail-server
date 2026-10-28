@@ -298,7 +298,7 @@ type Config struct {
 	RollupInterval     time.Duration
 
 	// Environment
-	Environment string // "development", "production", "test"
+	Environment string // "production" (default), "development", "test"
 
 	// ── OSI-25: bounce/DSN anti-mailbomb (appended block — keep contiguous) ──
 	// BounceDSNMaxPerRecipient caps how many bounce (DSN) messages the queue
@@ -539,7 +539,7 @@ func Load() (*Config, error) {
 
 		RollupInterval: getEnvDuration("ROLLUP_INTERVAL", DefaultRollupInterval),
 
-		Environment: getEnv("ENVIRONMENT", "development"),
+		Environment: getEnv("ENVIRONMENT", "production"),
 	}
 
 	if cfg.JWTSecret == "dev-secret-change-in-production" && cfg.IsProduction() {

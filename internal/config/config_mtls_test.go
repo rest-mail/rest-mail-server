@@ -9,6 +9,7 @@ import (
 
 func TestLoad_InternalMTLSDefaults(t *testing.T) {
 	clearEnv(t)
+	t.Setenv("ENVIRONMENT", "development")
 
 	cfg, err := Load()
 	if err != nil {
@@ -35,6 +36,7 @@ func TestLoad_InternalMTLSDefaults(t *testing.T) {
 
 func TestLoad_APIInternalBaseURL(t *testing.T) {
 	clearEnv(t)
+	t.Setenv("ENVIRONMENT", "development")
 	t.Setenv("API_BASE_URL", "http://api:8080")
 	t.Setenv("API_INTERNAL_BASE_URL", "https://api:8443")
 
@@ -53,6 +55,7 @@ func TestLoad_APIInternalBaseURL(t *testing.T) {
 
 func TestLoad_InternalMTLSEnabled(t *testing.T) {
 	clearEnv(t)
+	t.Setenv("ENVIRONMENT", "development")
 	t.Setenv("INTERNAL_MTLS_ENABLED", "true")
 	t.Setenv("INTERNAL_MTLS_PORT", "9443")
 	t.Setenv("INTERNAL_MTLS_CA_CERT", "/certs/internal-ca.crt")
@@ -82,6 +85,7 @@ func TestLoad_InternalMTLSEnabled(t *testing.T) {
 func TestLoad_InternalMTLSInvalidPort(t *testing.T) {
 	for _, port := range []string{"0", "-1", "70000"} {
 		clearEnv(t)
+		t.Setenv("ENVIRONMENT", "development")
 		t.Setenv("INTERNAL_MTLS_ENABLED", "true")
 		t.Setenv("INTERNAL_MTLS_PORT", port)
 		if _, err := Load(); err == nil {
@@ -92,6 +96,7 @@ func TestLoad_InternalMTLSInvalidPort(t *testing.T) {
 
 func TestLoad_InternalMTLSInvalidPortIgnoredWhenDisabled(t *testing.T) {
 	clearEnv(t)
+	t.Setenv("ENVIRONMENT", "development")
 	// Port is nonsense but the feature is off, so it must not fail startup.
 	t.Setenv("INTERNAL_MTLS_PORT", "0")
 	if _, err := Load(); err != nil {

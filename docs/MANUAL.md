@@ -674,7 +674,7 @@ Implemented in slices; issue #153 remains open.
 | `RESTMAIL_APNS_TEAM_ID` | *(empty)* | The developer team the key belongs to. |
 | `RESTMAIL_APNS_TOPIC` | `com.antimatterstudios.restmail` | The app's bundle id; registrations naming another are refused. |
 | `TOTP_2FA_ENABLED` | `true` | Lets accounts enroll in TOTP 2FA. The bootstrap admin must enroll, so the API refuses to create one while this is off. |
-| `ENVIRONMENT` | `development` | `development`, `production`, `test` |
+| `ENVIRONMENT` | `production` | Development/test runs must explicitly set `development` or `test` |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
 
 ### 6.2 TLS / certs

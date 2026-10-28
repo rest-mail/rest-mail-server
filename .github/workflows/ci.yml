@@ -158,6 +158,7 @@ jobs:
       - name: Run unit tests with race detector
         run: go test -race -count=1 -timeout=20m -coverprofile=coverage.out ./internal/... ./tests/contract/fixtureplan
         env:
+          ENVIRONMENT: test
           DB_HOST: localhost
           DB_PORT: "5432"
           DB_NAME: restmail_test

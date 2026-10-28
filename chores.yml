@@ -541,16 +541,22 @@ tasks:
 
   test:
     desc: Run unit tests
+    env:
+      ENVIRONMENT: test
     cmds:
       - go test -race -count=1 ./internal/...
 
   test:unit:
     desc: Run unit tests (alias for test)
+    env:
+      ENVIRONMENT: test
     cmds:
       - go test -race -count=1 ./internal/...
 
   test:verbose:
     desc: Run unit tests with verbose output
+    env:
+      ENVIRONMENT: test
     cmds:
       - go test -race -count=1 -v ./internal/...
 
@@ -566,6 +572,8 @@ tasks:
 
   test:coverage:
     desc: Run unit tests with coverage report
+    env:
+      ENVIRONMENT: test
     cmds:
       - go test -race -count=1 -coverprofile=coverage.out ./internal/...
       - go tool cover -html=coverage.out -o coverage.html
