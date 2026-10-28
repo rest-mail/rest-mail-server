@@ -34,7 +34,34 @@ func (c *pipelineMutationConnection) Driver() driver.Driver { return c }
 
 func (c *pipelineMutationConnection) Open(string) (driver.Conn, error) { return c, nil }
 
+// pipelineDomainRows answers the lookups that bound domain-scoped access to
+// pipelines and custom filters: the owning domain of the resource in the URL,
+// and the name of the domain a request body or a loaded pipeline selects.
+// Every fixture pipeline and custom filter belongs to domain 1, example.com.
+func pipelineDomainRows(q string, args []driver.NamedValue) (driver.Rows, bool, error) {
+	owner := strings.Contains(q, "JOIN domains ON domains.id = ")
+	named := strings.HasPrefix(q, `SELECT "name" FROM "domains"`)
+	if !owner && !named {
+		return nil, false, nil
+	}
+	if len(args) == 0 {
+		return nil, true, errors.New("domain scope lookup lost its ID")
+	}
+	column := "name"
+	if owner {
+		column = "domains.name"
+	}
+	r := &authReadSnapshotRows{columns: []string{column}}
+	if id := args[0].Value; owner && id != int64(2147483647) || named && id == int64(1) {
+		r.rows = [][]driver.Value{{"example.com"}}
+	}
+	return r, true, nil
+}
+
 func (c *pipelineMutationConnection) QueryContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
+	if rows, ok, err := pipelineDomainRows(q, args); ok {
+		return rows, err
+	}
 	if strings.HasPrefix(q, `INSERT INTO "pipelines"`) {
 		c.mutation(q, args)
 		f, err := exampleInsertFields(q, args)

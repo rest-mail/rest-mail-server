@@ -41,6 +41,9 @@ func (c *customFilterMutationConnection) record(q string, args []driver.NamedVal
 }
 
 func (c *customFilterMutationConnection) QueryContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
+	if rows, ok, err := pipelineDomainRows(q, args); ok {
+		return rows, err
+	}
 	if strings.HasPrefix(q, `INSERT INTO "custom_filters"`) {
 		c.record(q, args)
 		fields, err := exampleInsertFields(q, args)
@@ -98,10 +101,11 @@ func newCustomFilterMutationScenarios(t *testing.T) map[string]bulkQueueExampleS
 	keys := map[string]accountListKey{}
 	tokens := map[string]string{}
 	for name, p := range map[string]auth.ScopedPermission{
-		"key_write":   {Capability: middleware.CapPipelinesWrite, Scope: "*"},
-		"key_read":    {Capability: middleware.CapPipelinesRead, Scope: "*"},
-		"key_domain":  {Capability: middleware.CapPipelinesWrite, Scope: "domain:restmail.test"},
-		"key_mailbox": {Capability: middleware.CapPipelinesWrite, Scope: "mailbox:owner@restmail.test"},
+		"key_write":        {Capability: middleware.CapPipelinesWrite, Scope: "*"},
+		"key_read":         {Capability: middleware.CapPipelinesRead, Scope: "*"},
+		"key_domain":       {Capability: middleware.CapPipelinesWrite, Scope: "domain:example.com"},
+		"key_wrong_domain": {Capability: middleware.CapPipelinesWrite, Scope: "domain:restmail.test"},
+		"key_mailbox":      {Capability: middleware.CapPipelinesWrite, Scope: "mailbox:owner@restmail.test"},
 	} {
 		value, public, hash, err := auth.NewAPIKey()
 		if err != nil {
@@ -144,7 +148,8 @@ func newCustomFilterMutationScenarios(t *testing.T) map[string]bulkQueueExampleS
 	}
 	out["write_only"] = makeRouter([]grants.Entry{{Capability: middleware.CapPipelinesWrite, Scope: grants.All}}, false, false)
 	out["read_only"] = makeRouter([]grants.Entry{{Capability: middleware.CapPipelinesRead, Scope: grants.All}}, false, false)
-	out["domain_scope"] = makeRouter([]grants.Entry{{Capability: middleware.CapPipelinesWrite, Scope: grants.Domain("restmail.test")}}, false, false)
+	out["domain_scope"] = makeRouter([]grants.Entry{{Capability: middleware.CapPipelinesWrite, Scope: grants.Domain("example.com")}}, false, false)
+	out["wrong_domain"] = makeRouter([]grants.Entry{{Capability: middleware.CapPipelinesWrite, Scope: grants.Domain("restmail.test")}}, false, false)
 	out["mailbox_scope"] = makeRouter([]grants.Entry{{Capability: middleware.CapPipelinesWrite, Scope: grants.Mailbox("owner@restmail.test")}}, false, false)
 	out["permission_store_unavailable"] = makeRouter(nil, true, false)
 	out["unauthenticated"] = bulkQueueExampleScenario{accountReadScenario{unavailable, ""}, nil}

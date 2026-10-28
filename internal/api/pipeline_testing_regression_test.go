@@ -59,6 +59,9 @@ func (c *pipelineTestingConnection) Driver() driver.Driver { return c }
 func (c *pipelineTestingConnection) Open(string) (driver.Conn, error) { return c, nil }
 
 func (c *pipelineTestingConnection) QueryContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
+	if rows, ok, err := pipelineDomainRows(q, args); ok {
+		return rows, err
+	}
 	if strings.Contains(q, `FROM "pipelines"`) {
 		c.record(q, args)
 		c.record("PREVIEW_CONTEXT", []driver.NamedValue{{Value: ctx.Value(pipelineTestingContextKey{}) == true}})

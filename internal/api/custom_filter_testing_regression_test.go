@@ -32,6 +32,9 @@ func (c *customFilterTestingConnection) Driver() driver.Driver { return c }
 func (c *customFilterTestingConnection) Open(string) (driver.Conn, error) { return c, nil }
 
 func (c *customFilterTestingConnection) QueryContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
+	if rows, ok, err := pipelineDomainRows(q, args); ok {
+		return rows, err
+	}
 	if strings.Contains(q, `FROM "custom_filters"`) {
 		c.record(q, args)
 		c.record("EXECUTE_CONTEXT", []driver.NamedValue{{Value: ctx.Value(customFilterTestingContextKey{}) == true}})

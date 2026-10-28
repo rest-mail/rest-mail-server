@@ -5317,11 +5317,33 @@
         "mediaType": "application/json"
       },
       "response": {
-        "status": 403,
+        "status": 201,
         "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "name": "tag-invoices",
+            "description": "Tags mail about invoices",
+            "filter_type": "action",
+            "direction": "inbound",
+            "config": {
+              "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+            },
+            "enabled": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
           }
         },
         "mediaType": "application/json"
@@ -5593,11 +5615,33 @@
         "mediaType": "application/json"
       },
       "response": {
-        "status": 403,
+        "status": 201,
         "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "name": "tag-invoices",
+            "description": "Tags mail about invoices",
+            "filter_type": "action",
+            "direction": "inbound",
+            "config": {
+              "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+            },
+            "enabled": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
           }
         },
         "mediaType": "application/json"
@@ -5724,6 +5768,32 @@
               "created_at": "0001-01-01T00:00:00Z",
               "updated_at": "0001-01-01T00:00:00Z"
             }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_wrong_domain": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "enabled": false,
+          "domain_id": 1
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
           }
         },
         "mediaType": "application/json"
@@ -6131,6 +6201,32 @@
               "created_at": "0001-01-01T00:00:00Z",
               "updated_at": "0001-01-01T00:00:00Z"
             }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "wrong_domain": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "enabled": false,
+          "domain_id": 1
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
           }
         },
         "mediaType": "application/json"
@@ -8131,11 +8227,33 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 201,
         "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "direction": "inbound",
+            "filters": [
+              {
+                "name": "header_validate",
+                "config": {}
+              }
+            ],
+            "active": true,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
           }
         }
       }
@@ -8315,11 +8433,33 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 201,
         "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "direction": "inbound",
+            "filters": [
+              {
+                "name": "header_validate",
+                "config": {}
+              }
+            ],
+            "active": true,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
           }
         }
       }
@@ -39390,12 +39530,12 @@
         "body": {}
       },
       "response": {
-        "status": 403,
+        "status": 200,
         "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
-          }
+          "result": {
+            "action": "continue"
+          },
+          "logs": []
         }
       }
     },
@@ -39574,12 +39714,12 @@
         "body": {}
       },
       "response": {
-        "status": 403,
+        "status": 200,
         "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
-          }
+          "result": {
+            "action": "continue"
+          },
+          "logs": []
         }
       }
     },
@@ -41213,11 +41353,43 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 200,
         "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
+          "data": {
+            "final_action": "reject",
+            "reject_message": "550 Invalid headers: missing From header, missing Date header",
+            "final_email": {
+              "envelope": {
+                "mail_from": "",
+                "rcpt_to": [],
+                "tls": false,
+                "direction": ""
+              },
+              "headers": {
+                "from": [],
+                "to": [],
+                "subject": "",
+                "date": "",
+                "message-id": ""
+              },
+              "body": {
+                "content_type": ""
+              }
+            },
+            "steps": [
+              {
+                "filter_name": "header_validate",
+                "filter_type": "action",
+                "action": "reject",
+                "log": {
+                  "filter": "header_validate",
+                  "result": "reject",
+                  "detail": "missing From header; missing Date header"
+                },
+                "duration_ms": 0
+              }
+            ],
+            "duration_ms": 0
           }
         }
       }
@@ -41289,11 +41461,43 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 200,
         "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
+          "data": {
+            "final_action": "reject",
+            "reject_message": "550 Invalid headers: missing From header, missing Date header",
+            "final_email": {
+              "envelope": {
+                "mail_from": "",
+                "rcpt_to": [],
+                "tls": false,
+                "direction": ""
+              },
+              "headers": {
+                "from": [],
+                "to": [],
+                "subject": "",
+                "date": "",
+                "message-id": ""
+              },
+              "body": {
+                "content_type": ""
+              }
+            },
+            "steps": [
+              {
+                "filter_name": "header_validate",
+                "filter_type": "action",
+                "action": "reject",
+                "log": {
+                  "filter": "header_validate",
+                  "result": "reject",
+                  "detail": "missing From header; missing Date header"
+                },
+                "duration_ms": 0
+              }
+            ],
+            "duration_ms": 0
           }
         }
       }
@@ -43265,11 +43469,33 @@
         "mediaType": "application/json"
       },
       "response": {
-        "status": 403,
+        "status": 200,
         "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "name": "tag-invoices",
+            "description": "Tags mail about invoices",
+            "filter_type": "action",
+            "direction": "inbound",
+            "config": {
+              "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+            },
+            "enabled": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
           }
         },
         "mediaType": "application/json"
@@ -43620,11 +43846,33 @@
         "mediaType": "application/json"
       },
       "response": {
-        "status": 403,
+        "status": 200,
         "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "name": "tag-invoices",
+            "description": "Tags mail about invoices",
+            "filter_type": "action",
+            "direction": "inbound",
+            "config": {
+              "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+            },
+            "enabled": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
           }
         },
         "mediaType": "application/json"
@@ -43731,6 +43979,27 @@
               "created_at": "0001-01-01T00:00:00Z",
               "updated_at": "0001-01-01T00:00:00Z"
             }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_wrong_domain": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": false
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
           }
         },
         "mediaType": "application/json"
@@ -44260,6 +44529,27 @@
           "error": {
             "code": "internal_error",
             "message": "Failed to update custom filter"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "wrong_domain": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": false
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
           }
         },
         "mediaType": "application/json"
@@ -45540,11 +45830,33 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 200,
         "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "direction": "inbound",
+            "filters": [
+              {
+                "name": "spf_check",
+                "config": {}
+              }
+            ],
+            "active": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
           }
         }
       }
@@ -45722,11 +46034,33 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 200,
         "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "direction": "inbound",
+            "filters": [
+              {
+                "name": "spf_check",
+                "config": {}
+              }
+            ],
+            "active": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
           }
         }
       }
