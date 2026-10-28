@@ -169,7 +169,10 @@ func (fx draftExampleFixture) verify(t *testing.T, operation, name string, pair 
 			if data["message_id"] != stored.MsgID || data["thread_id"] != stored.ThreadID || stored.MsgID == "" {
 				t.Fatal("sent identities differ from storage")
 			}
-			for _, field := range []string{"message_id", "thread_id", "raw_size"} {
+			if stored.DowngradedSize == 0 || data["downgraded_size"] != float64(stored.DowngradedSize) {
+				t.Fatalf("sent downgraded size differs from storage: %v, stored %d", data["downgraded_size"], stored.DowngradedSize)
+			}
+			for _, field := range []string{"message_id", "thread_id", "raw_size", "downgraded_size"} {
 				data[field] = want[field]
 			}
 		}
