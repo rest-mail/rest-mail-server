@@ -228,7 +228,11 @@ func newCredentialFixtureWith(t *testing.T, cfg *config.Config) *credentialFixtu
 		} `json:"data"`
 	}
 	decodeInto(t, rr, &login)
-	f.session, f.accountID = "Bearer "+login.Data.AccessToken, login.Data.User.ID
+	pair, err := jwtSvc.GenerateSession(login.Data.User.ID, f.address, 0, []string{auth.AMRPassword, auth.AMROTP}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.session, f.accountID = "Bearer "+pair.AccessToken, login.Data.User.ID
 	return f
 }
 
@@ -576,7 +580,11 @@ func TestAppPasswords_CreatingNeedsTheSecondFactor(t *testing.T) {
 
 	// The fixture's session signed in before 2FA was on: password only. The
 	// password entered again is no second factor.
-	rr := f.do(http.MethodPost, path, f.session, body)
+	plain, err := f.jwt.GenerateSession(f.mailboxID, f.address, 0, []string{auth.AMRPassword}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rr := f.do(http.MethodPost, path, "Bearer "+plain.AccessToken, body)
 	if rr.Code != http.StatusForbidden || !strings.Contains(rr.Body.String(), "two_factor_required") {
 		t.Fatalf("without a second factor: %d %s", rr.Code, rr.Body.String())
 	}
@@ -962,7 +970,15 @@ func TestAppPasswords_RevokedByANewPassword(t *testing.T) {
 			} `json:"data"`
 		}
 		decodeInto(t, rr, &login)
-		f.session, f.password = "Bearer "+login.Data.AccessToken, "a-new-password-456"
+		claims, err := f.jwt.ValidateAccessToken(login.Data.AccessToken)
+		if err != nil {
+			t.Fatal(err)
+		}
+		proof, err := f.jwt.GenerateSession(claims.AccountID, claims.Address, claims.CredentialEpoch, []string{auth.AMRPassword, auth.AMROTP}, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.session, f.password = "Bearer "+proof.AccessToken, "a-new-password-456"
 		works(t, f.createAppPassword("Thunderbird again"))
 	})
 }

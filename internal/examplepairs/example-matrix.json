@@ -11303,23 +11303,6 @@
         "mediaType": "application/json"
       }
     },
-    "two_factor_required": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "two_factor_required",
-            "message": "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
     "write_only": {
       "request": {
         "path": {
@@ -11545,7 +11528,11 @@
           }
         },
         "mediaType": "application/json"
-      }
+      },
+      "requires": {
+        "principal": "without_capability"
+      },
+      "summary": "A machine credential cannot remove account access without an explicit exception"
     },
     "key_holder_missing": {
       "request": {
@@ -11579,7 +11566,11 @@
           }
         },
         "mediaType": "application/json"
-      }
+      },
+      "requires": {
+        "principal": "without_capability"
+      },
+      "summary": "A machine credential cannot remove account access without an explicit exception"
     },
     "key_read": {
       "request": {
@@ -11613,7 +11604,11 @@
           }
         },
         "mediaType": "application/json"
-      }
+      },
+      "requires": {
+        "principal": "without_capability"
+      },
+      "summary": "A machine credential cannot remove account access without an explicit exception"
     },
     "key_wrong_domain": {
       "request": {
@@ -11739,23 +11734,6 @@
           "error": {
             "code": "forbidden",
             "message": "Insufficient permissions"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "two_factor_required": {
-      "request": {
-        "path": {
-          "id": 13
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "two_factor_required",
-            "message": "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
           }
         },
         "mediaType": "application/json"
@@ -33748,10 +33726,14 @@
         "body": {
           "error": {
             "code": "two_factor_required",
-            "message": "Sign in with two-factor authentication to revoke API keys"
+            "message": "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
           }
         },
         "mediaType": "application/json"
+      },
+      "requires": {
+        "principal": "without_capability",
+        "state": "password_only_session"
       }
     },
     "ownership_unavailable": {
@@ -34227,7 +34209,18 @@
         }
       },
       "response": {
-        "status": 204
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "two_factor_required",
+            "message": "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
+          }
+        },
+        "mediaType": "application/json"
+      },
+      "requires": {
+        "principal": "without_capability",
+        "state": "password_only_session"
       }
     },
     "ownership_unavailable": {

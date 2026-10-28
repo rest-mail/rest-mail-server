@@ -140,6 +140,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		TrustedProxies: trustedProxies,
 	}))
 	r.Use(chimw.RequestID)
+	r.Use(handlers.TwoFactorWindow(cfg.FreshTwoFactorWindow))
 	// TrustedRealIP replaces chi's RealIP: it resolves the client IP from
 	// X-Forwarded-For ONLY for trusted-proxy peers and writes it into RemoteAddr, so
 	// the auth rate limiter, the RESTMAIL delivery-auth gate, and the negative-lookup

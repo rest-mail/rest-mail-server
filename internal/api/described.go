@@ -171,6 +171,7 @@ func (rt *Routers) generator(version string) *oapifly.Generator {
 func describe(registry *endpoint.Registry, version string) *oapifly.Generator {
 	g := oapifly.New(oapifly.Config{
 		Title:           "REST Mail API",
+		Description:     "Human sessions that prove a second factor carry auth_time: the original sign-in time, preserved across refresh. Refresh changes iat but never reopens the sudo window. Machine credentials never carry this proof. Sensitive actions require 2FA; administrative/read/sending grants, credential creation, password/2FA changes and audit access additionally require proof within 15 minutes. FRESH_TWO_FACTOR_WINDOW may shorten that window; invalid, non-positive or longer values refuse startup. Missing or stale proof returns 403 recent_two_factor_required so clients can sign in again. Initial authenticator enrollment and forced password setup before any factor exists remain available; once a factor is enrolled, sign in with it before changing the password.",
 		Version:         version,
 		SecuritySchemes: securitySchemes,
 		Security:        defaultSecurity,
@@ -196,6 +197,7 @@ var exampleRequirements = map[string][]string{
 	"limit":     {"rate", "message_size"},
 	"fault":     {"database", "database_pool", "session_store", "permission_store", "context_cancelled", "sidecar_response", "error_adapter"},
 	"state": {
+		"password_only_session", "stale_two_factor_session",
 		"send_as_grant", "send_on_behalf_grant", "read_only_mailbox_grant",
 		"active_grant", "active_policy", "calendar_invitation", "client_secret", "discarding_pipeline", "eligible_grant",
 		"enrolled_authenticator", "enrollment_disabled", "event_stream", "existing_grant", "existing_link", "existing_policy", "existing_script",

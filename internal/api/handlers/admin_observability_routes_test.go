@@ -22,6 +22,11 @@ func logRoutes(h *LogHandler) http.Handler {
 }
 func auditRoutes(h *AuditHandler) http.Handler {
 	r := chi.NewRouter()
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			next.ServeHTTP(w, withClaims(req, freshTwoFactorClaims(1, "auditor@example.test")))
+		})
+	})
 	h.Register(endpoint.Routes{Router: r, Registry: endpoint.NewRegistry()}, AdminLogRouteChecks{At: adminLogPass, AuditRead: adminLogPass("")})
 	return r
 }

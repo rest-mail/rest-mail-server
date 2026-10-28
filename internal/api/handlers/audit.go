@@ -44,7 +44,10 @@ type listAuditRequest struct {
 	Limit     *int       `query:"limit" minimum:"1" maximum:"200" message:"must be between 1 and 200"`
 }
 
-func (h *AuditHandler) list(_ *http.Request, in listAuditRequest) (endpoint.List[AuditEntry], error) {
+func (h *AuditHandler) list(r *http.Request, in listAuditRequest) (endpoint.List[AuditEntry], error) {
+	if err := RequireFreshTwoFactor(r); err != nil {
+		return endpoint.List[AuditEntry]{}, err
+	}
 	query := h.db.Model(&models.AuditEntry{})
 	if in.ActorKind != "" {
 		query = query.Where("actor_kind = ?", in.ActorKind)
@@ -109,6 +112,9 @@ type verifyAuditRequest struct {
 }
 
 func (h *AuditHandler) verify(r *http.Request, in verifyAuditRequest) (audit.Result, error) {
+	if err := RequireFreshTwoFactor(r); err != nil {
+		return audit.Result{}, err
+	}
 	var anchor *audit.Anchor
 	if in.Anchor != "" {
 		parts := strings.SplitN(in.Anchor, ":", 2)

@@ -32,26 +32,23 @@ const maxCredentialNameLength = 100
 // Listing, creating and revoking need a session from signing in with the
 // mailbox's password: the routes accept no app password, so an app password
 // can never mint or revoke one. Creating also needs the mailbox's current
-// password, entered again, and its second factor when the mailbox has 2FA.
+// password, entered again, and a recent second-factor sign-in.
 type CredentialHandler struct {
-	db        *gorm.DB
-	repo      *repositories.CredentialRepository
-	twoFactor twoFactorStore
-	now       func() time.Time
+	db   *gorm.DB
+	repo *repositories.CredentialRepository
+	now  func() time.Time
 }
 
 func NewCredentialHandler(db *gorm.DB) *CredentialHandler {
 	return &CredentialHandler{
-		db:        db,
-		repo:      repositories.NewCredentialRepository(db),
-		twoFactor: repositories.NewTwoFactorRepository(db),
-		now:       time.Now,
+		db:   db,
+		repo: repositories.NewCredentialRepository(db),
+		now:  time.Now,
 	}
 }
 
 // forRequest gives SQL work the HTTP budget without changing the shared handler.
-// Keep an injected in-memory two-factor store; the production repository uses
-// the same scoped connection as password checks, grants and credential writes.
+// Password checks, grants and credential writes use the same scoped connection.
 func (h *CredentialHandler) forRequest(r *http.Request) *CredentialHandler {
 	if h.db == nil {
 		return h
@@ -59,9 +56,6 @@ func (h *CredentialHandler) forRequest(r *http.Request) *CredentialHandler {
 	scoped := *h
 	scoped.db = h.db.WithContext(r.Context())
 	scoped.repo = repositories.NewCredentialRepository(scoped.db)
-	if _, ok := h.twoFactor.(*repositories.TwoFactorRepository); ok {
-		scoped.twoFactor = repositories.NewTwoFactorRepository(scoped.db)
-	}
 	return &scoped
 }
 
@@ -207,6 +201,9 @@ type createCredentialRequest struct {
 // create makes an app password and answers with it, once.
 // POST /api/v1/accounts/{id}/credentials
 func (h *CredentialHandler) create(r *http.Request, in createCredentialRequest) (createdAppPassword, error) {
+	if err := RequireFreshTwoFactor(r); err != nil {
+		return createdAppPassword{}, err
+	}
 	h = h.forRequest(r)
 	claims, accountID, err := h.managedAccount(r, in.ID)
 	if err != nil {
@@ -232,17 +229,6 @@ func (h *CredentialHandler) create(r *http.Request, in createCredentialRequest) 
 	// old password, would outlive the change.
 	if err := h.checkCurrentPassword(claims.AccountID, req.Password); err != nil {
 		return createdAppPassword{}, err
-	}
-
-	// It also needs a session whose sign-in took the mailbox's second factor,
-	// when the mailbox has one.
-	_, err = h.twoFactor.GetActive(claims.AccountID)
-	switch {
-	case err == nil && !claims.TwoFactor:
-		return createdAppPassword{}, endpoint.Refuse(http.StatusForbidden, "two_factor_required",
-			"This mailbox has two-factor authentication: sign in again with your code to create an app password")
-	case err != nil && !errors.Is(err, repositories.ErrTwoFactorNotFound):
-		return createdAppPassword{}, fmt.Errorf("verify two-factor authentication: %w", err)
 	}
 
 	cred, password, err := h.repo.CreateAppPassword(accountID, claims.AccountID, req.Name, req.ExpiresAt)
@@ -282,6 +268,9 @@ func (h *CredentialHandler) checkCurrentPassword(accountID uint, password string
 // for the audit trail; the next request made with it is refused.
 // DELETE /api/v1/accounts/{id}/credentials/{credential_id}
 func (h *CredentialHandler) revoke(r *http.Request, in credentialPath) (endpoint.Empty, error) {
+	if err := RequireTwoFactor(r); err != nil {
+		return endpoint.Empty{}, err
+	}
 	h = h.forRequest(r)
 	_, accountID, err := h.managedAccount(r, in.ID)
 	if err != nil {

@@ -584,7 +584,7 @@ func (h *AuthHandler) refresh(r *http.Request, in sessionTokenRequest) (endpoint
 	// setup stays that way until the setup is done: the refresh must not be a
 	// way out of the restriction. The new tokens stay in the session: the
 	// same sid.
-	tokens, err := h.jwtService.GenerateSession(claims.AccountID, state.Address, state.CredentialEpoch, claims.AMR, state.SetupPending, auth.ContinueSession(claims.SessionID))
+	tokens, err := h.jwtService.GenerateSession(claims.AccountID, state.Address, state.CredentialEpoch, claims.AMR, state.SetupPending, auth.ContinueSession(claims.SessionID), auth.ContinueAuthentication(claims.AuthTime))
 	if err != nil {
 		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to generate tokens")
 	}
@@ -717,6 +717,21 @@ func (h *AuthHandler) changePassword(r *http.Request, req changePasswordRequest)
 	}
 	if err != nil || !account.Active {
 		return passwordChanged{}, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Invalid or expired session")
+	}
+	// Initial forced setup has no second factor yet. Once one is enrolled,
+	// even a setup session must prove it freshly before changing a password.
+	initialSetup := false
+	if claims.SetupPending && account.PasswordChangeRequired {
+		_, factorErr := repositories.NewTwoFactorRepository(db).GetActive(account.ID)
+		initialSetup = errors.Is(factorErr, repositories.ErrTwoFactorNotFound)
+		if factorErr != nil && !initialSetup {
+			return passwordChanged{}, fmt.Errorf("read second factor: %w", factorErr)
+		}
+	}
+	if !initialSetup {
+		if err := RequireFreshTwoFactor(r); err != nil {
+			return passwordChanged{}, err
+		}
 	}
 	now := time.Now()
 	cred, err := repositories.NewCredentialRepository(db).MatchPassword(account.ID, req.CurrentPassword, now)

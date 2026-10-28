@@ -116,7 +116,8 @@ func TestClientSecretCreationRequiresTwoFactorAndTier(t *testing.T) {
 		claims := middleware.GetClaims(r)
 		if machine {
 			claims.CredentialID = 3
-			claims.TwoFactor = true
+		} else {
+			claims.TwoFactor, claims.AuthTime = false, nil
 		}
 		_, err := h.createClientSecret(r, createAPIKeyRequest{})
 		if refusal, ok := err.(*endpoint.Error); !ok || refusal.Status != http.StatusForbidden || refusal.Code != "two_factor_required" {

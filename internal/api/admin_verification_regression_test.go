@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	jwtv5 "github.com/golang-jwt/jwt/v5"
+
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/audit"
 	"github.com/restmail/restmail/internal/auth"
@@ -105,7 +107,7 @@ func (c adminVerificationConnection) QueryContext(_ context.Context, query strin
 func adminVerificationScenarios(t *testing.T) map[string]accountReadScenario {
 	t.Helper()
 	unavailable, _, _, jwt := authReadBatchRouters(t)
-	token := mailboxToken(t, jwt)
+	token := freshMailboxToken(t, jwt)
 	previous := heldGrants
 	defer func() { heldGrants = previous }()
 	makeRouter := func(mode string, entries []grants.Entry, fail bool, environment string) *Routers {
@@ -162,6 +164,12 @@ func adminVerificationScenarios(t *testing.T) map[string]accountReadScenario {
 		t.Fatalf("test verification exposed in production: %d", rr.Code)
 	}
 	out["rate_limited"] = accountReadScenario{apiKeyRefusalLimited(t), ""}
+	out["two_factor_required"] = accountReadScenario{normal, mailboxToken(t, jwt)}
+	stale, err := jwt.GenerateSession(10, "user@example.com", 0, []string{auth.AMRPassword, auth.AMROTP}, false, auth.ContinueSession("stale-example"), auth.ContinueAuthentication(jwtv5.NewNumericDate(time.Now().Add(-time.Hour))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out["recent_two_factor_required"] = accountReadScenario{normal, stale.AccessToken}
 	return out
 }
 

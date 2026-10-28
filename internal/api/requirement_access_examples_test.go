@@ -132,7 +132,7 @@ func TestAccessRequirementExamples(t *testing.T) {
 			jwt := auth.NewJWTService(routerTestSecret, time.Minute, time.Hour)
 			r := NewRouters(newFailingGormDB(t), jwt, &config.Config{Environment: "test", MasterKey: accessMasterKey}, nil)
 			t.Cleanup(r.Close)
-			session, err := jwt.GenerateSession(1, "admin@restmail.test", 0, []string{auth.AMRPassword}, false)
+			session, err := jwt.GenerateSession(1, "admin@restmail.test", 0, []string{auth.AMRPassword, auth.AMROTP}, false)
 			if err != nil {
 				t.Fatal(err)
 			}

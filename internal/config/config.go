@@ -84,6 +84,8 @@ type Config struct {
 	JWTSecret        string
 	JWTAccessExpiry  time.Duration
 	JWTRefreshExpiry time.Duration
+	// FreshTwoFactorWindow may only shorten the 15-minute sudo window.
+	FreshTwoFactorWindow time.Duration
 
 	// Auth rate limiting: a per-client-IP token bucket applied to the
 	// auth-sensitive HTTP routes (login/refresh) to blunt brute-force and
@@ -558,6 +560,15 @@ func Load() (*Config, error) {
 		RollupInterval: getEnvDuration("ROLLUP_INTERVAL", DefaultRollupInterval),
 
 		Environment: getEnv("ENVIRONMENT", "production"),
+	}
+
+	cfg.FreshTwoFactorWindow = 15 * time.Minute
+	if raw := os.Getenv("FRESH_TWO_FACTOR_WINDOW"); raw != "" {
+		window, err := time.ParseDuration(raw)
+		if err != nil || window <= 0 || window > 15*time.Minute {
+			return nil, fmt.Errorf("FRESH_TWO_FACTOR_WINDOW must be a positive duration no longer than 15m")
+		}
+		cfg.FreshTwoFactorWindow = window
 	}
 
 	if cfg.JWTSecret == "dev-secret-change-in-production" && cfg.IsProduction() {

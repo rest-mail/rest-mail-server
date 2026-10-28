@@ -117,7 +117,7 @@ func (f *fakeTwoFactorStore) ConsumeRecoveryCode(accountID uint, plaintext strin
 const testMasterKey = "test-master-key-0123456789abcdef"
 
 func mailboxClaims(id uint, email string) *auth.Claims {
-	return &auth.Claims{AccountID: id, Address: email}
+	return freshTwoFactorClaims(id, email)
 }
 
 func withClaims(r *http.Request, c *auth.Claims) *http.Request {

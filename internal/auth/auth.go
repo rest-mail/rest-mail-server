@@ -63,6 +63,9 @@ type Claims struct {
 	// TwoFactor marks a session whose sign-in took a second factor as well as
 	// the password: AMR holds AMROTP. A refresh keeps it.
 	TwoFactor bool `json:"mfa,omitempty"`
+	// AuthTime is the sign-in that proved the second factor. Refresh keeps it;
+	// password-only sessions and machine credentials never acquire it.
+	AuthTime *jwt.NumericDate `json:"auth_time,omitempty"`
 	// SetupPending marks a session whose account is not finished setting up (a
 	// new password, a 2FA enrollment). It reaches only the self-service
 	// endpoints that finish the setup; everything else refuses it.
@@ -140,6 +143,7 @@ type TokenOption func(*tokenOptions)
 type tokenOptions struct {
 	sessionID string
 	continued bool
+	authTime  *jwt.NumericDate
 }
 
 // ContinueSession makes the tokens part of session sid, as a refresh does,
@@ -148,14 +152,16 @@ func ContinueSession(sid string) TokenOption {
 	return func(o *tokenOptions) { o.sessionID, o.continued = sid, true }
 }
 
+// ContinueAuthentication preserves the original second-factor proof on refresh.
+// A nil time stays nil: legacy tokens must sign in again for fresh proof.
+func ContinueAuthentication(at *jwt.NumericDate) TokenOption {
+	return func(o *tokenOptions) { o.authTime = at }
+}
+
 // sessionFor is the sid the tokens get: the one ContinueSession names, or a
 // new one, as at sign-in. Continuing a session without a sid is an error: a
 // sid is only ever minted at sign-in.
-func sessionFor(opts []TokenOption) (string, error) {
-	var o tokenOptions
-	for _, opt := range opts {
-		opt(&o)
-	}
+func sessionFor(o tokenOptions) (string, error) {
 	if !o.continued {
 		return newSessionID()
 	}
@@ -197,9 +203,21 @@ func NewJWTService(secret string, accessExpiry, refreshExpiry time.Duration) *JW
 // carry a new sid, or the one ContinueSession names.
 func (s *JWTService) GenerateSession(accountID uint, address string, epoch int, amr []string, setupPending bool, opts ...TokenOption) (*TokenPair, error) {
 	now := time.Now()
-	sid, err := sessionFor(opts)
+	var options tokenOptions
+	for _, opt := range opts {
+		opt(&options)
+	}
+	sid, err := sessionFor(options)
 	if err != nil {
 		return nil, err
+	}
+	var authTime *jwt.NumericDate
+	if hasMethod(amr, AMROTP) {
+		if options.continued {
+			authTime = options.authTime
+		} else {
+			authTime = jwt.NewNumericDate(now)
+		}
 	}
 	claims := func(jti, tokenType string, expires time.Time) Claims {
 		return Claims{
@@ -214,6 +232,7 @@ func (s *JWTService) GenerateSession(accountID uint, address string, epoch int, 
 			Address:         address,
 			AMR:             amr,
 			TwoFactor:       hasMethod(amr, AMROTP),
+			AuthTime:        authTime,
 			SetupPending:    setupPending,
 			CredentialEpoch: epoch,
 			SessionID:       sid,
