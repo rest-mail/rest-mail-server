@@ -14623,6 +14623,42 @@
       }
     }
   },
+  "getServerCapabilities": {
+    "available": {
+      "summary": "A superadmin reads the ceiling stored in the database",
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "capabilities": [
+              "mail:read",
+              "mail:send"
+            ],
+            "source": "database"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "not_superadmin": {
+      "summary": "An administrator who is not superadmin is refused",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "superadmin_required",
+            "message": "only a superadmin can read or change the server capability ceiling"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "getSieveScript": {
     "found": {
       "summary": "A linked account is readable through its mailbox grant",
@@ -34112,6 +34148,111 @@
             "message": "Missing authorization header"
           }
         }
+      }
+    }
+  },
+  "updateServerCapabilities": {
+    "from_environment": {
+      "summary": "The environment sets the ceiling",
+      "description": "Precondition: RESTMAIL_SERVER_CAPABILITIES is set, so the stored ceiling cannot be changed here.",
+      "requires": {
+        "state": "two_factor_session"
+      },
+      "request": {
+        "body": {
+          "capabilities": [
+            "mail:read"
+          ]
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "server_capabilities_from_environment",
+            "message": "the server capability ceiling is set by RESTMAIL_SERVER_CAPABILITIES; change it there and restart, or unset it to manage the ceiling here"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "not_superadmin": {
+      "summary": "An administrator who is not superadmin is refused",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "body": {
+          "capabilities": [
+            "mail:read"
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "superadmin_required",
+            "message": "only a superadmin can read or change the server capability ceiling"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "replaced": {
+      "summary": "A superadmin replaces the stored ceiling",
+      "description": "Changing the ceiling needs a session that signed in with a second factor.",
+      "requires": {
+        "state": "two_factor_session"
+      },
+      "request": {
+        "body": {
+          "capabilities": [
+            "mail:read",
+            "mail:send"
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "capabilities": [
+              "mail:read",
+              "mail:send"
+            ],
+            "source": "database"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unknown_capability": {
+      "summary": "A name outside the capability vocabulary is refused",
+      "requires": {
+        "state": "two_factor_session"
+      },
+      "request": {
+        "body": {
+          "capabilities": [
+            "mail:reed"
+          ]
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "capabilities": "unknown capability \"mail:reed\""
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },
