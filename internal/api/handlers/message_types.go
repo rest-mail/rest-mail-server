@@ -40,6 +40,7 @@ func messageOf(m models.Message) Message {
 		CalendarEventsRaw: json.RawMessage(m.CalendarEventsRaw),
 		SizeBytes:         m.SizeBytes,
 		RawSize:           m.RawSize,
+		DowngradedSize:    m.DowngradedSize,
 		ReceivedTLS:       m.ReceivedTLS,
 		TLSVersion:        m.TLSVersion,
 		HasAttachments:    m.HasAttachments,

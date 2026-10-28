@@ -5,6 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"gorm.io/gorm"
+
+	rmail "github.com/restmail/restmail/internal/mail"
 )
 
 // JSONB is a custom type for PostgreSQL JSONB columns.
@@ -77,6 +81,14 @@ type Message struct {
 	// subject/body lengths) does not guarantee. Zero means "no stored raw";
 	// consumers fall back to SizeBytes.
 	RawSize int `gorm:"not null;default:0" json:"raw_size"`
+	// DowngradedSize is the octet count a POP3 or IMAP client that has not
+	// enabled UTF-8 receives: the stored raw with its header block downgraded
+	// to ASCII (RFC 6857). It equals RawSize when the headers are already ASCII.
+	// STAT, LIST and RFC822.SIZE report it to such a client, because the size
+	// must count the octets actually sent (RFC 1939 section 5, RFC 3501
+	// section 2.3.4). Zero means "not measured yet" (a row stored before this
+	// column existed and not yet backfilled); consumers fall back to RawSize.
+	DowngradedSize int `gorm:"not null;default:0" json:"downgraded_size"`
 	// ReceivedTLS records the inbound transport security of an inbound-MX
 	// (port 25) delivery: true = the connection was encrypted (implicit TLS or
 	// STARTTLS), false = plaintext. It is a pointer so NULL can mean "not an
@@ -116,6 +128,15 @@ type Message struct {
 }
 
 func (Message) TableName() string { return "messages" }
+
+// BeforeCreate measures the downgraded size of a message stored with its raw
+// source, on every path that stores one, so no delivery path can forget it.
+func (m *Message) BeforeCreate(*gorm.DB) error {
+	if m.DowngradedSize == 0 && m.RawSize > 0 {
+		m.DowngradedSize = rmail.DowngradedSize(string(m.Source()))
+	}
+	return nil
+}
 
 // Source returns original octets, including historical non-UTF-8 and NUL data.
 func (m Message) Source() []byte {

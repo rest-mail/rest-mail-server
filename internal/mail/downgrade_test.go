@@ -1,4 +1,4 @@
-package rawmsg
+package mail
 
 import (
 	"mime"
@@ -8,7 +8,7 @@ import (
 
 func TestDowngrade_ASCIIHeaderUnchanged(t *testing.T) {
 	raw := "From: a@example.com\r\nSubject: hi\r\n\r\nbody with ü stays\r\n"
-	if got := Downgrade(raw); got != raw {
+	if got := DowngradeHeaders(raw); got != raw {
 		t.Fatalf("ASCII header changed:\n%q", got)
 	}
 }
@@ -23,7 +23,7 @@ func TestDowngrade_HeaderBecomesASCII(t *testing.T) {
 		"Content-Type: text/plain; charset=utf-8; name=\"Grüße.txt\"\r\n" +
 		"\r\n" +
 		"Hallo, Jörg.\r\n"
-	got := Downgrade(raw)
+	got := DowngradeHeaders(raw)
 	header, body, ok := strings.Cut(got, "\r\n\r\n")
 	if !ok {
 		t.Fatalf("no header/body separator:\n%s", got)
@@ -70,7 +70,7 @@ func TestDowngrade_HeaderBecomesASCII(t *testing.T) {
 }
 
 func TestDowngrade_UnparseableAddressFieldRenamed(t *testing.T) {
-	got := Downgrade("To: ü@@broken\r\n\r\nx")
+	got := DowngradeHeaders("To: ü@@broken\r\n\r\nx")
 	if !strings.HasPrefix(got, "Downgraded-To: =?utf-8?") || containsNonASCII(got) {
 		t.Fatalf("got %q", got)
 	}

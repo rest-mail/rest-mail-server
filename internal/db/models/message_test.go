@@ -3,6 +3,8 @@ package models
 import (
 	"encoding/json"
 	"testing"
+
+	rmail "github.com/restmail/restmail/internal/mail"
 )
 
 // TestMessage_JSONSerialization_RawSize pins the API wire form of a message:
@@ -74,5 +76,27 @@ func TestMessage_JSONSerialization_RawSizeZeroPresent(t *testing.T) {
 	}
 	if int(v.(float64)) != 0 {
 		t.Errorf("raw_size = %v, want 0", v)
+	}
+}
+
+// TestMessage_BeforeCreate_MeasuresDowngradedSize proves every stored raw gets
+// the size a client that has not enabled UTF-8 is sent: the downgraded form
+// for UTF-8 headers, the raw size for ASCII headers.
+func TestMessage_BeforeCreate_MeasuresDowngradedSize(t *testing.T) {
+	for _, raw := range []string{
+		"From: Jörg <joerg@bücher.example>\r\nSubject: Grüße\r\n\r\nHallo, Jörg.\r\n",
+		"From: a@example.com\r\nSubject: hi\r\n\r\nbody with ü stays\r\n",
+	} {
+		m := Message{RawMessage: raw, RawSize: len(raw)}
+		if err := m.BeforeCreate(nil); err != nil {
+			t.Fatal(err)
+		}
+		if want := len(rmail.DowngradeHeaders(raw)); m.DowngradedSize != want {
+			t.Fatalf("downgraded_size = %d, want %d for %q", m.DowngradedSize, want, raw)
+		}
+	}
+	none := Message{}
+	if err := none.BeforeCreate(nil); err != nil || none.DowngradedSize != 0 {
+		t.Fatalf("message without raw: downgraded_size = %d, err %v", none.DowngradedSize, err)
 	}
 }
