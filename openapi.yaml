@@ -12330,6 +12330,13 @@ components:
             protocol client receives when the raw form is served verbatim,
             e.g. IMAP RFC822.SIZE / POP3 LIST). 0 when the server holds no
             stored raw form; consumers should fall back to size_bytes.
+        downgraded_size:
+          type: integer
+          description: >-
+            Octet count of the stored raw message with its headers downgraded
+            to ASCII (RFC 6857), as sent to a POP3 or IMAP client that has not
+            enabled UTF-8. Equals raw_size when the headers are already ASCII.
+            0 when not measured; consumers should fall back to raw_size.
         has_attachments:
           type: boolean
         is_read:

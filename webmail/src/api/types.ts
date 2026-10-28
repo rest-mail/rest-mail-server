@@ -3247,6 +3247,7 @@ export interface components {
             created_at: string;
             /** Format: date-time */
             date_header: string | null;
+            downgraded_size: number;
             folder: string;
             has_attachments: boolean;
             headers?: unknown;
@@ -3594,6 +3595,7 @@ export interface components {
             created_at?: string;
             /** Format: date-time */
             date_header?: string | null;
+            downgraded_size?: number;
             folder?: string;
             has_attachments?: boolean;
             headers?: unknown;
@@ -3999,6 +4001,7 @@ export interface components {
             created_at: string;
             /** Format: date-time */
             date_header: string | null;
+            downgraded_size: number;
             folder: string;
             has_attachments: boolean;
             headers?: unknown;

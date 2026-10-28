@@ -71,6 +71,7 @@ type TestSnapshotMessage struct {
 	CalendarEventsRaw json.RawMessage     `json:"calendar_events,omitempty"`
 	SizeBytes         int                 `json:"size_bytes"`
 	RawSize           int                 `json:"raw_size"`
+	DowngradedSize    int                 `json:"downgraded_size"`
 	ReceivedTLS       *bool               `json:"received_tls,omitempty"`
 	TLSVersion        string              `json:"tls_version,omitempty"`
 	HasAttachments    bool                `json:"has_attachments"`
@@ -202,6 +203,7 @@ type RestoreSnapshotMessage struct {
 	CalendarEventsRaw json.RawMessage        `json:"calendar_events,omitempty"`
 	SizeBytes         int                    `json:"size_bytes,omitempty"`
 	RawSize           int                    `json:"raw_size,omitempty"`
+	DowngradedSize    int                    `json:"downgraded_size,omitempty"`
 	ReceivedTLS       *bool                  `json:"received_tls,omitempty"`
 	TLSVersion        string                 `json:"tls_version,omitempty"`
 	HasAttachments    bool                   `json:"has_attachments,omitempty"`
