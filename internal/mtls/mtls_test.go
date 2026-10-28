@@ -5,7 +5,6 @@ import (
 	"crypto/x509"
 	"net"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -64,12 +63,9 @@ func TestInternalMTLS_AcceptRejectMatrix(t *testing.T) {
 		t.Fatalf("ServerTLSConfig: %v", err)
 	}
 
-	ts := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	url := startMTLSServer(t, serverCfg, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
-	ts.TLS = serverCfg
-	ts.StartTLS()
-	defer ts.Close()
 
 	caPool := x509.NewCertPool()
 	if !caPool.AppendCertsFromPEM(ca.CertPEM) {
@@ -89,7 +85,7 @@ func TestInternalMTLS_AcceptRejectMatrix(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ClientTLSConfig: %v", err)
 		}
-		status, err := doGet(ts.URL, clientCfg)
+		status, err := doGet(url, clientCfg)
 		if err != nil {
 			t.Fatalf("expected success, got error: %v", err)
 		}
@@ -99,7 +95,7 @@ func TestInternalMTLS_AcceptRejectMatrix(t *testing.T) {
 	})
 
 	t.Run("no client cert is rejected", func(t *testing.T) {
-		if status, err := doGet(ts.URL, &tls.Config{RootCAs: caPool}); err == nil {
+		if status, err := doGet(url, &tls.Config{RootCAs: caPool}); err == nil {
 			t.Fatalf("expected handshake rejection, got status %d", status)
 		}
 	})
@@ -114,7 +110,7 @@ func TestInternalMTLS_AcceptRejectMatrix(t *testing.T) {
 			t.Fatalf("keypair: %v", err)
 		}
 		cfg := &tls.Config{RootCAs: caPool, Certificates: []tls.Certificate{pair}}
-		if status, err := doGet(ts.URL, cfg); err == nil {
+		if status, err := doGet(url, cfg); err == nil {
 			t.Fatalf("expected handshake rejection for expired cert, got status %d", status)
 		}
 	})
@@ -133,7 +129,7 @@ func TestInternalMTLS_AcceptRejectMatrix(t *testing.T) {
 			t.Fatalf("keypair: %v", err)
 		}
 		cfg := &tls.Config{RootCAs: caPool, Certificates: []tls.Certificate{pair}}
-		if status, err := doGet(ts.URL, cfg); err == nil {
+		if status, err := doGet(url, cfg); err == nil {
 			t.Fatalf("expected handshake rejection for foreign cert, got status %d", status)
 		}
 	})
@@ -158,8 +154,8 @@ func TestServerTLSConfig_Properties(t *testing.T) {
 	if cfg.MinVersion != tls.VersionTLS12 {
 		t.Errorf("MinVersion = %x, want TLS 1.2", cfg.MinVersion)
 	}
-	if len(cfg.Certificates) != 1 {
-		t.Errorf("Certificates = %d, want 1", len(cfg.Certificates))
+	if len(cfg.Certificates) != 0 || cfg.GetCertificate == nil {
+		t.Error("want a reload callback without a static server certificate")
 	}
 }
 
@@ -179,8 +175,8 @@ func TestClientTLSConfig_Properties(t *testing.T) {
 	if cfg.MinVersion != tls.VersionTLS12 {
 		t.Errorf("MinVersion = %x, want TLS 1.2", cfg.MinVersion)
 	}
-	if len(cfg.Certificates) != 1 {
-		t.Errorf("Certificates = %d, want 1", len(cfg.Certificates))
+	if len(cfg.Certificates) != 0 || cfg.GetClientCertificate == nil {
+		t.Error("want a reload callback without a static client certificate")
 	}
 }
 

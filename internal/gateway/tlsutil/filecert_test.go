@@ -47,7 +47,7 @@ func TestFileCertLoaderReloadsCompletePair(t *testing.T) {
 	writePair(t, dir, "mx.example.test", oldCert, oldKey)
 	certPath := filepath.Join(dir, "mx.example.test.crt")
 	keyPath := filepath.Join(dir, "mx.example.test.key")
-	loader, err := NewFileCertLoader(certPath, keyPath)
+	loader, err := newFileCertLoader(certPath, keyPath, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestFileCertLoaderNoSNIHandshakeUsesRenewedPair(t *testing.T) {
 	_, oldCert, oldKey := selfSigned(t, "mx.example.test")
 	_, newCert, newKey := selfSignedForPEM(t, "mx.example.test", "imap.example.test")
 	writePair(t, dir, "mx.example.test", oldCert, oldKey)
-	loader, err := NewFileCertLoader(filepath.Join(dir, "mx.example.test.crt"), filepath.Join(dir, "mx.example.test.key"))
+	loader, err := newFileCertLoader(filepath.Join(dir, "mx.example.test.crt"), filepath.Join(dir, "mx.example.test.key"), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
