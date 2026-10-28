@@ -192,7 +192,8 @@ exclude-matching:
   - '^/api/v1/admin/domains/\{id\}/(allowlist|blocklist|suppressions)(/| >).* > 404( >|$)'
   - '^/api/v1/admin/domains/\{id\}/(mta-sts|relay) > (Create|Set|Delete).* > 404( >|$)'
   - '^/api/v1/admin/certificates/\{id\} > Delete a certificate > 404( >|$)'
-  - '^/api/v1/auth/(logout|refresh|reset|recover|owner/[a-z]+|2fa/[a-z]+|password) > .* > (400|422)( >|$)'
+  # Recovery email's four POST routes also lack named refusal pairs (#386).
+  - '^/api/v1/auth/(logout|refresh|reset|recover(/email(/redeem)?)?|recovery-email(/verify)?|owner/[a-z]+|2fa/[a-z]+|password) > .* > (400|422)( >|$)'
   - '^/api/v1/devices(/| >).* > (400|422)( >|$)'
   - '^/api/v1/messages/(\{id\}|draft|deliver)(/| >).* > (400|422)( >|$)'
   - '^/api/v1/accounts/link > .* > 400( >|$)'

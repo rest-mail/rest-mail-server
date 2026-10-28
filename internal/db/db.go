@@ -137,6 +137,7 @@ func autoMigrate(db *gorm.DB) error {
 		&models.RefreshToken{},
 		// Single-use account-reset tokens (internal/bootstrap).
 		&models.OneTimeToken{},
+		&models.RecoveryEmail{},
 		// Public owner recovery keys, independent of the deployment platform.
 		&models.OwnerKey{},
 		// Credentials: everything an account signs in with (passwords, TOTP

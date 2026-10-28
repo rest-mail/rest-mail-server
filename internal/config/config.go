@@ -153,6 +153,9 @@ type Config struct {
 	// Gateway
 	GatewayHostname string
 	APIBaseURL      string // public API URL for the gateway (token/credential routes)
+	// RecoveryEmailBaseURL is the user-facing HTTPS origin for emailed links,
+	// independent of the gateway-to-API address. Empty disables link delivery.
+	RecoveryEmailBaseURL string
 	// APIInternalBaseURL is the URL of the API's dedicated internal mTLS
 	// listener. Used ONLY for the two tokenless machine routes (recipient check
 	// + inbound delivery) when internal mTLS is enabled; every other gateway→API
@@ -510,6 +513,7 @@ func Load() (*Config, error) {
 
 		GatewayHostname:       getEnv("GATEWAY_HOSTNAME", "localhost"),
 		APIBaseURL:            getEnv("API_BASE_URL", "http://localhost:8080"),
+		RecoveryEmailBaseURL:  getEnv("RESTMAIL_RECOVERY_EMAIL_BASE_URL", ""),
 		APIInternalBaseURL:    getEnv("API_INTERNAL_BASE_URL", ""),
 		SMTPPortInbound:       getEnvInt("SMTP_PORT_INBOUND", 25),
 		SMTPPortSubmissionTLS: getEnvInt("SMTP_PORT_SUBMISSION_TLS", 465),
