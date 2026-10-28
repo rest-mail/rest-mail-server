@@ -3111,6 +3111,12 @@
     The outbound pipeline may discard the message: 200 with status discarded, nothing sent and
     nothing kept.
 - operation: forwardMessage
+  difference: "request body application/json.properties.list_unsubscribe: openapi.yaml absent, generated {\"additionalProperties\":false,\"properties\":{\"https\":{\"type\":\"string\"},\"mailto\":{\"type\":\"string\"}},\"type\":[\"null\",\"object\"]}"
+  reason: >-
+    The send API's list_unsubscribe (#144), which a forward from a bulk domain needs and one
+    from a transactional domain may not carry. openapi.yaml describes the object on
+    sendMessage; its targets are checked in the handler, as there.
+- operation: forwardMessage
   difference: "response 201 application/json.properties.data*.required: *"
   reason: >-
     A message always writes every field its model writes; the oracle marks some of them
