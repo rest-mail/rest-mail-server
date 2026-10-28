@@ -232,6 +232,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	}
 	basicCredentials := middleware.NewBasicCredentials(handlers.BasicVerifier(db), auditor.BasicRefused, basicRefusals)
 	credentialH := handlers.NewCredentialHandler(db)
+	oauthH := handlers.NewOAuthHandler(db, jwtService)
+	machineTokens := repositories.NewCredentialRepository(db).MachineTokenVerifier()
 	apiKeys := middleware.NewAPIKeys(repositories.NewCredentialRepository(db).APIKeyVerifier(),
 		func(r *http.Request, refusal *auth.CredentialRefusal) { auditor.BasicRefused(r, "", refusal) }, basicRefusals)
 
@@ -436,6 +438,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	}
 	publicAuth := publicRoutes(r.With(middleware.MaxBodyBytes(cfg.APIMaxBodyBytes))).Describing(describedBodyCap)
 	authH.RegisterSignIn(publicAuth, signInChecks)
+	oauthH.Register(publicAuth, signInChecks)
 	recoveryEmailH.RegisterPublic(publicAuth, signInChecks)
 	invitationH.RegisterPublic(publicRoutes(r.With(middleware.MaxBodyBytes(cfg.APIMaxBodyBytes))).Describing(describedBodyCap), signInChecks)
 	// Owners prove themselves with a key registered in PostgreSQL: sign a
@@ -624,7 +627,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// The protocol gateways reach them with Basic.
 	// ═══════════════════════════════════════════════════════════════
 	r.Group(func(r chi.Router) {
-		r.Use(apiKeys.Authenticate(basicCredentials.Authenticate(jwtService)))
+		r.Use(apiKeys.Authenticate(basicCredentials.Authenticate(jwtService, machineTokens)))
 		r.Use(middleware.RejectStaleSessions(sessionCurrent))
 		r.Use(middleware.SetupDone)
 		r.Use(middleware.CSRF())
@@ -685,7 +688,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// domain and is refused on every other.
 	// ═══════════════════════════════════════════════════════════════
 	r.Group(func(r chi.Router) {
-		r.Use(apiKeys.Authenticate(middleware.JWTMiddleware(jwtService)))
+		r.Use(apiKeys.Authenticate(middleware.JWTMiddleware(jwtService, machineTokens)))
 		// Every change through the admin API is recorded, including those the
 		// checks below refuse; reads are not, except of the audit log itself.
 		r.Use(auditLog("admin.change", middleware.AuditWritesOnly()))
@@ -753,7 +756,16 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		})
 
 		// Pipelines
-		pipelineH.Register(admin, handlers.PipelineRouteChecks{At: describedCapability(needs), TestThrottle: endpoint.Middleware{Wrap: pipelineTestThrottle, Describes: describedPipelineTestThrottle}})
+		pipelineH.Register(admin, handlers.PipelineRouteChecks{
+			At: describedCapability(needs), OnList: describedCapability(needsOnList),
+			OnPipeline: describedCapability(func(capability string) func(http.Handler) http.Handler {
+				return middleware.RequireCapability(held, capability, handlers.DomainResourceScopeOf(db, "pipelines"))
+			}),
+			OnCustomFilter: describedCapability(func(capability string) func(http.Handler) http.Handler {
+				return middleware.RequireCapability(held, capability, handlers.DomainResourceScopeOf(db, "custom_filters"))
+			}),
+			TestThrottle: endpoint.Middleware{Wrap: pipelineTestThrottle, Describes: describedPipelineTestThrottle},
+		})
 
 		// Pipeline observability (PR5) — analytics funnel + per-message trace.
 		// Gated by the dedicated observability:read capability (seeded into the

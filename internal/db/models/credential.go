@@ -33,6 +33,8 @@ const (
 	// SHA-256 of its secret; Scope.Permissions is what it may do, within its
 	// account's live grants.
 	CredentialKindAPIKey = auth.CredentialKindAPIKey
+	// CredentialKindClientSecret exchanges a hashed secret for a five-minute token.
+	CredentialKindClientSecret = auth.CredentialKindClientSecret
 )
 
 // The capabilities an app password's scope holds on its account's mailbox.
@@ -84,12 +86,11 @@ func (c *Credential) Usable(now time.Time) bool {
 }
 
 // CredentialScope is what a credential may reach: one mailbox, and the
-// capabilities it holds there; or, for an API key, its permissions.
+// capabilities it holds there; or a machine credential's scoped permissions.
 type CredentialScope struct {
 	MailboxID    uint     `json:"mailbox_id"`
 	Capabilities []string `json:"capabilities"`
-	// Permissions are an API key's: each capability it may use, at a scope.
-	// Empty for every other kind.
+	// Permissions narrow API keys and client secrets: each capability at a scope.
 	Permissions []auth.ScopedPermission `json:"permissions,omitempty"`
 }
 

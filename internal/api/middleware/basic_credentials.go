@@ -64,8 +64,8 @@ func NewBasicCredentials(verify BasicVerify, refused BasicRefusedFunc, failures 
 
 // Authenticate is JWTMiddleware that also takes a credential sent with HTTP
 // Basic. Any other Authorization header, or none, is JWTMiddleware's.
-func (a *BasicCredentials) Authenticate(jwtService *auth.JWTService) func(http.Handler) http.Handler {
-	sessions := JWTMiddleware(jwtService)
+func (a *BasicCredentials) Authenticate(jwtService *auth.JWTService, machineVerify ...func(*auth.Claims) error) func(http.Handler) http.Handler {
+	sessions := JWTMiddleware(jwtService, machineVerify...)
 	return func(next http.Handler) http.Handler {
 		withSession := sessions(next)
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

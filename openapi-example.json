@@ -4757,6 +4757,168 @@
       }
     }
   },
+  "createClientSecret": {
+    "body_array": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "created": {
+      "requires": {
+        "state": "two_factor_session"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Invoice robot",
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "pipelines:write",
+              "scope": "domain:example.test"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 34,
+            "name": "Invoice robot",
+            "kind": "client_secret",
+            "public_id": "9Hm3yU1cNp5Q",
+            "created_at": "2026-01-01T00:00:00Z",
+            "last_used_at": null,
+            "expires_at": "2026-04-01T00:00:00Z",
+            "permissions": [
+              {
+                "capability": "pipelines:write",
+                "scope": "domain:example.test"
+              }
+            ],
+            "client_id": "9Hm3yU1cNp5Q",
+            "client_secret": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "name_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "pipelines:write",
+              "scope": "domain:example.test"
+            }
+          ]
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "name": "required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "password_only": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Invoice robot",
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "pipelines:write",
+              "scope": "domain:example.test"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "two_factor_required",
+            "message": "Sign in with a second factor to create client secrets"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "tier_refused": {
+      "summary": "Account creation is beyond the client-secret tier",
+      "requires": {
+        "state": "two_factor_session"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Invoice robot",
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "mailboxes:write",
+              "scope": "domain:example.test"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "permissions": "client secrets may hold mailbox capabilities and ordinary domain administration, never human-2FA-only capabilities"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "createContact": {
     "duplicate": {
       "request": {
@@ -16132,6 +16294,121 @@
       }
     }
   },
+  "issueClientCredentialsToken": {
+    "duplicate_parameter": {
+      "request": {
+        "body": "grant_type=client_credentials\u0026client_id=9Hm3yU1cNp5Q\u0026client_secret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\u0026client_id=other",
+        "mediaType": "application/x-www-form-urlencoded"
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": "invalid_request",
+          "error_description": "Repeated parameter"
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "issued": {
+      "requires": {
+        "state": "client_secret"
+      },
+      "request": {
+        "body": "grant_type=client_credentials\u0026client_id=9Hm3yU1cNp5Q\u0026client_secret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "mediaType": "application/x-www-form-urlencoded"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "access_token": "eyJhbGciOiJIUzI1NiJ9.example.signature",
+          "token_type": "Bearer",
+          "expires_in": 300
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "body": "grant_type=client_credentials\u0026client_id=9Hm3yU1cNp5Q\u0026client_secret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "mediaType": "application/x-www-form-urlencoded"
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "revoked": {
+      "requires": {
+        "state": "revoked_client_secret"
+      },
+      "request": {
+        "body": "grant_type=client_credentials\u0026client_id=9Hm3yU1cNp5Q\u0026client_secret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "mediaType": "application/x-www-form-urlencoded"
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": "invalid_client",
+          "error_description": "Invalid client credentials"
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "scope_refused": {
+      "request": {
+        "body": "grant_type=client_credentials\u0026client_id=9Hm3yU1cNp5Q\u0026client_secret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\u0026scope=mail:read",
+        "mediaType": "application/x-www-form-urlencoded"
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": "invalid_scope",
+          "error_description": "Permissions are selected when creating the credential"
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unsupported_grant": {
+      "request": {
+        "body": "grant_type=password\u0026client_id=9Hm3yU1cNp5Q\u0026client_secret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "mediaType": "application/x-www-form-urlencoded"
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": "unsupported_grant_type",
+          "error_description": "Use client_credentials"
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "wrong_secret": {
+      "requires": {
+        "state": "client_secret"
+      },
+      "request": {
+        "body": "grant_type=client_credentials\u0026client_id=9Hm3yU1cNp5Q\u0026client_secret=wrong-secret",
+        "mediaType": "application/x-www-form-urlencoded"
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": "invalid_client",
+          "error_description": "Invalid client credentials"
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "linkAccount": {
     "address_blank": {
       "request": {
@@ -18271,6 +18548,41 @@
             "code": "unauthorized",
             "message": "Missing authorization header"
           }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "listClientSecrets": {
+    "listed": {
+      "requires": {
+        "state": "client_secret"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            {
+              "id": 34,
+              "name": "Invoice robot",
+              "kind": "client_secret",
+              "public_id": "9Hm3yU1cNp5Q",
+              "created_at": "2026-01-01T00:00:00Z",
+              "last_used_at": null,
+              "expires_at": "2026-04-01T00:00:00Z",
+              "permissions": [
+                {
+                  "capability": "pipelines:write",
+                  "scope": "domain:example.test"
+                }
+              ]
+            }
+          ]
         },
         "mediaType": "application/json"
       }
@@ -27401,6 +27713,43 @@
           }
         },
         "mediaType": "application/json"
+      }
+    }
+  },
+  "revokeClientSecret": {
+    "missing": {
+      "requires": {
+        "state": "two_factor_session"
+      },
+      "request": {
+        "path": {
+          "credential_id": 2147483647,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Client secret not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "revoked": {
+      "requires": {
+        "state": "client_secret"
+      },
+      "request": {
+        "path": {
+          "credential_id": 34,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 204
       }
     }
   },

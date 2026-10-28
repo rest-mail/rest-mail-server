@@ -147,11 +147,12 @@ func CredentialAllows(claims *auth.Claims, capability, scope string) bool {
 	if claims == nil {
 		return false
 	}
-	if !claims.IsAPIKey() {
+	if !claims.IsScopedCredential() {
 		return true
 	}
 	for _, p := range claims.APIKeyPermissions {
-		if p.Capability == capability && grants.Covers(p.Scope, scope) {
+		if p.Capability == capability && grants.Covers(p.Scope, scope) &&
+			(claims.CredentialKind != auth.CredentialKindClientSecret || auth.ClientSecretPermissionAllowed(p)) {
 			return true
 		}
 	}
@@ -161,7 +162,7 @@ func CredentialAllows(claims *auth.Claims, capability, scope string) bool {
 // credentialAllowsSomewhere reports whether the request's credential lets it
 // use capability at any scope.
 func credentialAllowsSomewhere(claims *auth.Claims, capability string) bool {
-	if !claims.IsAPIKey() {
+	if !claims.IsScopedCredential() {
 		return true
 	}
 	for _, p := range claims.APIKeyPermissions {

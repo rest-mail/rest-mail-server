@@ -97,6 +97,10 @@ func apiKeyWithinGrants(creator, owner grants.Held, permissions []auth.ScopedPer
 // createAPIKey needs a password-authenticated, two-factor session and the
 // creator's current password. Machine credentials never satisfy this check.
 func (h *CredentialHandler) createAPIKey(r *http.Request, in createAPIKeyRequest) (createdAPIKey, error) {
+	return h.createScopedCredential(r, in, models.CredentialKindAPIKey)
+}
+
+func (h *CredentialHandler) createScopedCredential(r *http.Request, in createAPIKeyRequest, kind string) (createdAPIKey, error) {
 	h = h.forRequest(r)
 	claims, accountID, err := h.managedAccount(r, in.ID)
 	if err != nil {
@@ -124,6 +128,11 @@ func (h *CredentialHandler) createAPIKey(r *http.Request, in createAPIKeyRequest
 	permissions, err := repositories.NormalizeAPIKeyPermissions(asked)
 	if err != nil {
 		problems["permissions"] = "each permission needs a named capability and a valid scope"
+	}
+	if kind == models.CredentialKindClientSecret && err == nil {
+		if _, err := repositories.NormalizeClientSecretPermissions(permissions); err != nil {
+			problems["permissions"] = "client secrets may hold mailbox capabilities and ordinary domain administration, never human-2FA-only capabilities"
+		}
 	}
 	if req.ExpiresAt == nil {
 		expires := now.Add(defaultAPIKeyLifetime)
@@ -163,11 +172,18 @@ func (h *CredentialHandler) createAPIKey(r *http.Request, in createAPIKeyRequest
 				return errUnknown
 			}
 		}
-		credential, secret, err = repositories.NewCredentialRepository(tx).CreateAPIKey(accountID, claims.AccountID, req.Name, permissions, req.ExpiresAt)
+		repo := repositories.NewCredentialRepository(tx)
+		action := ActionAPIKeyCreate
+		if kind == models.CredentialKindClientSecret {
+			credential, secret, err = repo.CreateClientSecret(accountID, claims.AccountID, req.Name, permissions, req.ExpiresAt)
+			action = ActionClientSecretCreate
+		} else {
+			credential, secret, err = repo.CreateAPIKey(accountID, claims.AccountID, req.Name, permissions, req.ExpiresAt)
+		}
 		if err != nil {
 			return err
 		}
-		e := middleware.NewAuditEntry(ActionAPIKeyCreate, r, now)
+		e := middleware.NewAuditEntry(action, r, now)
 		e.Status = http.StatusCreated
 		e.Target["account_id"] = strconv.FormatUint(uint64(accountID), 10)
 		e.Target["credential_id"] = strconv.FormatUint(uint64(credential.ID), 10)

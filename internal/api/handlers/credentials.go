@@ -69,6 +69,7 @@ func (h *CredentialHandler) forRequest(r *http.Request) *CredentialHandler {
 // person. checks are login's throttle, for the routes that check the current password, and
 // the audit log.
 func (h *CredentialHandler) Register(rs endpoint.Routes, checks SessionRouteChecks) {
+	h.registerClientSecrets(rs, checks)
 	tags := []string{"Credentials"}
 	refusals := []int{http.StatusForbidden, http.StatusNotFound}
 	manage := handlerChecked(models.CapMailboxManage, "CookieAuth", "BearerAuth")
@@ -357,7 +358,7 @@ func (h *CredentialHandler) RegisterProtocolSignIn(rs endpoint.Routes, checks Se
 func (h *CredentialHandler) protocolSignIn(r *http.Request, req protocolSignInRequest) (ProtocolSignedIn, error) {
 	h = h.forRequest(r)
 	claims := middleware.GetClaims(r)
-	if claims == nil || claims.CredentialID == 0 || claims.IsAPIKey() {
+	if claims == nil || claims.CredentialID == 0 || claims.IsScopedCredential() {
 		return ProtocolSignedIn{}, endpoint.Refuse(http.StatusBadRequest, "basic_required",
 			"Sign in here with HTTP Basic: the account's address, and its password or an app password")
 	}

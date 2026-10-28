@@ -150,14 +150,26 @@ var scriptExecutionResponses = []oapifly.EndpointResponse{
 
 // PipelineRouteChecks describes the global capability and per-IP preview checks.
 type PipelineRouteChecks struct {
-	At           func(string) endpoint.Middleware
-	TestThrottle endpoint.Middleware
+	At             func(string) endpoint.Middleware
+	OnList         func(string) endpoint.Middleware
+	OnPipeline     func(string) endpoint.Middleware
+	OnCustomFilter func(string) endpoint.Middleware
+	TestThrottle   endpoint.Middleware
 }
 
 func (h *PipelineHandler) Register(rs endpoint.Routes, checks PipelineRouteChecks) {
+	if checks.OnList == nil {
+		checks.OnList = checks.At
+	}
+	if checks.OnPipeline == nil {
+		checks.OnPipeline = checks.At
+	}
+	if checks.OnCustomFilter == nil {
+		checks.OnCustomFilter = checks.At
+	}
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/pipelines",
 		OperationID: "listPipelines", Summary: "List pipelines", Tags: []string{"Admin: Pipelines"},
-		Middleware: []endpoint.Middleware{checks.At(middleware.CapPipelinesRead)}}, h.listPipelines)
+		Middleware: []endpoint.Middleware{checks.OnList(middleware.CapPipelinesRead)}}, h.listPipelines)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/pipelines/logs",
 		OperationID: "listPipelineLogs", Summary: "List pipeline logs", Tags: []string{"Admin: Pipelines"},
 		Middleware: []endpoint.Middleware{checks.At(middleware.CapPipelinesRead)}}, h.listPipelineLogs)
@@ -168,46 +180,46 @@ func (h *PipelineHandler) Register(rs endpoint.Routes, checks PipelineRouteCheck
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/pipelines",
 		OperationID: "createPipeline", Summary: "Create pipeline", Tags: []string{"Admin: Pipelines"},
 		Status:     http.StatusCreated,
-		Middleware: []endpoint.Middleware{checks.At(middleware.CapPipelinesWrite)}}, h.createPipeline)
+		Middleware: []endpoint.Middleware{checks.OnList(middleware.CapPipelinesWrite)}}, h.createPipeline)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPatch, Path: "/api/v1/admin/pipelines/{id}",
 		OperationID: "updatePipeline", Summary: "Update pipeline", Tags: []string{"Admin: Pipelines"},
 		Errors:     []int{http.StatusNotFound},
-		Middleware: []endpoint.Middleware{checks.At(middleware.CapPipelinesWrite)}}, h.updatePipeline)
+		Middleware: []endpoint.Middleware{checks.OnPipeline(middleware.CapPipelinesWrite)}}, h.updatePipeline)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/admin/pipelines/{id}",
 		OperationID: "deletePipeline", Summary: "Delete pipeline", Tags: []string{"Admin: Pipelines"},
 		Errors:     []int{http.StatusNotFound},
-		Middleware: []endpoint.Middleware{checks.At(middleware.CapPipelinesDel)}}, h.deletePipeline)
+		Middleware: []endpoint.Middleware{checks.OnPipeline(middleware.CapPipelinesDel)}}, h.deletePipeline)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/pipelines/test",
 		OperationID: "testPipeline", Summary: "Test pipeline", Tags: []string{"Admin: Pipelines"},
 		Errors:     []int{http.StatusNotFound},
-		Middleware: []endpoint.Middleware{checks.At(middleware.CapPipelinesWrite), checks.TestThrottle}}, h.testPipeline)
+		Middleware: []endpoint.Middleware{checks.OnList(middleware.CapPipelinesWrite), checks.TestThrottle}}, h.testPipeline)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/pipelines/test-filter",
 		OperationID: "testFilter", Summary: "Test filter", Tags: []string{"Admin: Pipelines"},
 		Middleware: []endpoint.Middleware{checks.At(middleware.CapPipelinesWrite), checks.TestThrottle}}, h.testFilter)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/custom-filters",
 		OperationID: "listCustomFilters", Summary: "List custom filters", Tags: []string{"Admin: Pipelines"},
-		Middleware: []endpoint.Middleware{checks.At(middleware.CapPipelinesRead)}}, h.listCustomFilters)
+		Middleware: []endpoint.Middleware{checks.OnList(middleware.CapPipelinesRead)}}, h.listCustomFilters)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/custom-filters",
 		OperationID: "createCustomFilter", Summary: "Create custom filter", Tags: []string{"Admin: Pipelines"},
 		Status:     http.StatusCreated,
-		Middleware: []endpoint.Middleware{checks.At(middleware.CapPipelinesWrite)}}, h.createCustomFilter)
+		Middleware: []endpoint.Middleware{checks.OnList(middleware.CapPipelinesWrite)}}, h.createCustomFilter)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/custom-filters/{id}",
 		OperationID: "getCustomFilter", Summary: "Get custom filter", Tags: []string{"Admin: Pipelines"},
 		Errors:     []int{http.StatusNotFound},
-		Middleware: []endpoint.Middleware{checks.At(middleware.CapPipelinesRead)}}, h.getCustomFilter)
+		Middleware: []endpoint.Middleware{checks.OnCustomFilter(middleware.CapPipelinesRead)}}, h.getCustomFilter)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPatch, Path: "/api/v1/admin/custom-filters/{id}",
 		OperationID: "updateCustomFilter", Summary: "Update custom filter", Tags: []string{"Admin: Pipelines"},
 		Errors:     []int{http.StatusNotFound},
-		Middleware: []endpoint.Middleware{checks.At(middleware.CapPipelinesWrite)}}, h.updateCustomFilter)
+		Middleware: []endpoint.Middleware{checks.OnCustomFilter(middleware.CapPipelinesWrite)}}, h.updateCustomFilter)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/admin/custom-filters/{id}",
 		OperationID: "deleteCustomFilter", Summary: "Delete custom filter", Tags: []string{"Admin: Pipelines"},
 		Errors:     []int{http.StatusNotFound},
-		Middleware: []endpoint.Middleware{checks.At(middleware.CapPipelinesDel)}}, h.deleteCustomFilter)
+		Middleware: []endpoint.Middleware{checks.OnCustomFilter(middleware.CapPipelinesDel)}}, h.deleteCustomFilter)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/custom-filters/{id}/test",
 		Responses:   scriptExecutionResponses,
 		OperationID: "testCustomFilter", Summary: "Test custom filter", Tags: []string{"Admin: Pipelines"},
 		Errors:     []int{http.StatusNotFound, http.StatusServiceUnavailable, http.StatusBadRequest, http.StatusRequestTimeout},
-		Middleware: []endpoint.Middleware{checks.At(middleware.CapPipelinesWrite), checks.TestThrottle}}, h.testCustomFilter)
+		Middleware: []endpoint.Middleware{checks.OnCustomFilter(middleware.CapPipelinesWrite), checks.TestThrottle}}, h.testCustomFilter)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/custom-filters/validate",
 		OperationID: "validateCustomFilter", Summary: "Validate custom filter", Tags: []string{"Admin: Pipelines"},
 		Errors:     []int{http.StatusServiceUnavailable},

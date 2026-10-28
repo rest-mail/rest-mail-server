@@ -157,7 +157,7 @@ func (h *PipelineHandler) listPipelines(r *http.Request, in listPipelineResource
 	limit, offset := parsePagination(r, defaultListLimit, maxListLimit)
 	domainID := r.URL.Query().Get("domain_id")
 
-	query := h.db.WithContext(r.Context()).Model(&models.Pipeline{})
+	query := filterAdminList(h.db.WithContext(r.Context()).Model(&models.Pipeline{}), r, middleware.CapPipelinesRead, "pipelines")
 	if domainID != "" {
 		query = query.Where("domain_id = ?", domainID)
 	}
@@ -308,6 +308,9 @@ func (h *PipelineHandler) createPipeline(r *http.Request, in createPipelineReque
 	if err := validateDuplicatePipelineFilters(req.Filters); err != nil {
 		return zero, endpoint.Invalid(map[string]string{"filters": err.Error()})
 	}
+	if err := h.checkPipelineDomain(r, middleware.CapPipelinesWrite, req.DomainID); err != nil {
+		return zero, err
+	}
 
 	p := models.Pipeline{
 		DomainID:  req.DomainID,
@@ -418,6 +421,9 @@ func (h *PipelineHandler) testPipeline(r *http.Request, in testPipelineRequestBo
 		}
 		return zero, fmt.Errorf("load pipeline for preview: %w", err)
 	}
+	if err := h.checkPipelineDomain(r, middleware.CapPipelinesWrite, p.DomainID); err != nil {
+		return zero, err
+	}
 
 	// Parse pipeline filters
 	var filterConfigs []pipeline.FilterConfig
@@ -482,7 +488,7 @@ func (h *PipelineHandler) listCustomFilters(r *http.Request, in listPipelineReso
 	limit, offset := parsePagination(r, defaultListLimit, maxListLimit)
 	domainID := r.URL.Query().Get("domain_id")
 
-	query := h.db.WithContext(r.Context()).Model(&models.CustomFilter{})
+	query := filterAdminList(h.db.WithContext(r.Context()).Model(&models.CustomFilter{}), r, middleware.CapPipelinesRead, "custom_filters")
 	if domainID != "" {
 		query = query.Where("domain_id = ?", domainID)
 	}
@@ -530,6 +536,9 @@ func (h *PipelineHandler) createCustomFilter(r *http.Request, in createCustomFil
 	// stored as it came. What the object holds is the filter's own concern.
 	if !isJSONObject(req.Config) {
 		return zero, endpoint.Invalid(map[string]string{"config": "must be an object"})
+	}
+	if err := h.checkPipelineDomain(r, middleware.CapPipelinesWrite, req.DomainID); err != nil {
+		return zero, err
 	}
 
 	cf := models.CustomFilter{
