@@ -159,19 +159,18 @@ func (h *MessageHandler) commitForward(r *http.Request, req sendMessageRequest, 
 	var delivered []models.Message
 	err = h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
 		cost := int64(sent.SizeBytes) + attachmentBytes
+		if err := repositories.ReserveStorage(tx, sender.ID, cost); err != nil {
+			if errors.Is(err, repositories.ErrStorageQuota) {
+				return endpoint.Refuse(422, "mailbox_full", "The sender account has insufficient quota")
+			}
+			return err
+		}
 		usage := tx.Model(&models.QuotaUsage{}).Where("mailbox_id = ?", sender.ID).Updates(map[string]any{"subject_bytes": gorm.Expr("subject_bytes + ?", len(sent.Subject)), "body_bytes": gorm.Expr("body_bytes + ?", len(sent.BodyText)+len(sent.BodyHTML)), "attachment_bytes": gorm.Expr("attachment_bytes + ?", attachmentBytes), "message_count": gorm.Expr("message_count + 1")})
 		if usage.Error != nil {
 			return usage.Error
 		}
 		if usage.RowsAffected != 1 {
 			return errors.New("sender quota usage missing")
-		}
-		quota := tx.Model(&models.Mailbox{}).Where("id = ? AND (quota_bytes <= 0 OR quota_used_bytes + ? <= quota_bytes)", sender.ID, cost).Update("quota_used_bytes", gorm.Expr("quota_used_bytes + ?", cost))
-		if quota.Error != nil {
-			return quota.Error
-		}
-		if quota.RowsAffected != 1 {
-			return endpoint.Refuse(422, "mailbox_full", "The sender account has insufficient quota")
 		}
 		if err := tx.Create(sent).Error; err != nil {
 			return err

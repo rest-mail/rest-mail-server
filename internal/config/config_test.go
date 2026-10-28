@@ -11,6 +11,7 @@ import (
 // We unset them all at the start of each test so that the host environment
 // does not leak into the test.
 var allEnvKeys = []string{
+	"MAX_OWNED_ACCOUNTS",
 	"DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASS",
 	"TLSRPT_REPORT_ADDRESS",
 	"RESTMAIL_AUDIT_ANCHOR_EMAIL_ENABLED", "RESTMAIL_AUDIT_ANCHOR_EMAIL_TO",

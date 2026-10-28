@@ -136,8 +136,17 @@ func (f *recipientCheckFilter) Execute(ctx context.Context, email *pipeline.Emai
 			}
 		}
 
-		// Check quota
-		if mb.QuotaBytes > 0 && mb.QuotaUsedBytes >= mb.QuotaBytes {
+		// The final delivery reserves bytes under the same owner's lock. This
+		// early check preserves the protocol's existing mailbox-full response.
+		chain, err := repositories.StorageQuotaChain(f.db.WithContext(ctx), mb.ID, false)
+		if err != nil {
+			return f.deferResult(err), nil
+		}
+		remaining, err := repositories.StorageRemaining(f.db.WithContext(ctx), chain)
+		if err != nil {
+			return f.deferResult(err), nil
+		}
+		if remaining <= 0 {
 			return &pipeline.FilterResult{
 				Type:      pipeline.FilterTypeAction,
 				Action:    pipeline.ActionReject,
@@ -145,7 +154,7 @@ func (f *recipientCheckFilter) Execute(ctx context.Context, email *pipeline.Emai
 				Log: pipeline.FilterLog{
 					Filter: "recipient_check",
 					Result: "reject",
-					Detail: fmt.Sprintf("recipient %s over quota (%d/%d bytes)", rcpt, mb.QuotaUsedBytes, mb.QuotaBytes),
+					Detail: fmt.Sprintf("recipient %s storage quota exhausted", rcpt),
 				},
 			}, nil
 		}

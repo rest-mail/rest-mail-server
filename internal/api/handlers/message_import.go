@@ -24,6 +24,7 @@ import (
 	"github.com/restmail/restmail/internal/audit"
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/db/repositories"
 	rmail "github.com/restmail/restmail/internal/mail"
 	rmime "github.com/restmail/restmail/internal/mime"
 	"github.com/restmail/restmail/internal/pipeline"
@@ -207,6 +208,12 @@ func (h *MessageImportHandler) importMessage(r *http.Request, in importMessageRe
 					attachmentBytes += int64(len(data))
 				}
 			}
+			if err := repositories.ReserveStorage(tx, uint(in.ID), int64(msg.SizeBytes)+attachmentBytes); err != nil {
+				if errors.Is(err, repositories.ErrStorageQuota) {
+					return errImportQuota
+				}
+				return err
+			}
 			msg.HasAttachments = len(rows) != 0
 			if err := tx.Create(&msg).Error; err != nil {
 				return err
@@ -230,15 +237,6 @@ func (h *MessageImportHandler) importMessage(r *http.Request, in importMessageRe
 			}
 			if usage.RowsAffected != 1 {
 				return errors.New("destination quota usage is missing")
-			}
-			cost := int64(msg.SizeBytes) + attachmentBytes
-			quota := tx.Model(&models.Mailbox{}).Where("id = ? AND (quota_bytes <= 0 OR quota_used_bytes + ? <= quota_bytes)", in.ID, cost).
-				Update("quota_used_bytes", gorm.Expr("quota_used_bytes + ?", cost))
-			if quota.Error != nil {
-				return quota.Error
-			}
-			if quota.RowsAffected != 1 {
-				return errImportQuota
 			}
 			result = apitypes.ImportMessageResult{ID: msg.ID, Imported: true, MessageID: msg.MsgID, Folder: msg.Folder}
 		}

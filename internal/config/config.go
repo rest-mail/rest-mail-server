@@ -110,6 +110,9 @@ type Config struct {
 	// startup configuration error. The default scales with SMTPMaxMessageSize so
 	// a legitimate max-size compose is never rejected.
 	APIMaxBodyBytes int64
+	// MaxOwnedAccounts limits direct owned accounts per owner, including
+	// inactive accounts. Zero leaves the count unlimited.
+	MaxOwnedAccounts int
 
 	// Webmail/API send-path limits (#184): a per-message recipient cap and a
 	// per-account send rate limit on POST /messages/send (and the draft-send /
@@ -592,6 +595,14 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("API_MAX_BODY_BYTES must be a non-negative number of bytes (0 disables the cap), got %d", apiBody)
 	}
 	cfg.APIMaxBodyBytes = apiBody
+	ownedLimit, err := getEnvInt64Strict("MAX_OWNED_ACCOUNTS", 0, "accounts")
+	if err != nil {
+		return nil, err
+	}
+	if ownedLimit < 0 || int64(int(ownedLimit)) != ownedLimit {
+		return nil, fmt.Errorf("MAX_OWNED_ACCOUNTS must be a non-negative account count")
+	}
+	cfg.MaxOwnedAccounts = int(ownedLimit)
 
 	// Webmail/API send-path limits (#184): recipient cap + per-account send rate.
 	// These are lenient getEnvInt knobs (a per-tier value of 0 simply disables that

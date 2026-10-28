@@ -193,6 +193,8 @@ api:
   port: 8080
   environment: production
   logLevel: info
+  # Maximum direct owned accounts per owner, including inactive ones; 0 is unlimited.
+  maxOwnedAccounts: 0
   # The API process never terminates TLS itself — a front proxy/ingress does.
   # In production the boot validator refuses to serve auth traffic in cleartext
   # unless this acknowledges that a TLS-terminating reverse proxy fronts it.

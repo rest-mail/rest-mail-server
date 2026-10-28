@@ -2393,9 +2393,6 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 
 	// ── Quota check ──────────────────────────────────────────────────
 	sizeBytes := len(params.Subject) + len(params.BodyText) + len(params.BodyHTML)
-	if mailbox.QuotaBytes > 0 && mailbox.QuotaUsedBytes+int64(sizeBytes) > mailbox.QuotaBytes {
-		return nil, fmt.Errorf("mailbox_full: recipient mailbox is over quota")
-	}
 
 	// ── Compute thread ID ────────────────────────────────────────────
 	threadID := params.MessageID
@@ -2545,6 +2542,9 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	}
 
 	if err := h.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := repositories.ReserveStorage(tx, mailbox.ID, int64(sizeBytes)+totalAttBytes); err != nil {
+			return err
+		}
 		if err := tx.Create(&msg).Error; err != nil {
 			return err
 		}
@@ -2573,9 +2573,11 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		}).Error; err != nil {
 			return err
 		}
-		return tx.Model(&models.Mailbox{}).Where("id = ?", mailbox.ID).
-			Update("quota_used_bytes", gorm.Expr("quota_used_bytes + ?", int64(sizeBytes)+totalAttBytes)).Error
+		return nil
 	}); err != nil {
+		if errors.Is(err, repositories.ErrStorageQuota) {
+			return nil, fmt.Errorf("mailbox_full: recipient mailbox is over quota")
+		}
 		return nil, fmt.Errorf("failed to create message: %w", err)
 	}
 

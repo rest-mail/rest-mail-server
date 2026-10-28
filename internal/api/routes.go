@@ -186,7 +186,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	aliasH := handlers.NewAliasHandler(db)
 	broker := handlers.NewSSEBroker()
 	eventH := handlers.NewEventHandler(db, broker, sessionCurrent)
-	accountH := handlers.NewAccountHandler(db, grantCache, cfg.MasterKey)
+	accountH := handlers.NewAccountHandler(db, grantCache, cfg.MasterKey, cfg.MaxOwnedAccounts)
 	searchH := handlers.NewSearchHandler(db)
 	attachmentStore := attachmentstore.NewS3(cfg.Attachments)
 	attachmentH := handlers.NewAttachmentHandler(db, attachmentStore)
