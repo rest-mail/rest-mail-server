@@ -18,8 +18,7 @@ func TestProtocolSignIn_DocumentedRefusals(t *testing.T) {
 	wantPairs := map[string][]string{
 		"request": {"invalid_body", "protocol_missing", "signed_in"},
 		"200":     {"signed_in"},
-		"400":     {"invalid_body"},
-		"422":     {"protocol_missing"},
+		"422":     {"invalid_body", "protocol_missing"},
 	}
 	gotPairs := map[string][]string{"request": names(requests)}
 	for status, examples := range responses {

@@ -78,6 +78,19 @@ class SharedFixturePlan(unittest.TestCase):
             {"recipient": [hooks.FIXTURE_PLAN["queue"]["retry"]["recipient"]]},
         )
 
+    def test_queue_hook_recognises_the_pending_example_with_its_own_limit(self):
+        # The available example pages by 20, not the declared default.
+        transaction = {
+            "fullPath": "/api/v1/admin/queue?status=pending&limit=20",
+            "request": {"headers": {}},
+        }
+        hooks.list_the_sent_messages_queue_entry(transaction)
+        parsed = urllib.parse.urlparse(transaction["fullPath"])
+        self.assertEqual(
+            urllib.parse.parse_qs(parsed.query),
+            {"recipient": [hooks.FIXTURE_PLAN["queue"]["retry"]["recipient"]]},
+        )
+
     def test_invalid_and_unrelated_queue_probes_remain_unchanged(self):
         for path in (
             "/api/v1/admin/queue?status=invalid",
@@ -254,7 +267,9 @@ class CreateAccountProbes(AdminAPITestCase):
             "protocol": "http:",
             "host": "127.0.0.1",
             "port": self.server.server_port,
-            "request": {"body": json.dumps({"address": "someone@example.com", "owned": True})},
+            "request": {
+                "body": json.dumps({"address": "someone@example.com", "owned": True})
+            },
         }
         hooks.host_the_account_probe_domain(transaction)
         self.assertTrue(transaction.get("skip"))

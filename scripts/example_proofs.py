@@ -7,6 +7,7 @@ A pair with no `requires` is the live run's to prove, and Vertrag judges it ther
 
 usage: example_proofs.py <openapi-example.json> <proofs.json>
 """
+
 import json
 import sys
 
@@ -29,15 +30,21 @@ def main(argv):
         with open(proofs_path) as f:
             proofs = json.load(f)
     except FileNotFoundError:
-        print(f"{proofs_path}: no proofs were written; run the in-process example tests with "
-              "RESTMAIL_EXAMPLE_PROOFS set")
+        print(
+            f"{proofs_path}: no proofs were written; run the in-process example tests with "
+            "RESTMAIL_EXAMPLE_PROOFS set"
+        )
         return 1
     missing = unproven(examples, proofs)
     for op, name, requires in missing:
         needs = ", ".join(f"{k} {v}" for k, v in sorted(requires.items()))
         print(f"{op}/{name} requires {needs}, and no in-process test proved it")
-    needing = sum(1 for pairs in examples.values() for p in pairs.values() if p.get("requires"))
-    print(f"{needing - len(missing)} of {needing} examples that need setup are proven in process")
+    needing = sum(
+        1 for pairs in examples.values() for p in pairs.values() if p.get("requires")
+    )
+    print(
+        f"{needing - len(missing)} of {needing} examples that need setup are proven in process"
+    )
     return 1 if missing else 0
 
 

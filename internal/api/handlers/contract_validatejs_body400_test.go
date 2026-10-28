@@ -20,34 +20,16 @@ import (
 // it is documented as an ErrorResponse, not as a validation failure.
 func TestValidateCustomFilter_BodyArrayPair(t *testing.T) {
 	requests, responses := postExamples(t, validateJSPath, "validateCustomFilter")
-
-	if got, want := requests["body_array"], []interface{}{}; !reflect.DeepEqual(got, want) {
-		t.Errorf("body_array is %s, want an empty array %s", mustJSON(got), mustJSON(want))
+	if !reflect.DeepEqual(requests["body_array"], []interface{}{}) {
+		t.Fatal("body_array must remain an array")
 	}
-	if got := names(responses["400"]); !reflect.DeepEqual(got, []string{"body_array"}) {
-		t.Errorf("the 400 names %v, want only body_array", got)
+	want := parseShapeJSON(t, `{"error":{"code":"validation_failed","message":"Request body failed validation","details":{"fields":{"body":"the body is not a JSON object"}}}}`)
+	if !reflect.DeepEqual(responses["422"]["body_array"], want) {
+		t.Fatalf("array pair: %s", mustJSON(responses["422"]["body_array"]))
 	}
-	for status, examples := range responses {
-		if _, ok := examples["body_array"]; ok && status != "400" {
-			t.Errorf("body_array is named on the %s too: it pairs with that response as well", status)
-		}
-	}
-	want := map[string]interface{}{
-		"error": map[string]interface{}{"code": "bad_request", "message": "Invalid request body"},
-	}
-	if got := responses["400"]["body_array"]; !reflect.DeepEqual(got, want) {
-		t.Errorf("the 400's body_array is %s, want %s", mustJSON(got), mustJSON(want))
-	}
-
 	schemas := validateJSResponseSchemas(t)
-	for status, ref := range map[string]string{
-		"400": "#/components/schemas/ErrorResponse",
-		"422": "#/components/schemas/ValidationErrorResponse",
-		"503": "#/components/schemas/ErrorResponse",
-	} {
-		if schemas[status] != ref {
-			t.Errorf("the %s's schema is %q, want %q", status, schemas[status], ref)
-		}
+	if schemas["400"] != "#/components/schemas/ErrorResponse" || schemas["422"] != "#/components/schemas/ValidationErrorResponse" {
+		t.Fatal(schemas)
 	}
 }
 
@@ -63,7 +45,7 @@ func TestValidateCustomFilter_BodyArrayRefused(t *testing.T) {
 	if !ok {
 		t.Fatal("validateCustomFilter names no body_array request example")
 	}
-	want, ok := responses["400"]["body_array"]
+	want, ok := responses["422"]["body_array"]
 	if !ok {
 		t.Fatal("validateCustomFilter's 400 names no body_array example")
 	}
@@ -78,8 +60,8 @@ func TestValidateCustomFilter_BodyArrayRefused(t *testing.T) {
 		status int
 		want   interface{}
 	}{
-		{"body_array", string(body), http.StatusBadRequest, want},
-		{"malformed", "[", http.StatusBadRequest, want},
+		{"body_array", string(body), http.StatusUnprocessableEntity, want},
+		{"malformed", "[", http.StatusBadRequest, parseShapeJSON(t, pipelineBodyRefusal)},
 		{"script_missing", "{}", http.StatusUnprocessableEntity, responses["422"]["script_missing"]},
 	} {
 		t.Run(c.name, func(t *testing.T) {

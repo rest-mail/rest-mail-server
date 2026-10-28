@@ -202,6 +202,34 @@ class ContractLinkAccountHookTests(unittest.TestCase):
                     expected["password"] = self.module.LINKABLE_PASSWORD
                 self.assertEqual(self.apply_hook(body), expected)
 
+    def test_success_probes_prove_the_fixture_credentials(self):
+        # A coverage probe named for the 201 carries a schema-valid address and
+        # password that no account has; only the fixture's credentials make it
+        # the link it is named for. Its other fields are kept.
+        name = "/api/v1/accounts/link > Link an existing account by proving its password > 201 > application/json"
+        body = {"address": "!", "password": "xyz", "totp_code": ""}
+        self.assertEqual(
+            self.apply_hook(body, name),
+            {"address": "someone@example.com", "password": "x", "totp_code": ""},
+        )
+        self.assertEqual(
+            [request.get_method() for request in self.requests], ["GET", "DELETE"]
+        )
+        self.prepare_fixture.assert_called_once()
+
+    def test_invalid_success_probes_keep_their_credentials(self):
+        name = "/api/v1/accounts/link > Link an existing account by proving its password > 201 > application/json"
+        for body in (
+            {"password": "x"},
+            {"address": "!", "password": ""},
+            {"address": "!", "password": None},
+            {"address": 3, "password": "x"},
+        ):
+            with self.subTest(body=body):
+                self.assertEqual(self.apply_hook(body, name), body)
+        self.assertEqual(self.requests, [])
+        self.prepare_fixture.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

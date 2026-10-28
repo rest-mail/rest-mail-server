@@ -104,7 +104,7 @@ func (h *SieveHandler) Register(rs endpoint.Routes) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPut, Path: "/api/v1/accounts/{id}/sieve",
 		OperationID: "putSieveScript", Summary: "Create or replace the Sieve filter script", Tags: tags,
 		Description: "201 when it creates the script, 200 when it replaces it. A script that does not parse, or " +
-			"fails its dry run, is 400 invalid_sieve with the parser's message, and is not stored.",
+			"fails its dry run, is 422 validation_failed with the parser's message in fields.script, and is not stored.",
 		Status: http.StatusOK, SuccessStatuses: []int{http.StatusCreated},
 		Errors: []int{http.StatusForbidden}, Security: writes}, h.put)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/accounts/{id}/sieve",
@@ -149,12 +149,12 @@ func (h *SieveHandler) put(r *http.Request, in putSieveRequest) (endpoint.Status
 	}
 
 	// Validate at INSTALL time: parse + a safe, side-effect-free dry-run. A script
-	// that fails here is rejected NOW with HTTP 400 and an actionable message
+	// that fails here is rejected NOW with HTTP 422 and an actionable field message
 	// (parse error + the extension missing a `require`, or the dry-run failure) and
 	// is NOT stored — moving the failure off the delivery path, where a bad script
 	// fails closed and silently defers the mailbox's mail.
 	if err := filters.ValidateSieveForInstall(*req.Script); err != nil {
-		return endpoint.Status[SieveScript]{}, endpoint.Refuse(http.StatusBadRequest, "invalid_sieve", err.Error())
+		return endpoint.Status[SieveScript]{}, endpoint.Invalid(map[string]string{"script": err.Error()})
 	}
 
 	active := true

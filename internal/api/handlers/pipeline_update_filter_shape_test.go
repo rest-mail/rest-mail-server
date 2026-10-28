@@ -249,8 +249,8 @@ func TestUpdatePipelineFilterShape_ScratchDB(t *testing.T) {
 			"bad id":          {"abc", `{"active":false,"filters":null}`, http.StatusUnprocessableEntity, "validation_failed"},
 			"missing":         {"987654", `{"active":false,"filters":null}`, http.StatusNotFound, "not_found"},
 			"not json":        {id, `{"active":false,"filters":`, http.StatusBadRequest, "bad_request"},
-			"broken sieve":    {id, `{"active":false,"filters":` + missingRequireFilters + `}`, http.StatusBadRequest, "invalid_sieve"},
-			"queue recipient": {id, `{"active":false,"filters":` + duplicateQueueFilters + `}`, http.StatusBadRequest, "unsupported_filter"},
+			"broken sieve":    {id, `{"active":false,"filters":` + missingRequireFilters + `}`, http.StatusUnprocessableEntity, "validation_failed"},
+			"queue recipient": {id, `{"active":false,"filters":` + duplicateQueueFilters + `}`, http.StatusUnprocessableEntity, "validation_failed"},
 		} {
 			t.Run(name, func(t *testing.T) {
 				before := reset(t)

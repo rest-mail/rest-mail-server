@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
@@ -85,7 +86,14 @@ func TestAttachmentDownloadExamples(t *testing.T) {
 				if err := json.Unmarshal(pair.Response.Body, &body); err != nil {
 					t.Fatal(err)
 				}
-				if rr.Body.String() != body {
+				got := rr.Body.String()
+				// A multipart answer's boundary is chosen per response; the
+				// example names its own, and the parts must match byte for byte.
+				if _, params, err := mime.ParseMediaType(rr.Header().Get("Content-Type")); err == nil && params["boundary"] != "" {
+					example, _, _ := strings.Cut(strings.TrimPrefix(body, "--"), "\r\n")
+					got = strings.ReplaceAll(got, params["boundary"], example)
+				}
+				if got != body {
 					t.Fatalf("got body %q, want %q", rr.Body.String(), body)
 				}
 			} else if pair.Response.Status == 304 || pair.Response.Status == 412 {

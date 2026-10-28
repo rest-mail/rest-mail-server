@@ -184,6 +184,9 @@ def keep_the_refreshed_token(transaction):
 @hooks.before("createAppPassword")
 def confirm_with_the_admin_password(transaction):
     body = hooks.get_json(transaction)
+    # The body_array refusal sends a JSON array, which has no password to set.
+    if not isinstance(body, dict):
+        return
     body["password"] = ADMIN_PASSWORD
     body.pop("expires_at", None)
     hooks.set_json(transaction, body)
@@ -199,6 +202,19 @@ def link_a_seeded_account(transaction):
         hooks.set_json(transaction, body)
     if not isinstance(body, dict):
         return
+    # A coverage probe named for the 201 carries a schema-valid address and
+    # password that no account has; the fixture's credentials make it the link
+    # it is named for. Missing, null and empty credentials stay as sent.
+    if (
+        " > 201 > " in transaction.get("name", "")
+        and all(
+            isinstance(body.get(field), str) and body[field]
+            for field in ("address", "password")
+        )
+        and body["address"] not in ("eve@restmail.test", "someone@example.com")
+    ):
+        body["address"], body["password"] = "someone@example.com", "x"
+        hooks.set_json(transaction, body)
     # Each successful link consumes the unlinked state. Restore only that
     # state before a fixture's valid proof; do not alter generated body bytes,
     # malformed values, wrong passwords, or the transaction's principal.
@@ -283,8 +299,27 @@ def delete_only_the_created_domain(transaction):
     # server refuses it while it has accounts (409, #388), which a valid probe
     # counts as a finding, and before that refusal the probe deleted it and
     # every later send failed. Malformed ids are sent: they test the 400.
-    domain_id = transaction["fullPath"].split("?")[0].rstrip("/").split("/")[-1]
+    path, _, query = transaction["fullPath"].partition("?")
+    domains, domain_id = path.rstrip("/").rsplit("/", 1)
     if not domain_id.isdecimal() or int(domain_id) < 1:
+        return
+    # The documented delete gets a domain of its own. Its link fills the
+    # created domain, which the deletes of what hangs off it (DKIM, sender
+    # rules, pipelines) run after and still need. A coverage probe in range
+    # gets one as well, and leaves the created domain alone too.
+    if " > 204" in transaction.get("name", ""):
+        domain = fixture_call(
+            transaction,
+            "POST",
+            "/api/v1/admin/domains",
+            {
+                "name": f"contract-delete-{time.time_ns()}.test",
+                "server_type": "traditional",
+            },
+        )
+        transaction["fullPath"] = f"{domains}/{domain['id']:d}" + (
+            "?" + query if query else ""
+        )
         return
     if int(domain_id) != hooks.stash.get("domain_id"):
         transaction["skip"] = True
@@ -292,7 +327,11 @@ def delete_only_the_created_domain(transaction):
 
 def on_the_created_domain(transaction, **fields):
     body = hooks.get_json(transaction)
-    body["domain_id"] = hooks.stash.get("domain_id")
+    # Before the run has created its domain (operations run in path order, and
+    # /admin/custom-filters comes before /admin/domains), the pair's own domain
+    # stands: a null would make a valid create a validation refusal.
+    if hooks.stash.get("domain_id") is not None:
+        body["domain_id"] = hooks.stash["domain_id"]
     body.update(fields)
     hooks.set_json(transaction, body)
 
@@ -371,15 +410,22 @@ def a_fresh_signing_key(transaction):
 @hooks.before("createCertificate")
 def a_self_signed_certificate(transaction):
     body = hooks.get_json(transaction)
-    # Replace only the documented material placeholders. Preserve incomplete,
-    # invalid and coverage-mutated bodies and the caller's renewal policy.
+    # Replace only the documented material placeholders, and the schema-valid
+    # placeholder material of a coverage probe named for the 201, which no
+    # server accepts as a certificate. Preserve incomplete, invalid and refusal
+    # bodies and the caller's renewal policy.
+    if not isinstance(body, dict):
+        return
+    documented = body.get("cert_pem") == "certificate" and body.get("key_pem") == "key"
+    succeeds = " > 201 > " in transaction.get("name", "") and all(
+        isinstance(body.get(field), str) and body[field]
+        for field in ("cert_pem", "key_pem")
+    )
     if (
-        not isinstance(body, dict)
-        or not isinstance(body.get("domain_id"), int)
+        not isinstance(body.get("domain_id"), int)
         or isinstance(body["domain_id"], bool)
         or body["domain_id"] < 1
-        or body.get("cert_pem") != "certificate"
-        or body.get("key_pem") != "key"
+        or not (documented or succeeds)
     ):
         return
     name = hooks.stash.get("domain") or "example.org"
@@ -445,8 +491,8 @@ def a_certificate_before_going_live(transaction):
     try:
         name = call("GET", "/api/v1/admin/domains/" + domain_id)["name"]
     except urllib.error.HTTPError as error:
-        # No such domain: the probe meets the 404 itself.
-        if error.code == 404:
+        # No such domain, or an id out of range: the probe meets the refusal itself.
+        if error.code in PROBE_REFUSALS:
             return
         raise
     with tempfile.TemporaryDirectory() as d:
@@ -782,11 +828,18 @@ def list_the_sent_messages_queue_entry(transaction):
     path, _, query = transaction.get("fullPath", "").partition("?")
     if not path.endswith("/api/v1/admin/queue"):
         return
+    # The example's own page size (limit=20) counts as well: any positive limit
+    # and non-negative offset, so the boundary probes (limit=0, offset=-1) stay.
     params = urllib.parse.parse_qs(query, keep_blank_values=True)
-    defaults = {"limit": ["50"], "offset": ["0"]}
+
+    def paging(name, value):
+        if name not in ("limit", "offset") or len(value) != 1:
+            return False
+        number = value[0]
+        return number.isdecimal() and (name == "offset" or int(number) > 0)
+
     if params.get("status") != ["pending"] or any(
-        name != "status" and defaults.get(name) != value
-        for name, value in params.items()
+        name != "status" and not paging(name, value) for name, value in params.items()
     ):
         return
     transaction["fullPath"] = (
@@ -818,6 +871,9 @@ def pace_the_tls_reports(transaction):
 def host_the_reported_policy_domains(transaction):
     # Generated reports name domains other than restmail.test. Host them so
     # a valid report reaches storage; leave every generated byte unchanged.
+    # The 422 is the report that names no hosted domain: leave it unhosted.
+    if " > 422 > " in transaction["name"]:
+        return
     body = hooks.get_json(transaction)
     policies = body.get("policies") if isinstance(body, dict) else None
     if not isinstance(policies, list):
@@ -957,27 +1013,6 @@ def give_each_rename_probe_a_folder(transaction):
     except urllib.error.HTTPError as error:
         if error.code not in (400, 404):
             raise
-
-
-AUTODISCOVER_REQUEST = """<?xml version="1.0" encoding="utf-8"?>
-<Autodiscover xmlns="http://schemas.microsoft.com/exchange/autodiscover/outlook/requestschema/2006">
-  <Request>
-    <EMailAddress>eve@restmail.test</EMailAddress>
-    <AcceptableResponseSchema>http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a</AcceptableResponseSchema>
-  </Request>
-</Autodiscover>
-"""
-
-
-@hooks.before("microsoftAutodiscover")
-def an_outlook_autodiscover_request(transaction):
-    # Vertrag 0.29 pairs the named examples but does not serialize XML.
-    # Keep the malformed request on its 400; the 200 needs the valid XML.
-    transaction["request"]["body"] = (
-        "<Autodiscover><Request>"
-        if " > 400 > " in transaction["name"]
-        else AUTODISCOVER_REQUEST
-    )
 
 
 @hooks.before("/api/v1/auth/protocol-sign-in > * > 200 > application/json")
@@ -1609,7 +1644,7 @@ def an_account_without_credentials(origin):
     """A fresh restmail.test account made without a password, so invitable."""
     count = hooks.stash.get("invitable_accounts", 0) + 1
     hooks.stash["invitable_accounts"] = count
-    address = "invited-{}-{}@restmail.test".format(time.time_ns(), count)
+    address = f"invited-{time.time_ns()}-{count}@restmail.test"
     request = urllib.request.Request(
         origin + "/api/v1/accounts",
         data=json.dumps({"address": address, "display_name": "Invited"}).encode(),
@@ -1625,22 +1660,30 @@ def an_account_without_credentials(origin):
 
 @hooks.before("inviteAccount")
 def invite_an_account_without_credentials(transaction):
-    # Only the created example's placeholder id (12) needs an invitable account.
-    # The fixture admin (existing_credentials) has a password, and missing and
-    # every coverage probe keep their ids so their refusals are reachable.
+    # created, existing_credentials and missing all name the placeholder id 12,
+    # and differ only in the state of that account. Each is given an account in
+    # its state: a fresh one made without a password, the fixture admin (1),
+    # who has one, and an id no account holds. Coverage probes keep their ids.
     path, _, query = transaction["fullPath"].partition("?")
     mailboxes, placeholder, _ = path.rstrip("/").rsplit("/", 2)
     if placeholder != "12":
         return
-    origin = "{}//{}:{}".format(
-        transaction["protocol"],
-        transaction["host"],
-        transaction["port"],
-    )
-    account_id = an_account_without_credentials(origin)
-    transaction["fullPath"] = (
-        "{}/{:d}/invitation".format(mailboxes, account_id)
-        + ("?" + query if query else "")
+    name = transaction.get("name", "")
+    if " > 409 > " in name:
+        account_id = 1
+    elif " > 404 > " in name:
+        account_id = 2147483647
+    elif " > 201 > " in name:
+        origin = "{}//{}:{}".format(
+            transaction["protocol"],
+            transaction["host"],
+            transaction["port"],
+        )
+        account_id = an_account_without_credentials(origin)
+    else:
+        return
+    transaction["fullPath"] = f"{mailboxes}/{account_id:d}/invitation" + (
+        "?" + query if query else ""
     )
 
 
@@ -1651,13 +1694,18 @@ def redeem_a_fresh_invitation(transaction):
     # invitation: coverage runs no after hooks, and a schema-valid body with an
     # unknown token is a 401. The named refusals (invalid_token, invalid_field,
     # body_array) and probes whose token is not a string reach the handler
-    # unchanged.
+    # unchanged. A probe of the 200 that leaves the optional token out gets one
+    # too, and one whose password the schema cannot hold to 12 bytes (the
+    # handler's rule) gets the documented password.
     if (
         " > 200 > " not in transaction.get("name", "")
         or not isinstance(body, dict)
-        or not isinstance(body.get("token"), str)
+        or not isinstance(body.get("token", ""), str)
     ):
         return
+    password = body.get("password")
+    if not isinstance(password, str) or not 12 <= len(password.encode()) <= 72:
+        body["password"] = "the recipient chooses this password"
     origin = "{}//{}:{}".format(
         transaction["protocol"],
         transaction["host"],
@@ -1665,10 +1713,273 @@ def redeem_a_fresh_invitation(transaction):
     )
     account_id = an_account_without_credentials(origin)
     request = urllib.request.Request(
-        origin + "/api/v1/admin/mailboxes/{:d}/invitation".format(account_id),
+        origin + f"/api/v1/admin/mailboxes/{account_id:d}/invitation",
         headers={"Authorization": "Bearer " + admin_token(origin)},
         method="POST",
     )
     with urllib.request.urlopen(request, timeout=10) as response:
         body["token"] = json.load(response)["data"]["token"]
+    hooks.set_json(transaction, body)
+
+
+# Refusals a coverage probe's own values provoke in a setup call (an id out of
+# range, an address that is not one): the probe reaches the handler unchanged.
+PROBE_REFUSALS = (400, 404, 409, 422)
+
+
+def positive_id(text):
+    """Whether a path segment is an id a documented example would carry."""
+    return text.isdecimal() and int(text) > 0
+
+
+def fixture_call(transaction, method, path, body=None, expect=(200, 201, 204)):
+    """One admin API call for fixture setup, answering its JSON data, or None
+    for an expected refusal such as a 404 on a delete of nothing."""
+    origin = "{}//{}:{}".format(
+        transaction["protocol"],
+        transaction["host"],
+        transaction["port"],
+    )
+    request = urllib.request.Request(
+        origin + path,
+        data=json.dumps(body).encode() if body is not None else None,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + admin_token(origin),
+        },
+        method=method,
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            payload = response.read()
+    except urllib.error.HTTPError as error:
+        if error.code in expect:
+            return None
+        raise
+    return json.loads(payload).get("data") if payload else None
+
+
+@hooks.before("blockSender")
+def block_a_new_and_an_existing_sender(transaction):
+    # created (201) blocks an address the account has no contact for, and
+    # found (200) one it already has. Neither holds after the other has run,
+    # or after a previous run, so each is given its state. Other bodies and
+    # coverage probes reach the handler unchanged.
+    body = hooks.get_json(transaction)
+    email = body.get("email") if isinstance(body, dict) else None
+    name = transaction.get("name", "")
+    contacts = transaction["fullPath"].split("?")[0].rsplit("/", 1)[0]
+    if not contacts.endswith("/contacts"):
+        return
+    path = contacts[contacts.index("/api/") :]
+    if email == "new@example.com" and " > 201 > " in name:
+        query = urllib.parse.urlencode({"search": email, "limit": 200})
+        listed = fixture_call(
+            transaction, "GET", path + "?" + query, expect=PROBE_REFUSALS
+        )
+        for contact in listed or []:
+            if contact.get("email") == email:
+                fixture_call(
+                    transaction,
+                    "DELETE",
+                    path + "/" + str(contact["id"]),
+                    expect=PROBE_REFUSALS,
+                )
+    elif email == "existing@example.com" and " > 200 > " in name:
+        fixture_call(transaction, "POST", path, {"email": email}, expect=PROBE_REFUSALS)
+
+
+@hooks.before("createBan")
+def ban_a_new_and_an_existing_ip(transaction):
+    # created (201) bans an address no ban holds, and clear_expiry (200)
+    # replaces the ban an address already has. Each is given that state; the
+    # refusals and coverage probes reach the handler unchanged.
+    body = hooks.get_json(transaction)
+    ip = body.get("ip") if isinstance(body, dict) else None
+    name = transaction.get("name", "")
+    if not isinstance(ip, str) or not ip:
+        return
+    if " > 201 > " in name:
+        fixture_call(
+            transaction,
+            "DELETE",
+            "/api/v1/admin/bans/ip/" + urllib.parse.quote(ip, safe=""),
+            expect=PROBE_REFUSALS,
+        )
+    elif " > 200 > " in name:
+        fixture_call(
+            transaction,
+            "POST",
+            "/api/v1/admin/bans",
+            {
+                "ip": ip,
+                "reason": "Contract fixture",
+                "protocol": "all",
+                "duration": "1h",
+                "created_by": ADMIN,
+            },
+            expect=PROBE_REFUSALS,
+        )
+
+
+@hooks.before("sendDraft")
+def send_a_draft_of_its_own(transaction):
+    # sent (201) and missing (404) both name the placeholder draft 12: sent is
+    # given a fresh draft of the fixture admin's to send, and missing an id no
+    # draft holds. Coverage probes keep their ids.
+    path, _, query = transaction["fullPath"].partition("?")
+    drafts, placeholder, action = path.rstrip("/").rsplit("/", 2)
+    name = transaction.get("name", "")
+    # A success's draft id is the one its link filled (named-values illustrate),
+    # which the sent draft would consume; sent gets a draft of its own whatever
+    # id it carries. Coverage probes reach hooks under the documented name, so
+    # an id out of range or not a number marks one, and it keeps its id.
+    if not positive_id(placeholder):
+        return
+    if " > 201 > " in name:
+        draft = fixture_call(
+            transaction,
+            "POST",
+            "/api/v1/messages/draft",
+            {
+                "from": ADMIN,
+                "to": [ADMIN],
+                "subject": "Contract draft",
+                "body_text": "Sent by the contract.",
+            },
+        )
+        draft_id = draft["id"]
+    elif " > 404 > " in name and placeholder == "12":
+        draft_id = 2147483647
+    else:
+        return
+    transaction["fullPath"] = f"{drafts}/{draft_id:d}/{action}" + (
+        "?" + query if query else ""
+    )
+
+
+@hooks.before("bounceQueueEntry")
+def bounce_the_held_bounce_entry(transaction):
+    # The documented bounce and the retry would both take the one entry the
+    # queue links lead to, and a bounced entry cannot be retried. The bounce
+    # gets the fixture's own held entry; coverage probes keep their ids.
+    name = transaction.get("name", "")
+    path, _, query = transaction["fullPath"].partition("?")
+    queue, entry, action = path.rstrip("/").rsplit("/", 2)
+    # Coverage probes reach hooks under the documented name; an id out of
+    # range or not a number marks one.
+    if " > 200 > " not in name or not positive_id(entry):
+        return
+    recipient = FIXTURE_PLAN["queue"]["bounce"]["recipient"]
+    listed = fixture_call(
+        transaction,
+        "GET",
+        "/api/v1/admin/queue?" + urllib.parse.urlencode({"recipient": recipient}),
+    )
+    items = (listed or {}).get("items") or []
+    if not items:
+        raise RuntimeError("the contract bounce fixture is missing")
+    transaction["fullPath"] = f"{queue}/{items[0]['id']:d}/{action}" + (
+        "?" + query if query else ""
+    )
+
+
+@hooks.before("unbanIP")
+def unban_an_ip_that_is_banned(transaction):
+    # The documented removal needs a ban on its IP, which deleteBan's own
+    # example can already have removed. Coverage probes reach it unchanged.
+    name = transaction.get("name", "")
+    if " > 204" not in name:
+        return
+    ip = urllib.parse.unquote(
+        transaction["fullPath"].split("?")[0].rstrip("/").rsplit("/", 1)[1]
+    )
+    fixture_call(
+        transaction,
+        "POST",
+        "/api/v1/admin/bans",
+        {
+            "ip": ip,
+            "reason": "Contract fixture",
+            "protocol": "all",
+            "duration": "1h",
+            "created_by": ADMIN,
+        },
+        expect=PROBE_REFUSALS,
+    )
+
+
+@hooks.before("createDomain")
+def create_a_domain_that_is_not_there(transaction):
+    # The documented create (201) makes example.org, and the coverage process
+    # repeats it after the examples process made it: a leftover domain of the
+    # same name is removed first. Probes whose name is not a string, and
+    # refusals, reach the handler unchanged.
+    body = hooks.get_json(transaction)
+    name = body.get("name") if isinstance(body, dict) else None
+    if (
+        " > 201 > " not in transaction.get("name", "")
+        or not isinstance(name, str)
+        or not name
+    ):
+        return
+    for domain in fixture_call(transaction, "GET", "/api/v1/admin/domains") or []:
+        if domain.get("name") == name:
+            fixture_call(
+                transaction,
+                "DELETE",
+                f"/api/v1/admin/domains/{domain['id']:d}",
+                expect=PROBE_REFUSALS,
+            )
+
+
+@hooks.before("putSieveScript")
+def install_a_sieve_script_where_there_is_none(transaction):
+    # The documented install (201) creates the account's script, and the
+    # coverage process repeats it after the examples process installed it: the
+    # leftover script is removed first. Probes with an id out of range keep it.
+    path = transaction["fullPath"].split("?")[0].rstrip("/")
+    account = path.rsplit("/", 2)[1]
+    if " > 201 > " not in transaction.get("name", "") or not positive_id(account):
+        return
+    # A coverage probe's script is whatever string the generator drew, which no
+    # schema can make Sieve: it installs the documented "keep;" and keeps the
+    # rest of its body, so what it tests is the other fields.
+    body = hooks.get_json(transaction)
+    if (
+        isinstance(body, dict)
+        and isinstance(body.get("script"), str)
+        and body["script"] != "keep;"
+    ):
+        body["script"] = "keep;"
+        hooks.set_json(transaction, body)
+    fixture_call(
+        transaction, "DELETE", path[path.index("/api/") :], expect=PROBE_REFUSALS
+    )
+
+
+@hooks.before("importMessage")
+def import_a_message_a_parser_can_read(transaction):
+    # A coverage probe's raw_message is base64 of whatever the generator drew,
+    # which no schema can make RFC 5322. Such a probe imports a small message of
+    # its own, with its own Message-ID so repeats are not duplicates, and keeps
+    # the rest of its body. A documented message, which has headers, is left.
+    if " > 200 > " not in transaction.get("name", ""):
+        return
+    body = hooks.get_json(transaction)
+    raw = body.get("raw_message") if isinstance(body, dict) else None
+    if not isinstance(raw, str):
+        return
+    try:
+        octets = base64.b64decode(raw, validate=True)
+    except ValueError:
+        octets = b""
+    if b"\r\n\r\n" in octets or b"\n\n" in octets:
+        return
+    message = (
+        f"Message-ID: <contract-import-{time.time_ns()}@example.test>\r\n"
+        "From: Original <old@example.test>\r\n"
+        "Subject: imported\r\n\r\nhistory\r\n"
+    )
+    body["raw_message"] = base64.b64encode(message.encode()).decode()
     hooks.set_json(transaction, body)

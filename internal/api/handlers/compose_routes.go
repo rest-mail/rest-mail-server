@@ -87,7 +87,7 @@ type ForwardRefusalBody struct {
 	Details *respond.ValidationDetails `json:"details,omitempty"`
 }
 
-// sendRefusals are what a send refuses with: a field missing or invalid (400), no session
+// sendRefusals are what a send refuses with: an unparseable body or wrong media type (400), a field missing or invalid (422), no session
 // (401), an address the session may not send as or the outbound pipeline's reject or
 // quarantine (403), the sender domain's policy or a bad scheduled_at (422), the account's send
 // rate (429, with Retry-After) and a deferral (503).

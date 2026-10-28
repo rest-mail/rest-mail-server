@@ -76,9 +76,11 @@ func TestBulkQueue_SelectionBoundaries(t *testing.T) {
 			name, body string
 			status     int
 		}{
-			{"missing_selection", `{}`, 400},
-			{"empty_ids", `{"ids":[]}`, 400},
-			{"null_filter", `{"filter":null}`, 400},
+			// A body that selects nothing fails the request type's AnyOf at
+			// binding: 422, like any other body the schema refuses.
+			{"missing_selection", `{}`, 422},
+			{"empty_ids", `{"ids":[]}`, 422},
+			{"null_filter", `{"filter":null}`, 422},
 			{"negative_id", `{"ids":[-1]}`, 422},
 			{"zero_id", `{"ids":[0]}`, 200},
 			{"empty_filter", `{"filter":{}}`, 200},

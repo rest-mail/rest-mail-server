@@ -51,7 +51,7 @@ type userInfo struct {
 }
 
 type protocolSignInRequest struct {
-	Protocol string `json:"protocol,omitempty"`
+	Protocol string `json:"protocol" enums:"imap,pop3,smtp" message:"must be \"imap\", \"pop3\" or \"smtp\"" missing:"must be \"imap\", \"pop3\" or \"smtp\""`
 }
 
 type sendMessageRequest struct {
@@ -142,12 +142,12 @@ type createDomainRequest struct {
 }
 
 type createAccountRequest struct {
-	Address     string `json:"address"`
+	Address     string `json:"address" format:"email" formatMessage:"must be a mail address: local@domain"`
 	DisplayName string `json:"display_name,omitempty"`
 	// Password, when given, becomes the account's password credential, so it
 	// can be signed in to. Without one the account has no credentials, and is
 	// reached only through its owners.
-	Password string `json:"password,omitempty"`
+	Password string `json:"password,omitempty" minLength:"12" minLengthMessage:"must be at least 12 characters"`
 	// PasswordHash imports an existing crypt(3) or Argon2 password without resetting it.
 	// Mutually exclusive with Password; never returned or written to audit.
 	// Owned makes an owned account, an agent's or a sub account, owned by the
@@ -180,7 +180,7 @@ type updateMessageBody struct {
 	IsFlagged  *bool   `json:"is_flagged,omitempty"`
 	IsStarred  *bool   `json:"is_starred,omitempty"`
 	IsDraft    *bool   `json:"is_draft,omitempty"`
-	Folder     *string `json:"folder,omitempty"`
+	Folder     *string `json:"folder,omitempty" minLength:"1" minLengthMessage:"required"`
 }
 
 type updatePipelineRequestBody struct {

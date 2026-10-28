@@ -26,10 +26,10 @@ func TestRESTMAILDiscoveryInvalidDomain(t *testing.T) {
 	for query, want := range map[string]int{
 		// No domain at all is binding's: 422 on domain.
 		"":                                      http.StatusUnprocessableEntity,
-		"domain=":                               http.StatusBadRequest,
-		"domain=alice%40example.test":           http.StatusBadRequest,
-		"domain=example.test%2Fpath":            http.StatusBadRequest,
-		"domain=example.test&domain=other.test": http.StatusBadRequest,
+		"domain=":                               http.StatusUnprocessableEntity,
+		"domain=alice%40example.test":           http.StatusUnprocessableEntity,
+		"domain=example.test%2Fpath":            http.StatusUnprocessableEntity,
+		"domain=example.test&domain=other.test": http.StatusUnprocessableEntity,
 	} {
 		t.Run(query, func(t *testing.T) {
 			rr := httptest.NewRecorder()

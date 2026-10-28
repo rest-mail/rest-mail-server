@@ -34,7 +34,7 @@ func TestRegisteredGrantValidation(t *testing.T) {
 	}{
 		{name: "create two-factor before malformed body", method: "POST", path: "/api/v1/admin/grants", body: "broken", claims: password, status: 403, code: "two_factor_required"},
 		{name: "create malformed body", method: "POST", path: "/api/v1/admin/grants", body: "broken", claims: otp, status: 400, code: "bad_request"},
-		{name: "create array body", method: "POST", path: "/api/v1/admin/grants", body: "[]", claims: otp, status: 400, code: "bad_request"},
+		{name: "create array body", method: "POST", path: "/api/v1/admin/grants", body: "[]", claims: otp, status: 422, code: "validation_failed", field: "body"},
 		{name: "create missing holder", method: "POST", path: "/api/v1/admin/grants", body: `{"role":"admin","scope":"*"}`, claims: otp, status: 422, code: "validation_failed", field: "holder", message: `required: {"kind": "account", "id": <account id>}`},
 		{name: "create unsupported holder", method: "POST", path: "/api/v1/admin/grants", body: `{"holder":{"kind":"admin","id":1},"role":"admin","scope":"*"}`, claims: otp, status: 422, code: "validation_failed", field: "holder", message: "only accounts can be granted roles yet"},
 		{name: "create role", method: "POST", path: "/api/v1/admin/grants", body: `{"holder":{"kind":"account","id":1},"scope":"*"}`, claims: otp, status: 422, code: "validation_failed", field: "role", message: "required: a role name"},

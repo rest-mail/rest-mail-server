@@ -55,8 +55,7 @@ func TestValidateCustomFilter_ExamplePairs(t *testing.T) {
 	want := map[string][]string{
 		"request": {"body_array", "script_missing", "valid"},
 		"200":     {"valid"},
-		"400":     {"body_array"},
-		"422":     {"script_missing"},
+		"422":     {"body_array", "script_missing"},
 	}
 	got := map[string][]string{"request": names(requests)}
 	for status, examples := range responses {

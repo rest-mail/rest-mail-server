@@ -1,5 +1,5 @@
 # The contract tests (#376): vertrag (github.com/antimatter-studios/vertrag)
-# sends every request openapi.yaml documents to a running API and checks each
+# sends every request the generated description documents to a running API and checks each
 # answer against what the spec promises: status, headers and body schema.
 #
 # CI runs it in the E2E (full topology) job, against the topology that job has
@@ -7,7 +7,7 @@
 # tests/contract/README.md for how to run it, what is excluded and why, and how
 # the "operations exercised" gate is computed.
 
-spec: ./openapi.yaml
+spec: ./.cache/contract/openapi.json
 endpoint: http://10.99.0.20:8080
 
 # Hooks supply fixture credentials and generated keys, and select documented
@@ -38,12 +38,12 @@ auth:
     - '/api/v1/auth/2fa/enroll > Start an authenticator enrollment > 401 > application/json'
     - '/api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 200 > application/json'
     - '/api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 400 > application/json'
-    - '/api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 401'
+    - '/api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 401 > application/json'
     - '/api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 422 > application/json'
     - '/api/v1/accounts > List the accounts this one reaches > 401 > application/json'
     - '/api/v1/accounts/{id}/events > Server-Sent Events stream for real-time updates > 401 > application/json'
     - '/api/v1/accounts > Create an account > 401 > application/json'
-    - '/api/v1/accounts/link > Link an existing account by proving its password > 401'
+    - '/api/v1/accounts/link > Link an existing account by proving its password > 401 > application/json'
     - '/api/v1/accounts/{id}/credentials > List an account''s app passwords > 401 > application/json'
     - '/api/v1/accounts/{id}/credentials > Make an app password > 401 > application/json'
     - '/api/v1/accounts/{id}/credentials/{credential_id} > Revoke an app password > 401 > application/json'
@@ -67,16 +67,14 @@ checks:
 # Operations never sent, in any phase. Each one's reason is beside it under
 # surface.exclude below, which takes the same operations out of the surface
 # the run is held to; tests/contract/gate.py checks the two lists agree.
+# Push and ACME are off in this topology, so their routes are absent from the
+# generated description and must not be named as exclusions.
 exclude-operation-id:
   - listAPIKeys
   - createAPIKey
   - revokeAPIKey
-  - listPushDevices
-  - registerPushDevice
-  - removePushDevice
   - checkMailboxAddress
   - deliverMessage
-  - acmeChallenge
   - resetAdmin
   - recoverAccount
   - ownerChallenge
@@ -100,16 +98,15 @@ exclude-operation-id:
 # Documented responses the examples phase cannot provoke yet, by pattern. A
 # transaction is named "<title> > <path> > <summary> > <status>[ > <type>]".
 exclude-matching:
-  # The topology sends whole, single-range and unsatisfiable downloads with
-  # named parameter examples. Bodyless 304/412 cannot carry a named media-type
-  # example; multipart content has a per-response boundary, and a healthy
-  # topology cannot provoke storage/writer faults. The mandatory
+  # The topology sends whole, single-range, multi-range and unsatisfiable
+  # downloads with named parameter examples. Bodyless 304/412 cannot carry a
+  # named media-type example, and a healthy topology cannot provoke
+  # storage/writer faults. The mandatory
   # TestAttachmentDownloadExamplesWithVertrag suite exercises conditional
   # requests and dependency refusals through the real handler and storage client;
   # TestAttachmentConditionalResponsesDescribeTheWire covers multipart/seek faults.
   # #1166 tracks the remaining full-topology conditional and fault matrix.
   - '^/api/v1/attachments/\{id\} > .* > (304|412|500)( >|$)'
-  - '^/api/v1/attachments/\{id\} > .* > 206 > multipart/byteranges( >|$)'
   # A refusal for a missing capability needs a principal without it: vertrag's
   # authorization phase, not the admin's run.
   - '> 403( >|$)'
@@ -131,6 +128,51 @@ exclude-matching:
   # tests/contract/gate.py does not judge those (tests/contract/README.md).
   # Each operation paired next comes off these patterns the same way. A path in
   # a segment none of them names is sent.
+  # #672: parsed JSON examples exercise 422; malformed-body refusals
+  # need their own raw request setup before this topology can send them.
+  - '^/\.well\-known/smtp\-tlsrpt > .* > 400( >|$)'
+  - '^/api/v1/accounts > .* > 400( >|$)'
+  - '^/api/v1/accounts/\{id\}/contacts > .* > 400( >|$)'
+  - '^/api/v1/accounts/\{id\}/contacts/import > .* > 400( >|$)'
+  - '^/api/v1/accounts/\{id\}/credentials > .* > 400( >|$)'
+  - '^/api/v1/accounts/\{id\}/folders > .* > 400( >|$)'
+  - '^/api/v1/accounts/\{id\}/messages/import > .* > 400( >|$)'
+  - '^/api/v1/accounts/\{id\}/sieve > .* > 400( >|$)'
+  - '^/api/v1/accounts/\{id\}/sieve/validate > .* > 400( >|$)'
+  - '^/api/v1/accounts/\{id\}/vacation > .* > 400( >|$)'
+  - '^/api/v1/accounts/link > .* > 400( >|$)'
+  - '^/api/v1/admin/aliases > .* > 400( >|$)'
+  - '^/api/v1/admin/aliases/\{id\} > .* > 400( >|$)'
+  - '^/api/v1/admin/bans > .* > 400( >|$)'
+  - '^/api/v1/admin/certificates > .* > 400( >|$)'
+  - '^/api/v1/admin/custom\-filters > .* > 400( >|$)'
+  - '^/api/v1/admin/custom\-filters/\{id\} > .* > 400( >|$)'
+  - '^/api/v1/admin/custom\-filters/\{id\}/test > .* > 400( >|$)'
+  - '^/api/v1/admin/custom\-filters/validate > .* > 400( >|$)'
+  - '^/api/v1/admin/dkim/\{id\} > .* > 400( >|$)'
+  - '^/api/v1/admin/dkim/\{id\}/rotation > .* > 400( >|$)'
+  - '^/api/v1/admin/domains > .* > 400( >|$)'
+  - '^/api/v1/admin/domains/\{id\} > .* > 400( >|$)'
+  - '^/api/v1/admin/domains/\{id\}/allowlist > .* > 400( >|$)'
+  - '^/api/v1/admin/domains/\{id\}/blocklist > .* > 400( >|$)'
+  - '^/api/v1/admin/domains/\{id\}/mta\-sts > .* > 400( >|$)'
+  - '^/api/v1/admin/domains/\{id\}/relay > .* > 400( >|$)'
+  - '^/api/v1/admin/mailboxes/\{id\} > .* > 400( >|$)'
+  - '^/api/v1/admin/pipelines > .* > 400( >|$)'
+  - '^/api/v1/admin/pipelines/\{id\} > .* > 400( >|$)'
+  - '^/api/v1/admin/pipelines/test > .* > 400( >|$)'
+  - '^/api/v1/admin/pipelines/test\-filter > .* > 400( >|$)'
+  - '^/api/v1/admin/queue/bulk\-bounce > .* > 400( >|$)'
+  - '^/api/v1/admin/queue/bulk\-delete > .* > 400( >|$)'
+  - '^/api/v1/admin/queue/bulk\-retry > .* > 400( >|$)'
+  - '^/api/v1/admin/test/probe > .* > 400( >|$)'
+  - '^/api/v1/admin/test/send > .* > 400( >|$)'
+  - '^/api/v1/auth/invitation > .* > 400( >|$)'
+  - '^/api/v1/auth/login > .* > 400( >|$)'
+  - '^/api/v1/auth/protocol\-sign\-in > .* > 400( >|$)'
+  - '^/api/v1/messages/send > .* > 400( >|$)'
+  - '^/autodiscover/autodiscover\.xml > .* > 422( >|$)'
+  - '^/restmail/messages > .* > 400( >|$)'
   - '> 409( >|$)'
   # Reads, updates, deletes and pipeline previews have named missing IDs.
   # test_gate.py pins the complete enabled set.
@@ -138,7 +180,7 @@ exclude-matching:
   - '^/(api/v1/(auth|accounts|devices|messages|attachments)|restmail|mail|autodiscover|\.well-known)(/| >).* > 404( >|$)'
   # Autoconfig's 400 (no email domain in the address or the host name) needs a
   # request to a host that is not autoconfig.<domain>, which the run cannot make.
-  - '^/(mail|\.well-known/autoconfig)(/| >).* > 400( >|$)'
+  - '^/(mail|\.well-known/autoconfig)(/| >).* > (400|422)( >|$)'
   - '^/api/v1/admin/(bans|grants|test)(/| >).* > 404( >|$)'
   - '^/api/v1/admin/queue/\{id\} > Delete a queue entry > 404( >|$)'
   - '^/api/v1/admin/queue/\{id\}/(retry|bounce) > .* > 404( >|$)'
@@ -215,6 +257,17 @@ exclude-matching:
   # Nor a message import over the cap or meeting a failed database.
   - '^/api/v1/accounts/\{id\}/messages/import > .* > (413|500)( >|$)'
 
+# Each documented response has one example (#1236). One that says, in
+# x-requires, that proving it needs a principal, a body, a spent limit or a
+# dependency fault this healthy topology cannot set up is not sent; it is
+# listed as unproven here, and its in-process *WithVertrag suite proves it.
+provides: {}
+unproven: .cache/contract/unproven.json
+
+# The pairs' path and query values are the in-process fixtures' ids, not the
+# topology's: a sequenced run's links fill them instead (vertrag named-values).
+named-values: illustrate
+
 # What the run is held to (vertrag's surface gate, #376): every operation in
 # the spec, counted only when every documented transaction of it was sent in
 # the examples phase and passed, none failed, none skipped, none answered 5xx.
@@ -240,18 +293,10 @@ surface:
       reason: "Required real-MFA API key lifecycle suite: chore test:contract-api-keys in e2e-suite.yml. The primary fixture admin has no MFA."
     - operation: revokeAPIKey
       reason: "Required real-MFA API key lifecycle suite: chore test:contract-api-keys in e2e-suite.yml. The primary fixture admin has no MFA."
-    - operation: listPushDevices
-      reason: "Push is off unless APNs is configured, and the E2E topology has no APNs credentials: every devices route answers 404."
-    - operation: registerPushDevice
-      reason: "Push is off unless APNs is configured, and the E2E topology has no APNs credentials: every devices route answers 404."
-    - operation: removePushDevice
-      reason: "Push is off unless APNs is configured, and the E2E topology has no APNs credentials: every devices route answers 404."
     - operation: checkMailboxAddress
       reason: "Served only on the internal mTLS listener, which the E2E topology turns on; the public listener vertrag reaches does not have it."
     - operation: deliverMessage
       reason: "Served only on the internal mTLS listener, which the E2E topology turns on; the public listener vertrag reaches does not have it."
-    - operation: acmeChallenge
-      reason: "Served only when ACME is on; the E2E topology has no ACME."
     - operation: resetAdmin
       reason: "Needs a single-use token minted by the operator command (restmail-api mint-token) or for an owner key."
     - operation: recoverAccount

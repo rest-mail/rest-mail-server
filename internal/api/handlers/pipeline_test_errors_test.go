@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -66,6 +67,14 @@ func TestPipelineTestErrorContract_NotJSONIs400(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			status, expected := http.StatusBadRequest, want
+			if json.Valid([]byte(body)) {
+				status = http.StatusUnprocessableEntity
+				message := "the body is not a JSON object"
+				if body == "null" {
+					message = "the body is null"
+				}
+				expected = pipelineValidation(map[string]string{"body": message})
+			}
 			fieldTypes := map[string]map[string]string{
 				"pipeline_id string":   {"pipeline_id": "must be a non-negative integer"},
 				"pipeline_id negative": {"pipeline_id": "must be a non-negative integer"},

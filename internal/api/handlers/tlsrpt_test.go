@@ -366,7 +366,7 @@ func TestReceiveReport_GzipCompressed(t *testing.T) {
 		{"inflates past the cap, by encoding", "application/json", "gzip", bomb, http.StatusRequestEntityTooLarge, "request_too_large"},
 		{"claims gzip, is not", "application/tlsrpt+gzip", "", buildTLSRPTBody(t, 1), http.StatusBadRequest, "bad_request"},
 		{"claims gzip by encoding, is not", "application/json", "gzip", buildTLSRPTBody(t, 1), http.StatusBadRequest, "bad_request"},
-		{"another media type", "text/plain", "", buildTLSRPTBody(t, 1), http.StatusUnsupportedMediaType, "unsupported_media_type"},
+		{"another media type", "text/plain", "", buildTLSRPTBody(t, 1), http.StatusBadRequest, "bad_request"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/.well-known/smtp-tlsrpt", bytes.NewReader(tc.body))

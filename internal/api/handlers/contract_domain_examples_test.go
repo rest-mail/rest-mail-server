@@ -19,8 +19,7 @@ func TestDomainCreate_ExamplePairs(t *testing.T) {
 	want := map[string][]string{
 		"request": {"body_array", "created", "dmarc_policy_invalid", "name_missing", "sending_policy_invalid", "server_type_invalid"},
 		"201":     {"created"},
-		"400":     {"body_array"},
-		"422":     {"dmarc_policy_invalid", "name_missing", "sending_policy_invalid", "server_type_invalid"},
+		"422":     {"body_array", "dmarc_policy_invalid", "name_missing", "sending_policy_invalid", "server_type_invalid"},
 	}
 	got := map[string][]string{"request": names(requests)}
 	for status, examples := range responses {

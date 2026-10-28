@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	oapifly "github.com/antimatter-studios/go-oapifly"
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
 	apitypes "github.com/restmail/restmail/internal/api/types"
@@ -224,6 +225,20 @@ type bulkQueueRequest struct {
 	} `json:"filter,omitempty"`
 }
 
+// AnyOf states the rule no one field can: a bulk action selects by nonempty ids or by a
+// filter, an empty filter included (go-oapifly#68). The binder refuses a body meeting
+// neither with 422, before the handler's own check.
+func (bulkQueueRequest) AnyOf() oapifly.AnyOfRule {
+	return oapifly.AnyOfRule{
+		Alternatives: []oapifly.Alternative{
+			{Required: []string{"ids"}, Fields: map[string]string{"ids": `minItems:"1"`}},
+			{Required: []string{"filter"}},
+		},
+		Field:   "ids",
+		Message: "ids or filter required",
+	}
+}
+
 func (h *QueueHandler) buildBulkQuery(ctx context.Context, req bulkQueueRequest) *gorm.DB {
 	query := h.db.WithContext(ctx).Model(&models.OutboundQueue{})
 	if len(req.IDs) > 0 {
@@ -250,7 +265,7 @@ func (h *QueueHandler) buildBulkQuery(ctx context.Context, req bulkQueueRequest)
 // POST /api/v1/admin/queue/bulk-retry
 func (h *QueueHandler) bulkRetry(r *http.Request, req bulkQueueRequest) (BulkQueueResult, error) {
 	if len(req.IDs) == 0 && req.Filter == nil {
-		return BulkQueueResult{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "ids or filter required")
+		return BulkQueueResult{}, endpoint.Invalid(map[string]string{"ids": "ids or filter required", "filter": "ids or filter required"})
 	}
 
 	result := h.buildBulkQuery(r.Context(), req).
@@ -270,7 +285,7 @@ func (h *QueueHandler) bulkRetry(r *http.Request, req bulkQueueRequest) (BulkQue
 // POST /api/v1/admin/queue/bulk-bounce
 func (h *QueueHandler) bulkBounce(r *http.Request, req bulkQueueRequest) (BulkQueueResult, error) {
 	if len(req.IDs) == 0 && req.Filter == nil {
-		return BulkQueueResult{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "ids or filter required")
+		return BulkQueueResult{}, endpoint.Invalid(map[string]string{"ids": "ids or filter required", "filter": "ids or filter required"})
 	}
 
 	// Only bounce mail that is still in flight. Without this guard a bulk bounce
@@ -293,7 +308,7 @@ func (h *QueueHandler) bulkBounce(r *http.Request, req bulkQueueRequest) (BulkQu
 // DELETE /api/v1/admin/queue/bulk-delete
 func (h *QueueHandler) bulkDelete(r *http.Request, req bulkQueueRequest) (BulkQueueResult, error) {
 	if len(req.IDs) == 0 && req.Filter == nil {
-		return BulkQueueResult{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "ids or filter required")
+		return BulkQueueResult{}, endpoint.Invalid(map[string]string{"ids": "ids or filter required", "filter": "ids or filter required"})
 	}
 	query := h.buildBulkQuery(r.Context(), req)
 	// An empty filter has no conditions, so it selects every entry, as the

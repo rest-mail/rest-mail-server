@@ -58,12 +58,12 @@ func TestRawBodyValidationDescriptionsMatchRealBinding(t *testing.T) {
 			return "copied", nil
 		})
 	})
-	t.Run("raw media alternatives retain 415", func(t *testing.T) {
+	t.Run("raw media alternatives retain 400", func(t *testing.T) {
 		type request struct {
 			XML  *string `body:"application/xml"`
 			Text *string `body:"text/plain"`
 		}
-		rawBodyDescriptionCase(t, "application/json", "{}", "", 415, false, func(*http.Request, request) (string, error) {
+		rawBodyDescriptionCase(t, "application/json", "{}", "", 400, false, func(*http.Request, request) (string, error) {
 			t.Fatal("unsupported media reached handler")
 			return "", nil
 		})

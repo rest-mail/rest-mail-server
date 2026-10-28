@@ -62,9 +62,12 @@ func (h *AliasHandler) list(r *http.Request, in adminAddressListRequest) (endpoi
 
 // Address validation stays with the shared EAI parser: binding format:email
 // would reject display-name addresses that existing clients can submit.
+// The addresses are described as idn-email, which go-oapifly states and does not enforce:
+// the handler checks them itself, accepting internationalized addresses and, in the
+// destination, a display name.
 type createAliasRequest struct {
-	SourceAddress      string `json:"source_address"`
-	DestinationAddress string `json:"destination_address"`
+	SourceAddress      string `json:"source_address" format:"idn-email"`
+	DestinationAddress string `json:"destination_address" format:"idn-email"`
 }
 
 func (h *AliasHandler) create(r *http.Request, in createAliasRequest) (Alias, error) {

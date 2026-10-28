@@ -29,7 +29,7 @@ import (
 // {"script": ...} config.
 //
 // It returns the FIRST script's *filters.SieveInstallError (nil when all are
-// safe) so the admin save can be rejected with an actionable HTTP 400 BEFORE the
+// safe) so the admin save can be rejected with an actionable HTTP 422 BEFORE the
 // config is persisted. Without this an admin's broken domain Sieve is stored and
 // only fails at DELIVERY — where the filter fails to build and the engine's
 // fail-closed policy DEFERS every message for the entire domain (see
@@ -71,7 +71,7 @@ func validateSievePipelineFilters(raw json.RawMessage) error {
 // validateDuplicatePipelineFilters rejects a domain pipeline that configures the
 // `duplicate` filter with a queue_recipient. The filter only forks to a webhook
 // (issue #201): copying to a mailbox reads like a working option, so a config
-// asking for it is refused at HTTP 400 with an actionable message rather than
+// asking for it is refused at HTTP 422 with an actionable message rather than
 // saved and silently ignored. Every duplicate block is inspected regardless of
 // its `enabled` flag — a disabled block would be ignored the moment it is
 // enabled.
@@ -297,16 +297,16 @@ func (h *PipelineHandler) createPipeline(r *http.Request, in createPipelineReque
 
 	// Install-validate every embedded Sieve script BEFORE persisting: a broken
 	// domain Sieve fails to build at delivery and, under the engine's fail-closed
-	// policy, would defer the whole domain's mail. Reject it now with HTTP 400.
+	// policy, would defer the whole domain's mail. Reject it now with HTTP 422.
 	if err := validateSievePipelineFilters(req.Filters); err != nil {
-		return zero, endpoint.Refuse(http.StatusBadRequest, "invalid_sieve", err.Error())
+		return zero, endpoint.Invalid(map[string]string{"filters": err.Error()})
 	}
 
 	// Reject a duplicate filter configured with an unsupported queue_recipient
 	// (issue #201) before persisting: an unhonoured config would be silently
 	// ignored at delivery.
 	if err := validateDuplicatePipelineFilters(req.Filters); err != nil {
-		return zero, endpoint.Refuse(http.StatusBadRequest, "unsupported_filter", err.Error())
+		return zero, endpoint.Invalid(map[string]string{"filters": err.Error()})
 	}
 
 	p := models.Pipeline{
@@ -358,12 +358,12 @@ func (h *PipelineHandler) updatePipeline(r *http.Request, in updatePipelineReque
 			return zero, endpoint.Invalid(map[string]string{"filters": "must be an array of filter objects"})
 		}
 		// Same install-time Sieve gate as CreatePipeline: reject a broken embedded
-		// Sieve with HTTP 400 and leave the stored config untouched.
+		// Sieve with HTTP 422 and leave the stored config untouched.
 		if err := validateSievePipelineFilters(req.Filters); err != nil {
-			return zero, endpoint.Refuse(http.StatusBadRequest, "invalid_sieve", err.Error())
+			return zero, endpoint.Invalid(map[string]string{"filters": err.Error()})
 		}
 		if err := validateDuplicatePipelineFilters(req.Filters); err != nil {
-			return zero, endpoint.Refuse(http.StatusBadRequest, "unsupported_filter", err.Error())
+			return zero, endpoint.Invalid(map[string]string{"filters": err.Error()})
 		}
 		p.Filters = req.Filters
 	}
@@ -464,7 +464,11 @@ func (h *PipelineHandler) testFilter(r *http.Request, in testFilterRequestBody) 
 		if errors.As(err, &execution) {
 			return zero, err
 		}
-		return zero, endpoint.Refuse(http.StatusBadRequest, "filter_error", err.Error())
+		field := "config"
+		if strings.HasSuffix(err.Error(), "unknown filter: "+req.FilterName) {
+			field = "filter_name"
+		}
+		return zero, endpoint.Invalid(map[string]string{field: err.Error()})
 	}
 
 	return *result, nil

@@ -64,6 +64,8 @@ func TestFolderBindingBeforeDatabase(t *testing.T) {
 		{http.MethodGet, "/api/v1/accounts/0/folders", "", "id"},
 		{http.MethodGet, "/api/v1/accounts/nope/quota", "", "id"},
 		{http.MethodPost, "/api/v1/accounts/1/folders", `{}`, "name"},
+		// An empty name is below the name's minLength, so binding refuses it.
+		{http.MethodPost, "/api/v1/accounts/1/folders", `{"name":""}`, "name"},
 		{http.MethodPost, "/api/v1/accounts/1/folders", `{"name":12}`, "name"},
 		{http.MethodPost, "/api/v1/accounts/1/folders", `{"name":"A","colour":"red"}`, "colour"},
 		{http.MethodPatch, "/api/v1/accounts/1/folders/Old", `{"name":null}`, "name"},
@@ -77,7 +79,7 @@ func TestFolderBindingBeforeDatabase(t *testing.T) {
 		})
 	}
 	for _, tc := range []struct{ method, path, body string }{
-		{http.MethodPost, "/api/v1/accounts/1/folders", `{"name":""}`},
+		{http.MethodPost, "/api/v1/accounts/1/folders", `{"name":" "}`},
 		{http.MethodDelete, "/api/v1/accounts/1/folders/INBOX", ""},
 		{http.MethodGet, "/api/v1/accounts/1/quota", ""},
 	} {

@@ -18,8 +18,7 @@ func TestSetDKIMRotation_ExamplePairs(t *testing.T) {
 	want := map[string][]string{
 		"request": {"body_array", "configured", "field_unknown", "interval_missing", "interval_negative", "interval_null", "interval_too_large", "interval_wrong_type"},
 		"200":     {"configured"},
-		"400":     {"body_array"},
-		"422":     {"field_unknown", "interval_missing", "interval_negative", "interval_null", "interval_too_large", "interval_wrong_type"},
+		"422":     {"body_array", "field_unknown", "interval_missing", "interval_negative", "interval_null", "interval_too_large", "interval_wrong_type"},
 	}
 	got := map[string][]string{"request": names(requests)}
 	for status, examples := range responses {

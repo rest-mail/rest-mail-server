@@ -70,12 +70,22 @@ class ProbeConfig(unittest.TestCase):
         self.assertEqual(
             self.config["fuzz"], {"pin": {"private_key": probes.DKIM_KEY.read_text()}}
         )
-        self.assertEqual(self.config["spec"], str(ROOT / "openapi.yaml"))
+        self.assertEqual(
+            self.config["spec"], str(ROOT / ".cache/contract/openapi.json")
+        )
         self.assertEqual(
             self.config["hookfiles"], str(ROOT / "tests/contract/entrypoint.py")
         )
         self.assertEqual(self.config["reporter"], ["cli", "junit"])
         self.assertEqual(self.config["output"], ["", str(self.report.resolve())])
+
+    def test_live_description_url_survives_probe_configuration(self):
+        url = "https://fixture.test/api/docs/openapi.json?revision=one"
+        config = dict(self.base, spec=url)
+        source = self.output.parent / "live.yml"
+        source.write_text(yaml.safe_dump(config))
+        probes.main(source, self.output, self.report)
+        self.assertEqual(yaml.safe_load(self.output.read_text())["spec"], url)
 
     def test_workflow_enforces_unpinned_examples_before_coverage_and_uses_coverage_report(
         self,

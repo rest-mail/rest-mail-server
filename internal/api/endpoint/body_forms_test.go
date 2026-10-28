@@ -20,8 +20,8 @@ type uploadWidget struct {
 	File *[]byte       `body:"application/vnd.widget"`
 }
 
-// A body taken in several media types is bound by its Content-Type, is the 415 in
-// another, and the 415 is described; the handler can read the body again as it came.
+// A body taken in several media types is bound by its Content-Type, is the 400 in
+// another, and the 400 is described; the handler can read the body again as it came.
 func TestABodyInSeveralForms(t *testing.T) {
 	r := chi.NewRouter()
 	reg := NewRegistry()
@@ -58,7 +58,7 @@ func TestABodyInSeveralForms(t *testing.T) {
 		Error struct{ Code, Message string } `json:"error"`
 	}
 	_ = json.Unmarshal(rr.Body.Bytes(), &refused)
-	if rr.Code != http.StatusUnsupportedMediaType || refused.Error.Code != "unsupported_media_type" ||
+	if rr.Code != http.StatusBadRequest || refused.Error.Code != "bad_request" ||
 		refused.Error.Message != "Unsupported media type: text/plain; the body is taken as application/json, application/vnd.widget" {
 		t.Errorf("text/plain: %d %s", rr.Code, rr.Body)
 	}
@@ -69,8 +69,8 @@ func TestABodyInSeveralForms(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(doc), `"415":`) {
-		t.Errorf("the 415 is not described: %s", doc)
+	if !strings.Contains(string(doc), `"400":`) {
+		t.Errorf("the 400 is not described: %s", doc)
 	}
 
 	// BindBody binds and refuses as a registered request does.
@@ -80,7 +80,7 @@ func TestABodyInSeveralForms(t *testing.T) {
 		refusal.Status != http.StatusUnprocessableEntity || refusal.Fields["name"] == "" {
 		t.Errorf("BindBody past maxLength: %v", err)
 	}
-	if err := BindBody(&bound, []byte(`[]`)); !errors.As(err, &refusal) || refusal.Status != http.StatusBadRequest {
+	if err := BindBody(&bound, []byte(`[]`)); !errors.As(err, &refusal) || refusal.Status != http.StatusUnprocessableEntity {
 		t.Errorf("BindBody of an array: %v", err)
 	}
 	if err := BindBody(&bound, []byte(`{"name":"ok"}`)); err != nil || bound.Name != "ok" {

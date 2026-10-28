@@ -39,13 +39,10 @@ fi
 out=.cache/contract
 logs=${CONTRACT_LOGS:-$out}
 mkdir -p "$out" "$logs"
-# Save the document this server actually serves, with the reports, and fail on a
-# fetch error. Required parameter examples are covered by
-# TestEveryRequiredParameterHasAnExample (#851). The phases still read the
-# independent oracle until #670 completes its generated-description switch and
-# live contract proof.
+# Every phase consumes the exact description served by this server. The saved
+# bytes are also the coverage/security inventory, even when Vertrag reads its URL.
 served="$PWD/$out/openapi.json"
-export CONTRACT_SPEC="$PWD/openapi.yaml"
+export CONTRACT_SPEC="$served"
 names=("$phase")
 if [ "$phase" = ownership ]; then names=(ownership ownership-domains ownership-mailboxes); fi
 reset_run=()
@@ -77,6 +74,12 @@ if [ "$phase" != authorization ] && [ "$phase" != ownership ]; then
   python3 -B tests/contract/description.py vertrag.yml "$served"
 fi
 test -s "$served"
+# Compile the live URL and the exact saved JSON with the pinned binary before
+# making API calls. Fail on changed bytes, transactions, schemas or annotations.
+export CONTRACT_RUN_SPEC
+CONTRACT_RUN_SPEC="$(python3 -B tests/contract/description_equivalence.py \
+  vertrag.yml "$served" "$out/description-equivalence.json" "$CONTRACT_VERTRAG" \
+  --mode "${CONTRACT_DESCRIPTION_MODE:-saved}")"
 
 # vertrag.yml as this run uses it: absolute paths, the endpoint, and the surface
 # gate only for a whole-API run.

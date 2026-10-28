@@ -1025,27 +1025,24 @@ paths:
                       user: {id: 1, email: contract-ordinary@restmail.test, display_name: Contract Ordinary}
                       credential_id: 1
                       credential_kind: app_password
-        "400":
+        '400':
           description: Not HTTP Basic (`basic_required`), or an invalid body
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              examples:
-                invalid_body:
-                  value:
-                    error: {code: bad_request, message: Invalid request body}
+                $ref: '#/components/schemas/ErrorResponse'
+              examples: {}
         "401":
           description: >
             `unauthorized` for a wrong address or password;
             `app_password_required` for the right password of an account with
             two-factor authentication; `setup_required` for one still in setup.
-        "422":
-          description: protocol is not imap, pop3 or smtp
+        '422':
+          description: Request failed validation (validation_failed), with details.fields naming each failing field
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ValidationErrorResponse"
+                $ref: '#/components/schemas/ValidationErrorResponse'
               examples:
                 protocol_missing:
                   value:
@@ -1054,7 +1051,15 @@ paths:
                       message: Request body failed validation
                       details:
                         fields:
-                          protocol: 'must be "imap", "pop3" or "smtp"'
+                          protocol: must be "imap", "pop3" or "smtp"
+                invalid_body:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          body: the body is not a JSON object
         "429":
           description: Too many refused credentials from this client, or too many sign-ins
 
@@ -1756,12 +1761,12 @@ paths:
               parameters:
                 id: '$request.path.id'
                 credential_id: '$response.body#/data/id'
-        "400":
-          description: The body is not valid JSON (`bad_request`)
+        '400':
+          description: The body is not valid JSON or not the declared media type
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: '#/components/schemas/ErrorResponse'
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1965,8 +1970,8 @@ paths:
                       platform: apns
                       environment: production
                       created_at: "2026-01-01T00:00:00Z"
-        "400":
-          description: The body is not JSON (`bad_request`)
+        '400':
+          description: The body is not valid JSON or not the declared media type
         "422":
           description: >
             `validation_failed`, with `details.fields.platform` when the
@@ -2213,6 +2218,12 @@ paths:
   # ═══════════════════════════════════════════════════════════════
   # Messages
   # ═══════════════════════════════════════════════════════════════
+        '422':
+          description: Request failed validation (validation_failed), with details.fields naming each failing field
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
   /api/v1/accounts/{id}/folders/{folder}/messages:
     parameters:
       - $ref: "#/components/parameters/AccountId"
@@ -2465,31 +2476,34 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/ScheduledSend"
-        "400":
-          description: A field is missing or invalid, including an unsafe list_unsubscribe target
+        '400':
+          description: The body is not valid JSON or not the declared media type
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              examples:
-                from_missing:
-                  value:
-                    error:
-                      code: bad_request
-                      message: from is required
-        "422":
-          description: The sender domain's sending_policy refuses the message
+                $ref: '#/components/schemas/ErrorResponse'
+              examples: {}
+        '422':
+          description: Request failed validation (validation_failed), with details.fields naming each failing field
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ValidationErrorResponse"
+                $ref: '#/components/schemas/ValidationErrorResponse'
               examples:
                 unsubscribe_not_allowed:
                   value:
                     error:
                       code: list_unsubscribe_not_allowed
-                      message: "The sender domain sends transactional mail, which carries no List-Unsubscribe field: omit list_unsubscribe"
-
+                      message: 'The sender domain sends transactional mail, which carries no List-Unsubscribe field: omit
+                        list_unsubscribe'
+                from_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          from: from is required
   /api/v1/messages/scheduled:
     get:
       operationId: listScheduledMessages
@@ -2664,12 +2678,12 @@ paths:
               operationId: updateDraft
               parameters:
                 id: '$response.body#/data/id'
-        "400":
-          description: The body is not JSON, or a to or cc entry is not an address
+        '400':
+          description: The body is not valid JSON or not the declared media type
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: '#/components/schemas/ErrorResponse'
         "403":
           description: The caller may not write to the mailbox the draft is from
           content:
@@ -2718,12 +2732,12 @@ paths:
               operationId: sendDraft
               parameters:
                 id: '$response.body#/data/id'
-        "400":
-          description: An invalid body, or a to or cc entry that is not an address
+        '400':
+          description: The body is not valid JSON or not the declared media type
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: '#/components/schemas/ErrorResponse'
         "403":
           description: The draft is not the caller's, or the caller may not act as the new from
           content:
@@ -3477,53 +3491,68 @@ paths:
               examples:
                 imported:
                   value: {data: {imported: 1}}
-        "400":
-          description: Request body is not a JSON object of contact import fields
+        '400':
+          description: The body is not valid JSON or not the declared media type
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              examples:
-                body_array:
-                  value: {error: {code: bad_request, message: Invalid request body}}
-        "422":
-          description: Contacts missing or empty, or an entry has a missing or invalid email
+                $ref: '#/components/schemas/ErrorResponse'
+              examples: {}
+        '422':
+          description: Request failed validation (validation_failed), with details.fields naming each failing field
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ValidationErrorResponse"
+                $ref: '#/components/schemas/ValidationErrorResponse'
               examples:
                 contacts_missing:
                   value:
                     error:
                       code: validation_failed
                       message: Request body failed validation
-                      details: {fields: {contacts: required}}
+                      details:
+                        fields:
+                          contacts: required
                 contacts_empty:
                   value:
                     error:
                       code: validation_failed
                       message: Request body failed validation
-                      details: {fields: {contacts: required}}
+                      details:
+                        fields:
+                          contacts: required
                 email_missing:
                   value:
                     error:
                       code: validation_failed
                       message: Request body failed validation
-                      details: {fields: {"contacts[0].email": required}}
+                      details:
+                        fields:
+                          contacts[0].email: required
                 email_invalid:
                   value:
                     error:
                       code: validation_failed
                       message: Request body failed validation
-                      details: {fields: {"contacts[0].email": must be an email address}}
+                      details:
+                        fields:
+                          contacts[0].email: must be an email address
                 mixed_batch:
                   value:
                     error:
                       code: validation_failed
                       message: Request body failed validation
-                      details: {fields: {"contacts[1].email": must be an email address}}
-
+                      details:
+                        fields:
+                          contacts[1].email: must be an email address
+                body_array:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          body: the body is not a JSON object
   /api/v1/accounts/{id}/contacts/suggest:
     parameters:
       - $ref: "#/components/parameters/AccountId"
@@ -3633,58 +3662,69 @@ paths:
                 configured:
                   value:
                     data: {enabled: true, subject: "Out of office", body: "I will reply when I return."}
-        "400":
-          description: Invalid request body
+        '400':
+          description: The body is not valid JSON or not the declared media type
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              examples:
-                body_array:
-                  value:
-                    error: {code: bad_request, message: "Invalid request body"}
-        "422":
-          description: Validation error
+                $ref: '#/components/schemas/ErrorResponse'
+              examples: {}
+        '422':
+          description: Request failed validation (validation_failed), with details.fields naming each failing field
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ValidationErrorResponse"
+                $ref: '#/components/schemas/ValidationErrorResponse'
               examples:
                 enabled_missing:
                   value:
                     error:
                       code: validation_failed
-                      message: "Request body failed validation"
+                      message: Request body failed validation
                       details:
-                        fields: {enabled: required}
+                        fields:
+                          enabled: required
                 subject_missing:
                   value:
                     error:
                       code: validation_failed
-                      message: "Request body failed validation"
+                      message: Request body failed validation
                       details:
-                        fields: {subject: "required when enabled"}
+                        fields:
+                          subject: required when enabled
                 body_missing:
                   value:
                     error:
                       code: validation_failed
-                      message: "Request body failed validation"
+                      message: Request body failed validation
                       details:
-                        fields: {body: "required when enabled"}
+                        fields:
+                          body: required when enabled
                 reply_missing:
                   value:
                     error:
                       code: validation_failed
-                      message: "Request body failed validation"
+                      message: Request body failed validation
                       details:
-                        fields: {subject: "required when enabled", body: "required when enabled"}
+                        fields:
+                          subject: required when enabled
+                          body: required when enabled
                 dates_reversed:
                   value:
                     error:
                       code: validation_failed
-                      message: "Request body failed validation"
+                      message: Request body failed validation
                       details:
-                        fields: {end_date: "must be after start_date"}
+                        fields:
+                          end_date: must be after start_date
+                body_array:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          body: the body is not a JSON object
     delete:
       operationId: disableVacation
       tags: [Vacation]
@@ -4097,6 +4137,12 @@ paths:
                   data:
                     $ref: "#/components/schemas/MailboxCheck"
 
+        '422':
+          description: Request failed validation (validation_failed), with details.fields naming each failing field
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
   /api/v1/messages/deliver:
     post:
       operationId: deliverMessage
@@ -4174,12 +4220,6 @@ paths:
                     pattern: '^https://'
               example:
                 endpoint: https://restmail.test/restmail
-        "400":
-          description: Missing, duplicate or invalid domain query parameter
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
@@ -4195,6 +4235,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+        '422':
+          description: Request failed validation (validation_failed), with details.fields naming each failing field
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
   /restmail/capabilities:
     get:
       operationId: restmailCapabilities
@@ -4482,30 +4528,21 @@ paths:
               operationId: setMtaStsPolicy
               parameters:
                 id: '$response.body#/data/id'
-        "400":
-          description: >-
-            The body is not a JSON object of the request's fields
-            (`bad_request`)
+        '400':
+          description: The body is not valid JSON or not the declared media type
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              examples:
-                body_array:
-                  value:
-                    error:
-                      code: bad_request
-                      message: Invalid request body
+                $ref: '#/components/schemas/ErrorResponse'
+              examples: {}
         "409":
           $ref: "#/components/responses/Conflict"
-        "422":
-          description: >-
-            Request body failed validation, a name that is not a domain name
-            included
+        '422':
+          description: Request failed validation (validation_failed), with details.fields naming each failing field
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ValidationErrorResponse"
+                $ref: '#/components/schemas/ValidationErrorResponse'
               examples:
                 name_missing:
                   value:
@@ -4522,7 +4559,7 @@ paths:
                       message: Request body failed validation
                       details:
                         fields:
-                          server_type: "must be 'traditional' or 'restmail'"
+                          server_type: must be 'traditional' or 'restmail'
                 sending_policy_invalid:
                   value:
                     error:
@@ -4539,7 +4576,14 @@ paths:
                       details:
                         fields:
                           dmarc_policy: must be 'none', 'quarantine' or 'reject'
-
+                body_array:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          body: the body is not a JSON object
         "429":
           description: Authentication refusals exceeded the configured rate limit
           content:
@@ -5150,24 +5194,19 @@ paths:
               operationId: deleteAlias
               parameters:
                 id: '$response.body#/data/id'
-        "400":
-          description: The body is not a JSON object of the request's fields (`bad_request`)
+        '400':
+          description: The body is not valid JSON or not the declared media type
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              examples:
-                body_array:
-                  value:
-                    error:
-                      code: bad_request
-                      message: Invalid request body
-        "422":
-          description: Request body failed validation
+                $ref: '#/components/schemas/ErrorResponse'
+              examples: {}
+        '422':
+          description: Request failed validation (validation_failed), with details.fields naming each failing field
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ValidationErrorResponse"
+                $ref: '#/components/schemas/ValidationErrorResponse'
               examples:
                 source_missing:
                   value:
@@ -5193,7 +5232,14 @@ paths:
                       details:
                         fields:
                           source_address: must be a valid email address
-
+                body_array:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          body: the body is not a JSON object
         "429":
           description: Authentication refusals exceeded the configured rate limit
           content:
@@ -5501,38 +5547,19 @@ paths:
               operationId: deletePipeline
               parameters:
                 id: '$response.body#/data/id'
-        "400":
-          description: >-
-            `bad_request` when the body does not decode as the request: not
-            JSON, an array, a string, a number or a boolean rather than an
-            object (including `null`). Field types and unknown fields are
-            checked by binding and answer 422 `validation_failed` with field
-            details. Filters that pass validation are also refused with a 400:
-            `invalid_sieve` for a Sieve script that does not install,
-            `unsupported_filter` for a filter configured in a way it does not
-            support.
+        '400':
+          description: The body is not valid JSON or not the declared media type
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              examples:
-                body_array:
-                  value:
-                    error:
-                      code: bad_request
-                      message: Invalid request body
-                null_body:
-                  value:
-                    error:
-                      code: bad_request
-                      message: Invalid request body
-
-        "422":
-          description: Request body failed validation
+                $ref: '#/components/schemas/ErrorResponse'
+              examples: {}
+        '422':
+          description: Request failed validation (validation_failed), with details.fields naming each failing field
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ValidationErrorResponse"
+                $ref: '#/components/schemas/ValidationErrorResponse'
               examples:
                 direction_missing:
                   value:
@@ -5550,7 +5577,6 @@ paths:
                       details:
                         fields:
                           filters: must be an array of filter objects
-
                 active_wrong_type:
                   value:
                     error:
@@ -5559,7 +5585,22 @@ paths:
                       details:
                         fields:
                           active: must be a boolean
-
+                body_array:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          body: the body is not a JSON object
+                null_body:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          body: the body is null
         "429":
           description: Too many requests
           content:
@@ -5807,20 +5848,13 @@ paths:
                             detail: missing From header; missing Date header
                           duration_ms: 0
                       duration_ms: 0
-        "400":
-          description: The body is not JSON (`bad_request`)
+        '400':
+          description: The body is not valid JSON or not the declared media type
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              examples:
-                # Refused while the body is decoded, before any field is read
-                # (#388).
-                invalid_body:
-                  value:
-                    error:
-                      code: bad_request
-                      message: Invalid request body
+                $ref: '#/components/schemas/ErrorResponse'
+              examples: {}
         "404":
           description: Pipeline not found
           content:
@@ -5833,12 +5867,12 @@ paths:
                     error:
                       code: not_found
                       message: Pipeline not found
-        "422":
-          description: Request body failed validation
+        '422':
+          description: Request failed validation (validation_failed), with details.fields naming each failing field
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ValidationErrorResponse"
+                $ref: '#/components/schemas/ValidationErrorResponse'
               examples:
                 email_missing:
                   value:
@@ -5848,7 +5882,6 @@ paths:
                       details:
                         fields:
                           email: required
-
                 pipeline_id_wrong_type:
                   value:
                     error:
@@ -5857,7 +5890,14 @@ paths:
                       details:
                         fields:
                           pipeline_id: must be a non-negative integer
-
+                invalid_body:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          body: the body is not a JSON object
         "429":
           description: Too many pipeline preview requests
           content:
@@ -5951,14 +5991,13 @@ paths:
                         filter: header_validate
                         result: pass
                         detail: all headers valid
-        "422":
-          description: Request body failed validation
+        '422':
+          description: Request failed validation (validation_failed), with details.fields naming each failing field
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ValidationErrorResponse"
+                $ref: '#/components/schemas/ValidationErrorResponse'
               examples:
-                # The handler names both fields when either is missing.
                 filter_name_missing:
                   value:
                     error:
@@ -5976,30 +6015,21 @@ paths:
                       details:
                         fields:
                           filter_name: must be a string
-
-        "400":
-          description: >-
-            `bad_request` when the body does not decode as the request: empty,
-            not JSON, an array, a string, a number or a boolean rather than an
-            object (including `null`). A field of the wrong JSON type or an
-            unknown field answers 422 `validation_failed` with field details.
-            An empty object also gets 422 for the missing fields before any
-            filter is made. A body that decodes is also refused with a 400,
-            `filter_error`, when the named filter cannot be made from its
-            config. Runtime execution failures return a sanitized 500 instead.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              examples:
-                # Refused while the body is decoded, before any field is read
-                # (#388).
                 invalid_body:
                   value:
                     error:
-                      code: bad_request
-                      message: Invalid request body
-
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          body: the body is not a JSON object
+        '400':
+          description: The body is not valid JSON or not the declared media type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples: {}
         "429":
           description: Too many pipeline preview requests
           content:
@@ -6290,24 +6320,19 @@ paths:
                 valid:
                   value:
                     valid: true
-        "400":
-          description: The body is not a JSON object, or a field has the wrong type (`bad_request`)
+        '400':
+          description: The body is not valid JSON or not the declared media type
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              examples:
-                body_array:
-                  value:
-                    error:
-                      code: bad_request
-                      message: Invalid request body
-        "422":
-          description: Request body failed validation
+                $ref: '#/components/schemas/ErrorResponse'
+              examples: {}
+        '422':
+          description: Request failed validation (validation_failed), with details.fields naming each failing field
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ValidationErrorResponse"
+                $ref: '#/components/schemas/ValidationErrorResponse'
               examples:
                 script_missing:
                   value:
@@ -6317,6 +6342,14 @@ paths:
                       details:
                         fields:
                           script: required
+                body_array:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          body: the body is not a JSON object
         "503":
           description: >-
             JS filter sidecar unavailable, or it refused the API's token
@@ -6628,21 +6661,12 @@ paths:
               operationId: deleteCustomFilter
               parameters:
                 id: '$request.path.id'
-        "400":
-          description: >-
-            The body is not JSON (`bad_request`), or the filter's config
-            contains no script
+        '400':
+          description: The body is not JSON (`bad_request`), or the filter's config contains no script
           content:
             application/json:
               schema: {}
-              examples:
-                # Refused while the body is decoded, before the filter is
-                # looked up.
-                invalid_body:
-                  value:
-                    error:
-                      code: bad_request
-                      message: Invalid request body
+              examples: {}
         "404":
           $ref: "#/components/responses/NotFound"
         "408":
@@ -6661,12 +6685,12 @@ paths:
           content:
             application/json:
               schema: {}
-        "422":
-          description: Request body or path failed validation
+        '422':
+          description: Request failed validation (validation_failed), with details.fields naming each failing field
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ValidationErrorResponse"
+                $ref: '#/components/schemas/ValidationErrorResponse'
               examples:
                 unknown_field:
                   value:
@@ -6676,6 +6700,14 @@ paths:
                       details:
                         fields:
                           surprise: not allowed
+                invalid_body:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          body: the body is not a JSON object
         "429":
           description: Pipeline preview rate limit exceeded
           content:
@@ -6843,33 +6875,28 @@ paths:
                   value:
                     data:
                       affected: 1
-        "400":
-          description: >-
-            Invalid JSON or a body that cannot be decoded into the request shape;
-            or no IDs and no filter. Refused before any queue lookup. An empty
-            filter object is accepted. Invalid fields and more than 1000 IDs answer 422.
+        '400':
+          description: The body is not valid JSON or not the declared media type
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: '#/components/schemas/ErrorResponse'
+              examples: {}
+        '422':
+          description: Request failed validation (validation_failed), with details.fields naming each failing field
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
               examples:
-                invalid_body:
-                  value:
-                    error:
-                      code: bad_request
-                      message: Invalid request body
                 selection_missing:
                   value:
                     error:
-                      code: bad_request
-                      message: ids or filter required
-        "422":
-          description: Invalid request fields, including more than 1000 IDs
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              examples:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          ids: ids or filter required
                 invalid_ids:
                   value:
                     error:
@@ -6878,7 +6905,14 @@ paths:
                       details:
                         fields:
                           ids: must be an array
-
+                invalid_body:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          body: the body is not a JSON object
   /api/v1/admin/queue/bulk-bounce:
     post:
       operationId: bulkBounceQueue
@@ -6924,33 +6958,28 @@ paths:
                   value:
                     data:
                       affected: 1
-        "400":
-          description: >-
-            Invalid JSON or a body that cannot be decoded into the request shape;
-            or no IDs and no filter. Refused before any queue lookup. An empty
-            filter object is accepted. Invalid fields and more than 1000 IDs answer 422.
+        '400':
+          description: The body is not valid JSON or not the declared media type
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: '#/components/schemas/ErrorResponse'
+              examples: {}
+        '422':
+          description: Request failed validation (validation_failed), with details.fields naming each failing field
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
               examples:
-                invalid_body:
-                  value:
-                    error:
-                      code: bad_request
-                      message: Invalid request body
                 selection_missing:
                   value:
                     error:
-                      code: bad_request
-                      message: ids or filter required
-        "422":
-          description: Invalid request fields, including more than 1000 IDs
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              examples:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          ids: ids or filter required
                 invalid_ids:
                   value:
                     error:
@@ -6959,7 +6988,14 @@ paths:
                       details:
                         fields:
                           ids: must be an array
-
+                invalid_body:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          body: the body is not a JSON object
   /api/v1/admin/queue/bulk-delete:
     delete:
       operationId: bulkDeleteQueue
@@ -6980,6 +7016,9 @@ paths:
               by_ids:
                 value:
                   ids: [987654]
+              # Not an object: refused before any entry is selected.
+              invalid_body:
+                value: []
               # Neither ids nor a filter: refused before any entry is selected.
               selection_missing:
                 value: {}
@@ -7002,25 +7041,28 @@ paths:
                   value:
                     data:
                       affected: 1
-        "400":
-          description: The body selects no entries, by ids or by a filter (`bad_request`)
+        '400':
+          description: The body is not valid JSON or not the declared media type
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: '#/components/schemas/ErrorResponse'
+              examples: {}
+        '422':
+          description: Request failed validation (validation_failed), with details.fields naming each failing field
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
               examples:
                 selection_missing:
                   value:
                     error:
-                      code: bad_request
-                      message: ids or filter required
-        "422":
-          description: Invalid request fields, including more than 1000 IDs
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              examples:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          ids: ids or filter required
                 invalid_ids:
                   value:
                     error:
@@ -7029,7 +7071,14 @@ paths:
                       details:
                         fields:
                           ids: must be an array
-
+                invalid_body:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          body: the body is not a JSON object
   /api/v1/admin/queue/{id}:
     parameters:
       - $ref: "#/components/parameters/ResourceId"
@@ -7468,12 +7517,6 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/DKIMRotationSettings"
-        "400":
-          description: Invalid domain ID (`bad_request`).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Domain not found
           content:
@@ -7553,22 +7596,17 @@ paths:
                 configured:
                   value:
                     data: {domain_id: 1, rotation_interval_days: 90, state: stable, staged: null, previous: null}
-        "400":
-          description: Malformed JSON or a body that is not a JSON object (bad_request).
+        '400':
+          description: The body is not valid JSON or not the declared media type
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-              examples:
-                body_array:
-                  value:
-                    error:
-                      code: bad_request
-                      message: Invalid request body
+              examples: {}
         "404":
           $ref: "#/components/responses/NotFound"
-        "422":
-          description: Missing, unknown, null or invalid fields (validation_failed); details.fields names each broken rule.
+        '422':
+          description: Request failed validation (validation_failed), with details.fields naming each failing field
           content:
             application/json:
               schema:
@@ -7622,8 +7660,14 @@ paths:
                       details:
                         fields:
                           private_key: not allowed
-
-
+                body_array:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          body: the body is not a JSON object
   /api/v1/admin/dkim/{id}:
     parameters:
       - $ref: "#/components/parameters/ResourceId"
@@ -7704,22 +7748,17 @@ paths:
               operationId: deleteDKIMKey
               parameters:
                 id: '$request.path.id'
-        "400":
-          description: Malformed JSON or a body that is not a JSON object (bad_request).
+        '400':
+          description: The body is not valid JSON or not the declared media type
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-              examples:
-                body_array:
-                  value:
-                    error:
-                      code: bad_request
-                      message: Invalid request body
+              examples: {}
         "404":
           $ref: "#/components/responses/NotFound"
-        "422":
-          description: Missing, unknown, null or invalid fields (validation_failed); details.fields names each broken rule.
+        '422':
+          description: Request failed validation (validation_failed), with details.fields naming each failing field
           content:
             application/json:
               schema:
@@ -7789,7 +7828,14 @@ paths:
                       details:
                         fields:
                           private_key: must be a string
-
+                body_array:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          body: the body is not a JSON object
     delete:
       operationId: deleteDKIMKey
       tags: ["Admin: DKIM"]
@@ -7892,22 +7938,15 @@ paths:
               operationId: getCertificate
               parameters:
                 id: '$response.body#/data/id'
-        "400":
-          description: Malformed JSON or a body that is not a JSON object (bad_request).
+        '400':
+          description: The body is not valid JSON or not the declared media type
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-              examples:
-                invalid_body:
-                  summary: Not JSON or not an object
-                  value:
-                    error:
-                      code: bad_request
-                      message: Invalid request body
-        "422":
-          description: Missing or invalid certificate fields (validation_failed), with details.fields naming each broken
-            rule.
+              examples: {}
+        '422':
+          description: Request failed validation (validation_failed), with details.fields naming each failing field
           content:
             application/json:
               schema:
@@ -7923,6 +7962,15 @@ paths:
                           domain_id: required
                           cert_pem: required
                           key_pem: required
+                invalid_body:
+                  summary: Not JSON or not an object
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          body: the body is not a JSON object
         "429":
           description: Too many requests
           content:
@@ -8527,12 +8575,6 @@ paths:
             application/xml:
               schema:
                 type: string
-        "400":
-          description: No email domain in the address or the host name
-          content:
-            text/plain:
-              schema:
-                type: string
         "404":
           description: Domain not found
           content:
@@ -8546,6 +8588,12 @@ paths:
               schema:
                 type: string
 
+        '422':
+          description: Request failed validation (validation_failed), with details.fields naming each failing field
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
   /.well-known/autoconfig/mail/config-v1.1.xml:
     get:
       operationId: mozillaAutoconfigWellKnown
@@ -8573,12 +8621,6 @@ paths:
             application/xml:
               schema:
                 type: string
-        "400":
-          description: No email domain in the address or the host name
-          content:
-            text/plain:
-              schema:
-                type: string
         "404":
           description: Domain not found
           content:
@@ -8592,6 +8634,12 @@ paths:
               schema:
                 type: string
 
+        '422':
+          description: Request failed validation (validation_failed), with details.fields naming each failing field
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
   /autodiscover/autodiscover.xml:
     post:
       operationId: microsoftAutodiscover
@@ -8634,25 +8682,18 @@ paths:
               examples:
                 valid:
                   summary: XML settings for the requested mailbox
-        "400":
-          description: >-
-            No usable email address, refused before any domain is looked up. A
-            body that is not Autodiscover XML falls back to the emailaddress
-            query parameter: with neither, "invalid request". An Autodiscover
-            request without an EMailAddress gets "email address required", and
-            an address without an @ gets "invalid email address". Plain text,
-            ending in a newline.
+        '400':
+          description: The body is not valid JSON or not the declared media type
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
-                enum:
-                  - "invalid request\n"
-                  - "email address required\n"
-                  - "invalid email address\n"
+                $ref: '#/components/schemas/ErrorResponse'
               examples:
                 malformed:
-                  value: "invalid request\n"
+                  value:
+                    error:
+                      code: bad_request
+                      message: invalid request
         "404":
           description: Domain not found
           content:
@@ -8666,6 +8707,12 @@ paths:
               schema:
                 type: string
 
+        '422':
+          description: Request failed validation (validation_failed), with details.fields naming each failing field
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
   /.well-known/mta-sts.txt:
     get:
       operationId: mtaStsPolicyFile
@@ -8775,38 +8822,39 @@ paths:
                   value:
                     data:
                       stored: 1
-        "400":
-          description: Malformed report
+        '400':
+          description: The body is not valid JSON or not the declared media type
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              examples:
-                body_array:
-                  value:
-                    error:
-                      code: bad_request
-                      message: Invalid request body
-        "422":
-          description: Invalid report fields, or no policy domain hosted by this server
+                $ref: '#/components/schemas/ErrorResponse'
+              examples: {}
+        '422':
+          description: Request failed validation (validation_failed), with details.fields naming each failing field
           content:
             application/json:
               schema:
                 type: object
-                required: [error]
+                required:
+                - error
                 properties:
                   error:
                     type: object
-                    required: [code, message]
+                    required:
+                    - code
+                    - message
                     properties:
                       code:
                         type: string
-                        enum: [validation_failed, no_matching_domains]
+                        enum:
+                        - validation_failed
+                        - no_matching_domains
                       message:
                         type: string
                       details:
                         type: object
-                        required: [fields]
+                        required:
+                        - fields
                         properties:
                           fields:
                             type: object
@@ -8821,7 +8869,14 @@ paths:
                       details:
                         fields:
                           organization-name: Required field
-
+                body_array:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          body: the body is not a JSON object
   /.well-known/acme-challenge/{token}:
     get:
       operationId: acmeChallenge
@@ -9230,12 +9285,12 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/GrantEscalation"
-        "400":
-          description: A body that is not JSON or not an object
+        '400':
+          description: The body is not valid JSON or not the declared media type
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: '#/components/schemas/ErrorResponse'
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -9339,12 +9394,12 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/GrantEscalation"
-        "400":
-          description: A body that is not JSON or not an object
+        '400':
+          description: The body is not valid JSON or not the declared media type
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: '#/components/schemas/ErrorResponse'
         "422":
           $ref: "#/components/responses/ValidationError"
         "401":
@@ -9894,24 +9949,19 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
-        "400":
-          description: Invalid domain ID or a body that cannot decode as the request
+        '400':
+          description: The body is not valid JSON or not the declared media type
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              examples:
-                body_array:
-                  value:
-                    error:
-                      code: bad_request
-                      message: Invalid request body
-        "422":
-          description: Request body failed validation
+                $ref: '#/components/schemas/ErrorResponse'
+              examples: {}
+        '422':
+          description: Request failed validation (validation_failed), with details.fields naming each failing field
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ValidationErrorResponse"
+                $ref: '#/components/schemas/ValidationErrorResponse'
               examples:
                 port_wrong_type:
                   value:
@@ -9969,10 +10019,14 @@ paths:
                       details:
                         fields:
                           password: A username and a password are set together, or neither
-
-  # ═══════════════════════════════════════════════════════════════
-  # Admin: TLS Reports
-  # ═══════════════════════════════════════════════════════════════
+                body_array:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          body: the body is not a JSON object
   /api/v1/admin/tls-reports:
     get:
       operationId: listTlsReports
@@ -10198,18 +10252,13 @@ paths:
                       from: postmaster@restmail.test
                       to: admin@restmail.test
                       subject: Test
-        "400":
-          description: Missing, malformed or non-object JSON body
+        '400':
+          description: The body is not valid JSON or not the declared media type
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              examples:
-                non_object:
-                  value:
-                    error:
-                      code: bad_request
-                      message: Invalid request body
+                $ref: '#/components/schemas/ErrorResponse'
+              examples: {}
         "403":
           description: Wildcard capability or cookie CSRF is missing
           content:
@@ -10218,12 +10267,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           $ref: "#/components/responses/NotFound"
-        "422":
-          description: Request body failed validation
+        '422':
+          description: Request failed validation (validation_failed), with details.fields naming each failing field
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ValidationErrorResponse"
+                $ref: '#/components/schemas/ValidationErrorResponse'
               examples:
                 from_missing:
                   value:
@@ -10233,7 +10282,14 @@ paths:
                       details:
                         fields:
                           from: required
-
+                non_object:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          body: the body is not a JSON object
   /api/v1/admin/test/verify:
     get:
       operationId: verifyDelivery
@@ -10343,18 +10399,13 @@ paths:
                       db:
                         status: ok
                         latency: 1.2ms
-        "400":
-          description: Malformed request body
+        '400':
+          description: The body is not valid JSON or not the declared media type
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              examples:
-                body_array:
-                  value:
-                    error:
-                      code: bad_request
-                      message: Invalid request body
+                $ref: '#/components/schemas/ErrorResponse'
+              examples: {}
         "403":
           description: Missing the required wildcard capability or CSRF proof
           content:
@@ -10367,12 +10418,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "422":
-          description: Request body failed validation
+        '422':
+          description: Request failed validation (validation_failed), with details.fields naming each failing field
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ValidationErrorResponse"
+                $ref: '#/components/schemas/ValidationErrorResponse'
               examples:
                 service_unknown:
                   value:
@@ -10382,7 +10433,14 @@ paths:
                       details:
                         fields:
                           services: 'unknown service "ftp": want smtp, smtp_submission, imap, pop3, dns or db'
-
+                body_array:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          body: the body is not a JSON object
   /api/v1/admin/test/reset:
     post:
       operationId: resetTestData
@@ -10505,12 +10563,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StatusResponse"
-        "400":
-          description: Malformed snapshot data
+        '400':
+          description: The body is not valid JSON or not the declared media type
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: '#/components/schemas/ErrorResponse'
         "403":
           description: Wildcard capability or cookie CSRF is missing
           content:
@@ -10690,17 +10748,12 @@ paths:
               schema:
                 type: string
         '400':
-          description: Bad Request
+          description: The body is not valid JSON or not the declared media type
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-              examples:
-                body_array:
-                  value:
-                    error:
-                      code: bad_request
-                      message: Invalid request body
+              examples: {}
         '401':
           description: Unauthorized
           content:
@@ -10720,7 +10773,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '422':
-          description: Unprocessable Entity
+          description: Request failed validation (validation_failed), with details.fields naming each failing field
           content:
             application/json:
               schema:
@@ -10734,6 +10787,14 @@ paths:
                       details:
                         fields:
                           token: must be a string
+                body_array:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          body: the body is not a JSON object
         '429':
           description: 'rate_limited: too many requests to the shared authentication
             throttle'
@@ -10821,14 +10882,9 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/ErrorResponse"
-              examples:
-                body_array:
-                  value:
-                    error:
-                      code: bad_request
-                      message: Invalid request body
-          description: Bad Request
+                $ref: '#/components/schemas/ErrorResponse'
+              examples: {}
+          description: The body is not valid JSON or not the declared media type
         '401':
           content:
             application/json:
@@ -10865,7 +10921,7 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/ValidationErrorResponse"
+                $ref: '#/components/schemas/ValidationErrorResponse'
               examples:
                 invalid_base64:
                   value:
@@ -10875,7 +10931,15 @@ paths:
                       details:
                         fields:
                           raw_message: must be a base64 string
-          description: Unprocessable Entity
+                body_array:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          body: the body is not a JSON object
+          description: Request failed validation (validation_failed), with details.fields naming each failing field
         '500':
           content:
             application/json:

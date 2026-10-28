@@ -73,7 +73,7 @@ func TestAuthenticatedRoutes_BodySizeDisabled(t *testing.T) {
 // ── (b) Per-message recipient cap ─────────────────────────────────────
 
 // TestSendMessage_RecipientCapEnforced proves a message whose recipient count
-// (to+cc+bcc) exceeds the cap is rejected with 400/too_many_recipients before
+// (to+cc+bcc) exceeds the cap is rejected with 422/validation_failed before
 // anything is queued. Before the fix there was no recipient cap.
 func TestSendMessage_RecipientCapEnforced(t *testing.T) {
 	jwtSvc := auth.NewJWTService(routerTestSecret, 5*time.Minute, 24*time.Hour)
@@ -89,11 +89,26 @@ func TestSendMessage_RecipientCapEnforced(t *testing.T) {
 	body := `{"from":"a@x.test","to":["b1@y.test","b2@y.test","b3@y.test"],` +
 		`"cc":["c1@y.test"],"bcc":["d1@y.test"],"subject":"x","body_text":"hi"}`
 	rr := doRequest(router, http.MethodPost, "/api/v1/messages/send", token, body)
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("too many recipients: expected 400, got %d (body %s)", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("too many recipients: expected 422, got %d (body %s)", rr.Code, rr.Body.String())
 	}
-	if code := errorCode(t, rr); code != "too_many_recipients" {
-		t.Fatalf("expected error code too_many_recipients, got %q (body %s)", code, rr.Body.String())
+	var refusal struct {
+		Error struct {
+			Details struct {
+				Fields map[string]string `json:"fields"`
+			} `json:"details"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &refusal); err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"to", "cc", "bcc"} {
+		if refusal.Error.Details.Fields[field] == "" {
+			t.Errorf("recipient cap must name %s: %s", field, rr.Body)
+		}
+	}
+	if code := errorCode(t, rr); code != "validation_failed" {
+		t.Fatalf("expected error code validation_failed, got %q (body %s)", code, rr.Body.String())
 	}
 }
 
@@ -106,7 +121,7 @@ func TestSendMessage_RecipientCapDisabled(t *testing.T) {
 	body := `{"from":"a@x.test","to":["b1@y.test","b2@y.test","b3@y.test","b4@y.test","b5@y.test"],` +
 		`"subject":"x","body_text":"hi"}`
 	rr := doRequest(router, http.MethodPost, "/api/v1/messages/send", token, body)
-	if rr.Code == http.StatusBadRequest && errorCode(t, rr) == "too_many_recipients" {
+	if rr.Code == http.StatusUnprocessableEntity && errorCode(t, rr) == "validation_failed" {
 		t.Fatalf("recipient cap disabled but request rejected for too many recipients")
 	}
 	assertReachedHandler(t, rr)

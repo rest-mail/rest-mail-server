@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"time"
 
+	oapifly "github.com/antimatter-studios/go-oapifly"
+
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/db/models"
@@ -48,14 +50,29 @@ type setVacationRequest struct {
 }
 
 // setVacationBody is the vacation reply to set. enabled is required, so that leaving it out
-// is told apart from turning the reply off; subject and body are needed when it is on, and
-// end_date may not be before start_date. Those are checked in the handler, with their wording.
+// is told apart from turning the reply off; subject and body are needed when it is on (its
+// AnyOf), and end_date may not be before start_date, which the handler checks.
 type setVacationBody struct {
 	Enabled   *bool      `json:"enabled"`
 	Subject   string     `json:"subject,omitempty"`
 	Body      string     `json:"body,omitempty"`
 	StartDate *time.Time `json:"start_date,omitempty"`
 	EndDate   *time.Time `json:"end_date,omitempty"`
+}
+
+// AnyOf states that a reply is off, or on with a subject and a body; a reply that is on is
+// told each of them it lacks (go-oapifly#70).
+func (setVacationBody) AnyOf() oapifly.AnyOfRule {
+	return oapifly.AnyOfRule{
+		Alternatives: []oapifly.Alternative{
+			{Fields: map[string]string{"enabled": `enums:"false"`}},
+			{
+				Required: []string{"subject", "body"},
+				Fields:   map[string]string{"subject": `minLength:"1"`, "body": `minLength:"1"`},
+				Message:  "required when enabled",
+			},
+		},
+	}
 }
 
 // mailRulesSchemes are the schemes the mail routes take; the handlers check the account is

@@ -17,9 +17,8 @@ func TestTestPipeline_ExamplePairs(t *testing.T) {
 	want := map[string][]string{
 		"request": {"email_missing", "invalid_body", "missing", "pipeline_id_wrong_type", "valid"},
 		"200":     {"valid"},
-		"400":     {"invalid_body"},
 		"404":     {"missing"},
-		"422":     {"email_missing", "pipeline_id_wrong_type"},
+		"422":     {"email_missing", "invalid_body", "pipeline_id_wrong_type"},
 	}
 	got := map[string][]string{"request": names(requests)}
 	for status, examples := range responses {
@@ -53,10 +52,10 @@ func TestTestPipeline_ExamplePairs(t *testing.T) {
 // is proved to come before the pipeline is looked up.
 func TestTestPipeline_DocumentedRefusals(t *testing.T) {
 	requests, responses := postExamples(t, testPipelinePath, "testPipeline")
-	if len(responses["400"]) == 0 || len(responses["422"]) == 0 {
+	if len(responses["422"]) == 0 {
 		t.Fatalf("testPipeline's 400 and 422 must each name an example, got %v", responses)
 	}
-	for status, code := range map[string]int{"400": http.StatusBadRequest, "422": http.StatusUnprocessableEntity} {
+	for status, code := range map[string]int{"422": http.StatusUnprocessableEntity} {
 		for name, want := range responses[status] {
 			t.Run(status+"/"+name, func(t *testing.T) {
 				request, ok := requests[name]

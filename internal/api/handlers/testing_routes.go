@@ -31,8 +31,8 @@ func (h *TestHandler) Register(rs endpoint.Routes, checks TestRouteChecks) {
 }
 
 type sendTestEmailRequest struct {
-	From    string `json:"from" minLength:"1" message:"sender address required"`
-	To      string `json:"to" minLength:"1" message:"recipient address required"`
+	From    string `json:"from" minLength:"1" message:"sender address required" format:"email" formatMessage:"must be a mail address"`
+	To      string `json:"to" minLength:"1" message:"recipient address required" format:"email" formatMessage:"must be a mail address"`
 	Subject string `json:"subject,omitempty"`
 	Body    string `json:"body,omitempty"`
 }

@@ -130,7 +130,7 @@ func TestDomainPolicyBindingRefusesBeforeDatabase(t *testing.T) {
 		{NewRelayHandler(nil, ""), "PUT", "/api/v1/admin/domains/1/relay", `{"transport":"direct","tls_mode":"none"}`, "tls_mode", 422},
 		{NewRelayHandler(nil, ""), "PUT", "/api/v1/admin/domains/1/relay", `{"transport":"invalid"}`, "transport", 422},
 		{NewRelayHandler(nil, ""), "PUT", "/api/v1/admin/domains/1/relay", `{"transport":"direct","port":"587"}`, "port", 422},
-		{NewRelayHandler(nil, ""), "PUT", "/api/v1/admin/domains/1/relay", `[]`, "", 400},
+		{NewRelayHandler(nil, ""), "PUT", "/api/v1/admin/domains/1/relay", `[]`, "body", 422},
 		{NewTLSReportHandler(nil), "GET", "/api/v1/admin/tls-reports?domain_id=not-a-number", "", "domain_id", 422},
 		{NewTLSReportHandler(nil), "GET", "/api/v1/admin/tls-reports?limit=201", "", "limit", 422},
 		{NewTLSReportHandler(nil), "GET", "/api/v1/admin/tls-reports?offset=1.5", "", "offset", 422},

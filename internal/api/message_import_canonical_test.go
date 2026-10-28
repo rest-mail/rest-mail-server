@@ -23,7 +23,7 @@ type importScenario struct {
 var importScenarios = []importScenario{
 	{"created", "", 200}, {"duplicate", "", 200}, {"default_folder", "", 200},
 	{"missing_message_id", "", 200}, {"binary_source", "", 200}, {"api_key", "", 200},
-	{"body_array", "", 400}, {"unauthenticated", "", 401},
+	{"body_array", "", 422}, {"unauthenticated", "", 401},
 	{"insufficient_permissions", "denied", 403}, {"missing_scoped_target", "missing", 403},
 	{"unresolved_scoped_id", "", 403}, {"api_key_ceiling", "key_ceiling", 403},
 	{"api_key_holder_revoked", "denied", 403}, {"csrf", "", 403}, {"setup_pending", "setup", 403},

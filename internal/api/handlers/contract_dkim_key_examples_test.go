@@ -79,8 +79,7 @@ func TestDKIMKeyContract_ExamplePairs(t *testing.T) {
 	want := map[string][]string{
 		"request": {"body_array", "installed", "private_key_empty", "private_key_invalid", "private_key_missing", "private_key_wrong_type", "selector_empty", "selector_invalid", "selector_missing", "selector_wrong_type"},
 		"200":     {"installed"},
-		"400":     {"body_array"},
-		"422":     {"private_key_empty", "private_key_invalid", "private_key_missing", "private_key_wrong_type", "selector_empty", "selector_invalid", "selector_missing", "selector_wrong_type"},
+		"422":     {"body_array", "private_key_empty", "private_key_invalid", "private_key_missing", "private_key_wrong_type", "selector_empty", "selector_invalid", "selector_missing", "selector_wrong_type"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("pairs = %v, want %v", got, want)

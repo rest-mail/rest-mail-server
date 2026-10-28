@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 
+	oapifly "github.com/antimatter-studios/go-oapifly"
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
 )
@@ -47,6 +48,25 @@ type setRelayBody struct {
 	TLSMode   *string `json:"tls_mode,omitempty" enums:"starttls,implicit" message:"Must be one of: starttls, implicit"`
 	Username  string  `json:"username,omitempty" maxLength:"255" message:"Must be at most 255 characters with no control characters"`
 	Password  *string `json:"password,omitempty"`
+}
+
+// AnyOf states that the transport is direct, or a relay with a host, port and TLS mode; a
+// relay is told each one it lacks, worded as the field's own refusal (go-oapifly#70).
+func (setRelayBody) AnyOf() oapifly.AnyOfRule {
+	return oapifly.AnyOfRule{
+		Alternatives: []oapifly.Alternative{
+			{Fields: map[string]string{"transport": `enums:"direct"`}},
+			{
+				Required: []string{"host", "port", "tls_mode"},
+				Fields:   map[string]string{"transport": `enums:"relay"`},
+				Messages: map[string]string{
+					"host":     "Must be a bare host name or IP address, with no scheme, port or path",
+					"port":     "Must be between 1 and 65535",
+					"tls_mode": "Must be one of: starttls, implicit",
+				},
+			},
+		},
+	}
 }
 
 // Register mounts the typed domain mail policy routes.

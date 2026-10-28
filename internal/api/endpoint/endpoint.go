@@ -16,10 +16,12 @@ package endpoint
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -342,9 +344,7 @@ func (reg *Registry) record(applied []oapifly.Middleware, op Operation, reqType,
 		errorStatuses[http.StatusBadRequest] = true
 		errorStatuses[http.StatusRequestEntityTooLarge] = true
 	}
-	if shape.forms > 1 {
-		errorStatuses[http.StatusUnsupportedMediaType] = true
-	}
+
 	for _, status := range op.Errors {
 		errorStatuses[status] = true
 	}
@@ -618,7 +618,7 @@ func parameterCanReject(field reflect.StructField, in string) bool {
 
 // bind reads the request into dst with go-oapifly, which enforces the rules the document
 // describes: a violation is the 422 validation failure, field by field. A body in a media type
-// none of the request type's forms takes is the 415. The body read is left for the handler to
+// none of the request type's forms takes is the 400. The body read is left for the handler to
 // read again, for one that keeps a request as it came.
 func bind(r *http.Request, dst interface{}, s shape) error {
 	if !s.binds {
@@ -638,6 +638,13 @@ func bind(r *http.Request, dst interface{}, s shape) error {
 		r.Body = io.NopCloser(bytes.NewReader(body))
 	}
 
+	if s.body && len(body) > 0 && r.Header.Get("Content-Type") != "" {
+		media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+		allowed := bodyMediaTypes(reflect.TypeOf(dst).Elem())
+		if err != nil || !containsMedia(allowed, media) {
+			return Refuse(http.StatusBadRequest, "bad_request", "Unsupported media type: "+r.Header.Get("Content-Type")+"; the body is taken as "+strings.Join(allowed, ", "))
+		}
+	}
 	textual := stringParams(reflect.TypeOf(dst))
 	err := oapifly.Bind(dst, func(in, name string) (string, bool) {
 		switch in {
@@ -663,19 +670,49 @@ func bind(r *http.Request, dst interface{}, s shape) error {
 		v := r.Header.Get(name)
 		return v, v != ""
 	}, body)
-	return bindError(dst, err)
+	return bindError(dst, body, err)
+}
+
+// bodyMediaTypes mirrors the declared body forms; an unnamed form is JSON.
+func bodyMediaTypes(t reflect.Type) []string {
+	var media []string
+	if t.Kind() == reflect.Struct {
+		for i := 0; i < t.NumField(); i++ {
+			if tag, ok := t.Field(i).Tag.Lookup("body"); ok {
+				if strings.TrimSpace(tag) == "" {
+					tag = "application/json"
+				}
+				for _, item := range strings.Split(tag, ",") {
+					media = append(media, strings.TrimSpace(strings.SplitN(item, ";", 2)[0]))
+				}
+			}
+		}
+	}
+	if len(media) == 0 {
+		return []string{"application/json"}
+	}
+	return media
+}
+
+func containsMedia(allowed []string, media string) bool {
+	for _, candidate := range allowed {
+		if candidate == media {
+			return true
+		}
+	}
+	return false
 }
 
 // BindBody reads body into dst, a pointer to a type that is a body itself, as a registered
 // operation binds its request: by the same rules, with the same refusals. It is for a body a
 // handler has to unwrap first, such as a compressed one.
 func BindBody(dst interface{}, body []byte) error {
-	return bindError(dst, oapifly.Bind(dst, func(string, string) (string, bool) { return "", false }, body))
+	return bindError(dst, body, oapifly.Bind(dst, func(string, string) (string, bool) { return "", false }, body))
 }
 
 // bindError is the refusal a Bind error is: the 422 with the fields for violations, 400 for a
-// body that cannot be read, 415 for one in a media type the request does not take.
-func bindError(dst interface{}, err error) error {
+// body that cannot be read, or one in a media type the request does not take.
+func bindError(dst interface{}, body []byte, err error) error {
 	var violations oapifly.Violations
 	switch {
 	case err == nil:
@@ -686,9 +723,14 @@ func bindError(dst interface{}, err error) error {
 		refusal.Message = refusedIn(reflect.TypeOf(dst).Elem(), violations)
 		return refusal
 	case errors.Is(err, oapifly.ErrMalformedBody):
+		if json.Valid(body) {
+			// The JSON parsed; a root type or custom decoder rule failed.
+			message := strings.TrimPrefix(err.Error(), oapifly.ErrMalformedBody.Error()+": ")
+			return Invalid(map[string]string{"body": message})
+		}
 		return Refuse(http.StatusBadRequest, "bad_request", "Invalid request body")
 	case errors.Is(err, oapifly.ErrUnsupportedMediaType):
-		return Refuse(http.StatusUnsupportedMediaType, "unsupported_media_type",
+		return Refuse(http.StatusBadRequest, "bad_request",
 			"Unsupported media type: "+strings.TrimPrefix(err.Error(), oapifly.ErrUnsupportedMediaType.Error()+": "))
 	}
 	return err

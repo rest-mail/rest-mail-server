@@ -36,6 +36,7 @@ def reset_reports(directory, phases=None, reset_run=False):
     for phase in phases:
         for suffix in SUFFIXES:
             (directory / (phase + suffix)).unlink(missing_ok=True)
+    (directory / "description-equivalence.json").unlink(missing_ok=True)
     if reset_run:
         for name in RUN_FILES:
             (directory / name).unlink(missing_ok=True)

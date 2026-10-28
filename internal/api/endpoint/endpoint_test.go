@@ -149,6 +149,12 @@ func TestRegisteredRoutesAnswer(t *testing.T) {
 		{"POST", "/widgets", `{"name":"n","colour":"red"}`, nil, 422, `{"error":{"code":"validation_failed","message":"Request body failed validation","details":{"fields":{"colour":"not allowed"}}}}`},
 		{"POST", "/widgets", `{"name":"new"}`, nil, 201, `{"data":{"id":9,"name":"new"}}`},
 		{"POST", "/widgets", `{"name":`, nil, 400, `{"error":{"code":"bad_request","message":"Invalid request body"}}`},
+		// #672: valid JSON with a wrong shape/type is validation, not a parse failure.
+		{"POST", "/widgets", `[]`, nil, 422, `{"error":{"code":"validation_failed","message":"Request body failed validation","details":{"fields":{"body":"the body is not a JSON object"}}}}`},
+		{"POST", "/widgets", `null`, nil, 422, `{"error":{"code":"validation_failed","message":"Request body failed validation","details":{"fields":{"body":"the body is null"}}}}`},
+		{"POST", "/widgets", `"name"`, nil, 422, `{"error":{"code":"validation_failed","message":"Request body failed validation","details":{"fields":{"body":"the body is not a JSON object"}}}}`},
+		{"POST", "/widgets", `{"name":7}`, nil, 422, `{"error":{"code":"validation_failed","message":"Request body failed validation","details":{"fields":{"name":"must be a string"}}}}`},
+		{"POST", "/widgets", `{"name":"new"}`, []string{"Content-Type", "text/plain"}, 400, `{"error":{"code":"bad_request","message":"Unsupported media type: text/plain; the body is taken as application/json"}}`},
 		{"POST", "/widgets", `{}`, nil, 422, `{"error":{"code":"validation_failed","message":"Request body failed validation","details":{"fields":{"name":"required"}}}}`},
 		// The handler's own validation still answers the same way.
 		{"POST", "/widgets", `{"name":""}`, nil, 422, `{"error":{"code":"validation_failed","message":"Request body failed validation","details":{"fields":{"name":"required"}}}}`},

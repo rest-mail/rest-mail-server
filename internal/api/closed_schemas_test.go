@@ -121,6 +121,11 @@ func findOpenSchemas(schema map[string]interface{}, path string, open map[string
 				findOpenSchemas(nested, next, open)
 			}
 		case "allOf", "anyOf", "oneOf":
+			if object && schema["additionalProperties"] == false {
+				// The alternatives of a closed object only refine its declared fields
+				// (go-oapifly AnyOf); the object itself admits no other field.
+				continue
+			}
 			if variants, ok := child.([]interface{}); ok {
 				for i, entry := range variants {
 					if nested, ok := entry.(map[string]interface{}); ok {
@@ -156,5 +161,18 @@ func TestOpenSchemaInventoryFindsLeaksAndIgnoresExampleData(t *testing.T) {
 	findDocumentSchemas(document, "#", func(path string, s map[string]interface{}) { findOpenSchemas(s, path, open) })
 	if len(open) != 2 || !open["#/schema/properties/opaque"] || !open["#/schema/properties/nested/items"] {
 		t.Fatalf("the inventory missed a nested leak or treated example data as schema: %v", open)
+	}
+	refined := map[string]interface{}{
+		"type": "object", "additionalProperties": false,
+		"properties": map[string]interface{}{"ids": map[string]interface{}{"type": "array"}},
+		"anyOf": []interface{}{
+			map[string]interface{}{"required": []interface{}{"ids"},
+				"properties": map[string]interface{}{"ids": map[string]interface{}{"minItems": 1}}},
+		},
+	}
+	open = map[string]bool{}
+	findOpenSchemas(refined, "#/refined", open)
+	if len(open) != 0 {
+		t.Fatalf("an alternative refining a closed object's own fields was reported open: %v", open)
 	}
 }

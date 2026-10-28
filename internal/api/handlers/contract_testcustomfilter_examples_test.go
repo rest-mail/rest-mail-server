@@ -44,8 +44,7 @@ func TestTestCustomFilter_ExamplePairs(t *testing.T) {
 	want := map[string][]string{
 		"request": {"invalid_body", "unknown_field", "valid"},
 		"200":     {"valid"},
-		"400":     {"invalid_body"},
-		"422":     {"unknown_field"},
+		"422":     {"invalid_body", "unknown_field"},
 	}
 	got := map[string][]string{"request": names(requests)}
 	for status, examples := range responses {
@@ -63,10 +62,10 @@ func TestTestCustomFilter_ExamplePairs(t *testing.T) {
 // before the filter is looked up: the handler has no database.
 func TestTestCustomFilter_DocumentedRefusal(t *testing.T) {
 	requests, responses := postExamples(t, testCustomFilterPath, "testCustomFilter")
-	if len(responses["400"]) == 0 {
+	if len(responses["422"]) == 0 {
 		t.Fatalf("testCustomFilter's 400 names no example: the contract run cannot provoke it")
 	}
-	for name, want := range responses["400"] {
+	for name, want := range responses["422"] {
 		t.Run(name, func(t *testing.T) {
 			request, ok := requests[name]
 			if !ok {
@@ -77,7 +76,7 @@ func TestTestCustomFilter_DocumentedRefusal(t *testing.T) {
 			if reached {
 				t.Fatalf("%s reached the database before it was refused", body)
 			}
-			if rr.Code != http.StatusBadRequest {
+			if rr.Code != http.StatusUnprocessableEntity {
 				t.Fatalf("%s: status %d, want 400; body %s", body, rr.Code, rr.Body)
 			}
 			if got := decodeShapeBody(t, rr); !reflect.DeepEqual(got, parseShapeJSON(t, string(mustJSON(want)))) {
@@ -105,7 +104,11 @@ func TestTestCustomFilter_Body(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			rr, reached := testCustomFilterNoDB(t, tc.body)
 			if tc.refused {
-				if reached || rr.Code != http.StatusBadRequest {
+				status := http.StatusBadRequest
+				if name == "array" {
+					status = http.StatusUnprocessableEntity
+				}
+				if reached || rr.Code != status {
 					t.Fatalf("%q: reached %v, status %d, want a 400 before the lookup", tc.body, reached, rr.Code)
 				}
 				return

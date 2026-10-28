@@ -142,7 +142,7 @@ func TestTestRoutesBindingFailures(t *testing.T) {
 		field, message string
 	}{
 		{"send", `{`, 400, "", ""},
-		{"send", `[]`, 400, "", ""},
+		{"send", `[]`, 422, "body", "the body is not a JSON object"},
 		{"send", `{"to":"alice@mail1.test"}`, 422, "from", "required"},
 		{"send", `{"from":"","to":"alice@mail1.test"}`, 422, "from", "sender address required"},
 		{"send", `{"from":"alice@mail1.test","to":3}`, 422, "to", ""},

@@ -2,9 +2,17 @@
 
 [vertrag](https://github.com/antimatter-studios/vertrag) sends the selected
 contract requests to a running API and checks each answer against the spec's
-status, headers and body schema (#376). Every run saves the served
-`/api/docs/openapi.json`; the primary phases still use `openapi.yaml` until
-#670 completes the generated-description switch, as explained below.
+status, headers and body schema (#376). Every phase uses the generated
+`/api/docs/openapi.json`, saved with that run’s reports. The handwritten
+`openapi.yaml` remains the independent comparison oracle, not the runtime input.
+
+Bad input follows the owner's decision on #672 (2026-10-28). A body that is not
+valid JSON, or is not the declared media type, gets 400 `bad_request`. Parsed
+input that breaks a shape, field or combination rule gets 422
+`validation_failed`, with `details.fields` naming the failing fields. This
+includes arrays/null where an object is required, invalid Sieve, unsupported
+filters and recipient limits. State preconditions retain their existing status
+pending a separate decision. The 403/404 decision remains open.
 
 ## Where it runs
 
@@ -112,21 +120,21 @@ example named like it, and a side naming no example pairs with everything.
 `source_missing` request (a destination address and no source) goes with its
 422, and `created` with its 201, whose links the rest of the alias chain
 follows; its `body_array` request (`[]`, JSON but not an object) goes with its
-400, the `bad_request` the handler answers before it reads any field; its
+422, the `validation_failed` naming the root `body`; its
 `source_invalid` request (the `created` one with a source that is not an
 address) goes with its 422 naming `source_address`
 (`contract_alias_examples_test.go`). `createPipeline` is the third: its
 `direction_missing` request (the `created` one without its direction) goes with
 its 422, and `created` with its 201; the hooks give the refused request the
 created domain but no direction. Its `body_array` request (`[]`) goes with its
-400, the `bad_request` the handler sends for a body it cannot decode, and is
+422, the `validation_failed` naming the root `body`, and is
 sent as it is: the hooks have no object to put the domain in.
 `internal/api/handlers/contract_examples_test.go` (and
 `contract_pipeline_examples_test.go`, for `createPipeline`) sends each request
 named on any of these 422s to the real handler, which has no database, and
 checks it gets the documented body: the refusal comes before anything is looked
 up or stored. `contract_pipeline_body400_test.go` does the same for
-`body_array` and its 400.
+`body_array` and its 422.
 
 `updatePipeline` pairs `updated` with its 200, and `filters_object` and
 `filters_null` with their 422s. The existing create link supplies the stored
@@ -144,10 +152,10 @@ the authorized account ID. Handler tests send the spec examples against a
 database and check the exact refusals and unchanged stored script
 (`contract_sieve_examples_test.go`).
 
-`createDomain`'s 400 is paired the same way: its `body_array` request (`[]`,
-JSON but not an object) goes with the `bad_request` the handler answers before
-it reads any field (`contract_domain_body_examples_test.go`, which sends it to
-the real handler with no database).
+`createDomain`'s 422 is paired the same way: its `body_array` request (`[]`,
+JSON but not an object) goes with `validation_failed` naming `body`
+(`contract_domain_body_examples_test.go`, which sends it to the real handler
+with no database).
 
 `CreateDomainRequest.sending_policy` uses an inline enum: vertrag 0.29 drops
 all body probes when the request schema contains a nested `$ref`. The schema
@@ -156,7 +164,7 @@ validation. `createDomain` stays in the coverage baseline: hostname constraints
 and fixture state for repeated creates still need work.
 
 `createBan` (`ip_missing`, `duration_invalid`), `createCustomFilter`
-(`filter_type_invalid`), `validateCustomFilter` (`body_array` with its 400,
+(`filter_type_invalid`), `validateCustomFilter` (`body_array` with its 422,
 `script_missing` with its 422) and `sendTestEmail` (`from_missing`) are paired
 the same way, each checked against the real handler with no database
 (`contract_ban_examples_test.go`, `contract_customfilter_examples_test.go`,
@@ -166,13 +174,13 @@ the same way, each checked against the real handler with no database
 `createAccount` (`address_missing`), `restmailDeliver` (`recipients_missing`),
 `addToAllowlist` and `addToBlocklist` (`pattern_missing`) now send their paired
 422s too. `bulkDeleteQueue` sends its `selection_missing` request (`{}`) with
-its paired 400. Their existing handler tests check these refusals before any
+its paired 422 and its `invalid_body` request (`[]`) with its paired 422. Their existing handler tests check these refusals before any
 database access (`contract_account_examples_test.go`,
 `contract_restmail_examples_test.go`, `contract_allowlist_examples_test.go`,
 `contract_blocklist_examples_test.go`, `contract_bulkdelete_selection400_test.go`).
 No before hook rewrites these requests. Sibling operations remain excluded.
 
-`importContacts` pairs `body_array` with its 400 and `contacts_missing`,
+`importContacts` pairs `body_array` with its 422 and `contacts_missing`,
 `contacts_empty`, `email_missing`, `email_invalid` and `mixed_batch` with its
 422. Its successful request and 200 are named `imported`. The handler tests
 send every documented pair, check exact responses, and prove that refusals
@@ -195,22 +203,24 @@ proof, the hook removes only the caller's previous link, so repeated probes
 start unlinked. It preserves the generated request and its principal; invalid
 credentials still reach the handler unchanged.
 
-`bulkRetryQueue` and `bulkBounceQueue` send their `invalid_body` (`[]`) and
-`selection_missing` (`{}`) requests with their paired 400s; their original
+`bulkRetryQueue` and `bulkBounceQueue` send their `invalid_body` (`[]`) request
+with its paired 422 and their `selection_missing` (`{}`) request with its paired
+422: the request type's AnyOf refuses a body selecting neither nonempty ids nor
+a filter at binding. Their original
 request is named `by_ids`, with a matching 200 example, so neither refusal is
-paired with success. The 400s no longer carry a `too_many_ids` example: a
+paired with success. The 422s no longer carry a `too_many_ids` example: a
 request of 1001 ids is not worth a place in the spec, and the handler tests
 still check that refusal (`contract_queue_bulk_pairs_test.go`).
 
 `receiveTlsReport` sends its `organization_missing` request with its paired
-422 and its `body_array` request (`[]`) with its paired 400, the `bad_request`
-the handler sends for a body that does not decode as a report. Both are refused
+422 and its `body_array` request (`[]`) with its paired 422, the `validation_failed`
+naming the root `body`. Both are refused
 before any domain is looked up or report stored
 (`contract_tlsrpt_examples_test.go`). The other `/.well-known` paths keep
 their exclusions.
 
-`microsoftAutodiscover` pairs its `malformed` XML request with its plain-text
-400 (`invalid request\n`), and `valid` with its XML 200. Vertrag v0.29.0
+`microsoftAutodiscover` pairs its `malformed` XML request with its JSON
+400 (`bad_request`, message `invalid request`), and `valid` with its XML 200. Vertrag v0.29.0
 pairs XML examples by name but does not serialize their request bodies, so
 the hook supplies the matching XML for each status. The hook test checks both
 bodies against the spec; `contract_autodiscover_body400_test.go` sends the
@@ -241,12 +251,12 @@ up (`contract_mtasts_examples_test.go`, which sends each to the real handler
 with no database). The other `/api/v1/admin/domains/{id}` subpaths keep their
 exclusions.
 
-`testFilter` sends its `invalid_body` request (`[]`) with its paired 400 and
+`testFilter` sends its `invalid_body` request (`[]`) with its paired 422 and
 `filter_name_missing` with its paired 422. Both are refused before any filter
 is made; `valid` still runs `header_validate` and gets the documented 200
 (`contract_testfilter_examples_test.go`). No hook rewrites these requests.
 
-`testPipeline` sends its `invalid_body` request (`[]`) with its paired 400 and
+`testPipeline` sends its `invalid_body` request (`[]`) with its paired 422 and
 `email_missing` (a pipeline id and no email) with its paired 422. Both are
 refused before any pipeline is looked up; the hooks give only `valid` the
 created pipeline's id, and it gets the documented 200
@@ -254,7 +264,7 @@ created pipeline's id, and it gets the documented 200
 their exclusions.
 
 `testCustomFilter` sends its `invalid_body` request (`[]`) with its paired
-400, the `bad_request` the handler sends for a body that does not decode,
+422, the `validation_failed` naming the root `body`,
 before the filter is looked up. Its `valid` request (`{}`, the built-in sample
 email) runs the created filter and gets the 200
 (`contract_testcustomfilter_examples_test.go`).
@@ -292,10 +302,10 @@ is looked up or stored (`contract_device_examples_test.go`). The devices
 routes stay excluded in the E2E run: it has no APNs credentials, so they
 answer 404.
 Certificate field validation and invalid PEM return 422 with details.fields;
-malformed JSON and non-object bodies return 400.
+Malformed JSON or a wrong media type returns 400; parsed non-object bodies return 422.
 
 `sendMessage` sends `from_missing` (`valid` without its from) with its paired
-400, refused before the sender is looked up, and `unsubscribe_not_allowed`
+422, refused before the sender is looked up, and `unsubscribe_not_allowed`
 (`valid` with a `list_unsubscribe`) with its paired 422. That 422 needs a
 transactional sender domain, so the `sendMessage` hook makes restmail.test
 transactional through the admin API for that request and the probes built
@@ -384,7 +394,7 @@ The generated body bytes and existing caller headers stay intact. Named 401
 examples, malformed bodies and explicit caller cookies receive no setup cookie;
 their refusals stay visible. Setup login failures stop the run.
 
-`setVacation` pairs `configured` with 200, `body_array` with 400, and
+`setVacation` pairs `configured` with 200, `body_array` with 422, and
 `enabled_missing`, `subject_missing`, `body_missing`, `reply_missing` and
 `dates_reversed` with their 422s. No hook changes these requests. The handler
 checks each refusal after authorizing the account and before changing its
@@ -399,7 +409,7 @@ refusals create no credential (`contract_credential_examples_test.go`). Other
 account operations keep their exclusions.
 
 `setDomainRelay` pairs `relay` and `direct` with 200; `body_array` and
-`port_wrong_type` with 400; and missing/invalid transport, invalid host,
+`port_wrong_type` with 422; and missing/invalid transport, invalid host,
 port, TLS mode, and mismatched credentials with 422. A createDomain link
 supplies the domain id. Refusals leave both absent and saved relay settings
 unchanged (`contract_relay_examples_test.go`). Missing-domain 404 and the
@@ -424,7 +434,7 @@ certificate when activation requires one. The query and caller's credential
 stay unchanged. Discovery therefore runs independently of `updateDomain`'s
 example, which updates only the sending policy.
 
-`setDKIMKey` pairs `installed` with 200 and `body_array` with 400. Missing,
+`setDKIMKey` pairs `installed` with 200 and `body_array` with 422. Missing,
 empty or wrong-type selectors and private keys, `selector_invalid`, and
 `private_key_invalid` pair with 422. The hook replaces only the explicit
 `fixture-signing-key` placeholder, preserving malformed bodies, missing
@@ -455,7 +465,7 @@ the fixture admin's `Receipts` folder and `spam@example.org` contact, and
 `chore test:contract-fixtures` supplies a new held queue entry. The first run's
 complete example report is already enforced; probe requests stay unchanged.
 
-`setDKIMRotation` pairs `configured` with 200 and `body_array` with 400.
+`setDKIMRotation` pairs `configured` with 200 and `body_array` with 422.
 `interval_wrong_type`, `field_unknown`, `interval_missing`, `interval_null`,
 `interval_negative` and `interval_too_large` pair with 422 after typed binding.
 The domain ID comes from `createDomain`'s link. The handler tests send each
@@ -778,12 +788,25 @@ secret scan and producing the authorization report.
 
 The secret scan also runs locally, including after a failing examples gate.
 The API key proof and every Vertrag phase honor `CONTRACT_ENDPOINT`. A fetch
-failure stops the run. The phases themselves still read `openapi.yaml`: the
-saved generated description is published with the reports, while #670 tracks
-the switch and its live contract proof. Required parameter examples were added
-in #851 and are held by `TestEveryRequiredParameterHasAnExample`; they are no
-longer the blocker. `openapi.yaml` remains the independent oracle for
-`chore contract:diff`.
+failure stops the run. Each phase, including standalone authorization, fetches
+fresh generated JSON; a failed fetch removes the old snapshot. Before API calls,
+the pinned Vertrag compiles both the live URL and the exact saved JSON. Different
+bytes, transactions, schemas or annotations fail the gate. The successful
+`description-equivalence.json` records hashes and the transaction count; it proves
+input/compilation equivalence, not successful API exchanges. Every invocation
+removes an earlier equivalence verdict before tools can fail.
+
+The default `CONTRACT_DESCRIPTION_MODE=saved` sends Vertrag the saved JSON path.
+`CONTRACT_DESCRIPTION_MODE=live chore contract` instead supplies the live URL to
+examples, coverage, authorization and fuzz. The saved bytes remain the inventory
+for roles and the coverage ratchet in both modes. No API credential is sent to
+the description fetch. Vertrag’s own live/file CLI tests additionally compare
+selected requests and verdicts, with wrong-status and wrong-shape negative controls.
+`openapi.yaml` remains the independent oracle for `chore contract:diff`.
+
+This switch does not relax exclusions, surface requirements or coverage baselines.
+An existing fixture that disagrees with the generated description must be fixed
+and verified against the topology before the migration can be declared complete.
 
 When the shared principal fixture is absent, `chore contract` runs only
 `TestContractPrincipals` from the E2E suite to create it, using

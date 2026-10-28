@@ -147,7 +147,12 @@ func TestCreatePipelineFilterShape_OtherRefusalsKept(t *testing.T) {
 			if reached {
 				t.Fatalf("%s reached the database before it was refused", tc.body)
 			}
-			if rr.Code != http.StatusBadRequest {
+			status := http.StatusBadRequest
+			if name != "not json" {
+				status = http.StatusUnprocessableEntity
+				tc.code = "validation_failed"
+			}
+			if rr.Code != status {
 				t.Fatalf("%s: status %d, want 400; body %s", tc.body, rr.Code, rr.Body)
 			}
 			var got struct {

@@ -44,9 +44,9 @@ func (h *RestmailDiscoveryHandler) Register(rs endpoint.Routes) {
 		Description: "Fetched from the recipient domain's MX host over verified HTTPS. The answer is a protocol document " +
 			"without the data envelope, naming the configured GATEWAY_HOSTNAME, never the request's Host. A 404 means " +
 			"the domain is not hosted here; a missing hostname is 503 and a failed lookup 500, never 404. A domain " +
-			"given twice, or not a domain, is 400.",
+			"given twice, or not a domain, is 422 validation_failed.",
 		Security: oapifly.Public, Headers: noStoreHeader,
-		Errors:     []int{http.StatusBadRequest, http.StatusNotFound, http.StatusServiceUnavailable},
+		Errors:     []int{http.StatusUnprocessableEntity, http.StatusNotFound, http.StatusServiceUnavailable},
 		Middleware: []endpoint.Middleware{noStore}}, h.discover)
 }
 
@@ -60,11 +60,11 @@ var noStoreHeader = map[string]oapifly.ResponseHeader{
 func (h *RestmailDiscoveryHandler) discover(r *http.Request, in restmailDiscoverQuery) (endpoint.Forwarded[RestmailDiscovery], error) {
 	var zero endpoint.Forwarded[RestmailDiscovery]
 	if len(r.URL.Query()["domain"]) != 1 {
-		return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "Exactly one domain query parameter required")
+		return zero, endpoint.Invalid(map[string]string{"domain": "Exactly one domain query parameter required"})
 	}
 	domain, err := validateDomainName(in.Domain)
 	if err != nil {
-		return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "Invalid domain query parameter")
+		return zero, endpoint.Invalid(map[string]string{"domain": "Invalid domain query parameter"})
 	}
 	if h.endpoint == "" {
 		return zero, endpoint.Refuse(http.StatusServiceUnavailable, "unavailable", "RESTMAIL discovery hostname not configured")

@@ -12,23 +12,22 @@ import (
 	yaml "go.yaml.in/yaml/v2"
 )
 
-// createPipeline refuses a body that does not decode as CreatePipelineRequest
-// with a 400 bad_request, before any field is validated (#388). The spec names
-// one such request, body_array, and pairs it with the 400 of the same name, so
-// the contract run sends it and expects exactly that answer.
+// #672 distinguishes JSON parsing from validation. A malformed JSON body is
+// 400 bad_request; a parsed root of the wrong shape or a failing field rule is
+// 422 validation_failed with details.fields, before database or engine work.
 
 // pipelineBodyRefusal is the 400 CreatePipeline sends for a body it cannot
 // decode.
 const pipelineBodyRefusal = `{"error":{"code":"bad_request","message":"Invalid request body"}}`
 
 // The spec's body_array request is refused by the real handler, with no
-// database, with exactly the 400 the spec documents for it.
+// database, with exactly the 422 the spec documents for it.
 func TestPipelineCreate_BodyArrayRefused(t *testing.T) {
 	requests, responses := postExamples(t, "/api/v1/admin/pipelines", "createPipeline")
-	want := parseShapeJSON(t, pipelineBodyRefusal)
-	if !reflect.DeepEqual(responses["400"]["body_array"], want) {
-		t.Errorf("the spec documents body_array's 400 as %s, want %s",
-			mustJSON(responses["400"]["body_array"]), pipelineBodyRefusal)
+	want := parseShapeJSON(t, `{"error":{"code":"validation_failed","message":"Request body failed validation","details":{"fields":{"body":"the body is not a JSON object"}}}}`)
+	if !reflect.DeepEqual(responses["422"]["body_array"], want) {
+		t.Errorf("the spec documents body_array's 422 as %s, want %s",
+			mustJSON(responses["422"]["body_array"]), pipelineBodyRefusal)
 	}
 
 	body := string(mustJSON(requests["body_array"]))
@@ -39,19 +38,16 @@ func TestPipelineCreate_BodyArrayRefused(t *testing.T) {
 	if reached {
 		t.Fatalf("%s reached the database before it was refused", body)
 	}
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("%s: status %d, want 400; body %s", body, rr.Code, rr.Body)
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("%s: status %d, want 422; body %s", body, rr.Code, rr.Body)
 	}
-	if got := decodeShapeBody(t, rr); !reflect.DeepEqual(got, responses["400"]["body_array"]) {
-		t.Errorf("%s answered %s, the spec documents %s", body, rr.Body, mustJSON(responses["400"]["body_array"]))
+	if got := decodeShapeBody(t, rr); !reflect.DeepEqual(got, responses["422"]["body_array"]) {
+		t.Errorf("%s answered %s, the spec documents %s", body, rr.Body, mustJSON(responses["422"]["body_array"]))
 	}
 }
 
-// Every body that does not decode as the request gets the same 400: one that
-// is not JSON, one that is not an object, and an object with a field of the
-// wrong JSON type. The fields are otherwise those of a valid request, so the
-// type is the only reason it is refused; the last also has no filters, and is
-// still refused as undecodable, before the filters are looked at.
+// Syntax failures stay 400. Parsed root-shape and field-type failures are
+// 422 with the failing body or field, before any database access.
 func TestPipelineCreate_UndecodableBodiesRefused(t *testing.T) {
 	want := parseShapeJSON(t, pipelineBodyRefusal)
 	const filters = `"filters":[{"name":"header_validate","config":{}}]`
@@ -78,6 +74,14 @@ func TestPipelineCreate_UndecodableBodiesRefused(t *testing.T) {
 				t.Fatalf("%s reached the database before it was refused", body)
 			}
 			status, expected := http.StatusBadRequest, want
+			if json.Valid([]byte(body)) {
+				status = http.StatusUnprocessableEntity
+				message := "the body is not a JSON object"
+				if body == "null" {
+					message = "the body is null"
+				}
+				expected = parseShapeJSON(t, pipelineValidation(map[string]string{"body": message}))
+			}
 			fieldTypes := map[string]map[string]string{
 				"domain_id string":              {"domain_id": "must be a non-negative integer"},
 				"domain_id negative":            {"domain_id": "must be a non-negative integer"},
@@ -103,7 +107,7 @@ func TestPipelineCreate_UndecodableBodiesRefused(t *testing.T) {
 
 // Controls: a body that decodes, with every field of its JSON type, is not
 // refused as undecodable. Without its direction it gets direction_missing's
-// documented 422, never the 400; so does null, which decodes as an empty body.
+// documented 422, distinct from malformed JSON's 400.
 func TestPipelineCreate_DecodableBodyNot400(t *testing.T) {
 	_, responses := postExamples(t, "/api/v1/admin/pipelines", "createPipeline")
 	directionMissing := responses["422"]["direction_missing"]
@@ -129,7 +133,7 @@ func TestPipelineCreate_DecodableBodyNot400(t *testing.T) {
 	}
 }
 
-// pipelineCreate400 is createPipeline's documented 400: its schema and its
+// pipelineCreate400 is createPipeline's documented shape-validation response: its schema and its
 // description.
 type pipelineCreate400 struct {
 	Schema      string
@@ -159,7 +163,7 @@ func readPipelineCreate400(t *testing.T) pipelineCreate400 {
 	if err := yaml.Unmarshal(served, &doc); err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	r := doc.Paths["/api/v1/admin/pipelines"].Post.Responses["400"]
+	r := doc.Paths["/api/v1/admin/pipelines"].Post.Responses["422"]
 	return pipelineCreate400{Schema: r.Content["application/json"].Schema.Ref, Description: r.Description}
 }
 
@@ -173,25 +177,25 @@ func pipelineBody400Problems(requests map[string]interface{}, responses map[stri
 	if body, ok := requests["body_array"].([]interface{}); !ok || len(body) != 0 {
 		problems = append(problems, fmt.Sprintf("body_array is %s, want []", mustJSON(requests["body_array"])))
 	}
-	if got := names(responses["400"]); !reflect.DeepEqual(got, []string{"body_array", "null_body"}) {
+	if got := names(responses["422"]); !reflect.DeepEqual(got, []string{"active_wrong_type", "body_array", "direction_missing", "filters_missing", "null_body"}) {
 		problems = append(problems, fmt.Sprintf("the 400 names %v, want [body_array null_body]", got))
 	}
 	for status, examples := range responses {
-		if _, ok := examples["body_array"]; ok && status != "400" {
+		if _, ok := examples["body_array"]; ok && status != "422" {
 			problems = append(problems, fmt.Sprintf("body_array is named on the %s too", status))
 		}
 	}
 	var want interface{}
-	_ = json.Unmarshal([]byte(pipelineBodyRefusal), &want)
-	if !reflect.DeepEqual(responses["400"]["body_array"], want) {
+	_ = json.Unmarshal([]byte(`{"error":{"code":"validation_failed","message":"Request body failed validation","details":{"fields":{"body":"the body is not a JSON object"}}}}`), &want)
+	if !reflect.DeepEqual(responses["422"]["body_array"], want) {
 		problems = append(problems, fmt.Sprintf("the 400 body_array is %s, want %s",
-			mustJSON(responses["400"]["body_array"]), pipelineBodyRefusal))
+			mustJSON(responses["422"]["body_array"]), pipelineBodyRefusal))
 	}
-	if doc.Schema != "#/components/schemas/ErrorResponse" {
+	if doc.Schema != "#/components/schemas/ValidationErrorResponse" {
 		problems = append(problems, fmt.Sprintf("the 400's schema is %q, want ErrorResponse", doc.Schema))
 	}
-	for _, code := range []string{"bad_request", "invalid_sieve", "unsupported_filter"} {
-		if !strings.Contains(doc.Description, "`"+code+"`") {
+	for _, code := range []string{"validation_failed", "details.fields"} {
+		if !strings.Contains(doc.Description, code) {
 			problems = append(problems, fmt.Sprintf("the 400's description does not name %s", code))
 		}
 	}
@@ -219,7 +223,7 @@ func TestPipelineCreate_BodyArrayPairMutations(t *testing.T) {
 	before := mustJSON([]interface{}{requests, responses, doc})
 
 	refusal := func(res map[string]map[string]interface{}) map[string]interface{} {
-		body, _ := res["400"]["body_array"].(map[string]interface{})
+		body, _ := res["422"]["body_array"].(map[string]interface{})
 		e, _ := body["error"].(map[string]interface{})
 		return e
 	}
@@ -231,30 +235,30 @@ func TestPipelineCreate_BodyArrayPairMutations(t *testing.T) {
 			req["body_array"] = map[string]interface{}{}
 		},
 		"400 missing": func(_ map[string]interface{}, res map[string]map[string]interface{}, _ *pipelineCreate400) {
-			delete(res["400"], "body_array")
+			delete(res["422"], "body_array")
 		},
 		"400 misnamed": func(_ map[string]interface{}, res map[string]map[string]interface{}, _ *pipelineCreate400) {
-			res["400"]["body_not_object"] = res["400"]["body_array"]
-			delete(res["400"], "body_array")
+			res["422"]["body_not_object"] = res["422"]["body_array"]
+			delete(res["422"], "body_array")
 		},
 		"400 pairs with created": func(_ map[string]interface{}, res map[string]map[string]interface{}, _ *pipelineCreate400) {
-			res["400"]["created"] = res["400"]["body_array"]
+			res["422"]["created"] = res["422"]["body_array"]
 		},
 		"under the 422": func(_ map[string]interface{}, res map[string]map[string]interface{}, _ *pipelineCreate400) {
-			res["422"]["body_array"] = res["400"]["body_array"]
-			delete(res["400"], "body_array")
+			res["400"] = map[string]interface{}{"body_array": res["422"]["body_array"]}
+			delete(res["422"], "body_array")
 		},
 		"another code": func(_ map[string]interface{}, res map[string]map[string]interface{}, _ *pipelineCreate400) {
-			refusal(res)["code"] = "validation_failed"
+			refusal(res)["code"] = "bad_request"
 		},
 		"another message": func(_ map[string]interface{}, res map[string]map[string]interface{}, _ *pipelineCreate400) {
-			refusal(res)["message"] = "Request body failed validation"
+			refusal(res)["message"] = "Invalid request body"
 		},
 		"details added": func(_ map[string]interface{}, res map[string]map[string]interface{}, _ *pipelineCreate400) {
 			refusal(res)["details"] = map[string]interface{}{"fields": map[string]interface{}{"direction": "required"}}
 		},
 		"validation schema": func(_ map[string]interface{}, _ map[string]map[string]interface{}, doc *pipelineCreate400) {
-			doc.Schema = "#/components/schemas/ValidationErrorResponse"
+			doc.Schema = "#/components/schemas/ErrorResponse"
 		},
 		"description drops the other 400s": func(_ map[string]interface{}, _ map[string]map[string]interface{}, doc *pipelineCreate400) {
 			doc.Description = "The body is not JSON (`bad_request`)"

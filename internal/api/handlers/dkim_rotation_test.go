@@ -96,13 +96,13 @@ func TestDKIMRotationSettings_InvalidBodyDoesNotChangeInterval(t *testing.T) {
 		body string
 		code int
 	}{
-		{`{}`, 422}, {`null`, 400}, {`{"rotation_interval_days":null}`, 422},
+		{`{}`, 422}, {`null`, 422}, {`{"rotation_interval_days":null}`, 422},
 		{`{"rotation_interval_days":-1}`, 422}, {`{"rotation_interval_days":3651}`, 422},
 		{`{"rotation_interval_days":"90"}`, 422}, {`{"rotation_interval_days":1.5}`, 422},
 		{`{"rotation_interval_days":9223372036854775808}`, 422},
 		{`{"rotation_interval_days":90,"private_key":"injected"}`, 422},
 		{`{"rotation_interval_days":90} {}`, 400}, {`{"rotation_interval_days":90} trailing`, 400},
-		{`[]`, 400}, {`{`, 400}, {``, 400},
+		{`[]`, 422}, {`{`, 400}, {``, 400},
 	} {
 		t.Run(tc.body, func(t *testing.T) {
 			rr := httptest.NewRecorder()
