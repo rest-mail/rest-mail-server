@@ -10,7 +10,6 @@ import (
 	oapifly "github.com/antimatter-studios/go-oapifly"
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
-	apitypes "github.com/restmail/restmail/internal/api/types"
 	"github.com/restmail/restmail/internal/bootstrap"
 	"gorm.io/gorm"
 )
@@ -86,7 +85,16 @@ func (h *InvitationHandler) issue(r *http.Request, in adminAddressPath) (endpoin
 	return endpoint.Headed[invitationResponse]{Header: invitationSecretHeaders(), Value: invitationResponse{Token: token, ExpiresAt: expires}}, nil
 }
 
-type acceptInvitationRequest = apitypes.ResetRequest
+// acceptInvitationRequest redeems an invitation. It is the reset body's shape, with the
+// constraints an invitation states that a schema can: a password is required, and client is
+// "native" or left out. The password's 12 to 72 bytes, which a character count cannot state,
+// and a missing token, which is refused like a bad one (401 invalid_token), stay with the
+// handler.
+type acceptInvitationRequest struct {
+	Token    string `json:"token,omitempty"`
+	Password string `json:"password" missing:"must be between 12 and 72 bytes"`
+	Client   string `json:"client,omitempty" enums:"native" message:"must be \"native\" or omitted"`
+}
 
 func (h *InvitationHandler) accept(r *http.Request, req acceptInvitationRequest) (endpoint.Headed[loginResponse], error) {
 	var zero endpoint.Headed[loginResponse]

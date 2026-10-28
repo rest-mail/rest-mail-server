@@ -38,8 +38,7 @@ func TestProbeServices_ExamplePairs(t *testing.T) {
 	want := map[string][]string{
 		"request": {"body_array", "probed", "service_unknown"},
 		"200":     {"probed"},
-		"400":     {"body_array"},
-		"422":     {"service_unknown"},
+		"422":     {"body_array", "service_unknown"},
 	}
 	got := map[string][]string{"request": names(requests)}
 	for status, examples := range responses {

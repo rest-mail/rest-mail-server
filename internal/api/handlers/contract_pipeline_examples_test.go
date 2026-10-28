@@ -43,8 +43,7 @@ func pipelineCreatePairProblems(requests map[string]interface{}, responses map[s
 	want := map[string][]string{
 		"request": {"active_wrong_type", "body_array", "created", "direction_missing", "filters_missing", "null_body"},
 		"201":     {"created"},
-		"400":     {"body_array", "null_body"},
-		"422":     {"active_wrong_type", "direction_missing", "filters_missing"},
+		"422":     {"active_wrong_type", "body_array", "direction_missing", "filters_missing", "null_body"},
 	}
 	got := map[string][]string{"request": names(requests)}
 	for status, examples := range responses {

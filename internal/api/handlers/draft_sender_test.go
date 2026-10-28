@@ -58,8 +58,8 @@ func TestUpdateDraft_RefusesASenderTheCallerMayNotActAs(t *testing.T) {
 		{`{"cc":["b@restmail.test\r\nBcc: c@evil.test"]}`, "cc"},
 	} {
 		rr := update(tc.body)
-		if rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "invalid recipient address in "+tc.field) {
-			t.Fatalf("bad %s: expected 400 naming %s, got %d (%s)", tc.field, tc.field, rr.Code, rr.Body.String())
+		if rr.Code != http.StatusUnprocessableEntity || !strings.Contains(rr.Body.String(), "invalid recipient address in "+tc.field) {
+			t.Fatalf("bad %s: expected 422 naming %s, got %d (%s)", tc.field, tc.field, rr.Code, rr.Body.String())
 		}
 	}
 

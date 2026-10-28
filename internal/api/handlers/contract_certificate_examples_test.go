@@ -20,7 +20,7 @@ func TestCertificateCreate_DocumentedBadRequests(t *testing.T) {
 	requests, responses := postExamples(t, "/api/v1/admin/certificates", "createCertificate")
 	wantPairs := map[string][]string{
 		"request": {"fields_missing", "invalid_body", "valid"},
-		"201":     {"valid"}, "400": {"invalid_body"}, "422": {"fields_missing"},
+		"201":     {"valid"}, "422": {"fields_missing", "invalid_body"},
 	}
 	gotPairs := map[string][]string{"request": names(requests)}
 	for status, examples := range responses {
@@ -49,7 +49,7 @@ func TestCertificateCreate_DocumentedBadRequests(t *testing.T) {
 		status int
 		field  string
 	}{
-		{"not json", 400, ""}, {`[]`, 400, ""}, {`null`, 400, ""}, {`"cert"`, 400, ""}, {`1`, 400, ""}, {`false`, 400, ""},
+		{"not json", 400, ""}, {`[]`, 422, "body"}, {`null`, 422, "body"}, {`"cert"`, 422, "body"}, {`1`, 422, "body"}, {`false`, 422, "body"},
 		{`{"domain_id":"1","cert_pem":"cert","key_pem":"key"}`, 422, "domain_id"},
 		{`{"domain_id":-1,"cert_pem":"cert","key_pem":"key"}`, 422, "domain_id"},
 		{`{"domain_id":0,"cert_pem":"cert","key_pem":"key"}`, 422, "domain_id"},

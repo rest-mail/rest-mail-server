@@ -60,6 +60,11 @@ func visitContractSchemas(doc map[string]interface{}, visit func(map[string]inte
 			schema(s[key], path+"/"+key)
 		}
 		for _, key := range []string{"allOf", "anyOf", "oneOf"} {
+			if s["type"] == "object" && s["additionalProperties"] == false {
+				// The alternatives of a closed object only refine its declared fields
+				// (go-oapifly AnyOf); the object itself admits no other field.
+				continue
+			}
 			if alternatives, ok := s[key].([]interface{}); ok {
 				for i, alternative := range alternatives {
 					schema(alternative, fmt.Sprintf("%s/%s/%d", path, key, i))

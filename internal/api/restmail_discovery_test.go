@@ -20,7 +20,7 @@ func TestRESTMAILDiscoveryPublicRoute(t *testing.T) {
 		status int
 	}{
 		{"", http.StatusUnprocessableEntity},
-		{"?domain=a.test&domain=b.test", http.StatusBadRequest},
+		{"?domain=a.test&domain=b.test", http.StatusUnprocessableEntity},
 		{"?domain=example.test", http.StatusInternalServerError},
 	} {
 		rr := httptest.NewRecorder()

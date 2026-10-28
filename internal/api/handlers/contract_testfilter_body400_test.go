@@ -15,12 +15,9 @@ import (
 	yaml "go.yaml.in/yaml/v2"
 )
 
-// testFilter refuses a body that does not decode as TestFilterRequest with a
-// 400 bad_request, before its required fields are checked or any filter is
-// made (#388). The spec documents that 400 with an invalid_body example. These
-// tests send bodies to the real handler with no database and no engine, so a
-// body that got past the checks would panic on the nil engine; no complete
-// body is ever sent, and nothing runs a filter.
+// #672 distinguishes JSON parsing from validation. A malformed JSON body is
+// 400 bad_request; a parsed root of the wrong shape or a failing field rule is
+// 422 validation_failed with details.fields, before database or engine work.
 
 const testFilterBodyPath = "/api/v1/admin/pipelines/test-filter"
 
@@ -186,22 +183,22 @@ func testFilterBody400Problems(spec testFilterSpec) []string {
 		problems = append(problems, fmt.Sprintf("the 200's data is %q, want FilterResult", success.Data))
 	}
 
-	bad := spec.Responses["400"]
-	if bad.Schema != "#/components/schemas/ErrorResponse" {
+	bad := spec.Responses["422"]
+	if bad.Schema != "#/components/schemas/ValidationErrorResponse" {
 		problems = append(problems, fmt.Sprintf("the 400's schema is %q, want ErrorResponse", bad.Schema))
 	}
 	var want interface{}
-	_ = json.Unmarshal([]byte(testFilterBodyRefusal), &want)
+	_ = json.Unmarshal([]byte(`{"error":{"code":"validation_failed","message":"Request body failed validation","details":{"fields":{"body":"the body is not a JSON object"}}}}`), &want)
 	if !reflect.DeepEqual(bad.Examples["invalid_body"], want) {
 		problems = append(problems, fmt.Sprintf("the 400's invalid_body is %s, want %s",
 			mustJSON(bad.Examples["invalid_body"]), testFilterBodyRefusal))
 	}
 	for status, res := range spec.Responses {
-		if _, ok := res.Examples["invalid_body"]; ok && status != "400" {
+		if _, ok := res.Examples["invalid_body"]; ok && status != "422" {
 			problems = append(problems, fmt.Sprintf("invalid_body is named on the %s too", status))
 		}
 	}
-	for _, phrase := range []string{"`bad_request`", "does not decode", "`filter_error`"} {
+	for _, phrase := range []string{"validation_failed", "details.fields"} {
 		if !strings.Contains(bad.Description, phrase) {
 			problems = append(problems, fmt.Sprintf("the 400's description does not say %s", phrase))
 		}
@@ -221,8 +218,7 @@ func TestTestFilterBody400_Documented(t *testing.T) {
 // JSON type. The last has no email, and is still refused as undecodable,
 // before the missing email is looked at.
 func TestTestFilterBody400_UndecodableBodiesRefused(t *testing.T) {
-	spec := readTestFilterSpec(t)
-	want := spec.Responses["400"].Examples["invalid_body"]
+	want := parseShapeJSON(t, testFilterBodyRefusal)
 	if want == nil {
 		t.Fatal("the spec documents no invalid_body 400")
 	}
@@ -246,6 +242,14 @@ func TestTestFilterBody400_UndecodableBodiesRefused(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			rr, reached := testFilterNoEngine(t, body)
 			status, expected := http.StatusBadRequest, want
+			if json.Valid([]byte(body)) {
+				status = http.StatusUnprocessableEntity
+				message := "the body is not a JSON object"
+				if body == "null" {
+					message = "the body is null"
+				}
+				expected = parseShapeJSON(t, pipelineValidation(map[string]string{"body": message}))
+			}
 			fieldTypes := map[string]map[string]string{
 				"filter_name number":         {"filter_name": "must be a string"},
 				"filter_name object":         {"filter_name": "must be a string"},
@@ -287,8 +291,8 @@ func TestTestFilterBody400_DecodableBodiesGet422(t *testing.T) {
 			rr, reached := testFilterNoEngine(t, body)
 			status, expected := http.StatusUnprocessableEntity, want
 			if name == "null" {
-				status = http.StatusBadRequest
-				expected = parseShapeJSON(t, testFilterBodyRefusal)
+				status = http.StatusUnprocessableEntity
+				expected = parseShapeJSON(t, pipelineValidation(map[string]string{"body": "the body is null"}))
 			}
 			if name == "unknown field only" {
 				expected = parseShapeJSON(t, pipelineValidation(map[string]string{"filter": "not allowed"}))
@@ -313,7 +317,7 @@ func TestTestFilterBody400_DocumentedMutations(t *testing.T) {
 	before := mustJSON(spec)
 
 	refusal := func(s *testFilterSpec) map[string]interface{} {
-		body, _ := s.Responses["400"].Examples["invalid_body"].(map[string]interface{})
+		body, _ := s.Responses["422"].Examples["invalid_body"].(map[string]interface{})
 		e, _ := body["error"].(map[string]interface{})
 		return e
 	}
@@ -330,35 +334,35 @@ func TestTestFilterBody400_DocumentedMutations(t *testing.T) {
 			s.Security[2] = map[string][]string{"APIKeyAuth": {"pipelines:read"}}
 		},
 		"invalid_body missing": func(s *testFilterSpec) {
-			delete(s.Responses["400"].Examples, "invalid_body")
+			delete(s.Responses["422"].Examples, "invalid_body")
 		},
 		"invalid_body under the 422 too": func(s *testFilterSpec) {
-			s.Responses["422"] = testFilterSpecResponse{Examples: map[string]interface{}{
-				"invalid_body": s.Responses["400"].Examples["invalid_body"],
+			s.Responses["400"] = testFilterSpecResponse{Examples: map[string]interface{}{
+				"invalid_body": s.Responses["422"].Examples["invalid_body"],
 			}}
 		},
 		"another code": func(s *testFilterSpec) {
 			refusal(s)["code"] = "filter_error"
 		},
 		"another message": func(s *testFilterSpec) {
-			refusal(s)["message"] = "Request body failed validation"
+			refusal(s)["message"] = "Invalid request body"
 		},
 		"details added": func(s *testFilterSpec) {
 			refusal(s)["details"] = map[string]interface{}{"fields": map[string]interface{}{"email": "required"}}
 		},
 		"validation schema": func(s *testFilterSpec) {
-			response(s, "400", func(r *testFilterSpecResponse) { r.Schema = "#/components/schemas/ValidationErrorResponse" })
+			response(s, "422", func(r *testFilterSpecResponse) { r.Schema = "#/components/schemas/ErrorResponse" })
 		},
 		"description drops filter_error": func(s *testFilterSpec) {
-			response(s, "400", func(r *testFilterSpecResponse) {
+			response(s, "422", func(r *testFilterSpecResponse) {
 				r.Description = "`bad_request` when the body does not decode as the request."
 			})
 		},
 		"description claims every 400": func(s *testFilterSpec) {
-			response(s, "400", func(r *testFilterSpecResponse) { r.Description = "Invalid request body" })
+			response(s, "422", func(r *testFilterSpecResponse) { r.Description = "Invalid request body" })
 		},
 		"description drops the decoding": func(s *testFilterSpec) {
-			response(s, "400", func(r *testFilterSpecResponse) {
+			response(s, "422", func(r *testFilterSpecResponse) {
 				r.Description = "`bad_request` or `filter_error`."
 			})
 		},

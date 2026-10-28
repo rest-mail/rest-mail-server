@@ -59,7 +59,7 @@ func TestDeliveryAndAddressCheckBeforeDatabase(t *testing.T) {
 		{`{"address":"a@b.test","priority":1}`, http.StatusUnprocessableEntity, `"priority":"not allowed"`},
 		{`{"mailbox_id":"seven"}`, http.StatusUnprocessableEntity, `"mailbox_id":`},
 		{`{"address":"a@b.test","raw_message":"not base64!"}`, http.StatusUnprocessableEntity, `"raw_message":`},
-		{`{"sender":"x@remote.test"}`, http.StatusBadRequest, `mailbox_id or address required`},
+		{`{"sender":"x@remote.test"}`, http.StatusUnprocessableEntity, `mailbox_id or address required`},
 		// The folder follows the folder rule, before the mailbox is looked up (#759).
 		{`{"address":"a@b.test","folder":"Archive/../Other"}`, http.StatusUnprocessableEntity, `"folder":"must not contain \"..\""`},
 		{`{"address":"a@b.test","folder":" Archive"}`, http.StatusUnprocessableEntity, `"folder":"must not begin or end with a space"`},
@@ -74,7 +74,7 @@ func TestDeliveryAndAddressCheckBeforeDatabase(t *testing.T) {
 	check := addressCheckRoute(&MailboxHandler{})
 	for target, want := range map[string]int{
 		"/api/mailboxes":          http.StatusUnprocessableEntity,
-		"/api/mailboxes?address=": http.StatusBadRequest,
+		"/api/mailboxes?address=": http.StatusUnprocessableEntity,
 	} {
 		rr := httptest.NewRecorder()
 		check(rr, httptest.NewRequest(http.MethodGet, target, nil))

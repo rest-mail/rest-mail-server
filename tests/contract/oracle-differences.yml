@@ -79,10 +79,7 @@
   reason: Null leaves the sending policy unchanged; an empty string clears it.
 - operation: updateDomain
   difference: "response 400: generated only"
-  reason: >-
-    A body that is not JSON, or not an object, is the 400 bad_request. openapi.yaml documents
-    the 422 only.
-
+  reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
 # Admin pipelines, custom filters, analytics and message traces (#649)
 
 - operation: createCustomFilter
@@ -516,9 +513,7 @@
 
 - operation: addToAllowlist
   difference: "response 400: generated only"
-  reason: >-
-    A body that is not JSON or is not an object is refused as 400 bad_request before the handler
-    runs; the oracle omits that answer.
+  reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
 - operation: addToAllowlist
   difference: "response 404: generated only"
   reason: >-
@@ -526,9 +521,7 @@
     domain_not_found; the oracle omits that answer.
 - operation: addToBlocklist
   difference: "response 400: generated only"
-  reason: >-
-    A body that is not JSON or is not an object is refused as 400 bad_request before the handler
-    runs; the oracle omits that answer.
+  reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
 - operation: addToBlocklist
   difference: "response 404: generated only"
   reason: >-
@@ -606,12 +599,6 @@
     null. This paginated handler always supplies the pointer and preserves the existing object
     response.
 - operation: setDomainRelay
-  difference: "request body application/json.anyOf: openapi.yaml [{\"properties\":{\"transport\":{\"enum\":[\"direct\"]}}},{\"properties\":{\"transport\":{\"enum\":[\"relay\"]}},\"required\":[\"host\",\"port\",\"tls_mode\"]}], generated absent"
-  reason: >-
-    Relay host, port and tls_mode are required conditionally when transport is relay. The typed body
-    describes each field; the existing handler enforces that cross-field rule and credential
-    pairing, which struct tags cannot express.
-- operation: setDomainRelay
   difference: "request body application/json.properties.password.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
   reason: >-
     Null port and tls_mode mean unset, and null password keeps the existing credential, just as the
@@ -668,20 +655,17 @@
     the oracle incorrectly marks them optional.
 - operation: setMtaStsPolicy
   difference: "response 400: generated only"
-  reason: >-
-    A body that is not JSON or is not an object is refused as 400 bad_request before the handler
-    runs; the oracle omits that answer.
-
+  reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
 # Admin mailboxes and aliases (#648)
 
 - operation: createAlias
-  difference: "request body application/json.properties.destination_address.format: openapi.yaml \"email\", generated absent"
+  difference: "request body application/json.properties.destination_address.format: openapi.yaml \"email\", generated \"idn-email\""
   reason: >-
-    The shared REST Mail address validator remains in the handler: it accepts internationalized and display-name mail addresses already used by clients, while the binder email format rejects display-name addresses. Its existing field messages and validation order are preserved.
+    Described as idn-email, which go-oapifly states and does not enforce: the shared REST Mail address validator stays in the handler, accepting internationalized and display-name mail addresses already used by clients, which the binder email format would refuse. Its existing field messages and validation order are preserved.
 - operation: createAlias
-  difference: "request body application/json.properties.source_address.format: openapi.yaml \"email\", generated absent"
+  difference: "request body application/json.properties.source_address.format: openapi.yaml \"email\", generated \"idn-email\""
   reason: >-
-    The shared REST Mail address validator remains in the handler: it accepts internationalized and display-name mail addresses already used by clients, while the binder email format rejects display-name addresses. Its existing field messages and validation order are preserved.
+    Described as idn-email, which go-oapifly states and does not enforce: the shared REST Mail address validator stays in the handler, accepting internationalized and display-name mail addresses already used by clients, which the binder email format would refuse. Its existing field messages and validation order are preserved.
 - operation: createAlias
   difference: "response 201 application/json.properties.data.properties.domain: openapi.yaml absent, generated *"
   reason: >-
@@ -776,8 +760,7 @@
     The public API includes the loaded domain only when the session may read it. Redacted or unloaded domains are omitted, not serialized as invalid zero records; the oracle still omits this optional association.
 - operation: updateAlias
   difference: "response 400: generated only"
-  reason: >-
-    Binding rejects malformed JSON or a non-object body with 400 bad_request. The oracle does not document this update response.
+  reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
 - operation: updateMailbox
   difference: "request body application/json.properties.active.type: openapi.yaml \"boolean\", generated [\"boolean\",\"null\"]"
   reason: >-
@@ -812,9 +795,7 @@
     last_login_at is always serialized, including null before a first login. The oracle marks it optional.
 - operation: updateMailbox
   difference: "response 400: generated only"
-  reason: >-
-    Binding rejects malformed JSON or a non-object body with 400 bad_request. The oracle does not document this update response.
-
+  reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
 # Admin: roles, capabilities, grants and escalation (#644)
 
 - operation: activateGrant
@@ -887,8 +868,7 @@
     Every grant response always writes activation and expires_at, including null when absent; the oracle marks them optional.
 - operation: createGrant
   difference: "response 400: generated only"
-  reason: >-
-    The existing malformed JSON refusal is 400 bad_request; binding also refuses a non-object body there. The oracle documents only semantic 422 validation.
+  reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
 - operation: deactivateGrant
   difference: "response 200 application/json.properties.data.properties.grant.properties.activation.properties.seconds_left.format: openapi.yaml absent, generated \"int64\""
   reason: >-
@@ -990,8 +970,7 @@
     Creating a ban for an already banned IP replaces its reason, protocol, creator and expiry and returns 200; a newly inserted ban returns 201. Both existing statuses are preserved.
 - operation: createBan
   difference: "response 400: generated only"
-  reason: >-
-    A body that is not JSON or is not an object is refused as 400 bad_request before binding its fields. The oracle only documents validation failures.
+  reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
 - operation: deleteBan
   difference: "response 404: openapi.yaml only"
   reason: >-
@@ -1114,11 +1093,8 @@
 # Outbound queue (#650)
 
 - operation: bulkBounceQueue
-  difference: "request body application/json.anyOf: openapi.yaml [{\"properties\":{\"ids\":{\"minItems\":1}},\"required\":[\"ids\"]},{\"required\":[\"filter\"]}], generated absent"
-  reason: go-oapifly cannot express this anyOf. The handler still refuses requests without nonempty ids or a non-null filter with 400 bad_request; IDs take precedence when both are supplied.
-- operation: bulkBounceQueue
   difference: "request body application/json.properties.filter.type: openapi.yaml \"object\", generated [\"null\",\"object\"]"
-  reason: A null filter is accepted as no filter, as before; the handler still requires nonempty ids in that case.
+  reason: A null filter counts as no filter, as before; the request type's AnyOf then requires nonempty ids.
 - operation: bulkBounceQueue
   difference: "request body application/json.properties.ids.items.minimum: openapi.yaml 0, generated absent"
   reason: The uint element type enforces non-negative IDs during binding, but go-oapifly does not emit the implicit unsigned minimum.
@@ -1126,11 +1102,8 @@
   difference: "response 200 application/json.properties.data.properties.affected.format: openapi.yaml absent, generated \"int64\""
   reason: The counter is an int64 in Go; generated documentation states its width without changing its JSON integer representation.
 - operation: bulkDeleteQueue
-  difference: "request body application/json.anyOf: openapi.yaml [{\"properties\":{\"ids\":{\"minItems\":1}},\"required\":[\"ids\"]},{\"required\":[\"filter\"]}], generated absent"
-  reason: go-oapifly cannot express this anyOf. The handler still refuses requests without nonempty ids or a non-null filter with 400 bad_request; IDs take precedence when both are supplied.
-- operation: bulkDeleteQueue
   difference: "request body application/json.properties.filter.type: openapi.yaml \"object\", generated [\"null\",\"object\"]"
-  reason: A null filter is accepted as no filter, as before; the handler still requires nonempty ids in that case.
+  reason: A null filter counts as no filter, as before; the request type's AnyOf then requires nonempty ids.
 - operation: bulkDeleteQueue
   difference: "request body application/json.properties.ids.items.minimum: openapi.yaml 0, generated absent"
   reason: The uint element type enforces non-negative IDs during binding, but go-oapifly does not emit the implicit unsigned minimum.
@@ -1138,11 +1111,8 @@
   difference: "response 200 application/json.properties.data.properties.affected.format: openapi.yaml absent, generated \"int64\""
   reason: The counter is an int64 in Go; generated documentation states its width without changing its JSON integer representation.
 - operation: bulkRetryQueue
-  difference: "request body application/json.anyOf: openapi.yaml [{\"properties\":{\"ids\":{\"minItems\":1}},\"required\":[\"ids\"]},{\"required\":[\"filter\"]}], generated absent"
-  reason: go-oapifly cannot express this anyOf. The handler still refuses requests without nonempty ids or a non-null filter with 400 bad_request; IDs take precedence when both are supplied.
-- operation: bulkRetryQueue
   difference: "request body application/json.properties.filter.type: openapi.yaml \"object\", generated [\"null\",\"object\"]"
-  reason: A null filter is accepted as no filter, as before; the handler still requires nonempty ids in that case.
+  reason: A null filter counts as no filter, as before; the request type's AnyOf then requires nonempty ids.
 - operation: bulkRetryQueue
   difference: "request body application/json.properties.ids.items.minimum: openapi.yaml 0, generated absent"
   reason: The uint element type enforces non-negative IDs during binding, but go-oapifly does not emit the implicit unsigned minimum.
@@ -1182,18 +1152,6 @@
 - operation: getQueueStats
   difference: 'response 200 application/json.properties.data.properties.expired: openapi.yaml absent, generated {"format":"int64","type":"integer"}'
   reason: The existing handler includes expired when entries have that status; the oracle omits this optional counter.
-- operation: bulkRetryQueue
-  difference: 'response 422 application/json.properties.error.properties.details.properties: openapi.yaml absent, generated {"fields":{"additionalProperties":{"type":"string"},"type":"object"}}'
-  reason: Binding always names the invalid fields in details.fields, whereas the oracle uses the general error envelope.
-- operation: bulkBounceQueue
-  difference: 'response 422 application/json.properties.error.properties.details.properties: openapi.yaml absent, generated {"fields":{"additionalProperties":{"type":"string"},"type":"object"}}'
-  reason: Binding always names the invalid fields in details.fields, whereas the oracle uses the general error envelope.
-- operation: bulkDeleteQueue
-  difference: 'response 422 application/json.properties.error.properties.details.properties: openapi.yaml absent, generated {"fields":{"additionalProperties":{"type":"string"},"type":"object"}}'
-  reason: Binding always names the invalid fields in details.fields, whereas the oracle uses the general error envelope.
-
-# DKIM keys and certificates (#647)
-
 - operation: createCertificate
   difference: "request body application/json.properties.auto_renew.type: openapi.yaml \"boolean\", generated [\"boolean\",\"null\"]"
   reason: Null or an omitted auto_renew selects true, preserving the existing upload default.
@@ -1224,9 +1182,6 @@
 - operation: getCertificate
   difference: "response 200 application/json.properties.data.type: openapi.yaml absent, generated \"object\""
   reason: The API details type describes the existing flat certificate response, including its public PEM and preloaded public domain association. The oracle uses allOf and omits the domain; timestamps retain their existing RFC3339 second precision.
-- operation: getDKIMRotation
-  difference: "response 400: openapi.yaml only"
-  reason: Invalid path IDs are now binding failures with 422 and fields.id; this read has no request body and no remaining 400 path.
 - operation: listCertificates
   difference: "parameter query limit: generated only"
   reason: The existing certificate list reads limit and offset, with the standard defaults and cap; the oracle omits these parameters.
@@ -1249,14 +1204,8 @@
   difference: "request body application/json.properties: openapi.yaml absent, generated *"
   reason: "Restore declares all seven model-derived table arrays, their model JSON fields and inert snapshot_at metadata. Sparse rows and omitted tables remain accepted; JSONB and raw JSON columns remain unconstrained JSON. The oracle describes only an open object."
 - operation: sendTestEmail
-  difference: "request body application/json.properties.from.format: openapi.yaml \"email\", generated absent"
-  reason: "These endpoints have always used exact mailbox address lookup and required nonempty input, without email syntax validation. Preserve accepted requests rather than add an unimplemented format constraint."
-- operation: sendTestEmail
   difference: "request body application/json.properties.from.minLength: openapi.yaml absent, generated 1"
   reason: "The existing nonempty address rule is now declared on the request type and enforced by binding."
-- operation: sendTestEmail
-  difference: "request body application/json.properties.to.format: openapi.yaml \"email\", generated absent"
-  reason: "These endpoints have always used exact mailbox address lookup and required nonempty input, without email syntax validation. Preserve accepted requests rather than add an unimplemented format constraint."
 - operation: sendTestEmail
   difference: "request body application/json.properties.to.minLength: openapi.yaml absent, generated 1"
   reason: "The existing nonempty address rule is now declared on the request type and enforced by binding."
@@ -1310,17 +1259,6 @@
   reason: >-
     An account's address is the stored mailbox address, which may be internationalised
     (EAI). The API's account type does not claim the email format for it.
-- operation: createAccount
-  difference: "request body application/json.properties.address.format: openapi.yaml \"email\", generated absent"
-  reason: >-
-    The handler checks the address with REST Mail's own mailbox-address rule (EAI local parts
-    included) and answers the documented 422 on address; binding's email format would refuse
-    addresses the server accepts.
-- operation: createAccount
-  difference: "request body application/json.properties.password.minLength: openapi.yaml 12, generated absent"
-  reason: >-
-    An empty password means the account has none (#341), so the handler checks the length of
-    a password that is given and answers 422 on password.
 - operation: linkAccount
   difference: "request body application/json.properties.address.format: openapi.yaml \"email\", generated absent"
   reason: >-
@@ -1336,13 +1274,16 @@
   reason: The current password is a request field only; no response type has one to mark.
 - operation: createAccount
   difference: "response 400: generated only"
-  reason: Binding answers 400 bad_request for a body that is not JSON or not an object, as the handler did.
+  reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
+
 - operation: linkAccount
   difference: "response 400: generated only"
-  reason: Binding answers 400 bad_request for a body that is not JSON or not an object, as the handler did.
+  reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
+
 - operation: createAppPassword
   difference: "response 400: generated only"
-  reason: Binding answers 400 bad_request for a body that is not JSON or not an object, as the handler did.
+  reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
+
 - operation: "*"
   difference: "response 4* application/json: generated only"
   reason: >-
@@ -1436,6 +1377,9 @@
     The mail routes throttle refused HTTP Basic credentials at login's rate (429
     rate_limited).
 - operation: createContact
+  difference: "request body application/json.properties.trust_level.enum: openapi.yaml [\"auto\",\"blocked\",\"trusted\"], generated [\"auto\",\"blocked\",\"trusted\",null]"
+  reason: Null, like leaving the field out, gives the contact the default trust level, trusted.
+- operation: createContact
   difference: "response 429: generated only"
   reason: >-
     The mail routes throttle refused HTTP Basic credentials at login's rate (429
@@ -1467,37 +1411,23 @@
     rate_limited).
 - operation: createContact
   difference: "response 400: generated only"
-  reason: >-
-    A body that is not JSON, or not an object, is 400 bad_request, as it always was.
+  reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
 - operation: updateContact
   difference: "response 400: generated only"
-  reason: >-
-    A body that is not JSON, or not an object, is 400 bad_request, as it always was.
+  reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
 - operation: blockSender
   difference: "response 400: generated only"
-  reason: >-
-    A body that is not JSON, or not an object, is 400 bad_request, as it always was.
+  reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
 - operation: createContact
   difference: "response 409: generated only"
   reason: >-
     An address that is already one of the account's contacts is 409 already_exists.
-- operation: createContact
-  difference: "request body application/json.properties.email.format: openapi.yaml \"email\", generated absent"
-  reason: >-
-    The address is checked in the handler, which keeps its documented "required" for an empty
-    one and "must be an email address" for one that is not; a format on the field would answer
-    an empty one with the format's wording instead.
 - operation: importContacts
   difference: "request body application/json.properties.contacts.items.properties.email.format: openapi.yaml \"email\", generated absent"
   reason: >-
     Each address is checked in the handler, which keeps its documented "required" for an empty
     one and "must be an email address" for one that is not; a format on the field would answer
     an empty one with the format's wording instead.
-- operation: blockSender
-  difference: "request body application/json.properties.email.format: openapi.yaml \"email\", generated absent"
-  reason: >-
-    Blocking has never checked the address is one: it blocks the sender exactly as given, so a
-    malformed From can be blocked too. Only an empty one is refused (422 required).
 - operation: listContacts
   difference: "response 200 application/json.properties.data.items.properties.email.format: openapi.yaml \"email\", generated absent"
   reason: >-
@@ -1528,11 +1458,6 @@
   reason: >-
     A contact holds the address as it was given or seen: blocking never checked it is one, so
     the answer cannot promise the format.
-- operation: createContact
-  difference: "request body application/json.properties.trust_level.enum: openapi.yaml [\"auto\",\"blocked\",\"trusted\"], generated absent"
-  reason: >-
-    The trust level is checked in the handler with the address, so both are refused together
-    (422 "must be auto, trusted, or blocked").
 - operation: createContact
   difference: "request body application/json.properties.trust_level.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
   reason: >-
@@ -1679,9 +1604,7 @@
     rate_limited).
 - operation: putSieveScript
   difference: "response 400: generated only"
-  reason: >-
-    A body that is not JSON, or not an object, is 400 bad_request; a script that does not
-    parse, or fails its dry run, is 400 invalid_sieve on put.
+  reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
 - operation: putSieveScript
   difference: "response 422 application/json.properties.error.properties.details.properties: openapi.yaml absent, generated {\"fields\":{\"additionalProperties\":{\"type\":\"string\"},\"type\":\"object\"}}"
   reason: >-
@@ -1694,8 +1617,7 @@
     documented script_null example, as a missing one is.
 - operation: validateSieveScript
   difference: "response 400: generated only"
-  reason: >-
-    A body that is not JSON, or not an object, is 400 bad_request.
+  reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
 - operation: validateSieveScript
   difference: "response 422 application/json.properties.error.properties.details.properties: openapi.yaml absent, generated {\"fields\":{\"additionalProperties\":{\"type\":\"string\"},\"type\":\"object\"}}"
   reason: >-
@@ -1807,11 +1729,11 @@
   reason: >-
     Every answer carries a message: why the script is refused, or that it is valid.
 - operation: setVacation
-  difference: "request body application/json.anyOf: openapi.yaml [{\"properties\":{\"enabled\":{\"enum\":[false]}}},{\"properties\":{\"body\":{\"minLength\":1},\"subject\":{\"minLength\":1}}}], generated absent"
+  difference: "request body application/json.anyOf: openapi.yaml [{\"properties\":{\"enabled\":{\"enum\":[false]}}},{\"properties\":{\"body\":{\"minLength\":1},\"subject\":{\"minLength\":1}}}], generated [{\"properties\":{\"enabled\":{\"enum\":[false]}}},{\"properties\":{\"body\":{\"minLength\":1},\"subject\":{\"minLength\":1}},\"required\":[\"body\",\"subject\"]}]"
   reason: >-
-    The oracle describes the reply as anyOf {enabled: false} or a non-empty subject and body.
-    The handler states it exactly: enabled is required, and subject and body are required when
-    it is true (422 "required when enabled"), with their documented wording.
+    The oracle requires subject and body on every request and only constrains their length in
+    the second alternative. The generated rule requires them only when the reply is on, which
+    is what the request type enforces (422 "required when enabled" at each one missing).
 - operation: setVacation
   difference: "request body application/json.required: openapi.yaml [\"body\",\"enabled\",\"subject\"], generated [\"enabled\"]"
   reason: >-
@@ -1861,30 +1783,15 @@
     rate_limited).
 - operation: createFolder
   difference: "response 400: generated only"
-  reason: >-
-    A body that is not JSON, or not an object, is 400 bad_request; before binding it was
-    answered 422 name required.
-- operation: createFolder
-  difference: "request body application/json.properties.name.minLength: openapi.yaml 1, generated absent"
-  reason: >-
-    An empty name is refused in the handler with its documented 422 name required; a minLength
-    would word it differently.
+  reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
 - operation: renameFolder
   difference: "response 400: generated only"
-  reason: >-
-    A body that is not JSON, or not an object, is 400 bad_request; before binding it was
-    answered 422 name required. A standard folder (INBOX, Sent, Drafts, Trash, Spam, Archive)
-    is not renamed, and no folder is renamed to one: 400 bad_request (#757).
+  reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
 - operation: renameFolder
   difference: "response 409: generated only"
   reason: >-
     A name another folder has is 409 already_exists: a rename no longer merges two folders
     into one (#757).
-- operation: renameFolder
-  difference: "request body application/json.properties.name.minLength: openapi.yaml 1, generated absent"
-  reason: >-
-    An empty name is refused in the handler with its documented 422 name required; a minLength
-    would word it differently.
 - operation: createFolder
   difference: "response 409: generated only"
   reason: >-
@@ -1894,11 +1801,6 @@
   reason: >-
     The 422 is the API's validation envelope, with the fields at fault under details.fields;
     the oracle describes this 422 without them.
-- operation: deleteFolder
-  difference: "response 400: generated only"
-  reason: >-
-    A standard folder (INBOX, Sent, Drafts, Trash, Spam, Archive) cannot be deleted: 400
-    bad_request.
 - operation: getQuota
   difference: "response 404: generated only"
   reason: >-
@@ -1945,11 +1847,6 @@
   reason: >-
     The mail routes throttle refused HTTP Basic credentials at login's rate (429
     rate_limited).
-- operation: updateMessage
-  difference: "request body application/json.properties.folder.minLength: openapi.yaml 1, generated absent"
-  reason: >-
-    A folder is held to the folder rule in the handler, an empty one refused with 422 folder
-    required as createFolder refuses an empty name; a minLength would word it differently (#759).
 - operation: getThread
   difference: "response 429: generated only"
   reason: >-
@@ -2230,8 +2127,7 @@
     limit (1 to 100).
 - operation: updateMessage
   difference: "response 400: generated only"
-  reason: >-
-    A body that is not JSON, or not an object, is 400 bad_request.
+  reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
 - operation: updateMessage
   difference: "request body application/json.properties.is_read.type: openapi.yaml \"boolean\", generated [\"boolean\",\"null\"]"
   reason: >-
@@ -2295,7 +2191,8 @@
     describes the 200 by its status alone.
 - operation: changeOwnPassword
   difference: "response 400: generated only"
-  reason: Binding answers 400 bad_request for a body that is not JSON or not an object, as the handler did.
+  reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
+
 - operation: changeOwnPassword
   difference: "response 429: generated only"
   reason: It checks a password, so it shares login's per-client-IP throttle (429 rate_limited).
@@ -2351,7 +2248,8 @@
   reason: The recipients are answered as the sender spelled them, which need not be addresses.
 - operation: restmailDeliver
   difference: "response 400: generated only"
-  reason: Binding answers 400 bad_request for a body that is not JSON or not an object, as the handler did.
+  reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
+
 - operation: restmailDiscover
   difference: "response 200 header Cache-Control: generated only"
   reason: >-
@@ -2603,16 +2501,6 @@
   reason: >-
     The new password is counted in bytes, as bootstrap and a password change count it, in the
     handler; minLength would count characters.
-- operation: protocolSignIn
-  difference: "request body application/json.required: openapi.yaml [\"protocol\"], generated absent"
-  reason: >-
-    The protocol is checked in the handler after the credential is: a missing one is 422
-    protocol, worded as before.
-- operation: protocolSignIn
-  difference: "request body application/json.properties.protocol.enum: openapi.yaml [\"imap\",\"pop3\",\"smtp\"], generated absent"
-  reason: >-
-    The protocol is checked in the handler after the credential is, with its own wording (must
-    be "imap", "pop3" or "smtp").
 - operation: login
   difference: "response 200 application/json.properties.data.properties.setup_required.items.enum: openapi.yaml [\"password\",\"two_factor\"], generated absent"
   reason: >-
@@ -2663,26 +2551,32 @@
     A browser's session is set, rotated and ended with cookies: restmail_access and
     restmail_refresh (httpOnly) and restmail_csrf. The oracle describes them in prose only.
 - operation: acceptInvitation
+  difference: "request body application/json.required: openapi.yaml [\"password\",\"token\"], generated [\"password\"]"
+  reason: >-
+    A missing token is refused as a bad one is, 401 invalid_token, which the handler checks;
+    required would make it a 422 first.
+- operation: acceptInvitation
+  difference: "request body application/json.properties.password.minLength: openapi.yaml 12, generated absent"
+  reason: >-
+    The password is 12 to 72 bytes, as every chosen password is; minLength counts characters,
+    and would refuse six two-byte characters the handler accepts.
+- operation: acceptInvitation
   difference: "response 200 header Set-Cookie: generated only"
   reason: >-
     A browser's session is set, rotated and ended with cookies: restmail_access and
     restmail_refresh (httpOnly) and restmail_csrf. The oracle describes them in prose only.
 - operation: login
   difference: "response 400: generated only"
-  reason: >-
-    A body that is not JSON, or not an object, is 400 bad_request.
+  reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
 - operation: logout
   difference: "response 400: generated only"
-  reason: >-
-    A body that is not JSON, or not an object, is 400 bad_request.
+  reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
 - operation: refreshToken
   difference: "response 400: generated only"
-  reason: >-
-    A body that is not JSON, or not an object, is 400 bad_request.
+  reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
 - operation: recoverAccount
   difference: "response 400: generated only"
-  reason: >-
-    A body that is not JSON, or not an object, is 400 bad_request.
+  reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
 - operation: login
   difference: "response 429: generated only"
   reason: >-
@@ -2866,14 +2760,6 @@
   difference: "response 200 application/json.properties.data.required: openapi.yaml [\"exists\"], generated [\"address\",\"exists\"]"
   reason: >-
     The address is always written: the one asked about, or the mailbox's own spelling of it.
-- operation: checkMailboxAddress
-  difference: "response 400: generated only"
-  reason: >-
-    A blank address is 400 bad_request (address query parameter required); a missing one is
-    binding's 422.
-
-# Owner keys and the reset token (#633)
-
 - operation: ownerChallenge
   difference: "response 429: generated only"
   reason: >-
@@ -2898,16 +2784,13 @@
     Throttled at login's per-IP rate: it guesses at a secret. 429 rate_limited with Retry-After.
 - operation: ownerToken
   difference: "response 400: generated only"
-  reason: >-
-    A body that is not JSON, or not an object, is 400 bad_request.
+  reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
 - operation: ownerStatus
   difference: "response 400: generated only"
-  reason: >-
-    A body that is not JSON, or not an object, is 400 bad_request.
+  reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
 - operation: resetAdmin
   difference: "response 400: generated only"
-  reason: >-
-    A body that is not JSON, or not an object, is 400 bad_request.
+  reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
 - operation: ownerToken
   difference: "request body application/json.required: openapi.yaml [\"address\",\"challenge\",\"public_key\",\"purpose\",\"signature\"], generated absent"
   reason: >-
@@ -2950,21 +2833,6 @@
   reason: >-
     A missing challenge, key or signature fails the signed message as a wrong one does: 401
     invalid_challenge or 403 not_status_key.
-- operation: acceptInvitation
-  difference: "request body application/json.required: openapi.yaml [\"password\",\"token\"], generated absent"
-  reason: >-
-    Checked when the invitation is redeemed: a missing token is the 401 invalid_token a wrong
-    one is, and a missing password the 422 password a short one is, which does not spend it.
-- operation: acceptInvitation
-  difference: "request body application/json.properties.password.minLength: openapi.yaml 12, generated absent"
-  reason: >-
-    The password is counted in bytes (12-72), as bootstrap and a password change count it,
-    when the invitation is redeemed; minLength would count characters.
-- operation: acceptInvitation
-  difference: "request body application/json.properties.client.enum: openapi.yaml [\"native\"], generated absent"
-  reason: >-
-    An empty client means a browser, as an absent one does; any other value is 422 client in
-    the handler (must be "native" or omitted).
 - operation: resetAdmin
   difference: "request body application/json.required: openapi.yaml [\"password\",\"token\"], generated absent"
   reason: >-
@@ -3173,9 +3041,7 @@
     answers its own 400s.
 - operation: forwardMessage
   difference: "response 400: generated only"
-  reason: >-
-    A body that is not JSON, or not an object, is 400 bad_request, as is a missing from or to
-    (from and to are required); the send it makes answers its own 400s.
+  reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
 - operation: sendMessage
   difference: "request body application/json.properties.from.format: openapi.yaml \"email\", generated absent"
   reason: >-
@@ -3293,11 +3159,6 @@
 
 # Mail-client discovery: autoconfig and Autodiscover (#631)
 
-- operation: microsoftAutodiscover
-  difference: "response 400 text/plain.enum: openapi.yaml [\"email address required\\n\",\"invalid email address\\n\",\"invalid request\\n\"], generated absent"
-  reason: >-
-    The three refusals are plain text, as http.Error writes them; go-oapifly cannot give a
-    plain-text answer's schema an enum. The handler writes exactly those three.
 - operation: mozillaAutoconfig
   difference: "parameter query emailaddress schema.format: openapi.yaml \"email\", generated absent"
   reason: >-
@@ -3332,11 +3193,6 @@
     RFC 8460 §5.2 asks reporters to gzip their reports, and §5.4 names
     application/tlsrpt+gzip for one sent compressed (#768). It is inflated, held to the same
     512 KiB cap as a plain one, and checked as the JSON form is.
-- operation: receiveTlsReport
-  difference: "response 415: generated only"
-  reason: >-
-    A body in a media type the report is not taken in: 415 unsupported_media_type, naming
-    the three that are.
 - operation: receiveTlsReport
   difference: "response 429: generated only"
   reason: >-

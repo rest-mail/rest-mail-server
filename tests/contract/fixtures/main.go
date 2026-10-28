@@ -59,7 +59,7 @@ func main() {
 		} else if *linkOnly {
 			_, err = prepareLinkFixture(database, *domain)
 		} else {
-			_, err = prepareRetryFixture(database, *domain)
+			err = prepareQueueFixtures(database, *domain)
 		}
 	}
 	if err != nil {
@@ -219,7 +219,22 @@ func prepareLinkFixture(database *gorm.DB, domain string) (uint, error) {
 	return account.ID, err
 }
 
+// prepareQueueFixtures holds one entry for the retry example and one for the
+// bounce example: a bounced entry cannot be retried, so they cannot share one.
+func prepareQueueFixtures(database *gorm.DB, domain string) error {
+	for _, name := range []string{"retry", "bounce"} {
+		if _, err := prepareQueueFixture(database, domain, name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func prepareRetryFixture(database *gorm.DB, domain string) (uint, error) {
+	return prepareQueueFixture(database, domain, "retry")
+}
+
+func prepareQueueFixture(database *gorm.DB, domain, name string) (uint, error) {
 	if domain != "restmail.test" {
 		return 0, errors.New("contract fixtures require restmail.test")
 	}
@@ -227,7 +242,10 @@ func prepareRetryFixture(database *gorm.DB, domain string) (uint, error) {
 	if err != nil {
 		return 0, err
 	}
-	entry := plan.Queue["retry"]
+	entry, ok := plan.Queue[name]
+	if !ok {
+		return 0, fmt.Errorf("contract fixture plan has no %s queue entry", name)
+	}
 	var count int64
 	if err := database.Model(&models.Domain{}).Where("name = ?", domain).Count(&count).Error; err != nil {
 		return 0, err

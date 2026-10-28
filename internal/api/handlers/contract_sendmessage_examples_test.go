@@ -22,8 +22,7 @@ func TestSendMessage_ExamplePairs(t *testing.T) {
 	want := map[string][]string{
 		"request": {"from_missing", "unsubscribe_not_allowed", "valid"},
 		"201":     {"valid"},
-		"400":     {"from_missing"},
-		"422":     {"unsubscribe_not_allowed"},
+		"422":     {"from_missing", "unsubscribe_not_allowed"},
 	}
 	got := map[string][]string{"request": names(requests)}
 	for status, examples := range responses {
@@ -63,10 +62,10 @@ func TestSendMessage_DocumentedBadRequest(t *testing.T) {
 	claims := &auth.Claims{AccountID: 1, CredentialKind: "app_password"}
 
 	rr := sendAs(&MessageHandler{}, claims, string(mustJSON(requests["from_missing"])))
-	if rr.Code != http.StatusBadRequest {
+	if rr.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("status %d, want 400; body %s", rr.Code, rr.Body)
 	}
-	if got, want := decodeShapeBody(t, rr), parseShapeJSON(t, string(mustJSON(responses["400"]["from_missing"]))); !reflect.DeepEqual(got, want) {
+	if got, want := decodeShapeBody(t, rr), parseShapeJSON(t, string(mustJSON(responses["422"]["from_missing"]))); !reflect.DeepEqual(got, want) {
 		t.Errorf("from_missing answered %s, want %v", rr.Body, want)
 	}
 }

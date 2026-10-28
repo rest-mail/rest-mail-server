@@ -25,6 +25,12 @@ on:
   # Stack layers target parent branches; their updates need the same E2E gate.
   pull_request:
   workflow_dispatch:
+    inputs:
+      description-mode:
+        description: Generated API description input for every Vertrag phase
+        type: choice
+        options: [saved, live]
+        default: saved
   # The merge queue on main (#825) needs `E2E (full topology)` and `Classify changed
   # paths` to report on each group it tests before merging it.
   merge_group:
@@ -134,6 +140,7 @@ jobs:
     uses: ./.github/workflows/e2e-suite.yml
     with:
       contract-phases: gate
+      description-mode: ${{ inputs.description-mode || 'saved' }}
 
   e2e:
     # Required-check anchor. Branch protection requires the context

@@ -18,7 +18,7 @@ var mozillaExamplePaths = map[string]string{
 
 func TestAutoconfigDatabaseFailureIsNotUnknownDomain(t *testing.T) {
 	jwt := auth.NewJWTService(routerTestSecret, time.Minute, time.Hour)
-	routers := NewRouters(newFailingGormDB(t), jwt, &config.Config{Environment: "test", GatewayHostname: "mail.example.com"}, nil)
+	routers := NewRouters(newFailingGormDB(t), jwt, &config.Config{Environment: "test", GatewayHostname: "restmail.test"}, nil)
 	t.Cleanup(routers.Close)
 	for _, tc := range []struct{ name, method, path, body string }{
 		{"mozilla", http.MethodGet, "/mail/config-v1.1.xml", ""},

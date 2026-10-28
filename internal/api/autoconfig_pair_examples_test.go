@@ -64,11 +64,11 @@ func autoconfigExampleRouters(t *testing.T) map[string]http.Handler {
 		t.Cleanup(r.Close)
 		return r.Public
 	}
-	available := makeRouter(autoconfigExampleDB(t, true), "mail.example.com")
+	available := makeRouter(autoconfigExampleDB(t, true), "restmail.test")
 	return map[string]http.Handler{
 		"available": available, "invalid_address": available,
-		"domain_not_found":       makeRouter(autoconfigExampleDB(t, false), "mail.example.com"),
-		"internal_error":         makeRouter(newFailingGormDB(t), "mail.example.com"),
+		"domain_not_found":       makeRouter(autoconfigExampleDB(t, false), "restmail.test"),
+		"internal_error":         makeRouter(newFailingGormDB(t), "restmail.test"),
 		"mail_host_unconfigured": makeRouter(newFailingGormDB(t), ""),
 	}
 }
@@ -79,7 +79,7 @@ func TestMozillaExamplesMatchRegisteredResponses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	statuses := map[string]int{"available": 200, "invalid_address": 400, "domain_not_found": 404, "internal_error": 500, "mail_host_unconfigured": 503}
+	statuses := map[string]int{"available": 200, "invalid_address": 422, "domain_not_found": 404, "internal_error": 500, "mail_host_unconfigured": 503}
 	for operation, path := range mozillaExamplePaths {
 		for name, status := range statuses {
 			t.Run(operation+"/"+name, func(t *testing.T) {
@@ -125,7 +125,7 @@ func TestMozillaExamplesMatchRegisteredResponses(t *testing.T) {
 						t.Fatal(err)
 					}
 					p := document.Provider
-					if document.XMLName.Local != "clientConfig" || document.Version != "1.1" || p.ID != "example.com" || p.Domain != "example.com" || p.Incoming.Host != "mail.example.com" || p.Incoming.Port != 993 || p.Incoming.Socket != "SSL" || p.Outgoing.Host != "mail.example.com" || p.Outgoing.Port != 465 || p.Outgoing.Socket != "SSL" {
+					if document.XMLName.Local != "clientConfig" || document.Version != "1.1" || p.ID != "example.com" || p.Domain != "example.com" || p.Incoming.Host != "restmail.test" || p.Incoming.Port != 993 || p.Incoming.Socket != "SSL" || p.Outgoing.Host != "restmail.test" || p.Outgoing.Port != 465 || p.Outgoing.Socket != "SSL" {
 						t.Fatalf("wrong discovery wiring: %+v", document)
 					}
 				}
@@ -164,7 +164,7 @@ func TestMozillaExamplesWithVertrag(t *testing.T) {
 	}
 	routers := autoconfigExampleRouters(t)
 	paths := []string{mozillaExamplePaths["mozillaAutoconfig"], mozillaExamplePaths["mozillaAutoconfigWellKnown"]}
-	for name, status := range map[string]string{"available": "200", "invalid_address": "400", "domain_not_found": "404", "internal_error": "500", "mail_host_unconfigured": "503"} {
+	for name, status := range map[string]string{"available": "200", "invalid_address": "422", "domain_not_found": "404", "internal_error": "500", "mail_host_unconfigured": "503"} {
 		t.Run(name, func(t *testing.T) { checkAuthReadWithVertrag(t, binary, routers[name], "", status, paths) })
 	}
 }

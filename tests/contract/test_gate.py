@@ -14,6 +14,20 @@ import yaml
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
 
+
+def topology_spec():
+    """The oracle's routes registered when E2E has neither push nor ACME."""
+    with open(os.path.join(ROOT, "openapi.yaml")) as source:
+        spec = yaml.safe_load(source)
+    for path in (
+        "/api/v1/devices",
+        "/api/v1/devices/{device_id}",
+        "/.well-known/acme-challenge/{token}",
+    ):
+        del spec["paths"][path]
+    return spec
+
+
 SPEC = """
 paths:
   /api/v1/admin/aliases:
@@ -101,6 +115,22 @@ class Gate(unittest.TestCase):
         ]
         self.assertEqual(self.run_gate(cases, ["createDomain"]), 1)
 
+    def test_repository_exclusions_match_the_e2e_topology(self):
+        # Disabled routes are absent from the generated description, rather
+        # than operations the run can exclude. Check the real configuration
+        # and baseline with those routes absent, without needing a live API.
+        spec = self.write("openapi.yaml", yaml.safe_dump(topology_spec()))
+        report = self.write("coverage.xml", "<testsuites/>")
+        self.assertEqual(
+            gate.gate(
+                spec,
+                os.path.join(ROOT, "vertrag.yml"),
+                report,
+                os.path.join(ROOT, "tests/contract/coverage-baseline.txt"),
+            ),
+            0,
+        )
+
 
 class PairedRefusals(unittest.TestCase):
     """vertrag.yml sends a documented 400 or 422 only where the spec pairs it
@@ -154,9 +184,11 @@ class PairedRefusals(unittest.TestCase):
         "importMessage",
     }
 
+    PAIRED_400: ClassVar[set[str]] = {"microsoftAutodiscover"}
+    PAIRED_422: ClassVar[set[str]] = PAIRED - PAIRED_400
+
     def test_exclude_matching_sends_exactly_the_paired_refusals(self):
-        with open(os.path.join(ROOT, "openapi.yaml")) as source:
-            spec = yaml.safe_load(source)
+        spec = topology_spec()
         with open(os.path.join(ROOT, "vertrag.yml")) as source:
             config = yaml.safe_load(source)
         patterns = [re.compile(p) for p in config["exclude-matching"]]
@@ -170,7 +202,7 @@ class PairedRefusals(unittest.TestCase):
                 for status in ("400", "422"):
                     if status not in op["responses"]:
                         continue
-                    if op["operationId"] in self.PAIRED:
+                    if op["operationId"] in getattr(self, "PAIRED_" + status):
                         paired.add((op["operationId"], status))
                     name = f"{path} > {op['summary']} > {status} > application/json"
                     if not any(p.search(name) for p in patterns):
@@ -190,7 +222,9 @@ class PairedRefusals(unittest.TestCase):
                 self.assertEqual(len(request_content), 1)
                 requests = next(iter(request_content.values()))
                 for status in ("400", "422"):
-                    if status not in op["responses"]:
+                    if status not in op["responses"] or op[
+                        "operationId"
+                    ] not in getattr(self, "PAIRED_" + status):
                         continue
                     with self.subTest(operation=op["operationId"], status=status):
                         for response in op["responses"][status]["content"].values():
@@ -226,7 +260,7 @@ class PreviewFaultScope(unittest.TestCase):
                     name = f"{path} > Preview > {status} > application/json"
                     self.assertEqual(
                         any(p.search(name) for p in patterns),
-                        status in faults[operation],
+                        status in faults[operation] or status == "400",
                     )
         name = "/api/v1/messages/send > Send > 500 > application/json"
         self.assertFalse(any(p.search(name) for p in patterns))
@@ -234,8 +268,7 @@ class PreviewFaultScope(unittest.TestCase):
 
 class MissingResourceRefusals(unittest.TestCase):
     def test_only_enabled_operations_send_their_documented_404(self):
-        with open(os.path.join(ROOT, "openapi.yaml")) as file:
-            spec = yaml.safe_load(file)
+        spec = topology_spec()
         with open(os.path.join(ROOT, "vertrag.yml")) as file:
             config = yaml.safe_load(file)
         patterns = [re.compile(pattern) for pattern in config["exclude-matching"]]

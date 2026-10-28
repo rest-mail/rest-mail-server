@@ -112,8 +112,8 @@ fetch() {
     local out
     out="$(gh api graphql -f query="$query" --jq "$QUEUE_JQ")" || return $?
     [ -n "$out" ] || return 0
-    printf '%s\n' "$out" | awk -F'\037' -v OFS='\037' -v map="$map" '
-        BEGIN { n = split(map, m, "\n"); for (i = 1; i <= n; i++) { split(m[i], p, " "); slug[p[1]] = p[2] } }
+    printf '%s\n' "$out" | AM_QUEUE_ALIAS_MAP="$map" awk -F'\037' -v OFS='\037' '
+        BEGIN { n = split(ENVIRON["AM_QUEUE_ALIAS_MAP"], m, "\n"); for (i = 1; i <= n; i++) { split(m[i], p, " "); slug[p[1]] = p[2] } }
         { $1 = slug[$1]; print }'
 }
 

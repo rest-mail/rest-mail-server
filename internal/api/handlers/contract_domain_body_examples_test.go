@@ -16,10 +16,10 @@ import (
 const createDomainPath = "/api/v1/admin/domains"
 
 // domainBodyArrayRefused is the body the handler answers a request that is
-// not a JSON object of its fields with: the canonical bad_request.
-const domainBodyArrayRefused = `{"error":{"code":"bad_request","message":"Invalid request body"}}`
+// JSON with the wrong root shape with: the canonical validation_failed.
+const domainBodyArrayRefused = `{"error":{"code":"validation_failed","message":"Request body failed validation","details":{"fields":{"body":"the body is not a JSON object"}}}}`
 
-// createDomain's body_array request goes with its 400, and only there:
+// createDomain's body_array request goes with its 422, and only there:
 // body_array is JSON, but an array where the request is an object, so it is
 // refused as it is read, before any field is looked at. The created and
 // name_missing pairs are kept as they were; other refusals named on the 422
@@ -30,7 +30,7 @@ func TestDomainCreate_BodyArrayPair(t *testing.T) {
 		t.Error(problem)
 	}
 
-	// The 400 is described as the error body the handler writes.
+	// The remaining 400 describes malformed JSON with the ordinary error envelope.
 	if ref := domainCreateResponseSchemaRef(t, "400"); ref != "#/components/schemas/ErrorResponse" {
 		t.Errorf("createDomain's 400 schema is %q, want the ErrorResponse", ref)
 	}
@@ -44,17 +44,17 @@ func domainBodyArrayPairProblems(t *testing.T, requests map[string]interface{}, 
 		problems = append(problems, fmt.Sprintf("body_array is %s, want the empty JSON array []",
 			mustJSON(requests["body_array"])))
 	}
-	if got := names(responses["400"]); !reflect.DeepEqual(got, []string{"body_array"}) {
-		problems = append(problems, fmt.Sprintf("the 400 names %v, want [body_array]", got))
+	if got := names(responses["422"]); !reflect.DeepEqual(got, []string{"body_array", "dmarc_policy_invalid", "name_missing", "sending_policy_invalid", "server_type_invalid"}) {
+		problems = append(problems, fmt.Sprintf("the 422 names %v, want [body_array]", got))
 	}
 	for status, examples := range responses {
-		if _, ok := examples["body_array"]; ok && status != "400" {
+		if _, ok := examples["body_array"]; ok && status != "422" {
 			problems = append(problems, fmt.Sprintf("body_array is named on the %s too", status))
 		}
 	}
-	if !reflect.DeepEqual(responses["400"]["body_array"], parseShapeJSON(t, domainBodyArrayRefused)) {
-		problems = append(problems, fmt.Sprintf("the 400 body_array is %s, want %s",
-			mustJSON(responses["400"]["body_array"]), domainBodyArrayRefused))
+	if !reflect.DeepEqual(responses["422"]["body_array"], parseShapeJSON(t, domainBodyArrayRefused)) {
+		problems = append(problems, fmt.Sprintf("the 422 body_array is %s, want %s",
+			mustJSON(responses["422"]["body_array"]), domainBodyArrayRefused))
 	}
 
 	// The pairs that were there before body_array, as they were.
@@ -126,13 +126,13 @@ func createDomainNoDB(t *testing.T, body string) (rr *httptest.ResponseRecorder,
 }
 
 // The real handler, with no database, answers body_array with exactly the
-// 400 the spec documents for it, before anything is looked up or stored.
+// 422 the spec documents for it, before anything is looked up or stored.
 func TestDomainCreate_BodyArrayRefused(t *testing.T) {
 	requests, responses := postExamples(t, createDomainPath, "createDomain")
 	want := parseShapeJSON(t, domainBodyArrayRefused)
-	if !reflect.DeepEqual(responses["400"]["body_array"], want) {
-		t.Errorf("the spec documents body_array's 400 as %s, want %s",
-			mustJSON(responses["400"]["body_array"]), domainBodyArrayRefused)
+	if !reflect.DeepEqual(responses["422"]["body_array"], want) {
+		t.Errorf("the spec documents body_array's 422 as %s, want %s",
+			mustJSON(responses["422"]["body_array"]), domainBodyArrayRefused)
 	}
 
 	body := string(mustJSON(requests["body_array"]))
@@ -143,8 +143,8 @@ func TestDomainCreate_BodyArrayRefused(t *testing.T) {
 	if reached {
 		t.Fatalf("%s reached the database before it was refused", body)
 	}
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("%s: status %d, want 400; body %s", body, rr.Code, rr.Body)
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("%s: status %d, want 422; body %s", body, rr.Code, rr.Body)
 	}
 	got := decodeShapeBody(t, rr)
 	if !reflect.DeepEqual(got, want) {
@@ -152,35 +152,35 @@ func TestDomainCreate_BodyArrayRefused(t *testing.T) {
 	}
 
 	// Controls. The answer is none of the documented 422s. An array is refused
-	// whatever it holds, the created request in one too: the 400 is the
+	// whatever it holds, the created request in one too: the 422 is the
 	// array's, not its emptiness'. And each request named on a 422, {} among
 	// them, is read and refused on its fields with exactly its documented 422
-	// instead, not body_array's 400.
+	// instead, not body_array's 422.
 	if len(responses["422"]) == 0 {
 		t.Fatal("createDomain's 422 names no example to hold the 400 apart from")
 	}
 	for name, refused := range responses["422"] {
-		if reflect.DeepEqual(got, refused) {
+		if name != "body_array" && reflect.DeepEqual(got, refused) {
 			t.Errorf("body_array is answered with %s's 422", name)
 		}
 	}
 	wrapped := "[" + string(mustJSON(requests["created"])) + "]"
-	if rr, reached := createDomainNoDB(t, wrapped); reached || rr.Code != http.StatusBadRequest ||
+	if rr, reached := createDomainNoDB(t, wrapped); reached || rr.Code != http.StatusUnprocessableEntity ||
 		!reflect.DeepEqual(decodeShapeBody(t, rr), want) {
-		t.Errorf("%s answered %d %s, want body_array's 400", wrapped, rr.Code, rr.Body)
+		t.Errorf("%s answered %d %s, want body_array's 422", wrapped, rr.Code, rr.Body)
 	}
 	for name, refused := range responses["422"] {
 		object := string(mustJSON(requests[name]))
 		rr, reached := createDomainNoDB(t, object)
 		if reached || rr.Code != http.StatusUnprocessableEntity || !reflect.DeepEqual(decodeShapeBody(t, rr), refused) {
-			t.Errorf("%s (%s) answered %d %s, want its documented 422 %s, not body_array's 400",
+			t.Errorf("%s (%s) answered %d %s, want its documented 422 %s, not body_array's 422",
 				name, object, rr.Code, rr.Body, mustJSON(refused))
 		}
 	}
 }
 
 // Each way the body_array pair can be wrong is caught, and the pairs kept
-// with it: the request or the 400 missing or misnamed, the 400 documented
+// with it: the request or the 422 missing or misnamed, the 422 documented
 // under another status or naming another request too, with another code,
 // message or body, a request that is not the empty array, and created or
 // name_missing changed or dropped. The mutations are made on copies, and the
@@ -193,7 +193,7 @@ func TestDomainCreate_BodyArrayPairMutations(t *testing.T) {
 	before := mustJSON([]interface{}{requests, responses})
 
 	refused := func(res map[string]map[string]interface{}) map[string]interface{} {
-		return res["400"]["body_array"].(map[string]interface{})["error"].(map[string]interface{})
+		return res["422"]["body_array"].(map[string]interface{})["error"].(map[string]interface{})
 	}
 	mutations := map[string]func(map[string]interface{}, map[string]map[string]interface{}){
 		"request missing": func(req map[string]interface{}, _ map[string]map[string]interface{}) {
@@ -204,30 +204,30 @@ func TestDomainCreate_BodyArrayPairMutations(t *testing.T) {
 			delete(req, "body_array")
 		},
 		"400 missing": func(_ map[string]interface{}, res map[string]map[string]interface{}) {
-			delete(res, "400")
+			delete(res, "422")
 		},
 		"400 misnamed": func(_ map[string]interface{}, res map[string]map[string]interface{}) {
-			res["400"]["array_body"] = res["400"]["body_array"]
-			delete(res["400"], "body_array")
+			res["422"]["array_body"] = res["422"]["body_array"]
+			delete(res["422"], "body_array")
 		},
 		"400 under 422": func(_ map[string]interface{}, res map[string]map[string]interface{}) {
-			res["422"]["body_array"] = res["400"]["body_array"]
-			delete(res, "400")
+			res["400"] = map[string]interface{}{"body_array": res["422"]["body_array"]}
+			delete(res, "422")
 		},
 		"also under 422": func(_ map[string]interface{}, res map[string]map[string]interface{}) {
-			res["422"]["body_array"] = res["400"]["body_array"]
+			res["400"] = map[string]interface{}{"body_array": res["422"]["body_array"]}
 		},
 		"400 names another": func(_ map[string]interface{}, res map[string]map[string]interface{}) {
-			res["400"]["name_missing"] = res["400"]["body_array"]
+			res["422"]["name_missing"] = res["422"]["body_array"]
 		},
 		"400 code": func(_ map[string]interface{}, res map[string]map[string]interface{}) {
 			refused(res)["code"] = "invalid_domain"
 		},
 		"400 message": func(_ map[string]interface{}, res map[string]map[string]interface{}) {
-			refused(res)["message"] = "Request body failed validation"
+			refused(res)["message"] = "Invalid request body"
 		},
 		"400 body": func(_ map[string]interface{}, res map[string]map[string]interface{}) {
-			res["400"]["body_array"] = res["422"]["name_missing"]
+			res["422"]["body_array"] = res["422"]["name_missing"]
 		},
 		"request an object": func(req map[string]interface{}, _ map[string]map[string]interface{}) {
 			req["body_array"] = map[string]interface{}{}

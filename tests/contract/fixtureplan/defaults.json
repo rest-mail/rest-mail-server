@@ -10,6 +10,7 @@
     "none": {"kind": "anonymous"}
   },
   "queue": {
-    "retry": {"sender": "admin@restmail.test", "recipient": "contract-retry@retry.invalid", "domain": "retry.invalid", "subject": "contract retry fixture", "body": "Contract fixture.\r\n", "status": "deferred", "next_attempt_hours": 24, "expires_hours": 72}
+    "bounce": {"sender": "admin@restmail.test", "recipient": "contract-bounce@retry.invalid", "domain": "retry.invalid", "subject": "contract bounce fixture", "body": "Contract fixture.\r\n", "status": "deferred", "next_attempt_hours": 24, "expires_hours": 72},
+    "retry":{"sender": "admin@restmail.test", "recipient": "contract-retry@retry.invalid", "domain": "retry.invalid", "subject": "contract retry fixture", "body": "Contract fixture.\r\n", "status": "deferred", "next_attempt_hours": 24, "expires_hours": 72}
   }
 }

@@ -68,8 +68,7 @@ func TestTestFilter_ExamplePairs(t *testing.T) {
 	want := map[string][]string{
 		"request": {"filter_name_missing", "filter_name_wrong_type", "invalid_body", "valid"},
 		"200":     {"valid"},
-		"400":     {"invalid_body"},
-		"422":     {"filter_name_missing", "filter_name_wrong_type"},
+		"422":     {"filter_name_missing", "filter_name_wrong_type", "invalid_body"},
 	}
 	got := map[string][]string{"request": names(requests)}
 	for status, examples := range responses {
@@ -109,11 +108,11 @@ func TestTestFilter_ExamplePairs(t *testing.T) {
 // documented 200. The handler has no database.
 func TestTestFilter_DocumentedAnswers(t *testing.T) {
 	requests, responses := postExamples(t, testFilterPath, "testFilter")
-	if len(responses["400"]) == 0 || len(responses["422"]) == 0 || len(responses["200"]) == 0 {
+	if len(responses["422"]) == 0 || len(responses["200"]) == 0 {
 		t.Fatalf("testFilter's 200, 400 and 422 must each name an example, got %v", responses)
 	}
 
-	for status, code := range map[string]int{"400": http.StatusBadRequest, "422": http.StatusUnprocessableEntity} {
+	for status, code := range map[string]int{"422": http.StatusUnprocessableEntity} {
 		for name, want := range responses[status] {
 			t.Run(status+"/"+name, func(t *testing.T) {
 				request, ok := requests[name]

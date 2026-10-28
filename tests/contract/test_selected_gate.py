@@ -50,6 +50,12 @@ class SelectedGate(unittest.TestCase):
                 "import sys\nfrom pathlib import Path\n"
                 "Path(sys.argv[2]).write_text('{}')\n"
             )
+            # This fixture isolates phase exit/ratchet behavior; input proof
+            # failures are covered by test_description_equivalence.py.
+            (helpers / "description_equivalence.py").write_text(
+                "import sys\nfrom pathlib import Path\n"
+                "print(Path(sys.argv[2]).resolve())\n"
+            )
             (helpers / "repeat_fixtures.py").write_text("")
             (helpers / "secret_scan.py").write_text(
                 "print('fixture secret scan ran')\n"

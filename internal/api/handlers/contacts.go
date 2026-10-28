@@ -178,9 +178,9 @@ type createContactRequest struct {
 }
 
 type createContactBody struct {
-	Email      string  `json:"email"`
+	Email      string  `json:"email" format:"email" formatMessage:"must be an email address"`
 	Name       string  `json:"name,omitempty"`
-	TrustLevel *string `json:"trust_level,omitempty"`
+	TrustLevel *string `json:"trust_level,omitempty" enums:"auto,trusted,blocked" message:"must be auto, trusted, or blocked"`
 }
 
 // create adds a new contact to a mailbox.
@@ -327,7 +327,7 @@ type blockSenderRequest struct {
 }
 
 type blockSenderBody struct {
-	Email string `json:"email"`
+	Email string `json:"email" format:"email" formatMessage:"must be an email address"`
 }
 
 // block creates or updates a contact with trust_level="blocked".

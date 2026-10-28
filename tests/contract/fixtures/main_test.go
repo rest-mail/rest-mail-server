@@ -263,3 +263,26 @@ func TestDomainTenantsAdministerOnlyTheirOwnDomain(t *testing.T) {
 		}
 	}
 }
+
+// The bounce example takes an entry of its own, held like the retry entry, so
+// the retry example still finds its entry deferred.
+func TestQueueFixturesHoldABounceEntryApartFromTheRetryEntry(t *testing.T) {
+	plan, err := fixtureplan.Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := fixtureDB(t)
+	if err := db.Create(&models.Domain{Name: "restmail.test", Active: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := prepareQueueFixtures(db, "restmail.test"); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"bounce", "retry"} {
+		var held models.OutboundQueue
+		if err := db.Where("recipient = ? AND status = ? AND next_attempt > ?", plan.Queue[name].Recipient, "deferred", time.Now()).
+			First(&held).Error; err != nil {
+			t.Fatalf("no held %s entry: %v", name, err)
+		}
+	}
+}

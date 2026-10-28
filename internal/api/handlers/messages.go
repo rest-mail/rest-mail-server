@@ -497,10 +497,10 @@ func (h *MessageHandler) sendMessageWithParts(r *http.Request, req sendMessageRe
 	}
 
 	if req.From == "" {
-		return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "from is required")
+		return zero, endpoint.Invalid(map[string]string{"from": "from is required"})
 	}
 	if len(req.To) == 0 {
-		return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "to is required and must not be empty")
+		return zero, endpoint.Invalid(map[string]string{"to": "to is required and must not be empty"})
 	}
 
 	// Per-message recipient cap (#184): a single API send must not fan out to an
@@ -511,8 +511,15 @@ func (h *MessageHandler) sendMessageWithParts(r *http.Request, req sendMessageRe
 	// work so an oversized fan-out is rejected cheaply. maxRecipients <= 0 disables.
 	if h.maxRecipients > 0 {
 		if total := len(req.To) + len(req.Cc) + len(req.Bcc); total > h.maxRecipients {
-			return zero, endpoint.Refuse(http.StatusBadRequest, "too_many_recipients",
-				fmt.Sprintf("too many recipients: %d exceeds the per-message limit of %d", total, h.maxRecipients))
+			message := fmt.Sprintf("too many recipients: %d exceeds the per-message limit of %d", total, h.maxRecipients)
+			fields := map[string]string{"to": message}
+			if len(req.Cc) > 0 {
+				fields["cc"] = message
+			}
+			if len(req.Bcc) > 0 {
+				fields["bcc"] = message
+			}
+			return zero, endpoint.Invalid(fields)
 		}
 	}
 
@@ -524,27 +531,27 @@ func (h *MessageHandler) sendMessageWithParts(r *http.Request, req sendMessageRe
 	// injection (#166).
 	for _, addr := range req.To {
 		if err := rmail.ValidateAddress(addr); err != nil {
-			return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "invalid recipient address in to")
+			return zero, endpoint.Invalid(map[string]string{"to": "invalid recipient address in to"})
 		}
 	}
 	for _, addr := range req.Cc {
 		if err := rmail.ValidateAddress(addr); err != nil {
-			return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "invalid recipient address in cc")
+			return zero, endpoint.Invalid(map[string]string{"cc": "invalid recipient address in cc"})
 		}
 	}
 	for _, addr := range req.Bcc {
 		if err := rmail.ValidateAddress(addr); err != nil {
-			return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "invalid recipient address in bcc")
+			return zero, endpoint.Invalid(map[string]string{"bcc": "invalid recipient address in bcc"})
 		}
 	}
 	if err := rmail.ValidateAddress(req.From); err != nil {
-		return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "invalid from address")
+		return zero, endpoint.Invalid(map[string]string{"from": "invalid from address"})
 	}
 	// The unsubscribe targets become header fields, so they are checked here,
 	// with the addresses, before anything is stored or signed.
 	if req.ListUnsubscribe != nil {
 		if err := validateListUnsubscribe(req.ListUnsubscribe); err != nil {
-			return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", err.Error())
+			return zero, endpoint.Invalid(map[string]string{"list_unsubscribe": err.Error()})
 		}
 	}
 
@@ -819,7 +826,7 @@ func (h *MessageHandler) sendMessageWithParts(r *http.Request, req sendMessageRe
 		var icsErr error
 		icsData, icsErr = rmime.GenerateICS(*evt)
 		if icsErr != nil {
-			return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "Invalid calendar event: "+icsErr.Error())
+			return zero, endpoint.Invalid(map[string]string{"calendar_event": "Invalid calendar event: " + icsErr.Error()})
 		}
 	}
 
@@ -1058,7 +1065,7 @@ func (h *MessageHandler) RegisterDelivery(rs endpoint.Routes, bodyLimit endpoint
 			{Status: http.StatusCreated, Description: "Delivered; the message made", Type: oapifly.TypeOf[endpoint.Data[Message]]()},
 			{Status: http.StatusOK, Description: "Quarantined or discarded by the inbound pipeline", Type: oapifly.TypeOf[endpoint.Data[DeliveryProcessed]]()},
 		},
-		Errors:   []int{http.StatusBadRequest, http.StatusNotFound, 451, 550},
+		Errors:   []int{http.StatusUnprocessableEntity, http.StatusNotFound, 451, 550},
 		Security: oapifly.Public, Middleware: []endpoint.Middleware{bodyLimit}}, h.deliverMessage)
 }
 
@@ -1084,7 +1091,7 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody)
 	} else if req.Address != "" {
 		lookupErr = repositories.FindActiveMailboxByAddress(h.db.WithContext(r.Context()), req.Address, &mailbox)
 	} else {
-		return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "mailbox_id or address required")
+		return zero, endpoint.Invalid(map[string]string{"mailbox_id": "mailbox_id or address required", "address": "mailbox_id or address required"})
 	}
 	if errors.Is(lookupErr, gorm.ErrRecordNotFound) {
 		return zero, endpoint.Refuse(http.StatusNotFound, "mailbox_not_found", "Mailbox not found")
@@ -1157,7 +1164,7 @@ type Quota = apitypes.Quota
 // folderNameBody names a folder; the handler refuses a name rmail.FolderNameProblem finds
 // fault with, an empty one as "required".
 type folderNameBody struct {
-	Name string `json:"name"`
+	Name string `json:"name" minLength:"1" minLengthMessage:"required"`
 }
 
 type createFolderRequest struct {
@@ -1236,12 +1243,12 @@ func (h *MessageHandler) RegisterFolders(rs endpoint.Routes) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPatch, Path: "/api/v1/accounts/{id}/folders/{folder}",
 		OperationID: "renameFolder", Summary: "Rename a folder", Tags: tags,
 		Description: "A standard folder (INBOX, Sent, Drafts, Trash, Spam, Archive) is not renamed, and no folder is renamed " +
-			"to one: 400 bad_request. A name another folder has is 409 already_exists: folders are not merged. " + folderNameRule,
-		Errors: []int{http.StatusBadRequest, http.StatusForbidden, http.StatusNotFound, http.StatusConflict}, Security: writes}, h.renameFolder)
+			"to one: 422 validation_failed. A name another folder has is 409 already_exists: folders are not merged. " + folderNameRule,
+		Errors: []int{http.StatusUnprocessableEntity, http.StatusForbidden, http.StatusNotFound, http.StatusConflict}, Security: writes}, h.renameFolder)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/accounts/{id}/folders/{folder}",
 		OperationID: "deleteFolder", Summary: "Delete a folder and its messages", Tags: tags, Status: http.StatusNoContent,
-		Description: "A standard folder (INBOX, Sent, Drafts, Trash, Spam, Archive) cannot be deleted: 400 bad_request.",
-		Errors:      []int{http.StatusBadRequest, http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.deleteFolder)
+		Description: "A standard folder (INBOX, Sent, Drafts, Trash, Spam, Archive) cannot be deleted: 422 validation_failed.",
+		Errors:      []int{http.StatusUnprocessableEntity, http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.deleteFolder)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/quota",
 		OperationID: "getQuota", Summary: "Get quota usage for an account", Tags: []string{"Accounts"},
 		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.getQuota)
@@ -1340,14 +1347,14 @@ func (h *MessageHandler) renameFolder(r *http.Request, in renameFolderRequest) (
 	}
 	from := rmail.CanonicalFolder(in.Folder)
 	if rmail.IsStandardFolder(from) {
-		return FolderName{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "Cannot rename standard folder")
+		return FolderName{}, endpoint.Invalid(map[string]string{"folder": "Cannot rename standard folder"})
 	}
 	if err := folderNameRefusal(in.Body.Name); err != nil {
 		return FolderName{}, err
 	}
 	name := rmail.CanonicalFolder(in.Body.Name)
 	if rmail.IsStandardFolder(name) {
-		return FolderName{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "Cannot rename a folder to a standard folder")
+		return FolderName{}, endpoint.Invalid(map[string]string{"name": "Cannot rename a folder to a standard folder"})
 	}
 	errNoFolder := endpoint.Refuse(http.StatusNotFound, "not_found", "Folder not found or empty")
 	exists, err := h.folderExists(r.Context(), mailboxID, from)
@@ -1388,7 +1395,7 @@ func (h *MessageHandler) deleteFolder(r *http.Request, in folderPath) (endpoint.
 
 	folderName := rmail.CanonicalFolder(in.Folder)
 	if rmail.IsStandardFolder(folderName) {
-		return endpoint.Empty{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "Cannot delete standard folder")
+		return endpoint.Empty{}, endpoint.Invalid(map[string]string{"folder": "Cannot delete standard folder"})
 	}
 
 	// Removing the folder and adjusting its mailbox quota must succeed together.
@@ -1477,12 +1484,12 @@ func (h *MessageHandler) saveDraft(r *http.Request, req saveDraftBody) (Message,
 	// address, as the schema says (#388).
 	for _, addr := range req.To {
 		if rmail.ValidateAddress(addr) != nil {
-			return Message{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "invalid recipient address in to")
+			return Message{}, endpoint.Invalid(map[string]string{"to": "invalid recipient address in to"})
 		}
 	}
 	for _, addr := range req.Cc {
 		if rmail.ValidateAddress(addr) != nil {
-			return Message{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "invalid recipient address in cc")
+			return Message{}, endpoint.Invalid(map[string]string{"cc": "invalid recipient address in cc"})
 		}
 	}
 
@@ -1562,12 +1569,12 @@ func (h *MessageHandler) updateDraft(r *http.Request, in updateDraftRequest) (Me
 	// address, as it must be when the draft is saved.
 	for _, addr := range req.To {
 		if rmail.ValidateAddress(addr) != nil {
-			return Message{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "invalid recipient address in to")
+			return Message{}, endpoint.Invalid(map[string]string{"to": "invalid recipient address in to"})
 		}
 	}
 	for _, addr := range req.Cc {
 		if rmail.ValidateAddress(addr) != nil {
-			return Message{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "invalid recipient address in cc")
+			return Message{}, endpoint.Invalid(map[string]string{"cc": "invalid recipient address in cc"})
 		}
 	}
 
@@ -1799,7 +1806,14 @@ func (h *MessageHandler) forwardMessage(r *http.Request, in forwardRequest) (end
 	}
 	req := in.Body
 	if req.From == "" || len(req.To) == 0 {
-		return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "from and to are required")
+		fields := map[string]string{}
+		if req.From == "" {
+			fields["from"] = "required"
+		}
+		if len(req.To) == 0 {
+			fields["to"] = "required"
+		}
+		return zero, endpoint.Invalid(fields)
 	}
 
 	// Build the forwarded bodies. Both parts carry the note and the header, so a
@@ -1886,7 +1900,7 @@ func (h *MessageHandler) respondToCalendar(r *http.Request, in calendarReplyRequ
 	// Validate response
 	response := strings.ToUpper(req.Response)
 	if response != "ACCEPTED" && response != "DECLINED" && response != "TENTATIVE" {
-		return CalendarReplied{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "response must be ACCEPTED, DECLINED, or TENTATIVE")
+		return CalendarReplied{}, endpoint.Invalid(map[string]string{"response": "response must be ACCEPTED, DECLINED, or TENTATIVE"})
 	}
 
 	// Parse calendar events from the message
@@ -1902,7 +1916,7 @@ func (h *MessageHandler) respondToCalendar(r *http.Request, in calendarReplyRequ
 	event := calEvents[0]
 
 	if req.From == "" {
-		return CalendarReplied{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "from is required")
+		return CalendarReplied{}, endpoint.Invalid(map[string]string{"from": "from is required"})
 	}
 
 	// Verify sender belongs to authenticated user

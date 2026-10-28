@@ -30,7 +30,16 @@ func checkMailboxLookupWithVertrag(t *testing.T, binary string, handler http.Han
 	doc["paths"] = map[string]interface{}{path: map[string]interface{}{"get": op}}
 	status := strconv.Itoa(pair.Response.Status)
 	response := op["responses"].(map[string]interface{})[status].(map[string]interface{})
-	for _, value := range response["content"].(map[string]interface{}) {
+	content := response["content"].(map[string]interface{})
+	// A status documented under several media types (a 206 as one range or as
+	// multipart/byteranges) is published with the pair's own media type only.
+	if media := pair.Response.MediaType; media != "" {
+		if chosen, ok := content[media]; ok {
+			content = map[string]interface{}{media: chosen}
+			response["content"] = content
+		}
+	}
+	for _, value := range content {
 		media := value.(map[string]interface{})
 		examples := media["examples"].(map[string]interface{})
 		chosen, ok := examples[name]

@@ -17,8 +17,8 @@ import (
 )
 
 // The bulk retry and bounce operations pair their refused requests with their
-// 400s the way bulkDeleteQueue does (#386): each refusal is a named request
-// example named on the 400 and nowhere else, and the original request is
+// refusals the way bulkDeleteQueue does (#386): each refusal is a named request
+// example named on its 400 or 422 and nowhere else, and the original request is
 // by_ids, named on the 200.
 var bulkQueuePairs = []struct {
 	operationID, path string
@@ -60,7 +60,7 @@ func readBulkPostSpec(t *testing.T, path string) bulkDeleteSpec {
 }
 
 // bulkPostPairProblems says what is wrong with how operationID pairs its
-// refused requests with its 400, and keeps the successful contract as it was.
+// refused requests with its 400 and 422, and keeps the successful contract as it was.
 func bulkPostPairProblems(t *testing.T, operationID string, s bulkDeleteSpec) []string {
 	t.Helper()
 	var problems []string
@@ -114,8 +114,11 @@ func bulkPostPairProblems(t *testing.T, operationID string, s bulkDeleteSpec) []
 	if ref := s.Responses["400"].Content["application/json"].Schema.Ref; ref != "#/components/schemas/ErrorResponse" {
 		add("the 400's schema is %q, want ErrorResponse", ref)
 	}
-	if got := names(responses["400"]); !reflect.DeepEqual(got, []string{"invalid_body", "selection_missing"}) {
-		add("the 400 names %v, want only invalid_body and selection_missing", got)
+	if got := names(responses["400"]); len(got) != 0 {
+		add("the 400 names %v, want only invalid_body", got)
+	}
+	if got := names(responses["422"]); !reflect.DeepEqual(got, []string{"invalid_body", "invalid_ids", "selection_missing"}) {
+		add("the 422 names %v, want only invalid_ids and selection_missing", got)
 	}
 	return problems
 }
@@ -130,22 +133,22 @@ func TestBulkQueue_RefusalPairs(t *testing.T) {
 	}
 }
 
-// Each named refusal is answered by the real handler with exactly the
-// documented 400. The handler has no database: a query built would panic, so
-// each 400 is proved to come before any entry is selected.
+// Each named refusal is answered by the real route with exactly the
+// documented 400 or 422. The handler has no database: a query built would
+// panic, so each refusal is proved to come before any entry is selected.
 func TestBulkQueue_RefusalPairsRefused(t *testing.T) {
 	for _, op := range bulkQueuePairs {
 		spec := readBulkPostSpec(t, op.path)
-		requests, refusals := spec.requests(t), spec.responses(t)["400"]
-		for _, name := range []string{"invalid_body", "selection_missing"} {
+		requests, responses := spec.requests(t), spec.responses(t)
+		for name, status := range map[string]int{"invalid_body": http.StatusUnprocessableEntity, "selection_missing": http.StatusUnprocessableEntity} {
 			t.Run(op.operationID+"/"+name, func(t *testing.T) {
 				request, ok := requests[name]
 				if !ok {
 					t.Fatalf("%s names no %s request example", op.operationID, name)
 				}
-				want, ok := refusals[name]
+				want, ok := responses[fmt.Sprint(status)][name]
 				if !ok {
-					t.Fatalf("%s's 400 names no %s example", op.operationID, name)
+					t.Fatalf("%s's %d names no %s example", op.operationID, status, name)
 				}
 				body, err := json.Marshal(request)
 				if err != nil {
@@ -160,8 +163,8 @@ func TestBulkQueue_RefusalPairsRefused(t *testing.T) {
 					}()
 					queueRoutes(NewQueueHandler(nil)).ServeHTTP(rr, httptest.NewRequest(http.MethodPost, op.path, bytes.NewReader(body)))
 				}()
-				if rr.Code != http.StatusBadRequest {
-					t.Fatalf("%s: status %d, want 400; body %s", body, rr.Code, rr.Body)
+				if rr.Code != status {
+					t.Fatalf("%s: status %d, want %d; body %s", body, rr.Code, status, rr.Body)
 				}
 				if ct := rr.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
 					t.Errorf("%s: Content-Type %q, want application/json", body, ct)

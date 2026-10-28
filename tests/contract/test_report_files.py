@@ -22,6 +22,7 @@ class ReportFiles(unittest.TestCase):
                 )
                 for suffix in (".xml", ".html", ".md", ".har", ".json")
             ] + [
+                "description-equivalence.json",
                 "summary.md",
                 "openapi.json",
                 "vertrag-run.yml",
@@ -50,6 +51,7 @@ class ReportFiles(unittest.TestCase):
             for name in keep + (
                 "authorization.xml",
                 "authorization.json",
+                "description-equivalence.json",
                 "summary.md",
             ):
                 (root / name).write_text("previous")

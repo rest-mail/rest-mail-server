@@ -70,7 +70,7 @@ func TestSieveScriptRequiredByContract(t *testing.T) {
 }
 
 // (a) An invalid script (uses fileinto without require) is rejected at install
-// with HTTP 400 and is NOT stored.
+// with HTTP 422 and is NOT stored.
 func TestSieveInstall_InvalidScriptRejected(t *testing.T) {
 	db := openAuthzTestDB(t)
 	tx := db.Begin()
@@ -81,8 +81,8 @@ func TestSieveInstall_InvalidScriptRejected(t *testing.T) {
 	rr := putSieve(t, h, fx.ownerMailbox.ID,
 		`{"script":"if header :contains \"Subject\" \"x\" { fileinto \"Spam\"; }","active":true}`)
 
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for an invalid script, got %d (%s)", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422 for an invalid script, got %d (%s)", rr.Code, rr.Body.String())
 	}
 	if n := sieveRowCount(t, h, fx.ownerMailbox.ID); n != 0 {
 		t.Fatalf("invalid script must not be stored, found %d row(s)", n)
@@ -90,7 +90,7 @@ func TestSieveInstall_InvalidScriptRejected(t *testing.T) {
 }
 
 // (b) A script that PARSES but fails the safe dry-run (redirect with no domain)
-// is rejected at install with HTTP 400 and is NOT stored.
+// is rejected at install with HTTP 422 and is NOT stored.
 func TestSieveInstall_DryRunErrorRejected(t *testing.T) {
 	db := openAuthzTestDB(t)
 	tx := db.Begin()
@@ -100,8 +100,8 @@ func TestSieveInstall_DryRunErrorRejected(t *testing.T) {
 
 	rr := putSieve(t, h, fx.ownerMailbox.ID, `{"script":"redirect \"bogus\";","active":true}`)
 
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for a dry-run failure, got %d (%s)", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422 for a dry-run failure, got %d (%s)", rr.Code, rr.Body.String())
 	}
 	if n := sieveRowCount(t, h, fx.ownerMailbox.ID); n != 0 {
 		t.Fatalf("dry-run-failing script must not be stored, found %d row(s)", n)

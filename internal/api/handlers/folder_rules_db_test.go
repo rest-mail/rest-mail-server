@@ -85,10 +85,10 @@ func wantRefusal(t *testing.T, rr *httptest.ResponseRecorder, status int, text s
 func TestRenameFolder_StandardFolders(t *testing.T) {
 	fx := newFolderRulesFixture(t)
 	for _, folder := range []string{"INBOX", "inbox", "Sent", "Drafts", "Trash", "Spam", "Archive"} {
-		wantRefusal(t, fx.send(t, http.MethodPatch, folder, `{"name":"Old mail"}`), http.StatusBadRequest, "Cannot rename standard folder")
+		wantRefusal(t, fx.send(t, http.MethodPatch, folder, `{"name":"Old mail"}`), http.StatusUnprocessableEntity, "Cannot rename standard folder")
 	}
 	for _, name := range []string{"INBOX", "Inbox", "Sent", "Drafts", "Trash", "Spam", "Archive"} {
-		wantRefusal(t, fx.send(t, http.MethodPatch, "Work", fmt.Sprintf(`{"name":%q}`, name)), http.StatusBadRequest,
+		wantRefusal(t, fx.send(t, http.MethodPatch, "Work", fmt.Sprintf(`{"name":%q}`, name)), http.StatusUnprocessableEntity,
 			"Cannot rename a folder to a standard folder")
 	}
 	if got := fx.count(t, "INBOX"); got != 1 {
@@ -160,7 +160,7 @@ func TestCreateFolder_ExistingNames(t *testing.T) {
 // INBOX is not deleted in any case.
 func TestDeleteFolder_InboxInAnyCase(t *testing.T) {
 	fx := newFolderRulesFixture(t)
-	wantRefusal(t, fx.send(t, http.MethodDelete, "inbox", ""), http.StatusBadRequest, "Cannot delete standard folder")
+	wantRefusal(t, fx.send(t, http.MethodDelete, "inbox", ""), http.StatusUnprocessableEntity, "Cannot delete standard folder")
 	if got := fx.count(t, "INBOX"); got != 1 {
 		t.Fatalf("INBOX holds %d messages, want 1", got)
 	}
@@ -190,10 +190,10 @@ func TestUpdateMessage_FolderName(t *testing.T) {
 		return rr
 	}
 	for body, want := range map[string]string{
-		`{"folder":" Work"}`:            "must not begin or end with a space",
-		`{"folder":"Work/../Personal"}`: `must not contain \"..\"`,
-		`{"folder":"a\u0000b"}`:         "must not contain a control character",
-		`{"folder":""}`:                 "required",
+		`{"folder":" Work"}`:                                   "must not begin or end with a space",
+		`{"folder":"Work/../Personal"}`:                        `must not contain \"..\"`,
+		`{"folder":"a\u0000b"}`:                                "must not contain a control character",
+		`{"folder":""}`:                                        "required",
 		fmt.Sprintf(`{"folder":%q}`, strings.Repeat("x", 256)): "must be at most 255 bytes",
 	} {
 		wantRefusal(t, move(body), http.StatusUnprocessableEntity, `"folder":"`+want+`"`)

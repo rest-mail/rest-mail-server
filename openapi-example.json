@@ -31,11 +31,16 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -406,11 +411,16 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -649,11 +659,16 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -703,6 +718,28 @@
           "error": {
             "code": "internal_error",
             "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {},
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
           }
         },
         "mediaType": "application/json"
@@ -915,11 +952,16 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -969,6 +1011,28 @@
           "error": {
             "code": "internal_error",
             "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {},
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
           }
         },
         "mediaType": "application/json"
@@ -1642,7 +1706,11 @@
         "principal": "without_capability"
       },
       "request": {
-        "body": {}
+        "body": {
+          "ids": [
+            987654
+          ]
+        }
       },
       "response": {
         "status": 403,
@@ -1659,14 +1727,20 @@
       "request": {
         "body": {
           "ids": []
-        }
+        },
+        "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "ids or filter required"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "ids": "ids or filter required"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -1694,6 +1768,27 @@
         "mediaType": "application/json"
       }
     },
+    "invalid_body": {
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "invalid_ids": {
       "request": {
         "body": {
@@ -1712,6 +1807,25 @@
                 "ids": "must be an array"
               }
             }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "body": {},
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
           }
         },
         "mediaType": "application/json"
@@ -1749,7 +1863,11 @@
         "body": "over_cap"
       },
       "request": {
-        "body": {}
+        "body": {
+          "ids": [
+            987654
+          ]
+        }
       },
       "response": {
         "status": 413,
@@ -1767,7 +1885,11 @@
         "fault": "session_store"
       },
       "request": {
-        "body": {}
+        "body": {
+          "ids": [
+            987654
+          ]
+        }
       },
       "response": {
         "status": 503,
@@ -1785,7 +1907,11 @@
         "principal": "anonymous"
       },
       "request": {
-        "body": {}
+        "body": {
+          "ids": [
+            987654
+          ]
+        }
       },
       "response": {
         "status": 401,
@@ -1826,7 +1952,11 @@
         "principal": "without_capability"
       },
       "request": {
-        "body": {}
+        "body": {
+          "ids": [
+            987654
+          ]
+        }
       },
       "response": {
         "status": 403,
@@ -1843,14 +1973,20 @@
       "request": {
         "body": {
           "ids": []
-        }
+        },
+        "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "ids or filter required"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "ids": "ids or filter required"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -1878,6 +2014,27 @@
         "mediaType": "application/json"
       }
     },
+    "invalid_body": {
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "invalid_ids": {
       "request": {
         "body": {
@@ -1896,6 +2053,25 @@
                 "ids": "must be an array"
               }
             }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "body": {},
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
           }
         },
         "mediaType": "application/json"
@@ -1933,7 +2109,11 @@
         "body": "over_cap"
       },
       "request": {
-        "body": {}
+        "body": {
+          "ids": [
+            987654
+          ]
+        }
       },
       "response": {
         "status": 413,
@@ -1951,7 +2131,11 @@
         "fault": "session_store"
       },
       "request": {
-        "body": {}
+        "body": {
+          "ids": [
+            987654
+          ]
+        }
       },
       "response": {
         "status": 503,
@@ -1969,7 +2153,11 @@
         "principal": "anonymous"
       },
       "request": {
-        "body": {}
+        "body": {
+          "ids": [
+            987654
+          ]
+        }
       },
       "response": {
         "status": 401,
@@ -2010,7 +2198,11 @@
         "principal": "without_capability"
       },
       "request": {
-        "body": {}
+        "body": {
+          "ids": [
+            987654
+          ]
+        }
       },
       "response": {
         "status": 403,
@@ -2027,14 +2219,20 @@
       "request": {
         "body": {
           "ids": []
-        }
+        },
+        "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "ids or filter required"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "ids": "ids or filter required"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -2062,6 +2260,27 @@
         "mediaType": "application/json"
       }
     },
+    "invalid_body": {
+      "request": {
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "invalid_ids": {
       "request": {
         "body": {
@@ -2080,6 +2299,25 @@
                 "ids": "must be an array"
               }
             }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "body": {},
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
           }
         },
         "mediaType": "application/json"
@@ -2117,7 +2355,11 @@
         "body": "over_cap"
       },
       "request": {
-        "body": {}
+        "body": {
+          "ids": [
+            987654
+          ]
+        }
       },
       "response": {
         "status": 413,
@@ -2135,7 +2377,11 @@
         "fault": "session_store"
       },
       "request": {
-        "body": {}
+        "body": {
+          "ids": [
+            987654
+          ]
+        }
       },
       "response": {
         "status": 503,
@@ -2153,7 +2399,11 @@
         "principal": "anonymous"
       },
       "request": {
-        "body": {}
+        "body": {
+          "ids": [
+            987654
+          ]
+        }
       },
       "response": {
         "status": 401,
@@ -2348,11 +2598,16 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -2539,11 +2794,16 @@
         }
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "address query parameter required"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "address": "address query parameter required"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -2829,11 +3089,16 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -3009,11 +3274,16 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -3346,11 +3616,16 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -3757,11 +4032,16 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -4505,7 +4785,7 @@
           "id": 1
         },
         "body": {
-          "email": "new@example.com"
+          "email": "created@example.com"
         }
       },
       "response": {
@@ -4514,7 +4794,7 @@
           "data": {
             "id": 1,
             "mailbox_id": 1,
-            "email": "new@example.com",
+            "email": "created@example.com",
             "name": "",
             "trust_level": "trusted",
             "source": "manual",
@@ -4744,54 +5024,6 @@
         "mediaType": "application/json"
       }
     },
-    "created": {
-      "request": {
-        "body": {
-          "name": "tag-invoices",
-          "description": "Tags mail about invoices",
-          "filter_type": "action",
-          "direction": "inbound",
-          "config": {
-            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
-          },
-          "enabled": false,
-          "domain_id": 1
-        },
-        "mediaType": "application/json"
-      },
-      "response": {
-        "status": 201,
-        "body": {
-          "data": {
-            "id": 1,
-            "domain_id": 1,
-            "name": "tag-invoices",
-            "description": "Tags mail about invoices",
-            "filter_type": "action",
-            "direction": "inbound",
-            "config": {
-              "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
-            },
-            "enabled": false,
-            "created_at": "2026-01-01T00:00:00Z",
-            "updated_at": "2026-01-01T00:00:00Z",
-            "domain": {
-              "id": 0,
-              "name": "",
-              "server_type": "",
-              "active": false,
-              "default_quota_bytes": 0,
-              "dkim_selector": "",
-              "sending_policy": "",
-              "dmarc_policy": "",
-              "created_at": "0001-01-01T00:00:00Z",
-              "updated_at": "0001-01-01T00:00:00Z"
-            }
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
     "csrf_mismatch": {
       "requires": {
         "principal": "without_capability"
@@ -4816,6 +5048,53 @@
           "error": {
             "code": "csrf_failed",
             "message": "Missing or invalid CSRF token"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "enabled_default": {
+      "request": {
+        "body": {
+          "name": "tag-invoices",
+          "description": "Tags mail about invoices",
+          "filter_type": "action",
+          "direction": "inbound",
+          "config": {
+            "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+          },
+          "domain_id": 1
+        },
+        "mediaType": "application/json"
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "name": "tag-invoices",
+            "description": "Tags mail about invoices",
+            "filter_type": "action",
+            "direction": "inbound",
+            "config": {
+              "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+            },
+            "enabled": true,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
+            }
           }
         },
         "mediaType": "application/json"
@@ -5445,11 +5724,16 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -7599,11 +7883,16 @@
         }
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Cannot delete standard folder"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "folder": "Cannot delete standard folder"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -9103,11 +9392,16 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -9382,11 +9676,16 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -10279,11 +10578,16 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -11021,6 +11325,22 @@
       },
       "response": {
         "status": 412
+      }
+    },
+    "range_multiple": {
+      "description": "Two byte ranges are served as one 206 multipart/byteranges body, a part per range. The boundary is chosen per response.",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "header": {
+          "Range": "bytes=0-1,4-5"
+        }
+      },
+      "response": {
+        "status": 206,
+        "body": "--EXAMPLE\r\nContent-Range: bytes 0-1/18\r\nContent-Type: application/octet-stream\r\n\r\nat\r\n--EXAMPLE\r\nContent-Range: bytes 4-5/18\r\nContent-Type: application/octet-stream\r\n\r\nch\r\n--EXAMPLE--\r\n",
+        "mediaType": "multipart/byteranges"
       }
     },
     "range_not_satisfiable": {
@@ -14999,7 +15319,7 @@
         "body": {
           "contacts": [
             {
-              "email": "new@example.com",
+              "email": "imported@example.com",
               "name": "New"
             }
           ]
@@ -15314,11 +15634,16 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -15829,11 +16154,16 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -21178,11 +21508,16 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -21336,11 +21671,16 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -21457,11 +21797,16 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -21731,9 +22076,19 @@
         "mediaType": "application/xml"
       },
       "response": {
-        "status": 400,
-        "body": "invalid email address\n",
-        "mediaType": "text/plain"
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "EMailAddress": "invalid email address"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "domain_not_found": {
@@ -21792,6 +22147,26 @@
         "mediaType": "text/plain"
       }
     },
+    "malformed": {
+      "summary": "Malformed XML without a fallback address is refused",
+      "request": {
+        "query": {
+          "emailaddress": ""
+        },
+        "body": "\u003cAutodiscover\u003e\u003cRequest\u003e",
+        "mediaType": "application/xml"
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "invalid request"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "oversized": {
       "summary": "The real 64 KiB request cap refuses one extra byte",
       "requires": {
@@ -21826,7 +22201,7 @@
       },
       "response": {
         "status": 200,
-        "body": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003cAutodiscover xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/responseschema/2006\"\u003e\n  \u003cResponse xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a\"\u003e\n    \u003cAccount\u003e\n      \u003cAccountType\u003eemail\u003c/AccountType\u003e\n      \u003cAction\u003esettings\u003c/Action\u003e\n      \u003cProtocol\u003e\n        \u003cType\u003eIMAP\u003c/Type\u003e\n        \u003cServer\u003email.example.com\u003c/Server\u003e\n        \u003cPort\u003e993\u003c/Port\u003e\n        \u003cSSL\u003eon\u003c/SSL\u003e\n        \u003cEncryption\u003eSSL\u003c/Encryption\u003e\n        \u003cLoginName\u003euser@example.com\u003c/LoginName\u003e\n      \u003c/Protocol\u003e\n      \u003cProtocol\u003e\n        \u003cType\u003eSMTP\u003c/Type\u003e\n        \u003cServer\u003email.example.com\u003c/Server\u003e\n        \u003cPort\u003e465\u003c/Port\u003e\n        \u003cSSL\u003eon\u003c/SSL\u003e\n        \u003cEncryption\u003eSSL\u003c/Encryption\u003e\n        \u003cLoginName\u003euser@example.com\u003c/LoginName\u003e\n      \u003c/Protocol\u003e\n    \u003c/Account\u003e\n  \u003c/Response\u003e\n\u003c/Autodiscover\u003e",
+        "body": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003cAutodiscover xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/responseschema/2006\"\u003e\n  \u003cResponse xmlns=\"http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a\"\u003e\n    \u003cAccount\u003e\n      \u003cAccountType\u003eemail\u003c/AccountType\u003e\n      \u003cAction\u003esettings\u003c/Action\u003e\n      \u003cProtocol\u003e\n        \u003cType\u003eIMAP\u003c/Type\u003e\n        \u003cServer\u003erestmail.test\u003c/Server\u003e\n        \u003cPort\u003e993\u003c/Port\u003e\n        \u003cSSL\u003eon\u003c/SSL\u003e\n        \u003cEncryption\u003eSSL\u003c/Encryption\u003e\n        \u003cLoginName\u003euser@example.com\u003c/LoginName\u003e\n      \u003c/Protocol\u003e\n      \u003cProtocol\u003e\n        \u003cType\u003eSMTP\u003c/Type\u003e\n        \u003cServer\u003erestmail.test\u003c/Server\u003e\n        \u003cPort\u003e465\u003c/Port\u003e\n        \u003cSSL\u003eon\u003c/SSL\u003e\n        \u003cEncryption\u003eSSL\u003c/Encryption\u003e\n        \u003cLoginName\u003euser@example.com\u003c/LoginName\u003e\n      \u003c/Protocol\u003e\n    \u003c/Account\u003e\n  \u003c/Response\u003e\n\u003c/Autodiscover\u003e",
         "mediaType": "application/xml"
       }
     }
@@ -21842,7 +22217,7 @@
       },
       "response": {
         "status": 200,
-        "body": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003cclientConfig version=\"1.1\"\u003e\n  \u003cemailProvider id=\"example.com\"\u003e\n    \u003cdomain\u003eexample.com\u003c/domain\u003e\n    \u003cdisplayName\u003eexample.com Mail\u003c/displayName\u003e\n    \u003cincomingServer type=\"imap\"\u003e\n      \u003chostname\u003email.example.com\u003c/hostname\u003e\n      \u003cport\u003e993\u003c/port\u003e\n      \u003csocketType\u003eSSL\u003c/socketType\u003e\n      \u003cauthentication\u003epassword-cleartext\u003c/authentication\u003e\n      \u003cusername\u003e%EMAILADDRESS%\u003c/username\u003e\n    \u003c/incomingServer\u003e\n    \u003coutgoingServer type=\"smtp\"\u003e\n      \u003chostname\u003email.example.com\u003c/hostname\u003e\n      \u003cport\u003e465\u003c/port\u003e\n      \u003csocketType\u003eSSL\u003c/socketType\u003e\n      \u003cauthentication\u003epassword-cleartext\u003c/authentication\u003e\n      \u003cusername\u003e%EMAILADDRESS%\u003c/username\u003e\n    \u003c/outgoingServer\u003e\n  \u003c/emailProvider\u003e\n\u003c/clientConfig\u003e",
+        "body": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003cclientConfig version=\"1.1\"\u003e\n  \u003cemailProvider id=\"example.com\"\u003e\n    \u003cdomain\u003eexample.com\u003c/domain\u003e\n    \u003cdisplayName\u003eexample.com Mail\u003c/displayName\u003e\n    \u003cincomingServer type=\"imap\"\u003e\n      \u003chostname\u003erestmail.test\u003c/hostname\u003e\n      \u003cport\u003e993\u003c/port\u003e\n      \u003csocketType\u003eSSL\u003c/socketType\u003e\n      \u003cauthentication\u003epassword-cleartext\u003c/authentication\u003e\n      \u003cusername\u003e%EMAILADDRESS%\u003c/username\u003e\n    \u003c/incomingServer\u003e\n    \u003coutgoingServer type=\"smtp\"\u003e\n      \u003chostname\u003erestmail.test\u003c/hostname\u003e\n      \u003cport\u003e465\u003c/port\u003e\n      \u003csocketType\u003eSSL\u003c/socketType\u003e\n      \u003cauthentication\u003epassword-cleartext\u003c/authentication\u003e\n      \u003cusername\u003e%EMAILADDRESS%\u003c/username\u003e\n    \u003c/outgoingServer\u003e\n  \u003c/emailProvider\u003e\n\u003c/clientConfig\u003e",
         "mediaType": "application/xml"
       }
     },
@@ -21891,9 +22266,19 @@
         }
       },
       "response": {
-        "status": 400,
-        "body": "no email domain in the address or the host name\n",
-        "mediaType": "text/plain"
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "emailaddress": "no email domain in the address or the host name"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "mail_host_unconfigured": {
@@ -21925,7 +22310,7 @@
       },
       "response": {
         "status": 200,
-        "body": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003cclientConfig version=\"1.1\"\u003e\n  \u003cemailProvider id=\"example.com\"\u003e\n    \u003cdomain\u003eexample.com\u003c/domain\u003e\n    \u003cdisplayName\u003eexample.com Mail\u003c/displayName\u003e\n    \u003cincomingServer type=\"imap\"\u003e\n      \u003chostname\u003email.example.com\u003c/hostname\u003e\n      \u003cport\u003e993\u003c/port\u003e\n      \u003csocketType\u003eSSL\u003c/socketType\u003e\n      \u003cauthentication\u003epassword-cleartext\u003c/authentication\u003e\n      \u003cusername\u003e%EMAILADDRESS%\u003c/username\u003e\n    \u003c/incomingServer\u003e\n    \u003coutgoingServer type=\"smtp\"\u003e\n      \u003chostname\u003email.example.com\u003c/hostname\u003e\n      \u003cport\u003e465\u003c/port\u003e\n      \u003csocketType\u003eSSL\u003c/socketType\u003e\n      \u003cauthentication\u003epassword-cleartext\u003c/authentication\u003e\n      \u003cusername\u003e%EMAILADDRESS%\u003c/username\u003e\n    \u003c/outgoingServer\u003e\n  \u003c/emailProvider\u003e\n\u003c/clientConfig\u003e",
+        "body": "\u003c?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n\u003cclientConfig version=\"1.1\"\u003e\n  \u003cemailProvider id=\"example.com\"\u003e\n    \u003cdomain\u003eexample.com\u003c/domain\u003e\n    \u003cdisplayName\u003eexample.com Mail\u003c/displayName\u003e\n    \u003cincomingServer type=\"imap\"\u003e\n      \u003chostname\u003erestmail.test\u003c/hostname\u003e\n      \u003cport\u003e993\u003c/port\u003e\n      \u003csocketType\u003eSSL\u003c/socketType\u003e\n      \u003cauthentication\u003epassword-cleartext\u003c/authentication\u003e\n      \u003cusername\u003e%EMAILADDRESS%\u003c/username\u003e\n    \u003c/incomingServer\u003e\n    \u003coutgoingServer type=\"smtp\"\u003e\n      \u003chostname\u003erestmail.test\u003c/hostname\u003e\n      \u003cport\u003e465\u003c/port\u003e\n      \u003csocketType\u003eSSL\u003c/socketType\u003e\n      \u003cauthentication\u003epassword-cleartext\u003c/authentication\u003e\n      \u003cusername\u003e%EMAILADDRESS%\u003c/username\u003e\n    \u003c/outgoingServer\u003e\n  \u003c/emailProvider\u003e\n\u003c/clientConfig\u003e",
         "mediaType": "application/xml"
       }
     },
@@ -21974,9 +22359,19 @@
         }
       },
       "response": {
-        "status": 400,
-        "body": "no email domain in the address or the host name\n",
-        "mediaType": "text/plain"
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "emailaddress": "no email domain in the address or the host name"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "mail_host_unconfigured": {
@@ -22020,6 +22415,9 @@
     },
     "found": {
       "description": "The public route resolves the HTTP authority to its hosted domain and loads only its active policy. Policy bytes, UTF-8 media type and final newline are exact.",
+      "requires": {
+        "state": "active_policy"
+      },
       "request": {
         "header": {
           "Host": "mta-sts.example.com"
@@ -22182,11 +22580,16 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -22381,11 +22784,16 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -22889,13 +23297,19 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
           }
-        }
+        },
+        "mediaType": "application/json"
       }
     },
     "protocol_missing": {
@@ -23053,6 +23467,9 @@
     },
     "found": {
       "description": "Real registered route, JWT/Basic/scoped-key verification, holder grants and CSRF precede installation. Local SQL asserts exact mailbox selection, script bytes/hash, active defaults and explicit false, persistence-clock markers and lookup/create/update failures. Fixed rows do not prove PostgreSQL durability or delivery execution; PostgreSQL regression cases run when TEST_DATABASE_URL is configured.",
+      "requires": {
+        "state": "existing_script"
+      },
       "request": {
         "path": {
           "id": 1
@@ -23274,64 +23691,19 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
-          }
-        }
-      }
-    },
-    "body_boundary": {
-      "description": "Send this JSON followed by ASCII whitespace to exactly 524288 bytes. The complete original report bytes are stored.",
-      "request": {
-        "body": {
-          "organization-name": "Example Reporter",
-          "contact-info": "tlsrpt@reporter.example.com",
-          "report-id": "2026-10-17T00:00:00Z_restmail.test",
-          "date-range": {
-            "start-datetime": "2026-10-16T00:00:00Z",
-            "end-datetime": "2026-10-16T23:59:59Z"
-          },
-          "policies": [
-            {
-              "policy": {
-                "policy-type": "sts",
-                "policy-string": [
-                  "version: STSv1",
-                  "mode: testing",
-                  "mx: mail.restmail.test",
-                  "max_age: 86400"
-                ],
-                "policy-domain": "restmail.test",
-                "mx-host": [
-                  "mail.restmail.test"
-                ]
-              },
-              "summary": {
-                "total-successful-session-count": 12,
-                "total-failure-session-count": 1
-              },
-              "failure-details": [
-                {
-                  "result-type": "certificate-expired",
-                  "sending-mta-ip": "192.0.2.1",
-                  "receiving-mx-hostname": "mail.restmail.test",
-                  "failed-session-count": 1
-                }
-              ]
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
             }
-          ]
-        }
-      },
-      "response": {
-        "status": 201,
-        "body": {
-          "data": {
-            "stored": 1
           }
-        }
+        },
+        "mediaType": "application/json"
       }
     },
     "cancelled": {
@@ -23550,16 +23922,139 @@
         }
       }
     },
+    "stored": {
+      "request": {
+        "body": {
+          "organization-name": "Example Reporter",
+          "contact-info": "tlsrpt@reporter.example.com",
+          "report-id": "2026-10-17T00:00:00Z_restmail.test",
+          "date-range": {
+            "start-datetime": "2026-10-16T00:00:00Z",
+            "end-datetime": "2026-10-16T23:59:59Z"
+          },
+          "policies": [
+            {
+              "policy": {
+                "policy-type": "sts",
+                "policy-string": [
+                  "version: STSv1",
+                  "mode: testing",
+                  "mx: mail.restmail.test",
+                  "max_age: 86400"
+                ],
+                "policy-domain": "restmail.test",
+                "mx-host": [
+                  "mail.restmail.test"
+                ]
+              },
+              "summary": {
+                "total-successful-session-count": 12,
+                "total-failure-session-count": 1
+              },
+              "failure-details": [
+                {
+                  "result-type": "certificate-expired",
+                  "sending-mta-ip": "192.0.2.1",
+                  "receiving-mx-hostname": "mail.restmail.test",
+                  "failed-session-count": 1
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "stored": 1
+          }
+        }
+      }
+    },
+    "stored_gzip": {
+      "description": "The same report gzip-compressed under application/tlsrpt+gzip (RFC 1952), which a JSON example cannot hold.",
+      "requires": {
+        "body": "compressed"
+      },
+      "request": {
+        "body": "H4sIAAAAAAAC/3WSTW6DMBCFr4K8xghomzasuukFmqxSRZFlhtQStpE9RKRR794HJKnUpMIS4/E3b37sk/Bhr5z5Umy8k05ZEpV4G5TtWkreqfOBKYhUaO9YaZbGNR4EtzF0/BrOQEZzRKa9BTy7palBlnm5kEUui+d1nlfT2uwCRbbKtBnDQECtmGRQbo/sJxFZIXr0sZnquWosfjUQRa7+hyofqqcl1kZ8p6LzrdGGoqg+TvPmOGaZLcnHbgyOHEV68UUOxu3BiwOFiMFUyWq9OhQgrK+pSsayRwL7oUqmTv62ZNWwU3uwL4vHPBfbq3jtgTmkvIkY5KeHhbR3FLfoJPbWqjBVz55VK2OvNcXY9DDxH69Q+95BoyjTM9NAog90A0DvclQTw5oHhKx9y5exaApsGqPH+6GhM4FqVBoxebQvLStpOmDFsszyrMyK6fI1mcN0PDd0flR3pzRWQPVtbVt8Pze088+cAgAA",
+        "mediaType": "application/tlsrpt+gzip"
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "stored": 1
+          }
+        }
+      }
+    },
+    "stored_tlsrpt_json": {
+      "description": "The same report under application/tlsrpt+json, the media type RFC 8460 names.",
+      "request": {
+        "body": {
+          "organization-name": "Example Reporter",
+          "contact-info": "tlsrpt@reporter.example.com",
+          "report-id": "2026-10-17T00:00:00Z_restmail.test",
+          "date-range": {
+            "start-datetime": "2026-10-16T00:00:00Z",
+            "end-datetime": "2026-10-16T23:59:59Z"
+          },
+          "policies": [
+            {
+              "policy": {
+                "policy-type": "sts",
+                "policy-string": [
+                  "version: STSv1",
+                  "mode: testing",
+                  "mx: mail.restmail.test",
+                  "max_age: 86400"
+                ],
+                "policy-domain": "restmail.test",
+                "mx-host": [
+                  "mail.restmail.test"
+                ]
+              },
+              "summary": {
+                "total-successful-session-count": 12,
+                "total-failure-session-count": 1
+              },
+              "failure-details": [
+                {
+                  "result-type": "certificate-expired",
+                  "sending-mta-ip": "192.0.2.1",
+                  "receiving-mx-hostname": "mail.restmail.test",
+                  "failed-session-count": 1
+                }
+              ]
+            }
+          ]
+        },
+        "mediaType": "application/tlsrpt+json"
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "stored": 1
+          }
+        }
+      }
+    },
     "unsupported_media": {
+      "requires": {
+        "body": "unsupported_media"
+      },
       "request": {
         "mediaType": "text/plain",
         "invalid": true
       },
       "response": {
-        "status": 415,
+        "status": 400,
         "body": {
           "error": {
-            "code": "unsupported_media_type",
+            "code": "bad_request",
             "message": "Unsupported media type: text/plain; the body is taken as application/tlsrpt+json, application/json, application/tlsrpt+gzip"
           }
         }
@@ -23574,11 +24069,16 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -23761,11 +24261,16 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -24952,11 +25457,16 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -25250,11 +25760,16 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -25568,11 +26083,16 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -25747,11 +26267,16 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid domain query parameter"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "domain": "Invalid domain query parameter"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -25760,6 +26285,9 @@
     "example": {
       "summary": "The configured public delivery endpoint is advertised",
       "description": "No session is required. The protocol document has no API data envelope. The configured gateway wins over caller Host and forwarding headers; every answer is no-store.",
+      "requires": {
+        "state": "hosted_restmail_domain"
+      },
       "request": {
         "query": {
           "domain": "example.test"
@@ -27047,6 +27575,9 @@
   "sendDraft": {
     "discarded": {
       "description": "The outbound Sieve policy discards the message. The draft is removed without creating Sent or recipient queue work.",
+      "requires": {
+        "state": "discarding_pipeline"
+      },
       "request": {
         "path": {
           "id": 12
@@ -27210,7 +27741,8 @@
       "request": {
         "path": {
           "id": 12
-        }
+        },
+        "body": {}
       },
       "response": {
         "status": 201,
@@ -27354,13 +27886,19 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "from is required"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "from": "from is required"
+              }
+            }
           }
-        }
+        },
+        "mediaType": "application/json"
       }
     },
     "internal_error": {
@@ -28313,13 +28851,19 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
           }
-        }
+        },
+        "mediaType": "application/json"
       }
     },
     "credentials_mismatch": {
@@ -28352,35 +28896,6 @@
         }
       }
     },
-    "credentials_retained": {
-      "summary": "Omitting the password preserves the stored credential",
-      "request": {
-        "path": {
-          "id": 1
-        },
-        "body": {
-          "host": "smtp.example.net",
-          "port": 587,
-          "tls_mode": "starttls",
-          "transport": "relay",
-          "username": "apikey"
-        }
-      },
-      "response": {
-        "status": 200,
-        "body": {
-          "data": {
-            "domain_id": 1,
-            "host": "smtp.example.net",
-            "password_set": true,
-            "port": 587,
-            "tls_mode": "starttls",
-            "transport": "relay",
-            "username": "apikey"
-          }
-        }
-      }
-    },
     "internal_error": {
       "summary": "The domain-policy query fails",
       "requires": {
@@ -28400,6 +28915,28 @@
           "error": {
             "code": "internal_error",
             "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {},
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
           }
         },
         "mediaType": "application/json"
@@ -28505,6 +29042,36 @@
         "mediaType": "application/json"
       }
     },
+    "relay": {
+      "summary": "Send through an authenticated relay",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "host": "smtp.example.net",
+          "password": "relay-password",
+          "port": 587,
+          "tls_mode": "starttls",
+          "transport": "relay",
+          "username": "apikey"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 1,
+            "host": "smtp.example.net",
+            "password_set": true,
+            "port": 587,
+            "tls_mode": "starttls",
+            "transport": "relay",
+            "username": "apikey"
+          }
+        }
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "description": "The published JSON body exceeds the eight-byte test cap. The production body limiter refuses it before policy writes.",
@@ -28589,13 +29156,19 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
           }
-        }
+        },
+        "mediaType": "application/json"
       }
     },
     "created": {
@@ -28659,6 +29232,27 @@
           "error": {
             "code": "internal_error",
             "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {}
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
           }
         },
         "mediaType": "application/json"
@@ -28738,6 +29332,9 @@
       }
     },
     "policy": {
+      "requires": {
+        "state": "existing_policy"
+      },
       "request": {
         "path": {
           "id": 1
@@ -32240,11 +32837,16 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -32490,11 +33092,16 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
           }
         },
         "mediaType": "application/json"

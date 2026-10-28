@@ -96,7 +96,7 @@ func TestSaveDraft_OptionalSenderExamples(t *testing.T) {
 		t.Fatalf("foreign sender: want 403, got %d: %s", rr.Code, rr.Body)
 	}
 	var count int64
-	if err := tx.Model(&models.Message{}).Count(&count).Error; err != nil {
+	if err := tx.Model(&models.Message{}).Where("mailbox_id = ?", fx.ownerMailbox.ID).Count(&count).Error; err != nil {
 		t.Fatal(err)
 	}
 	if count != 2 {

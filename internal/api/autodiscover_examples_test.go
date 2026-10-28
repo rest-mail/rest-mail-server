@@ -23,7 +23,7 @@ var autodiscoverExampleCases = map[string]struct {
 	status int
 }{
 	"valid": {"available", 200}, "query_fallback": {"available", 200},
-	"malformed": {"available", 400}, "address_missing": {"available", 400}, "address_invalid": {"available", 400},
+	"malformed": {"available", 400}, "address_missing": {"available", 422}, "address_invalid": {"available", 422},
 	"domain_not_found": {"domain_not_found", 404}, "oversized": {"available", 413},
 	"internal_error": {"internal_error", 500}, "mail_host_unconfigured": {"mail_host_unconfigured", 503},
 }

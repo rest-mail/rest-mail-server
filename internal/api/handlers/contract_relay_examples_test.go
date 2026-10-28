@@ -16,8 +16,7 @@ func TestSetDomainRelay_ExamplePairs(t *testing.T) {
 	requests, responses := operationExamples(t, relayContractPath, "put", "setDomainRelay")
 	wantNames := map[string][]string{
 		"200": {"direct", "relay"},
-		"400": {"body_array"},
-		"422": {"credentials_mismatch", "host_invalid", "port_invalid", "port_wrong_type", "tls_mode_invalid", "transport_invalid", "transport_missing"},
+		"422": {"body_array", "credentials_mismatch", "host_invalid", "port_invalid", "port_wrong_type", "tls_mode_invalid", "transport_invalid", "transport_missing"},
 	}
 	for status, want := range wantNames {
 		if got := names(responses[status]); !reflect.DeepEqual(got, want) {

@@ -17,8 +17,7 @@ func TestImportContacts_ExamplePairs(t *testing.T) {
 	requests, responses := postExamples(t, importContactsPath, "importContacts")
 	want := map[string][]string{
 		"200": {"imported"},
-		"400": {"body_array"},
-		"422": {"contacts_empty", "contacts_missing", "email_invalid", "email_missing", "mixed_batch"},
+		"422": {"body_array", "contacts_empty", "contacts_missing", "email_invalid", "email_missing", "mixed_batch"},
 	}
 	if len(requests) != 7 || len(responses) != len(want) {
 		t.Fatalf("unexpected pairs: requests %v, responses %v", names(requests), responses)

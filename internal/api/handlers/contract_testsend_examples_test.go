@@ -29,8 +29,7 @@ func TestSendTestEmail_ExamplePairs(t *testing.T) {
 	want := map[string][]string{
 		"request": {"created", "from_missing", "non_object"},
 		"201":     {"created"},
-		"400":     {"non_object"},
-		"422":     {"from_missing"},
+		"422":     {"from_missing", "non_object"},
 	}
 	got := map[string][]string{"request": names(requests)}
 	for status, examples := range responses {

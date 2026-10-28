@@ -111,7 +111,7 @@ func tlsIngestionScenario(t *testing.T, name string) bulkQueueExampleScenario {
 			prime.Header.Set("Content-Type", "application/json")
 			rr := httptest.NewRecorder()
 			routers.Public.ServeHTTP(rr, prime)
-			if rr.Code != 400 {
+			if rr.Code != 422 {
 				t.Errorf("throttle primer got %d", rr.Code)
 			}
 		}
@@ -126,6 +126,14 @@ func tlsIngestionWire(name string, pair oapifly.ExamplePair) ([]byte, string) {
 	if media == "" {
 		media = "application/json"
 	}
+	// A compressed pair's body is its gzip bytes, base64 in the JSON example
+	// (format: byte), and is sent as those bytes.
+	if pair.Requires["body"] == "compressed" {
+		var encoded []byte
+		if json.Unmarshal(body, &encoded) == nil {
+			body = encoded
+		}
+	}
 	if name == "request_too_large" || name == "body_boundary" {
 		n := tlsIngestionLimit
 		if name == "request_too_large" {
@@ -134,6 +142,24 @@ func tlsIngestionWire(name string, pair oapifly.ExamplePair) ([]byte, string) {
 		body = append(body, bytes.Repeat([]byte(" "), n-len(body))...)
 	}
 	return body, media
+}
+
+// tlsIngestionReport is the report a request carries: its body, inflated when
+// it was sent gzip-compressed.
+func tlsIngestionReport(t *testing.T, body []byte, media string) []byte {
+	t.Helper()
+	if media != "application/tlsrpt+gzip" {
+		return body
+	}
+	reader, err := gzip.NewReader(bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var report bytes.Buffer
+	if _, err := report.ReadFrom(reader); err != nil {
+		t.Fatal(err)
+	}
+	return report.Bytes()
 }
 
 func tlsIngestionRequest(s bulkQueueExampleScenario, body []byte, media string) *httptest.ResponseRecorder {
@@ -315,7 +341,7 @@ func TestTLSIngestionExamples(t *testing.T) {
 					t.Fatalf("invalid Retry-After %q", rr.Header().Get("Retry-After"))
 				}
 			}
-			assertTLSIngestionSQL(t, s, name, body, rr.Code, start, end)
+			assertTLSIngestionSQL(t, s, name, tlsIngestionReport(t, body, media), rr.Code, start, end)
 		})
 	}
 	for _, g := range gapGenerators(t) {

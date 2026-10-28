@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"mime"
 	"net/http"
@@ -318,9 +319,13 @@ func (h *TLSReportHandler) listReports(r *http.Request, in listTLSReportsInput) 
 		query = query.Where("reporting_org ILIKE ? ESCAPE '\\'", "%"+escapeLike(in.ReportingOrg)+"%")
 	}
 	var total int64
-	query.Count(&total)
+	if err := query.Count(&total).Error; err != nil {
+		return endpoint.List[TLSReport]{}, fmt.Errorf("count TLS reports: %w", err)
+	}
+	// Each report carries its domain; without the preload it was an empty one,
+	// whose blank server_type and dmarc_policy are not values the schema allows.
 	var reports []models.TLSReport
-	if err := query.Order("received_at DESC").Limit(limit).Offset(offset).Find(&reports).Error; err != nil {
+	if err := query.Preload("Domain").Order("received_at DESC").Limit(limit).Offset(offset).Find(&reports).Error; err != nil {
 		return endpoint.List[TLSReport]{}, err
 	}
 	data := make([]TLSReport, len(reports))

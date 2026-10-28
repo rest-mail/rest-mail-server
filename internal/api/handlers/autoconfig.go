@@ -12,6 +12,7 @@ import (
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
 	"github.com/restmail/restmail/internal/api/endpoint"
+	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
 )
@@ -229,7 +230,7 @@ func (h *AutoconfigHandler) Register(rs endpoint.Routes, checks AutoconfigRouteC
 	}
 	unconfigured := text(http.StatusServiceUnavailable, "The mail host (GATEWAY_HOSTNAME) is not configured")
 	autoconfig := []oapifly.EndpointResponse{
-		text(http.StatusBadRequest, "No email domain in the address or the host name"),
+		{Status: http.StatusUnprocessableEntity, Type: oapifly.TypeOf[respond.ValidationErrorResponse](), Description: "No email domain in the address or the host name"},
 		text(http.StatusNotFound, "Domain not found"),
 		unconfigured,
 	}
@@ -245,10 +246,8 @@ func (h *AutoconfigHandler) Register(rs endpoint.Routes, checks AutoconfigRouteC
 		OperationID: "microsoftAutodiscover", Summary: "Microsoft Outlook autodiscover", Tags: tags,
 		MediaType: "application/xml", Security: oapifly.Public,
 		Responses: []oapifly.EndpointResponse{
-			text(http.StatusBadRequest, "No usable email address, refused before any domain is looked up. A body that is "+
-				"not Autodiscover XML falls back to the emailaddress query parameter: with neither, \"invalid request\". "+
-				"An Autodiscover request without an EMailAddress gets \"email address required\", and an address "+
-				"without an @ gets \"invalid email address\". Plain text, ending in a newline."),
+			{Status: http.StatusBadRequest, Type: oapifly.TypeOf[respond.ErrorResponse](), Description: "Invalid Autodiscover XML without a query fallback"},
+			{Status: http.StatusUnprocessableEntity, Type: oapifly.TypeOf[respond.ValidationErrorResponse](), Description: "Missing or invalid email address"},
 			text(http.StatusNotFound, "Domain not found"),
 			unconfigured,
 		},
@@ -268,7 +267,7 @@ type autoconfigRequest struct {
 func (h *AutoconfigHandler) mozillaAutoconfig(r *http.Request, in autoconfigRequest) (endpoint.Document, error) {
 	domainName, ok := requestDomain(r, in.EmailAddress)
 	if !ok {
-		return endpoint.Document{}, endpoint.RefuseText(http.StatusBadRequest, "no email domain in the address or the host name")
+		return endpoint.Document{}, endpoint.Invalid(map[string]string{"emailaddress": "no email domain in the address or the host name"})
 	}
 	if h.mailHost == "" {
 		return endpoint.Document{}, endpoint.RefuseText(http.StatusServiceUnavailable, "mail host not configured")
@@ -299,24 +298,26 @@ func (h *AutoconfigHandler) microsoftAutodiscover(r *http.Request, in autodiscov
 			EMailAddress string `xml:"EMailAddress"`
 		} `xml:"Request"`
 	}
+	field := "EMailAddress"
 	var body []byte
 	if in.Body != nil {
 		body = []byte(*in.Body)
 	}
 	if err := xml.Unmarshal(body, &adReq); err != nil {
 		if in.EmailAddress == "" {
-			return endpoint.Document{}, endpoint.RefuseText(http.StatusBadRequest, "invalid request")
+			return endpoint.Document{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "invalid request")
 		}
 		adReq.Request.EMailAddress = in.EmailAddress
+		field = "emailaddress"
 	}
 
 	email := adReq.Request.EMailAddress
 	if email == "" {
-		return endpoint.Document{}, endpoint.RefuseText(http.StatusBadRequest, "email address required")
+		return endpoint.Document{}, endpoint.Invalid(map[string]string{field: "email address required"})
 	}
 	domainName, ok := requestDomain(r, email)
 	if !ok {
-		return endpoint.Document{}, endpoint.RefuseText(http.StatusBadRequest, "invalid email address")
+		return endpoint.Document{}, endpoint.Invalid(map[string]string{field: "invalid email address"})
 	}
 	if h.mailHost == "" {
 		return endpoint.Document{}, endpoint.RefuseText(http.StatusServiceUnavailable, "mail host not configured")

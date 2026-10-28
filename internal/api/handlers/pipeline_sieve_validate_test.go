@@ -2,7 +2,7 @@ package handlers
 
 // Install-time Sieve validation for ADMIN-authored domain-pipeline filter lists.
 // An admin who saves a domain/instance pipeline with an embedded "sieve" filter
-// whose script is broken must be rejected at SAVE time (HTTP 400), because such
+// whose script is broken must be rejected at SAVE time (HTTP 422), because such
 // a script otherwise fails to build at DELIVERY and — under the engine's
 // fail-closed policy — DEFERS every message for the whole domain.
 //
@@ -140,7 +140,7 @@ func pipelineRowCount(t *testing.T, db *gorm.DB, domainID uint) int64 {
 	return n
 }
 
-// CreatePipeline with an invalid embedded Sieve → 400 invalid_sieve, NOT
+// CreatePipeline with an invalid embedded Sieve → 422 validation_failed, NOT
 // persisted. RED on pre-fix code: the pipeline is stored (201) and only fails at
 // delivery, deferring the whole domain's mail.
 func TestPipelineCreate_InvalidSieveRejected(t *testing.T) {
@@ -159,11 +159,11 @@ func TestPipelineCreate_InvalidSieveRejected(t *testing.T) {
 	rr := httptest.NewRecorder()
 	pipelineRoutes(h).ServeHTTP(rr, adminPipelineReq(http.MethodPost, "/pipelines", nil, body))
 
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for an invalid embedded Sieve, got %d (%s)", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422 for an invalid embedded Sieve, got %d (%s)", rr.Code, rr.Body.String())
 	}
-	if !strings.Contains(rr.Body.String(), "invalid_sieve") {
-		t.Errorf("expected invalid_sieve error code, got %s", rr.Body.String())
+	if !strings.Contains(rr.Body.String(), "validation_failed") {
+		t.Errorf("expected validation_failed error code, got %s", rr.Body.String())
 	}
 	if n := pipelineRowCount(t, tx, dom.ID); n != 0 {
 		t.Fatalf("an invalid pipeline must not be persisted, found %d row(s)", n)
@@ -195,7 +195,7 @@ func TestPipelineCreate_ValidSievePersisted(t *testing.T) {
 	}
 }
 
-// UpdatePipeline with an invalid embedded Sieve → 400 invalid_sieve and the
+// UpdatePipeline with an invalid embedded Sieve → 422 validation_failed and the
 // stored config is UNCHANGED (the broken filters never overwrite the good ones).
 func TestPipelineUpdate_InvalidSieveRejected(t *testing.T) {
 	db := migratePipelineTestDB(t)
@@ -225,8 +225,8 @@ func TestPipelineUpdate_InvalidSieveRejected(t *testing.T) {
 	rr := httptest.NewRecorder()
 	pipelineRoutes(h).ServeHTTP(rr, adminPipelineReq(http.MethodPatch, "/pipelines/"+uintToStr(seed.ID), params, body))
 
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for an invalid embedded Sieve on update, got %d (%s)", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422 for an invalid embedded Sieve on update, got %d (%s)", rr.Code, rr.Body.String())
 	}
 
 	var after models.Pipeline

@@ -8,10 +8,12 @@ transactions remain enabled. The first run enforces the full surface gate.
 
 Usage: probes.py <vertrag.yml> <out.yml> <report.xml>
 """
-from pathlib import Path
+
 import sys
+from pathlib import Path
 
 import yaml
+from reports import spec_location
 
 REFUSALS = r" > 4[0-9]{2}( >|$)"
 DKIM_KEY = Path(__file__).resolve().parent / "fixtures/dkim-key.pem"
@@ -21,12 +23,14 @@ def main(config_path, out_path, report_path):
     source = Path(config_path).resolve()
     with source.open() as stream:
         config = yaml.safe_load(stream)
-    config["spec"] = str((source.parent / config["spec"]).resolve())
+    config["spec"] = spec_location(config["spec"], source.parent)
     config["hookfiles"] = str((source.parent / config["hookfiles"]).resolve())
     config.pop("surface", None)
     config.setdefault("exclude-matching", []).append(REFUSALS)
     # Public test fixture: a schema generator cannot construct a signing key.
-    config.setdefault("fuzz", {}).setdefault("pin", {})["private_key"] = DKIM_KEY.read_text()
+    config.setdefault("fuzz", {}).setdefault("pin", {})["private_key"] = (
+        DKIM_KEY.read_text()
+    )
     config["reporter"] = ["cli", "junit"]
     config["output"] = ["", str(Path(report_path).resolve())]
     with Path(out_path).open("w") as stream:

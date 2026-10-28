@@ -1,11 +1,10 @@
 """Keep topology download examples paired and fault exclusions narrow."""
 
-from pathlib import Path
 import re
 import unittest
+from pathlib import Path
 
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[2]
 PATH = "/api/v1/attachments/{id}"
@@ -31,7 +30,9 @@ class AttachmentContract(unittest.TestCase):
                 "range_not_satisfiable": {"value": "bytes=9223372036854775806-"},
             },
         )
-        self.assertEqual(self.path["parameters"][0]["examples"], {"found": {"value": 1}})
+        self.assertEqual(
+            self.path["parameters"][0]["examples"], {"found": {"value": 1}}
+        )
         for status, media, name in (
             ("200", "application/octet-stream", "found"),
             ("206", "application/octet-stream", "range_single"),
@@ -51,24 +52,37 @@ class AttachmentContract(unittest.TestCase):
                 ("200", "application/octet-stream"),
                 ("206", "application/octet-stream"),
                 ("206", "multipart/byteranges"),
-                ("304", ""), ("412", ""), ("416", "text/plain"),
-                ("500", "application/json"), ("500", "text/plain"),
+                ("304", ""),
+                ("412", ""),
+                ("416", "text/plain"),
+                ("500", "application/json"),
+                ("500", "text/plain"),
             ):
                 name = f"{path} > Download an attachment > {status}"
                 if media:
                     name += " > " + media
-                expected = path == PATH and (
-                    status in {"304", "412", "500"} or media == "multipart/byteranges"
-                )
+                # The multipart 206 is sent: Vertrag compares its parts, not
+                # its per-response boundary (antimatter-studios/vertrag#121).
+                expected = path == PATH and status in {"304", "412", "500"}
                 with self.subTest(name=name):
-                    self.assertEqual(any(p.search(name) for p in self.patterns), expected)
+                    self.assertEqual(
+                        any(p.search(name) for p in self.patterns), expected
+                    )
 
     def test_optional_response_headers_remain_optional(self):
         for status in ("200", "206", "304", "412", "416", "500"):
             for name in ("ETag", "Last-Modified"):
                 with self.subTest(status=status, header=name):
-                    self.assertFalse(self.path["get"]["responses"][status]["headers"][name].get("required", False))
-        self.assertFalse(self.path["get"]["responses"]["206"]["headers"]["Content-Range"].get("required", False))
+                    self.assertFalse(
+                        self.path["get"]["responses"][status]["headers"][name].get(
+                            "required", False
+                        )
+                    )
+        self.assertFalse(
+            self.path["get"]["responses"]["206"]["headers"]["Content-Range"].get(
+                "required", False
+            )
+        )
 
     def test_surface_exclusions_keep_whole_and_range_downloads_counted(self):
         own = [e for e in self.exclusions if e.get("operation") == "getAttachment"]

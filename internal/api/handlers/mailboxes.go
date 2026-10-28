@@ -283,7 +283,7 @@ func (h *MailboxHandler) endSessions(r *http.Request, in adminAddressPath) (endp
 // the map it replaced was written in, so the bytes are unchanged.
 type AddressCheck = apitypes.AddressCheck
 
-// addressCheckQuery names the recipient to check. A blank one is the handler's 400.
+// addressCheckQuery names the recipient to check. A blank one is the handler's 422.
 type addressCheckQuery struct {
 	Address string `query:"address,required" example:"admin@restmail.test"`
 }
@@ -295,7 +295,7 @@ func (h *MailboxHandler) RegisterAddressCheck(rs endpoint.Routes) {
 		OperationID: "checkMailboxAddress", Summary: "Check whether an address is a mailbox here (protocol gateways)", Tags: []string{"Mailboxes"},
 		Description: "Machine to machine: no user token. An address that is not a mailbox here is 200 with exists " +
 			"false: the gateway then routes it outbound.",
-		Errors: []int{http.StatusBadRequest}, Security: oapifly.Public}, h.checkAddress)
+		Errors: []int{http.StatusUnprocessableEntity}, Security: oapifly.Public}, h.checkAddress)
 }
 
 // checkAddress verifies a recipient exists: GET /api/mailboxes?address=...
@@ -303,7 +303,7 @@ func (h *MailboxHandler) checkAddress(r *http.Request, in addressCheckQuery) (Ad
 	h = h.forRequest(r)
 	address := in.Address
 	if address == "" {
-		return AddressCheck{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "address query parameter required")
+		return AddressCheck{}, endpoint.Invalid(map[string]string{"address": "address query parameter required"})
 	}
 
 	var mailbox models.Mailbox

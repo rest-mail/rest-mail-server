@@ -14,6 +14,10 @@ on:
           finds as an artifact, and fails nothing.
         type: string
         default: gate
+      description-mode:
+        description: Read the generated JSON from its exact saved bytes or live URL
+        type: string
+        default: saved
 
 permissions:
   contents: read
@@ -175,10 +179,10 @@ jobs:
         # dependency: vertrag needs Go 1.26 and this module is on 1.25. Verified
         # the same way as chore above, never piped from the network.
         env:
-          VERTRAG_VERSION: 0.37.0
+          VERTRAG_VERSION: 0.39.0
           # sha256 of vertrag-${VERTRAG_VERSION}-linux-x86_64.tar.gz, from that
           # release's checksums.txt. Bump both together when upgrading.
-          VERTRAG_SHA256: b59fcdd2121fff68ea82a177330b20b2ccc5525a939e9352fd459181dbec7efa
+          VERTRAG_SHA256: baf93cddb59bc5002f6dac7ab59bea544dd6ab28ca2fd98b6774fdc5e29c78e5
         run: |
           set -euo pipefail
           selected="$(python3 -B scripts/vertrag_pin.py ensure .cache/bin)"
@@ -199,13 +203,14 @@ jobs:
 
       - name: Contract tests (examples, coverage, secret scan and authorization report)
         # The same command a person runs (#627), against the topology whose
-        # stages just passed. Fetch the generated description; openapi.yaml
-        # remains the independent oracle used by the fast contract diff.
+        # stages just passed. Every phase uses the generated description;
+        # openapi.yaml remains the independent oracle for the contract diff.
         id: contract
         if: inputs.contract-phases == 'gate'
         env:
           CONTRACT_ENDPOINT: http://10.99.0.20:8080
           CONTRACT_LOGS: ${{ runner.temp }}
+          CONTRACT_DESCRIPTION_MODE: ${{ inputs.description-mode }}
         run: chore contract
 
       - name: Limits suite (report)
@@ -225,6 +230,7 @@ jobs:
         if: inputs.contract-phases == 'fuzz'
         env:
           CONTRACT_LOGS: ${{ runner.temp }}
+          CONTRACT_DESCRIPTION_MODE: ${{ inputs.description-mode }}
         run: tests/contract/run.sh fuzz
 
       - name: Collect container logs

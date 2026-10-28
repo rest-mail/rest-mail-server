@@ -60,6 +60,29 @@ class Reports(unittest.TestCase):
             config["hookfiles"], str(ROOT / "tests/contract/entrypoint.py")
         )
 
+    def test_live_url_survives_every_phase_location(self):
+        url = "https://fixture.test/api/docs/openapi.json?revision=one"
+        for spec in (url,):
+            config = self.config(spec=spec)
+            self.assertEqual(config["spec"], url)
+            again = reports.configure(config, "/tmp/elsewhere", "/tmp/run/coverage")
+            self.assertEqual(again["spec"], url)
+        self.assertEqual(
+            reports.spec_location("folder with spaces/openapi.json", "/tmp"),
+            str(Path("/tmp/folder with spaces/openapi.json").resolve()),
+        )
+
+    def test_runner_only_uses_the_generated_description(self):
+        script = (ROOT / "tests/contract/run.sh").read_text()
+        self.assertIn('export CONTRACT_SPEC="$served"', script)
+        self.assertNotIn('export CONTRACT_SPEC="$PWD/openapi.yaml"', script)
+        self.assertIn("description_equivalence.py", script)
+        self.assertIn("${CONTRACT_DESCRIPTION_MODE:-saved}", script)
+        self.assertIn("CONTRACT_RUN_SPEC", script)
+        self.assertIn(
+            "CONTRACT_RUN_SPEC", (ROOT / "tests/contract/authorization.py").read_text()
+        )
+
 
 class Summary(unittest.TestCase):
     def test_operation_counts_and_reasons_come_from_vertrags_surface(self):

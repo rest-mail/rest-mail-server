@@ -97,9 +97,10 @@ func (s bulkDeleteSpec) responses(t *testing.T) map[string]map[string]interface{
 }
 
 // bulkDeletePairProblems says what is wrong with how the operation pairs its
-// refused request with its 400, and keeps the successful request/response
+// refused requests with their refusals, and keeps the successful request/response
 // contract as it was: ids selects entries and answers 200 with the affected
-// count, and the refused request is named on the 400 and nowhere else.
+// count, a body that is not an object is named on the 400, and a body selecting
+// nothing is named on the 422 (the request type's AnyOf), each nowhere else.
 func bulkDeletePairProblems(t *testing.T, s bulkDeleteSpec) []string {
 	t.Helper()
 	var problems []string
@@ -130,8 +131,11 @@ func bulkDeletePairProblems(t *testing.T, s bulkDeleteSpec) []string {
 	requests := s.requests(t)
 	responses := s.responses(t)
 
-	if got := names(requests); !reflect.DeepEqual(got, []string{"by_ids", "invalid_ids", "selection_missing"}) {
-		add("the request examples are %v, want by_ids, invalid_ids and selection_missing", got)
+	if got := names(requests); !reflect.DeepEqual(got, []string{"by_ids", "invalid_body", "invalid_ids", "selection_missing"}) {
+		add("the request examples are %v, want by_ids, invalid_body, invalid_ids and selection_missing", got)
+	}
+	if got, want := requests["invalid_body"], []interface{}{}; !reflect.DeepEqual(got, want) {
+		add("invalid_body is %s, want an empty array", mustJSON(got))
 	}
 	if got, want := requests["by_ids"], jsonValue(t, map[interface{}]interface{}{"ids": []interface{}{987654}}); !reflect.DeepEqual(got, want) {
 		add("by_ids is %s, want the original request %s", mustJSON(got), mustJSON(want))
@@ -164,19 +168,32 @@ func bulkDeletePairProblems(t *testing.T, s bulkDeleteSpec) []string {
 		add("the 200's by_ids is %s, want %s", mustJSON(got), mustJSON(wantOK))
 	}
 
-	// 400: the handler's own refusal, an ErrorResponse naming only the request
-	// that selects nothing.
+	// 400: an ErrorResponse naming only the body that is not an object.
 	if ref := s.Responses["400"].Content["application/json"].Schema.Ref; ref != "#/components/schemas/ErrorResponse" {
 		add("the 400's schema is %q, want ErrorResponse", ref)
 	}
-	if got := names(responses["400"]); !reflect.DeepEqual(got, []string{"selection_missing"}) {
-		add("the 400 names %v, want only selection_missing", got)
+	if got := names(responses["400"]); len(got) != 0 {
+		add("the 400 names %v, want only invalid_body", got)
+	}
+	wantInvalid := map[string]interface{}{
+		"error": map[string]interface{}{"code": "validation_failed", "message": "Request body failed validation", "details": map[string]interface{}{"fields": map[string]interface{}{"body": "the body is not a JSON object"}}},
+	}
+	if got := responses["422"]["invalid_body"]; !reflect.DeepEqual(got, wantInvalid) {
+		add("the 400's invalid_body is %s, want %s", mustJSON(got), mustJSON(wantInvalid))
+	}
+
+	// 422: binding refuses the request that selects nothing, naming ids.
+	if ref := s.Responses["422"].Content["application/json"].Schema.Ref; ref != "#/components/schemas/ValidationErrorResponse" {
+		add("the 422's schema is %q, want ErrorResponse", ref)
 	}
 	wantRefusal := map[string]interface{}{
-		"error": map[string]interface{}{"code": "bad_request", "message": "ids or filter required"},
+		"error": map[string]interface{}{
+			"code": "validation_failed", "message": "Request body failed validation",
+			"details": map[string]interface{}{"fields": map[string]interface{}{"ids": "ids or filter required"}},
+		},
 	}
-	if got := responses["400"]["selection_missing"]; !reflect.DeepEqual(got, wantRefusal) {
-		add("the 400's selection_missing is %s, want %s", mustJSON(got), mustJSON(wantRefusal))
+	if got := responses["422"]["selection_missing"]; !reflect.DeepEqual(got, wantRefusal) {
+		add("the 422's selection_missing is %s, want %s", mustJSON(got), mustJSON(wantRefusal))
 	}
 
 	for name := range requests {
@@ -187,7 +204,7 @@ func bulkDeletePairProblems(t *testing.T, s bulkDeleteSpec) []string {
 			}
 		}
 		sort.Strings(on)
-		want := map[string][]string{"by_ids": {"200"}, "selection_missing": {"400"}, "invalid_ids": {"422"}}[name]
+		want := map[string][]string{"by_ids": {"200"}, "invalid_body": {"422"}, "selection_missing": {"422"}, "invalid_ids": {"422"}}[name]
 		if !reflect.DeepEqual(on, want) {
 			add("request example %q is named on responses %v, want %v", name, on, want)
 		}
@@ -195,8 +212,8 @@ func bulkDeletePairProblems(t *testing.T, s bulkDeleteSpec) []string {
 	return problems
 }
 
-// bulkDeleteQueue's 400 pair (#386): selection_missing selects no entries,
-// is named on the 400 and nowhere else, and the 400 names it alone, while the
+// bulkDeleteQueue's refusal pairs (#386): selection_missing selects no entries
+// and is named on the 422, invalid_body is named on the 400 alone, while the
 // operation's successful request and 200 stay as they were.
 func TestBulkDeleteQueue_SelectionMissingPair(t *testing.T) {
 	for _, problem := range bulkDeletePairProblems(t, readBulkDeleteSpec(t)) {
@@ -204,8 +221,8 @@ func TestBulkDeleteQueue_SelectionMissingPair(t *testing.T) {
 	}
 }
 
-// selection_missing is refused by the real handler with exactly the documented
-// 400. The handler has no database: a query built would panic, so the 400 is
+// selection_missing is refused by the real route with exactly the documented
+// 422. The handler has no database: a query built would panic, so the 422 is
 // proved to come before any entry is selected or deleted. An empty ids is the
 // same refusal, and the original request (by_ids) is never sent, because
 // accepting it would touch the database.
@@ -215,9 +232,9 @@ func TestBulkDeleteQueue_SelectionMissingRefused(t *testing.T) {
 	if !ok {
 		t.Fatal("bulkDeleteQueue names no selection_missing request example")
 	}
-	want, ok := spec.responses(t)["400"]["selection_missing"]
+	want, ok := spec.responses(t)["422"]["selection_missing"]
 	if !ok {
-		t.Fatal("bulkDeleteQueue's 400 names no selection_missing example")
+		t.Fatal("bulkDeleteQueue's 422 names no selection_missing example")
 	}
 	body, err := json.Marshal(request)
 	if err != nil {
@@ -239,8 +256,8 @@ func TestBulkDeleteQueue_SelectionMissingRefused(t *testing.T) {
 				queueRoutes(NewQueueHandler(nil)).ServeHTTP(rr,
 					httptest.NewRequest(http.MethodDelete, bulkDeleteQueuePath, bytes.NewReader([]byte(c.body))))
 			}()
-			if rr.Code != http.StatusBadRequest {
-				t.Fatalf("%s: status %d, want 400; body %s", c.body, rr.Code, rr.Body)
+			if rr.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("%s: status %d, want 422; body %s", c.body, rr.Code, rr.Body)
 			}
 			if ct := rr.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
 				t.Errorf("%s: Content-Type %q, want application/json", c.body, ct)
@@ -306,7 +323,7 @@ func TestBulkDeleteQueue_ByIDsExampleAnswered(t *testing.T) {
 	}
 }
 
-// The pair checks reject a spec that drops the request or the 400, names the
+// The pair checks reject a spec that drops a request or a refusal, names the
 // pair differently, documents another body, or pairs the refused request with
 // success.
 func TestBulkDeleteQueue_SelectionMissingPairMutationsRejected(t *testing.T) {
@@ -408,14 +425,27 @@ func TestBulkDeleteQueue_SelectionMissingPairMutationsRejected(t *testing.T) {
 			s.Responses = responses
 		}},
 		{"response_400_example_missing", func(s *bulkDeleteSpec) {
-			response(s, "400", func(c bulkContent) bulkContent { return setExamples(c, "selection_missing", nil) })
+			response(s, "422", func(c bulkContent) bulkContent { return setExamples(c, "invalid_body", nil) })
 		}},
 		{"response_400_misnamed", func(s *bulkDeleteSpec) {
-			response(s, "400", func(c bulkContent) bulkContent { return renamed(c, "selection_missing", "missing") })
+			response(s, "422", func(c bulkContent) bulkContent { return renamed(c, "invalid_body", "invalid") })
 		}},
 		{"response_400_wrong_body", func(s *bulkDeleteSpec) {
+			response(s, "422", func(c bulkContent) bulkContent {
+				return setExamples(c, "invalid_body", errorBody("ids or filter required"))
+			})
+		}},
+		{"selection_missing_on_400", func(s *bulkDeleteSpec) {
 			response(s, "400", func(c bulkContent) bulkContent {
-				return setExamples(c, "selection_missing", errorBody("Invalid request body"))
+				return setExamples(c, "selection_missing", errorBody("ids or filter required"))
+			})
+		}},
+		{"response_422_example_missing", func(s *bulkDeleteSpec) {
+			response(s, "422", func(c bulkContent) bulkContent { return setExamples(c, "selection_missing", nil) })
+		}},
+		{"response_422_wrong_body", func(s *bulkDeleteSpec) {
+			response(s, "422", func(c bulkContent) bulkContent {
+				return setExamples(c, "selection_missing", errorBody("ids or filter required"))
 			})
 		}},
 		{"response_400_wrong_schema", func(s *bulkDeleteSpec) {

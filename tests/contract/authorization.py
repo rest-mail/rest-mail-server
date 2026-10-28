@@ -38,6 +38,7 @@ import os
 import sys
 
 import yaml
+from reports import spec_location
 
 METHODS = ("get", "put", "post", "delete", "patch", "head", "options", "trace")
 LOGIN = "/api/v1/auth/login"
@@ -77,7 +78,7 @@ def sign_in(principal):
     }
 
 
-def main(spec_path, config_path, principals_path, out_path, report_path):
+def main(spec_path, config_path, principals_path, out_path, report_path, run_spec=""):
     with open(config_path) as source:
         config = yaml.safe_load(source)
     with open(principals_path) as source:
@@ -86,7 +87,7 @@ def main(spec_path, config_path, principals_path, out_path, report_path):
     basic = base64.b64encode(f"{app['address']}:{app['secret']}".encode()).decode()
 
     here = os.path.dirname(os.path.abspath(config_path))
-    config["spec"] = os.path.abspath(spec_path)
+    config["spec"] = spec_location(run_spec or spec_path, here)
     config["hookfiles"] = os.path.join(here, config["hookfiles"])
     config.pop("surface", None)
     config["reporter"] = ["cli", "junit"]
@@ -118,4 +119,4 @@ if __name__ == "__main__":
         sys.exit(
             "usage: authorization.py <spec> <config> <principals> <out.yml> <report.xml>"
         )
-    sys.exit(main(*sys.argv[1:]))
+    sys.exit(main(*sys.argv[1:], run_spec=os.environ.get("CONTRACT_RUN_SPEC", "")))

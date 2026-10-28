@@ -114,6 +114,55 @@ class ContractCertificateHookTests(unittest.TestCase):
                     self.assertEqual(transaction, before)
             openssl.assert_not_called()
 
+    def test_success_probe_material_is_repaired(self):
+        # Coverage's valid probes for the 201 carry schema-valid placeholder
+        # material ("x") that no server accepts as a certificate; only real
+        # material makes them the success they are named for.
+        def generate(*args):
+            Path(args[args.index("-keyout") + 1]).write_text("fresh key")
+            Path(args[args.index("-out") + 1]).write_text("fresh certificate")
+
+        name = "/api/v1/admin/certificates > Upload a new TLS certificate > 201 > application/json"
+        transaction = self.transaction(
+            {"domain_id": 1, "cert_pem": "x", "key_pem": "x", "auto_renew": True}
+        )
+        transaction["name"] = name
+        with patch.object(self.module, "openssl", side_effect=generate):
+            self.module.a_self_signed_certificate(transaction)
+        self.assertEqual(
+            json.loads(transaction["request"]["body"]),
+            {
+                "domain_id": 17,
+                "cert_pem": "fresh certificate",
+                "key_pem": "fresh key",
+                "auto_renew": True,
+            },
+        )
+
+    def test_refusal_probes_keep_their_material(self):
+        with patch.object(self.module, "openssl") as openssl:
+            for name, body in [
+                (
+                    "/api/v1/admin/certificates > Upload a new TLS certificate > 422 > application/json",
+                    {"domain_id": 1, "cert_pem": "x", "key_pem": "x"},
+                ),
+                (
+                    "/api/v1/admin/certificates > Upload a new TLS certificate > 201 > application/json",
+                    {"domain_id": 1, "cert_pem": "", "key_pem": "x"},
+                ),
+                (
+                    "/api/v1/admin/certificates > Upload a new TLS certificate > 201 > application/json",
+                    {"domain_id": 1, "cert_pem": "x", "key_pem": 3},
+                ),
+            ]:
+                with self.subTest(name=name, body=body):
+                    transaction = self.transaction(body)
+                    transaction["name"] = name
+                    before = copy.deepcopy(transaction)
+                    self.module.a_self_signed_certificate(transaction)
+                    self.assertEqual(transaction, before)
+            openssl.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

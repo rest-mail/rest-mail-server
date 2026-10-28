@@ -20,7 +20,7 @@ import (
 // TestSendMessage_RejectsUnsafeListUnsubscribe sends list_unsubscribe values
 // that must never become a header (#144): line breaks, extra targets smuggled
 // into one field, other schemes, URI or display-name forms, credentials. Each
-// is refused with 400 before the handler touches the database (it has none
+// is refused with 422 before the handler touches the database (it has none
 // here), and an empty object is refused rather than read as "no header".
 // A list_unsubscribe that is not the object of its two targets is binding's 422, on the field
 // at fault, before anything is checked or stored: another key, a header written by hand, a
@@ -80,8 +80,8 @@ func TestSendMessage_RejectsUnsafeListUnsubscribe(t *testing.T) {
 			body := `{"from":"news@example.com","to":["bob@example.net"],"subject":"x","body_text":"hi",` +
 				`"list_unsubscribe":` + tc.value + `}`
 			rr := sendAs(&MessageHandler{}, &auth.Claims{AccountID: 1, CredentialKind: "app_password"}, body)
-			if rr.Code != http.StatusBadRequest {
-				t.Fatalf("status = %d, want 400 (body %s)", rr.Code, rr.Body.String())
+			if rr.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("status = %d, want 422 (body %s)", rr.Code, rr.Body.String())
 			}
 		})
 	}

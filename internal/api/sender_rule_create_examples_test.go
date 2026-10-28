@@ -168,7 +168,11 @@ func TestSenderRuleCreateExamples(t *testing.T) {
 						id = strconv.FormatFloat(number, 'f', -1, 64)
 					}
 				}
-				req := httptest.NewRequest(http.MethodPost, strings.ReplaceAll(path, "{id}", id), strings.NewReader(string(pair.Request.Body)))
+				body := string(pair.Request.Body)
+				if pair.Requires["body"] == "malformed" {
+					body = "{"
+				}
+				req := httptest.NewRequest(http.MethodPost, strings.ReplaceAll(path, "{id}", id), strings.NewReader(body))
 				req.Header.Set("Content-Type", "application/json")
 				if name != "unauthenticated" {
 					req.Header.Set("Authorization", "Bearer "+mailboxToken(t, jwt))

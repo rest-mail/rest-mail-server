@@ -104,8 +104,10 @@ func (p Plan) validate() error {
 	if p.Principals["admin"].Kind != "existing" || p.Principals["ordinary"].Kind != "account" || !p.Principals["ordinary"].Password || p.Principals["ordinary"].Owner != "admin" || p.Principals["owned"].Kind != "account" || p.Principals["owned"].Password || p.Principals["owned"].Owner != "admin" || p.Principals["app_password"].Account != "ordinary" || p.Principals["none"].Kind != "anonymous" {
 		return fmt.Errorf("contract principal kinds must match their setup and authorization proofs")
 	}
-	if _, ok := p.Queue["retry"]; !ok {
-		return fmt.Errorf("contract fixture plan is missing the retry queue entry")
+	for _, name := range []string{"retry", "bounce"} {
+		if _, ok := p.Queue[name]; !ok {
+			return fmt.Errorf("contract fixture plan is missing the %s queue entry", name)
+		}
 	}
 	for name, entry := range p.Queue {
 		local, domain, ok := strings.Cut(entry.Recipient, "@")
