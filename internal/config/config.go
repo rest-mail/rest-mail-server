@@ -142,6 +142,11 @@ type Config struct {
 	// (internal/bootstrap/statuskeys.go). Not a secret.
 	StatusKeys string
 
+	// Audit chain heads are emailed daily and after administrative changes.
+	// An empty recipient list means the installation's superadmin accounts.
+	AuditAnchorEmailEnabled bool
+	AuditAnchorEmailTo      []string
+
 	// DNS Provider
 	DNSProvider string
 
@@ -826,6 +831,9 @@ func Load() (*Config, error) {
 	cfg.DNSBLConfigPath = strings.TrimSpace(getEnv("RESTMAIL_DNSBL_CONFIG", ""))
 	cfg.Attachments, err = loadAttachmentStorage()
 	if err != nil {
+		return nil, err
+	}
+	if err := cfg.loadAuditAnchorEmail(); err != nil {
 		return nil, err
 	}
 

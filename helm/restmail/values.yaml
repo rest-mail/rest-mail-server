@@ -143,6 +143,12 @@ internalMtls:
 api:
   # Optional existing mailbox that consumes DKIM-authenticated emailed TLS reports.
   tlsReportAddress: ""
+  # Publish small audit-chain anchors daily and after administrative changes.
+  auditAnchorEmail:
+    enabled: true
+    # Comma-separated addresses; empty defaults to installation superadmins.
+    # Prefer an independent mailbox, outside this server's storage.
+    to: ""
   replicaCount: 1
   image:
     repository: ghcr.io/rest-mail/api
