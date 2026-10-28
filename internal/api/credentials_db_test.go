@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -41,34 +42,124 @@ func credentialTestEnv(key, def string) string {
 
 func openCredentialScratchDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	scratch := createScratchDB(t, "credentials")
-	if err := rmdb.AutoMigrate(scratch); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	if err := bootstrap.EnsureRBAC(scratch); err != nil {
-		t.Fatalf("roles: %v", err)
-	}
-	return scratch
+	return createMigratedScratchDB(t, "credentials")
 }
 
-// createScratchDB is a new, empty database, restmail_<purpose>_…, dropped when
-// the test ends. The test skips when no database server is reachable.
-func createScratchDB(t *testing.T, purpose string) *gorm.DB {
-	t.Helper()
+// scratchDBConfig is the database server the scratch databases go on.
+func scratchDBConfig() config.Config {
 	port, _ := strconv.Atoi(credentialTestEnv("DB_PORT", "5432"))
-	cfg := config.Config{
+	return config.Config{
 		DBHost: credentialTestEnv("DB_HOST", "localhost"),
 		DBPort: port,
 		DBName: credentialTestEnv("DB_NAME", "restmail"),
 		DBUser: credentialTestEnv("DB_USER", "restmail"),
 		DBPass: credentialTestEnv("DB_PASS", "restmail"),
 	}
+}
+
+// migratedTemplate is a database migrated as the server migrates it, with the
+// roles in place, made once per test binary and dropped by TestMain. Each
+// migrated scratch database is a copy of it: running the whole migration for
+// every one took most of this package's time (#1307).
+var migratedTemplate struct {
+	once sync.Once
+	name string // set once the database exists, so TestMain drops it
+	skip string // why the tests skip, when no database server is reachable
+	err  error
+}
+
+func ensureMigratedTemplate() {
+	migratedTemplate.once.Do(func() {
+		cfg := scratchDBConfig()
+		admin, err := rmdb.Connect(&cfg)
+		if err != nil {
+			migratedTemplate.skip = fmt.Sprintf("no database reachable (%v)", err)
+			return
+		}
+		defer closeScratchConn(admin)
+		name := fmt.Sprintf("restmail_template_%d_%d", os.Getpid(), time.Now().UnixNano())
+		if err := admin.Exec("CREATE DATABASE " + name).Error; err != nil {
+			migratedTemplate.skip = fmt.Sprintf("cannot create a database (%v)", err)
+			return
+		}
+		migratedTemplate.name = name
+		cfg.DBName = name
+		template, err := rmdb.Connect(&cfg)
+		if err != nil {
+			migratedTemplate.err = fmt.Errorf("connect to the template database: %w", err)
+			return
+		}
+		// A database cannot be copied while anyone is connected to it.
+		defer closeScratchConn(template)
+		if err := rmdb.AutoMigrate(template); err != nil {
+			migratedTemplate.err = fmt.Errorf("migrate: %w", err)
+			return
+		}
+		if err := bootstrap.EnsureRBAC(template); err != nil {
+			migratedTemplate.err = fmt.Errorf("roles: %w", err)
+		}
+	})
+}
+
+// dropMigratedTemplate drops the template database, if this binary made one.
+func dropMigratedTemplate() {
+	if migratedTemplate.name == "" {
+		return
+	}
+	cfg := scratchDBConfig()
+	admin, err := rmdb.Connect(&cfg)
+	if err != nil {
+		return
+	}
+	defer closeScratchConn(admin)
+	admin.Exec("DROP DATABASE IF EXISTS " + migratedTemplate.name)
+}
+
+func closeScratchConn(db *gorm.DB) {
+	if sqlDB, err := db.DB(); err == nil {
+		_ = sqlDB.Close()
+	}
+}
+
+// createMigratedScratchDB is a database of the test's own, restmail_<purpose>_…,
+// migrated as the server migrates it and with the roles in place, dropped when
+// the test ends. The test skips when no database server is reachable.
+func createMigratedScratchDB(t *testing.T, purpose string) *gorm.DB {
+	t.Helper()
+	ensureMigratedTemplate()
+	if migratedTemplate.skip != "" {
+		t.Skipf("skipped: %s", migratedTemplate.skip)
+	}
+	if migratedTemplate.err != nil {
+		t.Fatalf("template database: %v", migratedTemplate.err)
+	}
+	return createScratchDBFrom(t, purpose, migratedTemplate.name)
+}
+
+// createScratchDB is a new, empty database, restmail_<purpose>_…, dropped when
+// the test ends. The test skips when no database server is reachable.
+func createScratchDB(t *testing.T, purpose string) *gorm.DB {
+	t.Helper()
+	return createScratchDBFrom(t, purpose, "")
+}
+
+// createScratchDBFrom is createScratchDB copying template, when there is one.
+func createScratchDBFrom(t *testing.T, purpose, template string) *gorm.DB {
+	t.Helper()
+	cfg := scratchDBConfig()
 	admin, err := rmdb.Connect(&cfg)
 	if err != nil {
 		t.Skipf("skipped: no database reachable (%v)", err)
 	}
 	name := fmt.Sprintf("restmail_%s_%d_%d", purpose, os.Getpid(), time.Now().UnixNano())
-	if err := admin.Exec("CREATE DATABASE " + name).Error; err != nil {
+	create := "CREATE DATABASE " + name
+	if template != "" {
+		create += " TEMPLATE " + template
+	}
+	if err := admin.Exec(create).Error; err != nil {
+		if template != "" {
+			t.Fatalf("copy the template database: %v", err)
+		}
 		t.Skipf("skipped: cannot create a database (%v)", err)
 	}
 	cfg.DBName = name
