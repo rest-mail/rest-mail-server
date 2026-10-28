@@ -1475,18 +1475,25 @@ func (h *MessageHandler) saveDraft(r *http.Request, req saveDraftBody) (Message,
 	}
 
 	// A draft is kept in the mailbox it is from: one the caller may write to.
-	// Without a from, the caller's own.
-	mailboxID := claims.AccountID
+	// Without a from, the caller's own, and the credential must hold
+	// mail:write on it as well (#1278).
+	var mb *models.Mailbox
+	var err error
 	if req.From != "" {
-		mb, err := mayActAs(h.db.WithContext(r.Context()), claims, req.From, models.CapMailWrite)
-		if errors.Is(err, errNoAccess) {
-			return Message{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "You are not authorized to send from this address")
-		}
-		if err != nil {
-			return Message{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to check the sender")
-		}
-		mailboxID = mb.ID
+		mb, err = mayActAs(h.db.WithContext(r.Context()), claims, req.From, models.CapMailWrite)
+	} else {
+		mb, err = mayReach(h.db.WithContext(r.Context()), claims, claims.AccountID, models.CapMailWrite)
 	}
+	if errors.Is(err, errNoAccess) {
+		if req.From == "" {
+			return Message{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "You are not authorized to write drafts to this mailbox")
+		}
+		return Message{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "You are not authorized to send from this address")
+	}
+	if err != nil {
+		return Message{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to check the sender")
+	}
+	mailboxID := mb.ID
 
 	toJSON, _ := json.Marshal(req.To)
 	if req.To == nil {
