@@ -2,6 +2,8 @@ package grants
 
 import (
 	"fmt"
+	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/restmail/restmail/internal/db/models"
@@ -49,6 +51,9 @@ func withinServer(db *gorm.DB, held Held, now time.Time) (Held, error) {
 	if held.Allows(Wildcard, All) {
 		return held, nil
 	}
+	if override := serverOverride.Load(); override != nil {
+		return held.Within(*override), nil
+	}
 	var entries []Entry
 	err := db.Table("grants AS g").
 		Select("g.scope, c.name AS capability").
@@ -62,4 +67,58 @@ func withinServer(db *gorm.DB, held Held, now time.Time) (Held, error) {
 		return Held{}, err
 	}
 	return held.Within(HeldOf(entries...)), nil
+}
+
+// ServerCapabilitiesEnv names the operator override for the server ceiling.
+const ServerCapabilitiesEnv = "RESTMAIL_SERVER_CAPABILITIES"
+
+// serverOverride is the ceiling configured outside the database; nil when
+// unset, so the stored server object applies.
+var serverOverride atomic.Pointer[Held]
+
+// ConfigureServerOverride applies RESTMAIL_SERVER_CAPABILITIES. When present,
+// the comma-separated set replaces the stored server ceiling for this process
+// without any database write; an empty value is an intentionally empty set.
+// Absent leaves the stored ceiling in charge. Names must already exist in the
+// capability vocabulary; the wildcard and unknown names are refused rather
+// than ignored, so a typo stops boot instead of changing the ceiling.
+func ConfigureServerOverride(db *gorm.DB, raw string, present bool) error {
+	if !present {
+		serverOverride.Store(nil)
+		return nil
+	}
+	var known []string
+	if err := db.Model(&models.Capability{}).Where("name <> ?", Wildcard).Pluck("name", &known).Error; err != nil {
+		return fmt.Errorf("read capability vocabulary: %w", err)
+	}
+	held, err := parseServerCapabilities(raw, known)
+	if err != nil {
+		return err
+	}
+	serverOverride.Store(&held)
+	return nil
+}
+
+func parseServerCapabilities(raw string, known []string) (Held, error) {
+	vocabulary := map[string]bool{}
+	for _, name := range known {
+		vocabulary[name] = true
+	}
+	var entries []Entry
+	if strings.TrimSpace(raw) == "" {
+		return HeldOf(), nil
+	}
+	for _, name := range strings.Split(raw, ",") {
+		name = strings.TrimSpace(name)
+		switch {
+		case name == "":
+			return Held{}, fmt.Errorf("%s: empty capability name in %q", ServerCapabilitiesEnv, raw)
+		case name == Wildcard:
+			return Held{}, fmt.Errorf("%s: the wildcard is not allowed; list capabilities explicitly", ServerCapabilitiesEnv)
+		case !vocabulary[name]:
+			return Held{}, fmt.Errorf("%s: unknown capability %q", ServerCapabilitiesEnv, name)
+		}
+		entries = append(entries, Entry{Scope: All, Capability: name})
+	}
+	return HeldOf(entries...), nil
 }

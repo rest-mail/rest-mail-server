@@ -19,6 +19,7 @@ import (
 	"github.com/restmail/restmail/internal/gateway/imap"
 	"github.com/restmail/restmail/internal/gateway/metricsrv"
 	"github.com/restmail/restmail/internal/gateway/tlsutil"
+	"github.com/restmail/restmail/internal/grants"
 )
 
 func main() {
@@ -100,6 +101,20 @@ func main() {
 	database, err := db.WaitForDB(cfg, 30*time.Second)
 	if err != nil {
 		slog.Warn("database not available for DB-backed SNI", "error", err)
+	}
+
+	// This gateway authorizes through the API, which applies the operator
+	// override. It is still validated here before mail listeners open, so every
+	// process refuses the same bad value; without the database it cannot be
+	// checked, and the gateway stops rather than run on an unvalidated ceiling.
+	serverCapabilities, serverCapabilitiesSet := os.LookupEnv(grants.ServerCapabilitiesEnv)
+	if serverCapabilitiesSet && database == nil {
+		slog.Error("server capability override set but the database is unavailable to validate it", "env", grants.ServerCapabilitiesEnv)
+		os.Exit(1)
+	}
+	if err := grants.ConfigureServerOverride(database, serverCapabilities, serverCapabilitiesSet); err != nil {
+		slog.Error("invalid server capability override", "error", err)
+		os.Exit(1)
 	}
 
 	// Wire DB-backed certificate loading for SNI
