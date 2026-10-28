@@ -1625,7 +1625,21 @@ func (h *MessageHandler) updateDraft(r *http.Request, in updateDraftRequest) (Me
 
 // sendDraft sends a draft through sendMessage, and deletes the draft once it is sent.
 // POST /api/v1/messages/draft/{id}/send
-func (h *MessageHandler) sendDraft(r *http.Request, in messagePath) (endpoint.Status[any], error) {
+// sendDraftRequest sends a draft, with an optional body supplying what the draft does not
+// hold: the unsubscribe details a bulk domain's mail needs (#144). Without a body the draft
+// is sent as it is.
+type sendDraftRequest struct {
+	ID   uint32         `path:"id" minimum:"1" example:"1"`
+	Body *sendDraftBody `body:""`
+}
+
+type sendDraftBody struct {
+	// ListUnsubscribe is the send API's: required on a bulk domain, refused on a
+	// transactional one.
+	ListUnsubscribe *apitypes.ListUnsubscribe `json:"list_unsubscribe,omitempty"`
+}
+
+func (h *MessageHandler) sendDraft(r *http.Request, in sendDraftRequest) (endpoint.Status[any], error) {
 	var zero endpoint.Status[any]
 	if middleware.GetClaims(r) == nil {
 		return zero, errNotSignedIn
@@ -1647,14 +1661,19 @@ func (h *MessageHandler) sendDraft(r *http.Request, in messagePath) (endpoint.St
 	var ccList []string
 	_ = json.Unmarshal(draft.RecipientsCc, &ccList)
 
+	var listUnsubscribe *apitypes.ListUnsubscribe
+	if in.Body != nil {
+		listUnsubscribe = in.Body.ListUnsubscribe
+	}
 	sent, err := h.sendMessage(r, sendMessageRequest{
-		From:      draft.Sender,
-		To:        toList,
-		Cc:        ccList,
-		Subject:   draft.Subject,
-		BodyText:  draft.BodyText,
-		BodyHTML:  draft.BodyHTML,
-		InReplyTo: draft.InReplyTo,
+		From:            draft.Sender,
+		To:              toList,
+		Cc:              ccList,
+		Subject:         draft.Subject,
+		BodyText:        draft.BodyText,
+		BodyHTML:        draft.BodyHTML,
+		InReplyTo:       draft.InReplyTo,
+		ListUnsubscribe: listUnsubscribe,
 	})
 	if err != nil {
 		return zero, err
