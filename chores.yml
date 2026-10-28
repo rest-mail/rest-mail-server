@@ -107,8 +107,6 @@ includes:
     taskfile: ./tasks/js-filter.yml
     vars:
       JS_FILTER_PROJECT: '{{.RESTMAIL_PROJECT}}'
-      JS_FILTER_NETWORK: '{{.RESTMAIL_NETWORK}}'
-      JS_FILTER_IP: '{{.RESTMAIL_JS_FILTER_IP}}'
       JS_FILTER_IMAGE_TAG: '{{.RESTMAIL_IMAGE_TAG}}'
       JS_FILTER_REGISTRY: '{{.RESTMAIL_REGISTRY}}'
       # Shared with the API (API_JS_FILTER_TOKEN below): the sidecar runs a
@@ -136,7 +134,6 @@ includes:
       API_JWT_SECRET: '{{.RESTMAIL_JWT_SECRET | default "dev-secret-change-in-production"}}'
       API_MASTER_KEY: '{{.RESTMAIL_MASTER_KEY | default "dev-master-key-change-in-production"}}'
       API_JS_FILTER_TOKEN: '{{.RESTMAIL_JS_FILTER_TOKEN | default "dev-js-filter-token-change-in-production"}}'
-      API_JS_FILTER_URL: 'http://{{.RESTMAIL_JS_FILTER_IP}}:3100'
       API_LOG_LEVEL: '{{.RESTMAIL_LOG_LEVEL}}'
       API_ENVIRONMENT: '{{.RESTMAIL_ENVIRONMENT}}'
       API_MAILNET_ONLY: '{{.RESTMAIL_MAILNET_ONLY}}'
@@ -1731,6 +1728,7 @@ tasks:
     vars:
       NAME: ''
     cmds:
+      - task: js-filter:network:up
       - task: postgres:up
       - |
         echo "  waiting for postgres to become healthy..."
@@ -1861,6 +1859,7 @@ tasks:
       - task: smtp-gateway:down
       - task: api:down
       - task: js-filter:down
+      - task: js-filter:network:down
       - task: postgres:down
 
   instance:restart:

@@ -1063,7 +1063,7 @@ These are the default static IPs for the `restmail.test` instance (overridable p
 | pop3-gateway | `10.99.0.16` |
 | api | `10.99.0.20` |
 | webmail | `10.99.0.21` |
-| js-filter sidecar | `10.99.0.22` |
+| js-filter sidecar | Docker-assigned on the instance's private internal network |
 | admin | `10.99.0.27` |
 | postgres | `10.99.0.43` |
 
@@ -1072,6 +1072,8 @@ These are the default static IPs for the `restmail.test` instance (overridable p
 **Reference servers (e2e, from `rest-mail/reference-mailserver`):** e.g. `mail2.test` Postfix `10.99.0.12`, Dovecot `10.99.0.112`, Postgres `10.99.0.42`; rspamd `10.99.0.23`, fail2ban `10.99.0.24`.
 
 Static IPs are load-bearing: dnsmasq publishes A records at specific IPs and SPF records embed literal IPs, so the addresses cannot be reassigned without updating the DNS fragments.
+
+The JavaScript filter joins only `<project>-js-filter-net`, an internal Docker bridge shared with that instance's API. `instance:up` creates it and `instance:down` removes it after both containers stop. Docker allocates its subnet and addresses automatically; the API inspects the filter's address before starting and retains its mounted testbed resolver. Legacy `js-filter` component IPs in manifests/config.env are ignored by the launch tasks. After recreating the filter by itself, recreate the API too (`chore api:restart`) to refresh its endpoint; `instance:restart` already recreates both.
 
 ---
 
