@@ -151,6 +151,8 @@ exclude-matching:
   - '^/api/v1/admin/domains/\{id\}/(mta-sts|relay) > (Create|Set|Delete).* > 404( >|$)'
   - '^/api/v1/admin/certificates/\{id\} > Delete a certificate > 404( >|$)'
   - '^/api/v1/auth/(logout|refresh|reset|recover|owner/[a-z]+|2fa/[a-z]+|password) > .* > (400|422)( >|$)'
+  # The client-secret exchange lacks a named malformed-request pair (#386).
+  - '^/api/v1/oauth/token > .* > 400( >|$)'
   - '^/api/v1/devices(/| >).* > (400|422)( >|$)'
   - '^/api/v1/messages/(\{id\}|draft|deliver)(/| >).* > (400|422)( >|$)'
   - '^/api/v1/accounts/link > .* > 400( >|$)'
@@ -159,6 +161,8 @@ exclude-matching:
   # Sieve's missing/null script 422s have named request/response pairs.
   - '^/api/v1/accounts/\{id\}/sieve(/| >).* > 400( >|$)'
   - '^/api/v1/accounts/\{id\}/credentials/.* > (400|422)( >|$)'
+  # Client-secret creation and path validation lack named refusal pairs (#386).
+  - '^/api/v1/accounts/\{id\}/client-secrets(/\{credential_id\})? > .* > (400|422)( >|$)'
   - '^/api/v1/accounts/\{id\}/folders/.* > (400|422)( >|$)'
   - '^/api/v1/accounts/\{id\}/contacts/(\{cid\}|block|suggest)(/| >).* > (400|422)( >|$)'
   - '^/api/v1/accounts/\{id\}/contacts > List contacts for an account > (400|422)( >|$)'
