@@ -115,6 +115,13 @@ spec:
                   name: {{ include "restmail.api.secretName" . }}
                   key: BOOTSTRAP_ADMIN_PASSWORD_HASH
                   optional: true
+            {{- if and .Values.api.auditAnchorHTTPS.url .Values.api.auditAnchorHTTPS.existingSecret }}
+            - name: RESTMAIL_AUDIT_ANCHOR_HTTPS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.api.auditAnchorHTTPS.existingSecret }}
+                  key: TOKEN
+            {{- end }}
             {{- if .Values.internalMtls.enabled }}
             {{- include "restmail.internalMtls.serverEnv" . | nindent 12 }}
             {{- end }}
