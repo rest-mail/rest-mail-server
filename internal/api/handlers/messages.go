@@ -1652,9 +1652,30 @@ func (h *MessageHandler) sendDraft(r *http.Request, in messagePath) (endpoint.St
 	if err != nil {
 		return zero, err
 	}
-	// Only a sent draft is deleted: a refused send keeps it to try again.
-	h.db.Delete(&draft)
+	// Only a sent draft is deleted: a refused send keeps it to try again. The
+	// message is out by now, so the answer stays a success; a draft that could
+	// not be removed is logged, since it invites a second send (#1265).
+	if err := removeSentDraft(r.Context(), h.db, &draft); err != nil {
+		slog.Error("send draft: the sent draft is still in Drafts", "draft_id", draft.ID, "mailbox_id", draft.MailboxID, "error", err)
+	}
 	return sent, nil
+}
+
+// sentDraftRemovalAttempts is how many times a sent draft's removal is tried.
+const sentDraftRemovalAttempts = 2
+
+// removeSentDraft deletes a draft that has just been sent. The send has
+// already happened, so the removal is not cancelled with the request that
+// asked for it, and a failure is tried once more before it is reported.
+func removeSentDraft(ctx context.Context, db *gorm.DB, draft *models.Message) error {
+	ctx = context.WithoutCancel(ctx)
+	var err error
+	for range sentDraftRemovalAttempts {
+		if err = db.WithContext(ctx).Delete(draft).Error; err == nil {
+			return nil
+		}
+	}
+	return err
 }
 
 // Preserve the existing missing/denied policy while keeping dependency errors
