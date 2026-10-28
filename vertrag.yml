@@ -207,7 +207,7 @@ exclude-matching:
   - '^/api/v1/accounts/\{id\}/contacts/(\{cid\}|block|suggest)(/| >).* > (400|422)( >|$)'
   - '^/api/v1/accounts/\{id\}/contacts > List contacts for an account > (400|422)( >|$)'
   - '^/api/v1/accounts > List the accounts this one reaches > (400|422)( >|$)'
-  - '^/api/v1/admin/(audit|grants|tls-reports)(/| >).* > (400|422)( >|$)'
+  - '^/api/v1/admin/(audit|grants|server-capabilities|tls-reports)(/| >).* > (400|422)( >|$)'
   - '^/api/v1/admin/dkim/\{id\}/rotation > Read .* > (400|422)( >|$)'
   - '^/api/v1/admin/mailboxes > .* > (400|422)( >|$)'
   - '^/api/v1/admin/mailboxes/\{id\}/invitation > .* > 422( >|$)'
