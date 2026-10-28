@@ -9681,6 +9681,23 @@
         "mediaType": "application/json"
       }
     },
+    "matching_domain": {
+      "summary": "A grant on the custom filter's domain deletes it",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "status": "deleted"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "other_capability": {
       "request": {
         "path": {
@@ -12285,6 +12302,23 @@
                 "id": "must be a non-negative integer"
               }
             }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "matching_domain": {
+      "summary": "A grant on the pipeline's domain deletes it",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "status": "deleted"
           }
         },
         "mediaType": "application/json"
@@ -15569,6 +15603,46 @@
               "fields": {
                 "id": "must be a non-negative integer"
               }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "matching_domain": {
+      "summary": "A grant on the custom filter's domain reads it",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "domain_id": 1,
+            "name": "Subject café",
+            "description": "Add a public subject marker",
+            "filter_type": "transform",
+            "direction": "both",
+            "config": {
+              "prefix": "[REST Mail] "
+            },
+            "enabled": true,
+            "created_at": "2026-10-20T00:00:00Z",
+            "updated_at": "2026-10-20T00:00:00Z",
+            "domain": {
+              "id": 0,
+              "name": "",
+              "server_type": "",
+              "active": false,
+              "default_quota_bytes": 0,
+              "dkim_selector": "",
+              "sending_policy": "",
+              "dmarc_policy": "",
+              "created_at": "0001-01-01T00:00:00Z",
+              "updated_at": "0001-01-01T00:00:00Z"
             }
           }
         },

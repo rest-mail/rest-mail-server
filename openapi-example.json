@@ -11851,8 +11851,8 @@
   },
   "getCustomFilter": {
     "domain_scope": {
-      "summary": "A domain-scoped grant cannot read an installation-wide resource",
-      "description": "The current installation-wide permission ceiling is preserved. A grant on example.com does not satisfy read access at *.",
+      "summary": "A grant on another domain cannot read this custom filter",
+      "description": "Custom filter 1 belongs to example.com. A grant on another domain does not satisfy read access to it; a grant on example.com does.",
       "requires": {
         "principal": "without_capability"
       },
