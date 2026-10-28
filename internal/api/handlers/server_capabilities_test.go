@@ -98,11 +98,13 @@ func (f serverCeilingFixture) audited(t *testing.T) []models.AuditEntry {
 
 func decodeServerCapabilities(t *testing.T, rr *httptest.ResponseRecorder) serverCapabilitiesResponse {
 	t.Helper()
-	var got serverCapabilitiesResponse
+	var got struct {
+		Data serverCapabilitiesResponse `json:"data"`
+	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
 		t.Fatalf("%v: %s", err, rr.Body.String())
 	}
-	return got
+	return got.Data
 }
 
 func ceilingErrorCode(t *testing.T, rr *httptest.ResponseRecorder) string {
