@@ -23,11 +23,32 @@ type sentDraftDB struct {
 	failures  int
 	deletes   int
 	cancelled int
+	commits   int
+	rollbacks int
 }
 
 func (d *sentDraftDB) Connect(context.Context) (driver.Conn, error) { return d, nil }
 func (d *sentDraftDB) Driver() driver.Driver                        { return d }
 func (d *sentDraftDB) Open(string) (driver.Conn, error)             { return d, nil }
+func (d *sentDraftDB) BeginTx(context.Context, driver.TxOptions) (driver.Tx, error) {
+	return &sentDraftTx{d}, nil
+}
+
+type sentDraftTx struct{ d *sentDraftDB }
+
+func (tx *sentDraftTx) Commit() error {
+	tx.d.mu.Lock()
+	defer tx.d.mu.Unlock()
+	tx.d.commits++
+	return nil
+}
+func (tx *sentDraftTx) Rollback() error {
+	tx.d.mu.Lock()
+	defer tx.d.mu.Unlock()
+	tx.d.rollbacks++
+	return nil
+}
+
 func (d *sentDraftDB) ExecContext(ctx context.Context, q string, _ []driver.NamedValue) (driver.Result, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -82,9 +103,15 @@ func TestASentDraftIsRemovedAndAFailureIsNotSilent(t *testing.T) {
 	if once.deletes != 2 {
 		t.Fatalf("a failed removal was not tried again: %d deletes", once.deletes)
 	}
+	if once.commits != 1 || once.rollbacks != 1 {
+		t.Fatalf("retry transactions: %d commits, %d rollbacks", once.commits, once.rollbacks)
+	}
 
 	always := &sentDraftDB{failures: 10}
 	if err := removeSentDraft(context.Background(), sentDraftGorm(t, always), &draft); err == nil {
 		t.Fatal("a removal that kept failing reported success")
+	}
+	if always.commits != 0 || always.rollbacks != sentDraftRemovalAttempts {
+		t.Fatalf("failed removal transactions: %d commits, %d rollbacks", always.commits, always.rollbacks)
 	}
 }
