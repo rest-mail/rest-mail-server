@@ -20,7 +20,10 @@ import (
 
 const testSnapshotRestorePath = "/api/v1/admin/test/snapshot/restore"
 
-type testSnapshotRestoreConnection struct{ testDataMutationConnection }
+type testSnapshotRestoreConnection struct {
+	testDataMutationConnection
+	restoredMailbox map[string]driver.Value
+}
 
 func (c *testSnapshotRestoreConnection) Connect(context.Context) (driver.Conn, error) { return c, nil }
 
@@ -29,6 +32,15 @@ func (c *testSnapshotRestoreConnection) Driver() driver.Driver { return c }
 func (c *testSnapshotRestoreConnection) Open(string) (driver.Conn, error) { return c, nil }
 
 func (c *testSnapshotRestoreConnection) QueryContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
+	if rows, ok := c.receiveQuery(ctx, q, args); ok {
+		return rows, nil
+	}
+	if strings.Contains(q, `FROM "mailboxes"`) && strings.HasPrefix(q, "SELECT count(*)") {
+		return &authReadSnapshotRows{columns: []string{"count"}, rows: [][]driver.Value{{int64(0)}}}, nil
+	}
+	if strings.Contains(q, `FROM "mailboxes"`) && strings.Contains(q, "address =") && c.restoredMailbox != nil {
+		return importRows(map[string]any{"id": c.restoredMailbox["id"], "address": c.restoredMailbox["address"]}), nil
+	}
 	if strings.HasPrefix(q, "INSERT INTO ") {
 		match := testDataInsertTable.FindStringSubmatch(q)
 		if len(match) != 2 {
@@ -41,6 +53,9 @@ func (c *testSnapshotRestoreConnection) QueryContext(ctx context.Context, q stri
 		fields, err := exampleInsertFields(q, args)
 		if err != nil {
 			return nil, err
+		}
+		if match[1] == "mailboxes" {
+			c.restoredMailbox = fields
 		}
 		id, ok := fields["id"].(int64)
 		if !ok || id == 0 {

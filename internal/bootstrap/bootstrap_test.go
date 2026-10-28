@@ -134,15 +134,15 @@ func TestEnsureRBAC_IdempotentAndSuperadminHasWildcard(t *testing.T) {
 	if roles != roles2 || caps != caps2 || links != links2 {
 		t.Fatalf("second run changed rows: roles %d→%d caps %d→%d links %d→%d", roles, roles2, caps, caps2, links, links2)
 	}
-	if roles != 5 {
-		t.Errorf("roles = %d, want 5 (superadmin, admin, readonly, owner, server)", roles)
+	if roles != 6 {
+		t.Errorf("roles = %d, want 6 (superadmin, admin, readonly, owner, receiver, server)", roles)
 	}
 	var owner models.Role
 	gdb.Where("name = ?", models.RoleOwner).First(&owner)
 	var ownerCaps []string
 	gdb.Table("role_capabilities rc").Joins("JOIN capabilities c ON c.id = rc.capability_id").
 		Where("rc.role_id = ?", owner.ID).Order("c.name").Pluck("c.name", &ownerCaps)
-	if want := []string{"mail:read", "mail:send", "mail:send_as", "mail:send_on_behalf", "mail:write", "mailbox:manage"}; !reflect.DeepEqual(ownerCaps, want) {
+	if want := []string{"mail:read", "mail:receive", "mail:send", "mail:send_as", "mail:send_on_behalf", "mail:write", "mailbox:manage"}; !reflect.DeepEqual(ownerCaps, want) {
 		t.Errorf("owner capabilities = %v, want %v", ownerCaps, want)
 	}
 
@@ -246,7 +246,7 @@ func TestEnsureFirstAdmin_CreatesSuperadminOnFreshInstall(t *testing.T) {
 		Order("r.name").Scan(&held).Error; err != nil {
 		t.Fatal(err)
 	}
-	want := []struct{ Name, Scope, Mode string }{{"admin", "*", "active"}, {"superadmin", "*", "eligible"}}
+	want := []struct{ Name, Scope, Mode string }{{"admin", "*", "active"}, {"receiver", "mailbox:" + adminAddr, "active"}, {"superadmin", "*", "eligible"}}
 	if !reflect.DeepEqual(held, want) {
 		t.Errorf("grants = %+v, want %+v", held, want)
 	}
@@ -257,8 +257,8 @@ func TestEnsureFirstAdmin_CreatesSuperadminOnFreshInstall(t *testing.T) {
 		Count(&recorded).Error; err != nil {
 		t.Fatal(err)
 	}
-	if recorded != 2 {
-		t.Errorf("audit entries for the bootstrap grants = %d, want 2", recorded)
+	if recorded != 3 {
+		t.Errorf("audit entries for the bootstrap grants = %d, want 3", recorded)
 	}
 	if want := t0.Add(BootstrapPasswordLifetime); user.BootstrapExpiresAt == nil || !user.BootstrapExpiresAt.Equal(want) {
 		t.Errorf("bootstrap_expires_at = %v, want %v", user.BootstrapExpiresAt, want)
@@ -312,7 +312,7 @@ func TestEnsureFirstAdmin_LeavesAnOwnersActiveSuperadminAlone(t *testing.T) {
 		}
 		return out
 	}
-	want := []string{"admin active", "superadmin active"}
+	want := []string{"admin active", "receiver active", "superadmin active"}
 
 	if _, err := EnsureFirstAdmin(gdb, adminAddr, strongPassword, true, t0.Add(time.Hour)); err != nil {
 		t.Fatal(err)

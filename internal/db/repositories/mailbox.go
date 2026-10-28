@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/grants"
 	rmail "github.com/restmail/restmail/internal/mail"
 	"gorm.io/gorm"
 )
@@ -80,4 +81,26 @@ func FindActiveMailboxByAddress(db *gorm.DB, address string, mailbox *models.Mai
 		return ErrMailboxUnavailable
 	}
 	return nil
+}
+
+// RequireMailboxReceive hides an account without the effective receive grant
+// like an unknown identity. It must run before any inbound filter can act.
+func RequireMailboxReceive(db *gorm.DB, mailbox *models.Mailbox) error {
+	allowed, err := grants.CanReceive(db, mailbox)
+	if err != nil {
+		return err
+	}
+	if !allowed {
+		return ErrMailboxUnavailable
+	}
+	return nil
+}
+
+// FindReceivingMailboxByAddress resolves identity before checking receive
+// grants. A known nonreceiving identity blocks alias/subaddress fallbacks.
+func FindReceivingMailboxByAddress(db *gorm.DB, address string, mailbox *models.Mailbox) error {
+	if err := FindActiveMailboxByAddress(db, address, mailbox); err != nil {
+		return err
+	}
+	return RequireMailboxReceive(db, mailbox)
 }

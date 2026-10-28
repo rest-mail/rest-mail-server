@@ -18,6 +18,7 @@ func TestSnapshotRestorePersistence(t *testing.T) {
 	if err := db.AutoMigrate(&models.Mailbox{}, &models.Credential{}, &models.QuotaUsage{}, &models.Role{}, &models.Grant{}, &models.Message{}, &models.OutboundQueue{}, &models.Pipeline{}, &models.Ban{}); err != nil {
 		t.Fatal(err)
 	}
+	seedReceiveFixture(t, db)
 	domain := models.Domain{Name: "admin.test", Active: true}
 	if err := db.Create(&domain).Error; err != nil {
 		t.Fatal(err)
@@ -26,6 +27,7 @@ func TestSnapshotRestorePersistence(t *testing.T) {
 	if err := db.Create(&admin).Error; err != nil {
 		t.Fatal(err)
 	}
+	seedReceiveFixture(t, db, admin)
 	role := models.Role{Name: "retained administrator"}
 	if err := db.Create(&role).Error; err != nil {
 		t.Fatal(err)
@@ -61,6 +63,13 @@ func TestSnapshotRestorePersistence(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+		retained := out.Grants[:0]
+		for _, grant := range out.Grants {
+			if grant.HolderKind == models.GrantHolderServer || grant.HolderID == admin.ID {
+				retained = append(retained, grant)
+			}
+		}
+		out.Grants = retained
 		return out
 	}
 	initial := read()

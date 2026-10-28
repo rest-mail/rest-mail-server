@@ -81,6 +81,7 @@ func EnsureRBAC(database *gorm.DB) error {
 		{Name: models.CapMailSend, Description: "Send from your own mailbox", Resource: "mail", Action: "send"},
 		{Name: models.CapMailSendAs, Description: "Send as the represented mailbox", Resource: "mail", Action: "send_as"},
 		{Name: models.CapMailSendOnBehalf, Description: "Send on behalf of the represented mailbox, identifying the actor in Sender", Resource: "mail", Action: "send_on_behalf"},
+		{Name: models.CapMailReceive, Description: "Accept inbound mail for a mailbox", Resource: "mail", Action: "receive"},
 		{Name: models.CapMailboxManage, Description: "Manage a mailbox's settings and credentials", Resource: "mailbox", Action: "manage"},
 	}
 
@@ -97,7 +98,7 @@ func EnsureRBAC(database *gorm.DB) error {
 		{Name: "superadmin", Description: "Full system access", SystemRole: true},
 		{Name: "admin", Description: "Standard administrator", SystemRole: true},
 		{Name: "readonly", Description: "Read-only access", SystemRole: true},
-		{Name: models.RoleOwner, Description: "Everything on a mailbox: read, write, send and manage", SystemRole: true},
+		{Name: models.RoleOwner, Description: "Everything on a mailbox: read, write, send, receive and manage", SystemRole: true},
 	}
 
 	for i := range roles {
@@ -193,6 +194,9 @@ func EnsureRBAC(database *gorm.DB) error {
 
 	// This data migration also runs on existing installations. It initializes
 	// the server object once, after the complete capability vocabulary exists.
+	if err := grants.EnsureReceiveDefaults(database); err != nil {
+		return err
+	}
 	return grants.EnsureServerCeiling(database)
 }
 
@@ -280,6 +284,9 @@ func EnsureFirstAdminWith(database *gorm.DB, address string, credential Bootstra
 		}
 		created = res.RowsAffected > 0
 		if created {
+			if err := grants.EnsureReceive(tx, &account); err != nil {
+				return err
+			}
 			if _, err := repositories.NewCredentialRepository(tx).SetPassword(account.ID, hash, nil, now); err != nil {
 				return err
 			}

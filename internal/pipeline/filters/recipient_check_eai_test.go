@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/grants"
 	"github.com/restmail/restmail/internal/pipeline"
 )
 
@@ -28,6 +29,9 @@ func TestRecipientCheck_EAI(t *testing.T) {
 		t.Helper()
 		mb := models.Mailbox{DomainID: domain.ID, LocalPart: local, Address: local + "@" + asciiDomain, Active: true}
 		if err := tx.Create(&mb).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := grants.EnsureReceive(tx, &mb); err != nil {
 			t.Fatal(err)
 		}
 		return mb

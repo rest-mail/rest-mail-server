@@ -58,6 +58,9 @@ func (d *holdDB) Driver() driver.Driver                        { return d }
 func (d *holdDB) Open(string) (driver.Conn, error)             { return d, nil }
 
 func (d *holdDB) QueryContext(_ context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
+	if rows, ok := receiveFixtureRows(q); ok {
+		return rows, nil
+	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	switch {

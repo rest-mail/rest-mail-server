@@ -87,6 +87,7 @@ func TestSendDraftPostgresRollbackNotificationsAndConcurrentSend(t *testing.T) {
 	recipient := models.Mailbox{DomainID: domain.ID, LocalPart: "recipient", Address: "recipient@" + domain.Name, Active: true}
 	must(t, db.Create(&sender).Error)
 	must(t, db.Create(&recipient).Error)
+	seedReceiveFixture(t, db, recipient)
 	must(t, db.Create(&models.QuotaUsage{MailboxID: recipient.ID}).Error)
 	for _, direction := range []string{"outbound", "inbound"} {
 		must(t, db.Create(&models.Pipeline{DomainID: domain.ID, Direction: direction, Active: true, Filters: []byte(`[]`)}).Error)

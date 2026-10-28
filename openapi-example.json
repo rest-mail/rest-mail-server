@@ -8310,6 +8310,11 @@
   },
   "deleteMailbox": {
     "body_boundary": {
+      "summary": "Delete an account",
+      "description": "Deleting an account needs a session that signed in with a second factor.",
+      "requires": {
+        "state": "two_factor_session"
+      },
       "request": {
         "path": {
           "id": 1

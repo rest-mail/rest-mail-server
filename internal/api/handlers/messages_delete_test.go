@@ -47,6 +47,7 @@ func seedMsgDeleteFixture(t *testing.T, db *gorm.DB, quotaUsed int64) msgDeleteF
 	if err := db.Create(&mb).Error; err != nil {
 		t.Fatalf("create mailbox: %v", err)
 	}
+	seedReceiveFixture(t, db, mb)
 	return msgDeleteFixture{mailbox: mb}
 }
 

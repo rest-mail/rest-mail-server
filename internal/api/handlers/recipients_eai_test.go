@@ -36,6 +36,7 @@ func TestRecipientsEAI(t *testing.T) {
 		if err := tx.Create(&mb).Error; err != nil {
 			t.Fatal(err)
 		}
+		seedReceiveFixture(t, tx, mb)
 		return mb
 	}
 	mailbox := seed("münchen")
@@ -183,6 +184,7 @@ func TestRecipientsEAIInboundPipeline(t *testing.T) {
 	if err := tx.Create(&mb).Error; err != nil {
 		t.Fatal(err)
 	}
+	seedReceiveFixture(t, tx, mb)
 	filters, err := json.Marshal([]pipeline.FilterConfig{{Name: "unavailable-security-filter", Type: pipeline.FilterTypeAction, Enabled: true}})
 	if err != nil {
 		t.Fatal(err)

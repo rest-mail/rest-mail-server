@@ -86,7 +86,7 @@ type restmailMailboxQuery struct {
 // checkMailbox verifies a recipient mailbox exists.
 func (h *RestmailHandler) checkMailbox(r *http.Request, in restmailMailboxQuery) (RestmailMailboxCheck, error) {
 	var mailbox models.Mailbox
-	if err := repositories.FindActiveMailboxByAddress(h.db.WithContext(r.Context()), in.Address, &mailbox); err != nil {
+	if err := repositories.FindReceivingMailboxByAddress(h.db.WithContext(r.Context()), in.Address, &mailbox); err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return RestmailMailboxCheck{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to look up mailbox")
 		}
@@ -265,22 +265,32 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 	// side effects. An unavailable database is not an absent mailbox, and a
 	// later recipient lookup must not leave an earlier recipient accepted.
 	recipients := make(map[string]restmailRecipient, len(to))
+	accepted := make([]string, 0, len(to))
+	refused := []string{}
 	for _, rcpt := range to {
 		if _, exists := recipients[rcpt]; exists {
 			continue
 		}
 		mailbox, deliveredTo, err := h.resolveRecipientMailbox(r.Context(), rcpt)
 		if errors.Is(err, gorm.ErrRecordNotFound) {
+			refused = append(refused, rcpt)
 			continue
 		}
 		if err != nil {
 			return RestmailDelivery{}, restmailReadRefusal("recipient identity")
 		}
 		recipients[rcpt] = restmailRecipient{mailbox: mailbox, deliveredTo: deliveredTo}
+		accepted = append(accepted, rcpt)
 	}
+	if len(recipients) == 0 {
+		return RestmailDelivery{}, endpoint.Refuse(http.StatusUnprocessableEntity, "undeliverable", "No recipient accepted the message")
+	}
+	// Only receive-capable identities reach filters. In a mixed delivery a
+	// discard or redirect must not turn refused recipients into acceptances.
+	to = accepted
 
 	delivered := []string{}
-	failed := []string{}
+	failed := refused
 	// Report signatures may use a tlsrpt-only key. Consume reports before the
 	// ordinary mail pipeline, whose DKIM verifier checks the email service.
 	// Other recipients still go through their usual inbound filtering.
@@ -377,7 +387,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 			case pipeline.ActionDiscard:
 				rmTrace.Outcome = outcomeDiscarded
 				h.recordTrace(buildTrace(rmTrace))
-				return RestmailDelivery{Delivered: to, Failed: []string{}}, nil
+				return RestmailDelivery{Delivered: append(delivered, to...), Failed: failed}, nil
 			case pipeline.ActionQuarantine:
 				var holds []models.Quarantine
 				for _, rcpt := range to {
@@ -391,7 +401,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 				}
 				rmTrace.Outcome = outcomeQuarantined
 				h.recordTrace(buildTrace(rmTrace))
-				return RestmailDelivery{Delivered: []string{}, Failed: to}, nil
+				return RestmailDelivery{Delivered: delivered, Failed: append(failed, to...)}, nil
 			}
 			// Fall-through (continue / any non-terminal action): the message will
 			// be delivered — stash the trace to record post-loop with message_id.
@@ -432,7 +442,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 			deliveredTrace.Outcome = outcomeDelivered
 			h.recordTrace(buildTrace(*deliveredTrace))
 		}
-		return RestmailDelivery{Delivered: to, Failed: []string{}}, nil
+		return RestmailDelivery{Delivered: append(delivered, to...), Failed: failed}, nil
 	}
 
 	// Store the original raw message (with the pipeline's Authentication-Results
@@ -755,7 +765,7 @@ func (h *RestmailHandler) resolveRecipientMailbox(ctx context.Context, rcpt stri
 		return models.Mailbox{}, "", gorm.ErrRecordNotFound
 	}
 	db := h.db.WithContext(ctx)
-	if err := repositories.FindActiveMailboxByAddress(db, rcpt, &mailbox); err == nil {
+	if err := repositories.FindReceivingMailboxByAddress(db, rcpt, &mailbox); err == nil {
 		return mailbox, "", nil
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) || errors.Is(err, repositories.ErrMailboxUnavailable) {
 		return models.Mailbox{}, "", err
@@ -775,7 +785,7 @@ func (h *RestmailHandler) resolveRecipientMailbox(ctx context.Context, rcpt stri
 	if aliasClaims {
 		return models.Mailbox{}, "", gorm.ErrRecordNotFound
 	}
-	if err := repositories.FindActiveMailboxByAddress(db, base, &mailbox); err != nil {
+	if err := repositories.FindReceivingMailboxByAddress(db, base, &mailbox); err != nil {
 		return models.Mailbox{}, "", err
 	}
 	return mailbox, rcpt, nil

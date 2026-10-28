@@ -127,7 +127,21 @@ class FixtureAPI(BaseHTTPRequestHandler):
     def do_POST(self):
         state = self.server.state
         if self.path == "/api/v1/auth/login":
+            body = self.read_body()
+            # The two-factor administrator signs in with its enrolled factor.
+            if body.get("recovery_code") or body.get("totp_code"):
+                if not state.get("mfa_enrolled"):
+                    return self.answer(401)
+                return self.answer(200, {"data": {"access_token": "mfa"}})
             return self.answer(200, {"data": {"access_token": "setup"}})
+        if self.path == "/api/v1/auth/2fa/enroll":
+            return self.answer(
+                200,
+                {"data": {"secret": "JBSWY3DPEHPK3PXP", "recovery_codes": ["AAAA-BBBB-CCCC"]}},
+            )
+        if self.path == "/api/v1/auth/2fa/confirm":
+            state["mfa_enrolled"] = True
+            return self.answer(204)
         if self.path == "/api/v1/admin/domains":
             name = self.read_body()["name"]
             if name.endswith(".invalid"):
@@ -199,6 +213,9 @@ class FixtureAPI(BaseHTTPRequestHandler):
                 return self.answer(404)
             state["linked"].remove(account_id)
             return self.answer(204)
+        # Deleting an account always takes a session signed in with 2FA.
+        if self.headers.get("Authorization") != "Bearer mfa":
+            return self.answer(403, {"error": {"code": "two_factor_required"}})
         state["deleted"].append(account_id)
         state["accounts"] = [a for a in state["accounts"] if a["id"] != account_id]
         self.answer(204)

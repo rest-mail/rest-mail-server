@@ -119,6 +119,7 @@ func TestDelivery_RunsTheAccountsSieveScript(t *testing.T) {
 		if err := db.Create(&mb).Error; err != nil {
 			t.Fatalf("create mailbox: %v", err)
 		}
+		seedReceiveFixture(t, db, mb)
 		encoded, _ := json.Marshal(filters)
 		pl := models.Pipeline{DomainID: dom.ID, Direction: "inbound", Filters: encoded, Active: true}
 		if err := db.Create(&pl).Error; err != nil {

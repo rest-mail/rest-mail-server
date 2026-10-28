@@ -41,18 +41,23 @@ type RoleCapability struct {
 func (RoleCapability) TableName() string { return "role_capabilities" }
 
 // The mail capabilities an account holds on a mailbox. The owner role holds
-// all of these, and every account holds them on its own mailbox (grants.Load).
+// all of these. Receive is an explicit, revocable own-mailbox grant; the
+// others are implicit (grants.Load).
 const (
 	CapMailRead         = "mail:read"
 	CapMailWrite        = "mail:write"
 	CapMailSend         = "mail:send"
+	CapMailReceive      = "mail:receive"
 	CapMailSendAs       = "mail:send_as"
 	CapMailSendOnBehalf = "mail:send_on_behalf"
 	CapMailboxManage    = "mailbox:manage"
 )
 
 // OwnerCapabilities are the owner role's: everything on one mailbox.
-var OwnerCapabilities = []string{CapMailRead, CapMailWrite, CapMailSend, CapMailSendAs, CapMailSendOnBehalf, CapMailboxManage}
+var OwnerCapabilities = []string{CapMailRead, CapMailWrite, CapMailSend, CapMailReceive, CapMailSendAs, CapMailSendOnBehalf, CapMailboxManage}
 
 // RoleOwner is the role an account holds on a mailbox it created or linked.
 const RoleOwner = "owner"
+
+// RoleReceiver holds only the independently revocable receive capability.
+const RoleReceiver = "receiver"

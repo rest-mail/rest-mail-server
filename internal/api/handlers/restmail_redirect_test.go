@@ -216,6 +216,7 @@ func TestRESTMAILDeliver_SieveRedirect(t *testing.T) {
 		if err := db.Create(&mb).Error; err != nil {
 			t.Fatalf("create mailbox: %v", err)
 		}
+		seedReceiveFixture(t, db, mb)
 		sieveCfg, _ := json.Marshal(map[string]string{"script": scriptFn(domainName)})
 		filters, _ := json.Marshal([]pipeline.FilterConfig{
 			{Name: "sieve", Type: pipeline.FilterTypeTransform, Enabled: true, Config: sieveCfg},

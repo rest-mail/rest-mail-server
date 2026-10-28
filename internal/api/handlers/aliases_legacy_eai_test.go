@@ -32,6 +32,7 @@ func TestLegacyAliasEAIClaims(t *testing.T) {
 		if err := db.Create(&base).Error; err != nil {
 			t.Fatal(err)
 		}
+		seedReceiveFixture(t, db, base)
 	}
 	for _, tc := range []struct {
 		name, source, recipient string

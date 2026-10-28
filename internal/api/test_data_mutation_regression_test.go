@@ -88,6 +88,12 @@ func (c *testDataMutationConnection) relevant(ctx context.Context, q string, arg
 }
 
 func (c *testDataMutationConnection) ExecContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Result, error) {
+	if strings.Contains(q, "pg_advisory_xact_lock") {
+		return driver.RowsAffected(0), nil
+	}
+	if strings.HasPrefix(q, `INSERT INTO "audit_log"`) {
+		return driver.RowsAffected(1), nil
+	}
 	if strings.HasPrefix(q, "ROLLBACK TO SAVEPOINT") {
 		c.record("ROLLBACK_TO", nil)
 		c.aborted = false
@@ -171,6 +177,9 @@ func (c *testDataMutationConnection) insert(ctx context.Context, q string, args 
 }
 
 func (c *testDataMutationConnection) QueryContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
+	if rows, ok := c.receiveQuery(ctx, q, args); ok {
+		return rows, nil
+	}
 	if strings.HasPrefix(q, "INSERT INTO ") && (strings.Contains(q, `"domains"`) || strings.Contains(q, `"mailboxes"`) || strings.Contains(q, `"quota_usage"`) || strings.Contains(q, `"aliases"`) || strings.Contains(q, `"credentials"`)) {
 		return c.insert(ctx, q, args)
 	}
@@ -205,6 +214,29 @@ func (c *testDataMutationConnection) QueryContext(ctx context.Context, q string,
 		}
 	}
 	return c.accountCredentialListConnection.QueryContext(ctx, q, args)
+}
+
+// Ancillary receive grants and their audit records are part of fixture account
+// creation; the scenario's table counters describe the fixture data itself.
+func (c *testDataMutationConnection) receiveQuery(ctx context.Context, q string, args []driver.NamedValue) (driver.Rows, bool) {
+	switch {
+	case strings.Contains(q, `FROM "roles"`):
+		if strings.Contains(q, "count(*)") {
+			return &authReadSnapshotRows{columns: []string{"count"}, rows: [][]driver.Value{{int64(0)}}}, true
+		}
+		if strings.HasPrefix(q, `SELECT "name"`) {
+			return &authReadSnapshotRows{columns: []string{"name"}, rows: [][]driver.Value{{models.RoleReceiver}}}, true
+		}
+		return &authReadSnapshotRows{columns: []string{"id", "name"}, rows: [][]driver.Value{{int64(900), models.RoleReceiver}}}, true
+	case strings.HasPrefix(q, `INSERT INTO "grants"`):
+		c.relevant(ctx, "RECEIVE_GRANTED", nil)
+		return &authReadSnapshotRows{columns: []string{"id"}, rows: [][]driver.Value{{int64(901)}}}, true
+	case strings.Contains(q, "FROM audit_log"):
+		return &authReadSnapshotRows{columns: []string{"seq", "hash"}}, true
+	case strings.HasPrefix(q, `INSERT INTO "audit_log"`):
+		return &authReadSnapshotRows{columns: []string{"seq"}, rows: [][]driver.Value{{int64(1)}}}, true
+	}
+	return nil, false
 }
 
 func newTestDataMutationScenarios(t *testing.T) map[string]bulkQueueExampleScenario {

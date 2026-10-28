@@ -93,6 +93,7 @@ func TestRestmailDeliver_RecipientSources(t *testing.T) {
 	if err := tx.Create(&mailbox).Error; err != nil {
 		t.Fatal(err)
 	}
+	seedReceiveFixture(t, tx, mailbox)
 	h := NewRestmailHandler(tx, nil, nil, RestmailTarpitConfig{}, RestmailDeliverAuthConfig{TrustedCIDRs: []string{"203.0.113.0/24"}})
 	raw := "From: sender@external.test\r\nTo: " + mailbox.Address + "\r\nDate: Sat, 17 Oct 2026 12:00:00 +0000\r\nSubject: Recipient source\r\n\r\nhello"
 	for _, tc := range []struct {

@@ -10,6 +10,7 @@ import (
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/grants"
 )
 
 // Response findings can be fixed independently of #625's undecided request
@@ -32,6 +33,13 @@ func TestSendMessageResponseExamplesUseProductionRouter(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := f.db.Model(&sender).Updates(map[string]any{"address": "admin@restmail.test", "local_part": "admin"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	// The receive grant is scoped by address: the renamed mailbox needs its own.
+	if err := f.db.First(&sender, f.mailboxID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := grants.EnsureReceive(f.db, &sender); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.db.Model(&models.Domain{}).Where("id = ?", sender.DomainID).Updates(map[string]any{"name": "restmail.test", "sending_policy": models.SendingPolicyTransactional}).Error; err != nil {

@@ -291,6 +291,9 @@ func TestMailboxDeleteRevokesSessions(t *testing.T) {
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", idStr)
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	// Deleting an account always takes a session signed in with 2FA.
+	req = req.WithContext(context.WithValue(req.Context(), middleware.ClaimsKey,
+		&auth.Claims{AccountID: mb.ID, Address: mb.Address, AMR: []string{auth.AMRPassword, auth.AMROTP}}))
 	rr := httptest.NewRecorder()
 	mailboxRoutes(mbH).ServeHTTP(rr, req)
 	if rr.Code != http.StatusNoContent {

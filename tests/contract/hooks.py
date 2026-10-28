@@ -15,6 +15,7 @@ read from the file it writes.
 import base64
 import json
 import os
+import runpy
 import subprocess
 import tempfile
 import time
@@ -35,6 +36,12 @@ ADMIN = FIXTURE_PLAN["principals"]["admin"]["address"]
 ADMIN_PASSWORD = "admin123!@"
 # A seeded account that nobody owns, to link (cmd/seed's fixture password).
 LINKABLE_PASSWORD = "password123"
+# The administrator for setup that takes a two-factor session (chore
+# test:contract-mfa-admin makes it; tests/contract/fixtures has the password).
+MFA_ADMIN = "contract-mfa-admin@restmail.test"
+MFA_ADMIN_PASSWORD = "contract-mfa-admin123!@"
+# The standard-library TOTP the API key live checks use.
+_totp = runpy.run_path(str(Path(__file__).resolve().parent / "api_keys_live.py"))["totp"]
 
 PRINCIPALS = os.environ.get("CONTRACT_PRINCIPALS", ".cache/contract-principals.json")
 
@@ -47,6 +54,57 @@ def principals():
 def basic(address, password):
     token = base64.b64encode((f"{address}:{password}").encode()).decode()
     return "Basic " + token
+
+
+def _auth_call(origin, path, body, token=None):
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = "Bearer " + token
+    request = urllib.request.Request(
+        origin + path, data=json.dumps(body).encode(), headers=headers, method="POST"
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        raw = response.read()
+    return json.loads(raw).get("data") if raw else None
+
+
+def _totp_step():
+    return int(time.time()) // 30
+
+
+def mfa_admin_token(origin):
+    """A real two-factor session, for setup steps a password alone cannot do.
+
+    The first call enrolls the fixture administrator in TOTP through the public
+    API and signs in with one of its recovery codes (a second code in the same
+    step would be refused as a replay). Sessions are renewed after ten minutes,
+    with a code for a step not used before.
+    """
+    cached = hooks.stash.get("mfa_admin_sessions", {}).get(origin)
+    if cached and time.time() - cached["at"] < 600:
+        return cached["token"]
+    sign_in = {"email": MFA_ADMIN, "password": MFA_ADMIN_PASSWORD, "client": "native"}
+    state = hooks.stash.get("mfa_admin_totp", {})
+    if origin not in state:
+        pace_auth_requests(None)
+        plain = _auth_call(origin, "/api/v1/auth/login", sign_in)
+        enrolled = _auth_call(origin, "/api/v1/auth/2fa/enroll", {}, plain["access_token"])
+        _auth_call(origin, "/api/v1/auth/2fa/confirm",
+                   {"totp_code": _totp(enrolled["secret"])}, plain["access_token"])
+        state[origin] = {"secret": enrolled["secret"], "step": _totp_step()}
+        hooks.stash["mfa_admin_totp"] = state
+        factor = {"recovery_code": enrolled["recovery_codes"][0]}
+    else:
+        while _totp_step() <= state[origin]["step"]:
+            time.sleep(1)
+        state[origin]["step"] = _totp_step()
+        factor = {"totp_code": _totp(state[origin]["secret"])}
+    pace_auth_requests(None)
+    session = _auth_call(origin, "/api/v1/auth/login", {**sign_in, **factor})
+    sessions = hooks.stash.get("mfa_admin_sessions", {})
+    sessions[origin] = {"token": session["access_token"], "at": time.time()}
+    hooks.stash["mfa_admin_sessions"] = sessions
+    return sessions[origin]["token"]
 
 
 @hooks.before("login")
@@ -1566,14 +1624,22 @@ def host_the_account_probe_domain(transaction):
         return
     if key not in owned:
         return
+    # Deleting an account always takes a session signed in with 2FA.
     request = urllib.request.Request(
         origin + "/api/v1/admin/mailboxes/{:d}".format(account["id"]),
-        headers=headers,
+        headers={"Authorization": "Bearer " + mfa_admin_token(origin)},
         method="DELETE",
     )
-    with urllib.request.urlopen(request, timeout=10) as response:
-        if response.status != 204:
-            raise RuntimeError("could not remove the previous account probe")
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            if response.status != 204:
+                raise RuntimeError("could not remove the previous account probe")
+    except urllib.error.HTTPError as error:
+        raise RuntimeError(
+            "could not remove the previous account probe: {} {}".format(
+                error.code, error.read()[:300].decode(errors="replace")
+            )
+        ) from error
 
 
 @hooks.after("createAccount")
