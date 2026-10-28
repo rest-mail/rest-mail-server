@@ -2,10 +2,16 @@ package models
 
 import "time"
 
-// GrantHolderAccount is the one kind of holder grants have for now: an
-// account (a mailbox). HolderKind is open-ended text, not an enum, because any
-// object may later hold grants (#341): a credential, an agent, a pipeline.
-const GrantHolderAccount = "account"
+// Grant holders are accounts (mailboxes) and the installation's server
+// object. HolderKind remains open-ended text for future RBAC objects.
+const (
+	GrantHolderAccount = "account"
+	GrantHolderServer  = "server"
+	// ServerHolderID identifies the single installation-wide server object.
+	ServerHolderID uint = 1
+	// RoleServer contains the server object's explicit capability ceiling.
+	RoleServer = "server"
+)
 
 // A grant's mode. An active grant is in force; an eligible one does nothing
 // until its holder switches it on for a while (GrantActivation, #346).

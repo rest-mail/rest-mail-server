@@ -16,6 +16,7 @@ import (
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/auth"
+	"github.com/restmail/restmail/internal/db/models"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -28,6 +29,7 @@ type credentialSQLStep struct {
 	sql        string
 	columns    []string
 	values     []driver.Value
+	rows       [][]driver.Value
 	affected   int64
 	fail, wait bool
 }
@@ -75,6 +77,9 @@ func (d *credentialContextDB) QueryContext(ctx context.Context, q string, _ []dr
 	s, err := d.step(ctx, q)
 	if err != nil {
 		return nil, err
+	}
+	if s.rows != nil {
+		return &publicReadRows{columns: s.columns, rows: s.rows}, nil
 	}
 	return &deliveryReadRows{columns: s.columns, values: s.values}, nil
 }
@@ -145,10 +150,15 @@ func credentialContextRequest(t *testing.T, index int) *http.Request {
 	return r
 }
 func credentialAccessSteps() []credentialSQLStep {
+	var serverRows [][]driver.Value
+	for _, capability := range models.OwnerCapabilities {
+		serverRows = append(serverRows, []driver.Value{"*", capability})
+	}
 	return []credentialSQLStep{
 		{sql: `FROM "mailboxes"`, columns: []string{"id", "address", "active"}, values: []driver.Value{int64(7), "reader@example.test", true}},
 		{sql: `FROM grants AS g`, columns: []string{"scope", "capability"}},
 		{sql: `FROM "mailboxes"`, columns: []string{"address"}, values: []driver.Value{"reader@example.test"}},
+		{sql: `FROM grants AS g`, columns: []string{"scope", "capability"}, rows: serverRows},
 	}
 }
 func assertCredentialContextFault(t *testing.T, d *credentialContextDB, rr *httptest.ResponseRecorder) {

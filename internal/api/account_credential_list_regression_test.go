@@ -44,6 +44,9 @@ func (c accountCredentialListConnection) ExecContext(context.Context, string, []
 }
 
 func (c accountCredentialListConnection) QueryContext(_ context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
+	if rows, ok := defaultServerCeilingRows(query, args); ok {
+		return rows, nil
+	}
 	stamp := time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC)
 	if strings.Contains(query, "JOIN grants g") {
 		for _, restriction := range []string{"g.scope = 'mailbox:'", "g.holder_kind =", "g.holder_id =", "g.mode =", "g.expires_at", "c.name IN", "mailboxes.id <>", "ORDER BY mailboxes.address", "DISTINCT"} {

@@ -63,6 +63,20 @@ func Authorize(tx *gorm.DB, granterID uint, roleID uint, scope string) error {
 // acting and through which request. ErrExists if the holder already holds
 // that role at that scope. The caller holds Lock and has checked Authorize.
 func Add(tx *gorm.DB, g *models.Grant, entry models.AuditEntry) error {
+	// The server ceiling has no editing API yet. Account-grant operations
+	// must not become an unauthorised way to change installation policy.
+	if g.HolderKind == models.GrantHolderServer {
+		return ErrExceedsHeld
+	}
+	// The ceiling role belongs only to the server object. Assigning it to an
+	// account would turn a later increase of the ceiling into an actor grant.
+	var serverRole int64
+	if err := tx.Model(&models.Role{}).Where("id = ? AND name = ?", g.RoleID, models.RoleServer).Count(&serverRole).Error; err != nil {
+		return err
+	}
+	if serverRole != 0 {
+		return ErrExceedsHeld
+	}
 	if g.GrantedAt.IsZero() {
 		g.GrantedAt = time.Now()
 	}
@@ -84,6 +98,9 @@ func Add(tx *gorm.DB, g *models.Grant, entry models.AuditEntry) error {
 // running ends with it, and is recorded as switched off by the same actor. The
 // caller holds Lock and has checked Authorize.
 func Remove(tx *gorm.DB, g *models.Grant, entry models.AuditEntry) error {
+	if g.HolderKind == models.GrantHolderServer {
+		return ErrExceedsHeld
+	}
 	now := time.Now()
 	live, err := liveActivation(tx, g.ID, now)
 	if err != nil {

@@ -37,6 +37,9 @@ func (c mailRemovalConnection) record(q string, args []driver.NamedValue) {
 // Capture actual selectors and state transitions. Controlled results prove
 // wiring, not SQL isolation, worker races or live mail/audit persistence.
 func (c mailRemovalConnection) QueryContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
+	if rows, ok := defaultServerCeilingRows(q, args); ok {
+		return rows, nil
+	}
 	if strings.Contains(q, "JOIN role_capabilities") {
 		rows, err := c.mailResourceReadConnection.QueryContext(ctx, q, args)
 		if err != nil {

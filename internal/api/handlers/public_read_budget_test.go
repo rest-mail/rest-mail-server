@@ -127,6 +127,7 @@ func publicHealthSteps(scope string) []publicReadStep {
 		publicReadRow("mailboxes", []string{"id", "active", "credential_epoch"}, int64(7), true, int64(0)),
 		{query: "FROM grants AS g", columns: []string{"scope", "capability", "expires_at", "activation_expires_at"}, rows: [][]driver.Value{{scope, "domains:read", nil, nil}}},
 		publicReadRow("mailboxes", []string{"address"}, "reader@example.test"),
+		{query: "FROM grants AS g", columns: []string{"scope", "capability"}, rows: [][]driver.Value{{"*", "domains:read"}}},
 		publicReadRow("certificates", []string{"id", "domain_id", "issuer", "not_after", "cert_pem", "key_pem"}, int64(5), int64(1), "fixture issuer", time.Now().Add(-time.Hour), "private-certificate-bytes", "private-key-bytes"),
 		publicReadRow("domains", []string{"id", "name"}, int64(1), "example.test"),
 	}
@@ -196,7 +197,7 @@ func TestHealthPrivilegedReadsCarryHTTPBudget(t *testing.T) {
 	handler, token := publicHealthRoutes(t, publicReadGorm(t, d), false)
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, publicReadRequest(t, "/api/health", token))
-	assertPublicReadBudget(t, d, rr, 200, 5)
+	assertPublicReadBudget(t, d, rr, 200, 6)
 	if d.pings != 1 || !strings.Contains(rr.Body.String(), `"cert_warnings"`) || !strings.Contains(rr.Body.String(), `"domain":"example.test"`) {
 		t.Fatalf("privileged health changed: ping=%d body=%s", d.pings, rr.Body)
 	}
@@ -204,7 +205,7 @@ func TestHealthPrivilegedReadsCarryHTTPBudget(t *testing.T) {
 
 func TestPublicReadCancellationReachesEveryStage(t *testing.T) {
 	for _, area := range []string{"policy", "recipient", "health"} {
-		count := map[string]int{"policy": 2, "recipient": 1, "health": 5}[area]
+		count := map[string]int{"policy": 2, "recipient": 1, "health": 6}[area]
 		for index := 0; index < count; index++ {
 			t.Run(area+"/"+string(rune('1'+index)), func(t *testing.T) {
 				var steps []publicReadStep
@@ -313,10 +314,10 @@ func TestHealthReadBudgetRetainsDisclosureGate(t *testing.T) {
 				want = 1
 			case "no grant":
 				steps[1].rows = nil
-				want = 3
+				want = 4
 			case "domain scoped":
 				steps[1].rows[0][0] = grants.Domain("example.test")
-				want = 3
+				want = 4
 			}
 			d := &publicReadDB{steps: steps[:want]}
 			handler, token := publicHealthRoutes(t, publicReadGorm(t, d), kind == "setup pending")

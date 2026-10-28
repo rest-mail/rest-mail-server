@@ -73,6 +73,9 @@ func accountReadAddress(id string) string {
 }
 
 func (c accountReadConnection) QueryContext(_ context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
+	if rows, ok := defaultServerCeilingRows(query, args); ok {
+		return rows, nil
+	}
 	stamp := time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC)
 	if strings.Contains(query, "JOIN role_capabilities") {
 		if c.state.mode == "grant_failure" {

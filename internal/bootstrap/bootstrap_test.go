@@ -134,8 +134,8 @@ func TestEnsureRBAC_IdempotentAndSuperadminHasWildcard(t *testing.T) {
 	if roles != roles2 || caps != caps2 || links != links2 {
 		t.Fatalf("second run changed rows: roles %d→%d caps %d→%d links %d→%d", roles, roles2, caps, caps2, links, links2)
 	}
-	if roles != 4 {
-		t.Errorf("roles = %d, want 4 (superadmin, admin, readonly, owner)", roles)
+	if roles != 5 {
+		t.Errorf("roles = %d, want 5 (superadmin, admin, readonly, owner, server)", roles)
 	}
 	var owner models.Role
 	gdb.Where("name = ?", models.RoleOwner).First(&owner)
@@ -306,7 +306,7 @@ func TestEnsureFirstAdmin_LeavesAnOwnersActiveSuperadminAlone(t *testing.T) {
 	modes := func() []string {
 		var out []string
 		if err := gdb.Table("grants g").Joins("JOIN roles r ON r.id = g.role_id").
-			Where("g.holder_id = ?", owner.ID).Order("r.name").
+			Where("g.holder_kind = ? AND g.holder_id = ?", models.GrantHolderAccount, owner.ID).Order("r.name").
 			Pluck("r.name || ' ' || g.mode", &out).Error; err != nil {
 			t.Fatal(err)
 		}

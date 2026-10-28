@@ -50,6 +50,7 @@ func TestMessageRemovalPersistenceQuotaAndEvents(t *testing.T) {
 			foreign := models.Message{MailboxID: other.ID, Folder: "INBOX", SizeBytes: 700}
 			create(&sibling)
 			create(&foreign)
+			ensureDefaultServerCeiling(t, db)
 			broker := NewSSEBroker()
 			events := broker.Subscribe(owner.ID)
 			foreignEvents := broker.Subscribe(other.ID)

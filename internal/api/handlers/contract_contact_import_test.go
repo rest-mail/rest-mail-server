@@ -58,6 +58,7 @@ func TestImportContacts_ContractBoundaries(t *testing.T) {
 	if err := db.Exec(`CREATE UNIQUE INDEX idx_contacts_mailbox_email ON contacts(mailbox_id, email)`).Error; err != nil {
 		t.Fatal(err)
 	}
+	ensureDefaultServerCeiling(t, db)
 	mailbox := seedMailbox(t, db, "contact-import")
 	existing := models.Contact{MailboxID: mailbox.ID, Email: "existing@example.com", Name: "Keep me", TrustLevel: "blocked", Source: "manual"}
 	if err := db.Create(&existing).Error; err != nil {

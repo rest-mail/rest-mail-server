@@ -189,7 +189,9 @@ func EnsureRBAC(database *gorm.DB) error {
 	}
 	slog.Info("role capabilities assigned", "role", models.RoleOwner, "count", len(models.OwnerCapabilities))
 
-	return nil
+	// This data migration also runs on existing installations. It initializes
+	// the server object once, after the complete capability vocabulary exists.
+	return grants.EnsureServerCeiling(database)
 }
 
 // EnsureFirstAdmin makes the first account of a fresh install: address (the

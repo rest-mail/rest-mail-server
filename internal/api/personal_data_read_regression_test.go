@@ -24,6 +24,9 @@ func (c personalDataReadConnection) Driver() driver.Driver { return c }
 func (c personalDataReadConnection) Open(string) (driver.Conn, error) { return c, nil }
 
 func (c personalDataReadConnection) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
+	if rows, ok := defaultServerCeilingRows(query, args); ok {
+		return rows, nil
+	}
 	if strings.Contains(query, "JOIN role_capabilities") {
 		if c.mode == "domain_manager" {
 			return &authReadSnapshotRows{columns: []string{"scope", "capability", "expires_at", "activation_expires_at"}, rows: [][]driver.Value{{"domain:example.com", "mail:read", nil, nil}}}, nil
