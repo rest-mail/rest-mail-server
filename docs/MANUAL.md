@@ -672,6 +672,8 @@ Implemented in slices; issue #153 remains open.
 | `MASTER_KEY` | *(empty)* | AES-256-GCM key for encrypting private keys at rest. **Required in prod; losing it means losing all DKIM/TLS private keys.** |
 | `RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD` | *(empty)* | First admin of a fresh install (superadmin eligible, switched on when needed), created only while **no** admin exists; 16+ bytes. Empty = no bootstrap admin. See [§7.9](#79-first-start-of-a-production-install). |
 | `RESTMAIL_BOOTSTRAP_ADMIN_ADDRESS` | *(empty)* | The address of that first account. The Helm chart sets it to `admin@<mailserver.domain>`; its domain is created with it if this server does not host it yet. |
+| `RESTMAIL_AUDIT_ANCHOR_EMAIL_ENABLED` | `true` | Email audit-chain anchors daily and after administrative changes. |
+| `RESTMAIL_AUDIT_ANCHOR_EMAIL_TO` | *(empty)* | Comma-separated mailbox addresses. Empty uses active accounts with a non-expired `superadmin` grant at `*`, active or eligible (the installation owners). Use an independent mailbox to retain anchors outside this server. |
 | `RESTMAIL_APNS_KEY_FILE` | *(empty)* | Path to the APNs auth key (`.p8`), mounted from a secret. Push is off unless this, the key id and the team id are all set; a key that is set and does not load stops the API starting. |
 | `RESTMAIL_APNS_KEY_ID` | *(empty)* | The key's id, from the Apple Developer portal. |
 | `RESTMAIL_APNS_TEAM_ID` | *(empty)* | The developer team the key belongs to. |
@@ -680,7 +682,37 @@ Implemented in slices; issue #153 remains open.
 | `ENVIRONMENT` | `production` | Development/test runs must explicitly set `development` or `test` |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
 
+#### Audit chain anchors
+
+Audit anchor email contains only the server name (`GATEWAY_HOSTNAME`), UTC time,
+latest audit sequence and hash, and the previous published sequence and hash.
+The plain-text body is under 1 KiB and contains no log entries. The first message
+uses previous sequence `0` and the genesis hash (64 zeros). Keep these messages
+outside this server; a copy in its own database cannot reveal a rewritten log.
+Supply `Seq:Hash` from a retained message to
+`GET /api/v1/admin/audit/verify?anchor=<seq>:<hash>` for verification.
+
+The API checks at startup and once a minute. It queues an initial anchor for a
+nonempty log, then one every 24 hours; successful administrative writes trigger
+another after five quiet minutes. Continuous administrative activity triggers
+one after an hour. Publications are always at least an hour apart, including
+across restarts and API replicas. Reads and failed requests do not trigger a
+burst. Owner-key and grant changes also count. Configure delivery through the
+two variables above (Helm: `api.auditAnchorEmail.enabled` and
+`api.auditAnchorEmail.to`). No recipient means no publication, with an error in
+the server log so configuration can be corrected.
+
+Every publication appends `audit.anchor.email` with the anchored and previous
+sequence/hash and `delivery: queued` in the same transaction that queues all
+recipient copies. Queue failures roll back both; outbound delivery, DKIM signing,
+retry and bounce handling follow the usual mail queue. Each copy names only its
+own recipient. The sender is `audit-anchor@<first owner's mail domain>`, or
+`audit-anchor@<GATEWAY_HOSTNAME>` when only explicit recipients exist. A queued
+event records dispatch, not confirmed receipt; retain the received email as the
+external evidence. The optional HTTPS/object-storage target is separate work.
+
 ### 6.2 TLS / certs
+
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `TLS_CERT_PATH` | *(empty)* | Primary fullchain PEM; checks for replacements on handshakes at most every 5s |

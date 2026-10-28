@@ -14,6 +14,7 @@ import (
 
 	acmeclient "github.com/restmail/restmail/internal/acme"
 	"github.com/restmail/restmail/internal/api"
+	"github.com/restmail/restmail/internal/auditanchor"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/bootstrap"
 	"github.com/restmail/restmail/internal/config"
@@ -295,6 +296,12 @@ func main() {
 	grantSweeper := grants.NewSweeper(database, grants.SweepInterval)
 	grantSweeper.Start()
 
+	var anchorWorker *auditanchor.Worker
+	if cfg.AuditAnchorEmailEnabled {
+		anchorWorker = auditanchor.NewWorker(database, cfg.GatewayHostname, cfg.AuditAnchorEmailTo)
+		anchorWorker.Start()
+	}
+
 	// Start quarantine digest worker
 	digestInterval := 24 * time.Hour
 	if cfg.Environment == "development" {
@@ -414,6 +421,9 @@ func main() {
 	}
 	domainWatcher.Shutdown()
 	grantSweeper.Shutdown()
+	if anchorWorker != nil {
+		anchorWorker.Shutdown()
+	}
 	quotaReconciler.Shutdown()
 	dmarcReporter.Shutdown()
 	// Stop the rollup worker (takes a final snapshot to capture the partial

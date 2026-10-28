@@ -7,7 +7,8 @@
 // UPDATE, DELETE and TRUNCATE on the table. Below REST Mail, whoever runs the
 // database could recompute every hash after an edit; anchoring the latest
 // (seq, hash) somewhere they do not control is what catches that. Verify
-// checks the chain against such an Anchor; publishing anchors comes later.
+// checks the chain against such an Anchor; internal/auditanchor publishes
+// chain heads by email through the durable outbound queue.
 package audit
 
 import (

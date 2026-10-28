@@ -445,6 +445,8 @@ The most common knobs at install time:
 | `postgres.existingSecret` | `restmail-postgres` | Set empty to inline creds |
 | `api.existingSecret` | `restmail-api` | Set empty to inline creds |
 | `api.image.repository` | `ghcr.io/rest-mail/api` | |
+| `api.auditAnchorEmail.enabled` | `true` | Email audit-chain heads daily and after administrative changes, at most hourly |
+| `api.auditAnchorEmail.to` | _(empty)_ | Comma-separated destinations; defaults to installation superadmin accounts. Prefer an independent mailbox outside this server. |
 | `smtpGateway.service.type` | `LoadBalancer` | `NodePort` for dev |
 | `imapGateway.service.type` | `LoadBalancer` | |
 | `pop3Gateway.service.type` | `LoadBalancer` | |
