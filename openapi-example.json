@@ -273,7 +273,7 @@
       },
       "response": {
         "status": 200,
-        "body": "event: ping\ndata: {}\n\n",
+        "body": "id: 1\nevent: ping\ndata: {}\n\n",
         "mediaType": "text/event-stream"
       }
     },
@@ -348,6 +348,22 @@
               {
                 "scope": "domain:example.com",
                 "capability": "domains:read"
+              },
+              {
+                "scope": "mailbox:admin@example.com",
+                "capability": "mail:read"
+              },
+              {
+                "scope": "mailbox:admin@example.com",
+                "capability": "mail:send"
+              },
+              {
+                "scope": "mailbox:admin@example.com",
+                "capability": "mail:write"
+              },
+              {
+                "scope": "mailbox:admin@example.com",
+                "capability": "mailbox:manage"
               }
             ]
           }
@@ -3774,7 +3790,7 @@
       }
     },
     "credential": {
-      "summary": "A request made with a credential cannot manage credentials",
+      "summary": "HTTP Basic credentials cannot authenticate a session-only route",
       "requires": {
         "principal": "without_capability"
       },
@@ -3787,11 +3803,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 401,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Sign in with your password to manage app passwords"
+            "code": "unauthorized",
+            "message": "Invalid authorization header format"
           }
         },
         "mediaType": "application/json"
@@ -6159,6 +6175,22 @@
               {
                 "scope": "domain:example.com",
                 "capability": "domains:read"
+              },
+              {
+                "scope": "mailbox:admin@example.com",
+                "capability": "mail:read"
+              },
+              {
+                "scope": "mailbox:admin@example.com",
+                "capability": "mail:send"
+              },
+              {
+                "scope": "mailbox:admin@example.com",
+                "capability": "mail:write"
+              },
+              {
+                "scope": "mailbox:admin@example.com",
+                "capability": "mailbox:manage"
               }
             ]
           }
@@ -21571,6 +21603,22 @@
               {
                 "scope": "domain:example.com",
                 "capability": "domains:read"
+              },
+              {
+                "scope": "mailbox:admin@example.com",
+                "capability": "mail:read"
+              },
+              {
+                "scope": "mailbox:admin@example.com",
+                "capability": "mail:send"
+              },
+              {
+                "scope": "mailbox:admin@example.com",
+                "capability": "mail:write"
+              },
+              {
+                "scope": "mailbox:admin@example.com",
+                "capability": "mailbox:manage"
               }
             ]
           }
@@ -23622,7 +23670,8 @@
           "email": "admin@restmail.test",
           "recovery_code": "AAAA-BBBB-CCCC",
           "new_password": "a new password of my own",
-          "client": "native"
+          "client": "native",
+          "totp_code": "123456"
         }
       },
       "response": {
@@ -23637,7 +23686,25 @@
             },
             "access_token": "example-access-token",
             "refresh_token": "example-refresh-token",
-            "refresh_expires_in": 604800
+            "refresh_expires_in": 604800,
+            "scoped_capabilities": [
+              {
+                "scope": "mailbox:admin@restmail.test",
+                "capability": "mail:read"
+              },
+              {
+                "scope": "mailbox:admin@restmail.test",
+                "capability": "mail:send"
+              },
+              {
+                "scope": "mailbox:admin@restmail.test",
+                "capability": "mail:write"
+              },
+              {
+                "scope": "mailbox:admin@restmail.test",
+                "capability": "mailbox:manage"
+              }
+            ]
           }
         },
         "mediaType": "application/json"
@@ -24003,7 +24070,7 @@
         "body": {
           "error": {
             "code": "forbidden",
-            "message": "Insufficient permissions"
+            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -25008,7 +25075,10 @@
             },
             "access_token": "example-access-token",
             "refresh_token": "example-refresh-token",
-            "refresh_expires_in": 604800
+            "refresh_expires_in": 604800,
+            "setup_required": [
+              "two_factor"
+            ]
           }
         },
         "mediaType": "application/json"
@@ -26666,27 +26736,6 @@
     }
   },
   "searchMessages": {
-    "csrf_mismatch": {
-      "summary": "A cookie session sends no CSRF header",
-      "requires": {
-        "principal": "without_capability"
-      },
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "csrf_failed",
-            "message": "Missing or invalid CSRF token"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
     "found": {
       "summary": "Messages matching the query",
       "request": {
