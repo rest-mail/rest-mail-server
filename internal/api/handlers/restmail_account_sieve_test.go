@@ -27,6 +27,11 @@ func TestRESTMAILDeliver_RunsEachRecipientsSieveScript(t *testing.T) {
 	if err := db.AutoMigrate(&models.SieveScript{}, &models.Quarantine{}, &models.VacationConfig{}, &models.VacationResponse{}); err != nil {
 		t.Skipf("restmail account sieve DB test skipped: migrate failed (%v)", err)
 	}
+	// Production migration adds this index outside AutoMigrate. Vacation's
+	// atomic upsert needs the same constraint in this minimal fixture.
+	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_vacation_responses_handle ON vacation_responses(mailbox_id, sender, handle)`).Error; err != nil {
+		t.Fatal(err)
+	}
 	engine := pipeline.NewEngine(pipeline.DefaultRegistry, slog.Default())
 	const files = `require ["fileinto", "imap4flags"]; fileinto "Work"; addflag "\\Flagged";`
 	const refuses = `require ["reject"]; reject "not for me";`
@@ -51,6 +56,7 @@ func TestRESTMAILDeliver_RunsEachRecipientsSieveScript(t *testing.T) {
 			if err := db.Create(&mb).Error; err != nil {
 				t.Fatalf("create mailbox: %v", err)
 			}
+			seedReceiveFixture(t, db, mb)
 			boxes[local] = mb
 			if script != "" {
 				h := hash

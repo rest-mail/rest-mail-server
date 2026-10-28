@@ -31,6 +31,7 @@ func restmailStorageFixture(t *testing.T) (*gorm.DB, models.Mailbox) {
 	if err := db.Create(&mailbox).Error; err != nil {
 		t.Fatal(err)
 	}
+	seedReceiveFixture(t, db, mailbox)
 	usage := models.QuotaUsage{MailboxID: mailbox.ID, SubjectBytes: 4, BodyBytes: 9, MessageCount: 2}
 	if err := db.Create(&usage).Error; err != nil {
 		t.Fatal(err)
@@ -221,6 +222,7 @@ func TestRESTMAILRecipientStoragePreservesPartialDelivery(t *testing.T) {
 	if err := db.Create(&other).Error; err != nil {
 		t.Fatal(err)
 	}
+	seedReceiveFixture(t, db, other)
 	if err := db.Create(&models.QuotaUsage{MailboxID: other.ID, SubjectBytes: 4, BodyBytes: 9, MessageCount: 2}).Error; err != nil {
 		t.Fatal(err)
 	}

@@ -25,6 +25,7 @@ import (
 	imapgw "github.com/restmail/restmail/internal/gateway/imap"
 	pop3gw "github.com/restmail/restmail/internal/gateway/pop3"
 	smtpgw "github.com/restmail/restmail/internal/gateway/smtp"
+	"github.com/restmail/restmail/internal/grants"
 	"gorm.io/gorm"
 )
 
@@ -240,6 +241,10 @@ func (f *credentialFixture) seedMailbox(domainID uint, local string) uint {
 	mb := models.Mailbox{DomainID: domainID, LocalPart: local, Address: local + "@example.test", Active: true}
 	if err := f.db.Create(&mb).Error; err != nil {
 		f.t.Fatalf("seed mailbox: %v", err)
+	}
+	// A created account holds its default receive grant.
+	if err := grants.EnsureReceive(f.db, &mb); err != nil {
+		f.t.Fatalf("seed receive grant: %v", err)
 	}
 	if _, err := repositories.NewCredentialRepository(f.db).SetPassword(mb.ID, hash, nil, time.Now()); err != nil {
 		f.t.Fatalf("seed password: %v", err)

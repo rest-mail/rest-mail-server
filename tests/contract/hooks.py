@@ -16,6 +16,7 @@ import base64
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.error
@@ -35,6 +36,9 @@ ADMIN = FIXTURE_PLAN["principals"]["admin"]["address"]
 ADMIN_PASSWORD = "admin123!@"
 # A seeded account that nobody owns, to link (cmd/seed's fixture password).
 LINKABLE_PASSWORD = "password123"
+# The two-factor administrator for setup a password cannot do.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import mfa_admin  # noqa: E402
 
 PRINCIPALS = os.environ.get("CONTRACT_PRINCIPALS", ".cache/contract-principals.json")
 
@@ -47,6 +51,17 @@ def principals():
 def basic(address, password):
     token = base64.b64encode((f"{address}:{password}").encode()).decode()
     return "Basic " + token
+
+
+def mfa_admin_token(origin):
+    """A session signed in with a real second factor, renewed after ten minutes."""
+    cached = hooks.stash.get("mfa_admin_sessions", {}).get(origin)
+    if cached and time.time() - cached["at"] < 600:
+        return cached["token"]
+    sessions = hooks.stash.get("mfa_admin_sessions", {})
+    sessions[origin] = {"token": mfa_admin.session(origin), "at": time.time()}
+    hooks.stash["mfa_admin_sessions"] = sessions
+    return sessions[origin]["token"]
 
 
 @hooks.before("login")
@@ -1566,14 +1581,22 @@ def host_the_account_probe_domain(transaction):
         return
     if key not in owned:
         return
+    # Deleting an account always takes a session signed in with 2FA.
     request = urllib.request.Request(
         origin + "/api/v1/admin/mailboxes/{:d}".format(account["id"]),
-        headers=headers,
+        headers={"Authorization": "Bearer " + mfa_admin_token(origin)},
         method="DELETE",
     )
-    with urllib.request.urlopen(request, timeout=10) as response:
-        if response.status != 204:
-            raise RuntimeError("could not remove the previous account probe")
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            if response.status != 204:
+                raise RuntimeError("could not remove the previous account probe")
+    except urllib.error.HTTPError as error:
+        raise RuntimeError(
+            "could not remove the previous account probe: {} {}".format(
+                error.code, error.read()[:300].decode(errors="replace")
+            )
+        ) from error
 
 
 @hooks.after("createAccount")
@@ -1666,9 +1689,17 @@ def invite_an_account_without_credentials(transaction):
     # who has one, and an id no account holds. Coverage probes keep their ids.
     path, _, query = transaction["fullPath"].partition("?")
     mailboxes, placeholder, _ = path.rstrip("/").rsplit("/", 2)
+    name = transaction.get("name", "")
+    # The minimum-id probe of the 201 names the fixture admin (1), who holds a
+    # password: its 409 is the rule, not a disagreement, and no account at id 1
+    # can be invitable. TestInvitationCanonicalExamples proves both sides. A
+    # probe runs under its transaction's own name (the "coverage:" prefix is
+    # added to the report later), so the id is what tells it from the example.
+    if placeholder == "1" and " > 201 > " in name and " as " not in name:
+        transaction["skip"] = True
+        return
     if placeholder != "12":
         return
-    name = transaction.get("name", "")
     if " > 409 > " in name:
         account_id = 1
     elif " > 404 > " in name:

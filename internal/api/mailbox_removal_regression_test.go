@@ -239,7 +239,12 @@ func newMailboxRemovalScenarios(t *testing.T) map[string]bulkQueueExampleScenari
 	previousSessionCheck := sessionCheck
 	sessionCheck = cachedSessionCheck
 	defer func() { sessionCheck = previousSessionCheck }()
-	token := mailboxToken(t, jwt)
+	// Deleting an account always takes a session signed in with 2FA.
+	session, err := jwt.GenerateSession(10, "user@example.com", 0, []string{auth.AMRPassword, auth.AMROTP}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := session.AccessToken
 	keys := map[string]accountListKey{}
 	tokens := map[string]string{}
 	for name, p := range map[string]auth.ScopedPermission{
@@ -387,15 +392,10 @@ func newMailboxRemovalScenarios(t *testing.T) map[string]bulkQueueExampleScenari
 	key := self
 	key.token = tokens["key_write"]
 	out["self_key"] = key
-	mfa, err := jwt.GenerateSession(10, "user@example.com", 0, []string{auth.AMRPassword, auth.AMROTP}, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, name := range []string{"last_superadmin", "grant_exceeds_held"} {
-		s := normal
-		s.token = mfa.AccessToken
-		out[name] = s
-	}
+	// A password alone never deletes an account.
+	passwordOnly := normal
+	passwordOnly.token = mailboxToken(t, jwt)
+	out["two_factor_required"] = passwordOnly
 	out["cancelled_after_lookup"] = bulkQueueExampleScenario{accountReadScenario{http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r = r.Clone(r.Context())
 		r.Header.Set("X-Example-Cancel", "after-mailbox-lookup")

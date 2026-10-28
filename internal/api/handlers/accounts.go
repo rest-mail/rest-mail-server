@@ -358,6 +358,11 @@ func (h *AccountHandler) create(r *http.Request, req createAccountRequest) (acco
 			}
 			return err
 		}
+		if req.Receive == nil || *req.Receive {
+			if err := grants.EnsureReceive(tx, &account); err != nil {
+				return err
+			}
+		}
 		// GORM's ordinary-mailbox default replaces a zero on INSERT. Restore
 		// zero explicitly so an owned account keeps inheriting future changes.
 		if (req.Owned && req.QuotaBytes == nil) || (req.QuotaBytes != nil && *req.QuotaBytes == 0) {
@@ -381,6 +386,7 @@ func (h *AccountHandler) create(r *http.Request, req createAccountRequest) (acco
 		e.Target["account_id"] = strconv.FormatUint(uint64(account.ID), 10)
 		e.Target["address"] = account.Address
 		e.Target["password"] = strconv.FormatBool(hash != "")
+		e.Target["receive"] = strconv.FormatBool(req.Receive == nil || *req.Receive)
 		if account.OwnerID != nil {
 			e.Target["owner_id"] = strconv.FormatUint(uint64(*account.OwnerID), 10)
 		}

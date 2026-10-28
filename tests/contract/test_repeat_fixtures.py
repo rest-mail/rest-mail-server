@@ -45,6 +45,12 @@ class RepeatFixtureTests(unittest.TestCase):
             self.assertEqual(method, "POST")
             self.assertEqual(json.loads(request.data), self.config["auth"]["login"]["body"])
             return Response(200, {"data": {"access_token": "setup-token"}})
+        if method == "DELETE" and path.startswith("/api/v1/admin/mailboxes/"):
+            # Deleting an account always takes a session signed in with 2FA.
+            self.assertEqual(request.get_header("Authorization"), "Bearer mfa-token")
+            account_id = int(path.rsplit("/", 1)[1])
+            self.accounts = [a for a in self.accounts if a["id"] != account_id]
+            return Response(204)
         self.assertEqual(request.get_header("Authorization"), "Bearer setup-token")
         if method == "GET" and path == "/api/v1/admin/mailboxes":
             return Response(200, {"data": self.accounts})
@@ -70,6 +76,17 @@ class RepeatFixtureTests(unittest.TestCase):
         self.assertFalse(self.folder)
         self.assertEqual([contact["id"] for contact in self.contacts], [15, 16])
         self.assertEqual(self.calls.count(("DELETE", "/api/v1/accounts/4/contacts/14")), 1)
+
+    def test_removes_the_created_example_account_with_a_two_factor_session(self):
+        self.accounts.append({"id": 9, "address": "new-account@restmail.test"})
+        with patch.object(repeat_fixtures.urllib.request, "urlopen", side_effect=self.api), \
+                patch.object(repeat_fixtures.mfa_admin, "session", return_value="mfa-token") as mfa:
+            repeat_fixtures.prepare(self.config)
+            repeat_fixtures.prepare(self.config)
+        self.assertNotIn(9, [a["id"] for a in self.accounts])
+        self.assertEqual(self.calls.count(("DELETE", "/api/v1/admin/mailboxes/9")), 1)
+        self.assertEqual(mfa.call_count, 1)
+        self.assertEqual([a["id"] for a in self.accounts], [1, 4])
 
     def test_other_accounts_are_rejected_before_any_request(self):
         self.config["auth"]["login"]["body"]["email"] = "admin@production.example"

@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Reset the two named examples left in the disposable fixture admin mailbox.
+"""Reset what the examples gate leaves behind before coverage repeats it.
 
 The full examples gate runs before coverage in a separate vertrag process.
-Only its Receipts folder and spam@example.org contact need removing before
-the second process repeats their create examples. The queue fixture is
-replenished separately by chore test:contract-fixtures.
+Its Receipts folder and spam@example.org contact, and the account the
+createAccount example made, need removing before the second process repeats
+their create examples. Deleting an account takes a session signed in with
+2FA, which the primary fixture admin has not, so mfa_admin.py signs that one
+in. The queue fixture is replenished separately by chore
+test:contract-fixtures.
 """
 import json
 from pathlib import Path
@@ -15,7 +18,11 @@ import urllib.request
 
 import yaml
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import mfa_admin  # noqa: E402
+
 ADDRESS = "admin@restmail.test"
+EXAMPLES = Path(__file__).resolve().parents[2] / "openapi-example.json"
 BLOCKED_SENDER = "spam@example.org"
 
 
@@ -54,6 +61,17 @@ def prepare(config):
             if type(contact_id) is not int or contact_id < 1:
                 raise RuntimeError("invalid repeated contact fixture ID")
             send("DELETE", base + "/contacts/" + str(contact_id), 204, missing=True)
+
+    # The account the createAccount example made, which the in-process
+    # deleteMailbox proof (it needs 2FA) no longer removes on the live run.
+    created = json.loads(EXAMPLES.read_text())["createAccount"]["created"]["request"]["body"]["address"]
+    for account in send("GET", "/api/v1/admin/mailboxes?limit=200", 200)["data"]:
+        if account.get("address") == created:
+            if type(account.get("id")) is not int or account["id"] < 1:
+                raise RuntimeError("invalid created account fixture ID")
+            headers["Authorization"] = "Bearer " + mfa_admin.session(endpoint)
+            send("DELETE", "/api/v1/admin/mailboxes/" + str(account["id"]), 204, missing=True)
+            headers["Authorization"] = "Bearer " + token
 
 
 if __name__ == "__main__":

@@ -1143,6 +1143,9 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody)
 		RequireTLS:   req.RequireTLS,
 	})
 	if err != nil {
+		if errors.Is(err, repositories.ErrMailboxUnavailable) {
+			return zero, endpoint.Refuse(http.StatusNotFound, "mailbox_not_found", "Mailbox not found")
+		}
 		errStr := err.Error()
 		switch {
 		case strings.HasPrefix(errStr, "rejected:"):
@@ -2163,6 +2166,9 @@ func recordInboundReceived(receivedTLS *bool) {
 // SendMessage (local recipient delivery).
 func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliveryParams) (*models.Message, error) {
 	mailbox := params.Mailbox
+	if err := repositories.RequireMailboxReceive(h.db.WithContext(ctx), &mailbox); err != nil {
+		return nil, err
+	}
 
 	// Always-on: count every inbound-MX arrival (before the pipeline runs, so a
 	// later reject/quarantine still counts as received) on messages_received,

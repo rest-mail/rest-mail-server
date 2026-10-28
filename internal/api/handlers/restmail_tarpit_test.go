@@ -200,6 +200,7 @@ func TestCheckMailboxTarpitsNegativeButNotPositive(t *testing.T) {
 	if err := db.Create(&mbox).Error; err != nil {
 		t.Fatalf("seed mailbox: %v", err)
 	}
+	seedReceiveFixture(t, db, mbox)
 	t.Cleanup(func() {
 		db.Where("id = ?", mbox.ID).Delete(&models.Mailbox{})
 		db.Where("id = ?", domain.ID).Delete(&models.Domain{})

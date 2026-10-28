@@ -42,6 +42,7 @@ func TestSendMessageLocalRecipientsEAI(t *testing.T) {
 		if err := tx.Create(&mb).Error; err != nil {
 			t.Fatal(err)
 		}
+		seedReceiveFixture(t, tx, mb)
 		return mb
 	}
 	sender := seed("absender")

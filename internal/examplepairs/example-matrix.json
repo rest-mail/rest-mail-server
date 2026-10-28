@@ -11537,7 +11537,14 @@
         }
       },
       "response": {
-        "status": 204
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "two_factor_required",
+            "message": "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "key_holder_missing": {
@@ -11564,7 +11571,14 @@
         }
       },
       "response": {
-        "status": 204
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "two_factor_required",
+            "message": "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "key_read": {
@@ -11591,7 +11605,14 @@
         }
       },
       "response": {
-        "status": 204
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "two_factor_required",
+            "message": "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "key_wrong_domain": {

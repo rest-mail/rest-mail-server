@@ -24,9 +24,10 @@ func main() {
 	linkOnly := flag.Bool("link-account-only", false, "prepare the generated account-link proof after account-creation probes")
 	apiKeys := flag.Bool("api-keys", false, "prepare a fresh account for real-MFA API key checks")
 	domainTenants := flag.Bool("domain-tenants", false, "prepare the domain administrators of the ownership phase")
+	mfaAdmin := flag.Bool("mfa-admin", false, "prepare the administrator the contract hooks enroll in real MFA")
 	flag.Parse()
 	modes := 0
-	for _, on := range []bool{*linkOnly, *apiKeys, *domainTenants} {
+	for _, on := range []bool{*linkOnly, *apiKeys, *domainTenants, *mfaAdmin} {
 		if on {
 			modes++
 		}
@@ -56,6 +57,8 @@ func main() {
 				body, _ := json.Marshal(tenants)
 				fmt.Printf("DOMAIN_TENANTS=%s\n", body)
 			}
+		} else if *mfaAdmin {
+			err = prepareMFAAdmin(database, *domain)
 		} else if *linkOnly {
 			_, err = prepareLinkFixture(database, *domain)
 		} else {
@@ -90,6 +93,9 @@ func prepareAPIKeyFixture(database *gorm.DB, domain string) (*models.Mailbox, er
 		if err := tx.Create(&account).Error; err != nil {
 			return err
 		}
+		if err := grants.EnsureReceive(tx, &account); err != nil {
+			return err
+		}
 		hash, err := auth.HashPassword("contract-api-key123!@")
 		if err != nil {
 			return err
@@ -104,6 +110,62 @@ func prepareAPIKeyFixture(database *gorm.DB, domain string) (*models.Mailbox, er
 		return err
 	})
 	return &account, err
+}
+
+// The administrator the contract hooks use for setup that takes a two-factor
+// session, such as deleting the accounts probes made (deleting an account
+// always takes 2FA). It is a superadmin: probes make accounts on more than one
+// domain, and deleting one removes its grants, which only someone holding all
+// of them may do (the primary admin holds them as each probe's owner). The hooks enroll it in TOTP through the
+// public API and sign in with a real code, so no session is forged. Its
+// grant is made here because granting through the API takes 2FA itself. The
+// password is disposable test state, known to the hooks; it is not printed.
+const mfaAdminAddress, mfaAdminPassword = "contract-mfa-admin@restmail.test", "contract-mfa-admin123!@"
+
+func prepareMFAAdmin(database *gorm.DB, domain string) error {
+	if domain != "restmail.test" {
+		return errors.New("contract fixtures require restmail.test")
+	}
+	var role models.Role
+	if err := database.Where("name = ?", "superadmin").First(&role).Error; err != nil {
+		return err
+	}
+	return database.Transaction(func(tx *gorm.DB) error {
+		var hosted models.Domain
+		if err := tx.Where("name = ?", domain).First(&hosted).Error; err != nil {
+			return err
+		}
+		account := models.Mailbox{DomainID: hosted.ID, LocalPart: "contract-mfa-admin", Address: mfaAdminAddress,
+			DisplayName: "Contract MFA admin", Active: true, QuotaBytes: hosted.DefaultQuotaBytes}
+		result := tx.Where("address = ?", account.Address).FirstOrCreate(&account)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected > 0 {
+			if err := grants.EnsureReceive(tx, &account); err != nil {
+				return err
+			}
+		}
+		creds := repositories.NewCredentialRepository(tx)
+		current, err := creds.MatchPassword(account.ID, mfaAdminPassword, time.Now())
+		if err != nil {
+			return err
+		}
+		if current == nil {
+			hash, err := auth.HashPassword(mfaAdminPassword)
+			if err != nil {
+				return err
+			}
+			if _, err := creds.SetPassword(account.ID, hash, nil, time.Now()); err != nil {
+				return err
+			}
+		}
+		if err := tx.Where("mailbox_id = ?", account.ID).FirstOrCreate(&models.QuotaUsage{MailboxID: account.ID}).Error; err != nil {
+			return err
+		}
+		_, err = grants.EnsureSystem(tx, account.ID, role.ID, grants.All, models.GrantActive)
+		return err
+	})
 }
 
 // The domain tenants of the ownership phase (#657): an administrator of
@@ -142,8 +204,14 @@ func prepareDomainTenants(database *gorm.DB, domain string) (map[string]domainTe
 			account := models.Mailbox{DomainID: hosted.ID, LocalPart: "contract-domain-admin",
 				Address: "contract-domain-admin@" + d.name, DisplayName: "Contract domain admin", Active: true,
 				QuotaBytes: hosted.DefaultQuotaBytes}
-			if err := tx.Where("address = ?", account.Address).FirstOrCreate(&account).Error; err != nil {
-				return err
+			result := tx.Where("address = ?", account.Address).FirstOrCreate(&account)
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected > 0 {
+				if err := grants.EnsureReceive(tx, &account); err != nil {
+					return err
+				}
 			}
 			creds := repositories.NewCredentialRepository(tx)
 			current, err := creds.MatchPassword(account.ID, domainTenantPassword, time.Now())
@@ -196,6 +264,11 @@ func prepareLinkFixture(database *gorm.DB, domain string) (uint, error) {
 		result := tx.Where("address = ?", account.Address).FirstOrCreate(&account)
 		if result.Error != nil {
 			return result.Error
+		}
+		if result.RowsAffected > 0 {
+			if err := grants.EnsureReceive(tx, &account); err != nil {
+				return err
+			}
 		}
 		creds := repositories.NewCredentialRepository(tx)
 		if result.RowsAffected == 0 {

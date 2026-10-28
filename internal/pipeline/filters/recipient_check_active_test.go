@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/grants"
 	"github.com/restmail/restmail/internal/pipeline"
 )
 
@@ -29,13 +30,17 @@ func TestRecipientCheck_DomainNotLive(t *testing.T) {
 	}
 
 	for _, d := range []models.Domain{live, dormant} {
-		if err := tx.Create(&models.Mailbox{
+		mailbox := models.Mailbox{
 			DomainID:  d.ID,
 			LocalPart: "user",
 			Address:   "user@" + d.Name,
 			Active:    true,
-		}).Error; err != nil {
+		}
+		if err := tx.Create(&mailbox).Error; err != nil {
 			t.Fatalf("create mailbox: %v", err)
+		}
+		if err := grants.EnsureReceive(tx, &mailbox); err != nil {
+			t.Fatal(err)
 		}
 	}
 

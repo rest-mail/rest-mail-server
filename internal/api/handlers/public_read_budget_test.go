@@ -63,6 +63,9 @@ func (d *publicReadDB) Ping(ctx context.Context) error {
 }
 func (d *publicReadDB) QueryContext(ctx context.Context, query string, _ []driver.NamedValue) (driver.Rows, error) {
 	d.observe(ctx)
+	if rows, ok := receiveFixtureRows(query); ok && (d.reads >= len(d.steps) || !strings.Contains(query, d.steps[d.reads].query)) {
+		return rows, nil
+	}
 	d.reads++
 	if d.reads > len(d.steps) {
 		return nil, errors.New("unscripted public read")

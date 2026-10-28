@@ -3,8 +3,10 @@ package filters
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/grants"
 	"github.com/restmail/restmail/internal/pipeline"
 )
 
@@ -32,6 +34,20 @@ func TestRecipientCheckOwnedQuota(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := tx.Model(&sibling).Update("active", false).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, mb := range []*models.Mailbox{&owner, &child} {
+		if err := grants.EnsureReceive(tx, mb); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The owner holds the owner role on the account it owns, which bounds it.
+	var ownerRole models.Role
+	if err := tx.Where("name = ?", models.RoleOwner).First(&ownerRole).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Create(&models.Grant{HolderKind: models.GrantHolderAccount, HolderID: owner.ID, RoleID: ownerRole.ID,
+		Scope: "mailbox:" + child.Address, Mode: models.GrantActive, GrantedByKind: models.AuditActorSystem, GrantedAt: time.Now()}).Error; err != nil {
 		t.Fatal(err)
 	}
 	for _, address := range []string{child.Address, owner.Address} {

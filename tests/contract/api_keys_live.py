@@ -110,6 +110,18 @@ def mfa_session(client, email, password):
     return signed_in, token
 
 
+def check_account_deletion(client, plain_token, token):
+    """Deleting an account always takes a session signed in with 2FA."""
+    address = f"contract-delete-{time.time_ns()}@{FIXTURE_DOMAIN}"
+    created = client.expect(201, "POST", "/api/v1/accounts",
+                            {"address": address, "password": "contract-delete123!@"}, token)["data"]
+    path = f"/api/v1/admin/mailboxes/{int(created['id'])}"
+    client.expect(403, "DELETE", path, token=plain_token, code="two_factor_required")
+    client.expect(204, "DELETE", path, token=token)
+    # Gone, it is in no domain this domain admin holds: refused, not revealed.
+    client.expect(403, "DELETE", path, token=token, code="forbidden")
+
+
 def run(base_url, email, password, domain_id):
     require_fixture_account(email)
     client = Client(base_url)
@@ -173,6 +185,8 @@ def run(base_url, email, password, domain_id):
     client.expect(204, "DELETE", f"{keys}/{created['id']}", token=token)
     client.expect(404, "DELETE", f"{keys}/{created['id']}", token=token, code="not_found")
     client.expect(401, "GET", domain_path, token=secret)
+
+    check_account_deletion(client, plain_token, token)
 
 
 def main(argv):

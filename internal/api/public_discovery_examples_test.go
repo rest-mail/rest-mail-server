@@ -41,6 +41,9 @@ func (c publicDiscoveryConnection) ExecContext(context.Context, string, []driver
 	return nil, errors.New("public discovery attempted a write")
 }
 func (c publicDiscoveryConnection) QueryContext(_ context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
+	if rows, ok := defaultReceiveAccountRows(query); ok {
+		return rows, nil
+	}
 	if len(args) == 0 {
 		return nil, errors.New("public lookup lost its restriction")
 	}

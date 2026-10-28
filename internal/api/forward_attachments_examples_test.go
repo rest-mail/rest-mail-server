@@ -76,13 +76,20 @@ func (c *forwardConnection) QueryContext(ctx context.Context, q string, args []d
 	if rows, ok := defaultServerCeilingRows(q, args); ok {
 		return rows, nil
 	}
+	if strings.HasPrefix(q, "WITH RECURSIVE owned(id, quota_used_bytes)") {
+		used := c.state.quota
+		if c.mode == "full" {
+			used = 100000
+		}
+		return invitationRows([]string{"used"}, []driver.Value{used}), nil
+	}
 	if strings.Contains(q, "JOIN role_capabilities") {
 		cols := []string{"scope", "capability", "expires_at", "activation_expires_at"}
 		if c.mode == "denied" {
 			return invitationRows(cols), nil
 		}
 		// The unique actor forwards from the fixture's sender mailbox.
-		return invitationRows(cols, []driver.Value{"*", "mail:read", nil, nil}, []driver.Value{"*", "mail:send", nil, nil}, []driver.Value{"mailbox:sender@example.test", "mail:send_as", nil, nil}), nil
+		return invitationRows(cols, []driver.Value{"*", "mail:read", nil, nil}, []driver.Value{"*", "mail:send", nil, nil}, []driver.Value{"*", "mail:receive", nil, nil}, []driver.Value{"mailbox:sender@example.test", "mail:send_as", nil, nil}), nil
 	}
 	if strings.HasPrefix(q, "SELECT count(*)") {
 		n := int64(0)

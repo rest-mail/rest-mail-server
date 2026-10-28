@@ -218,8 +218,10 @@ mine=$(curl -fsS "$API/admin/grants/mine" -H "Authorization: Bearer $agent_acces
 jq -c '[.data[] | {role, scope, mode}]' <<<"$mine"
 [[ $(jq -c '[.data[] | select(.scope == "*") | {role, scope, mode}] | sort_by(.role)' <<<"$mine") == '[{"role":"admin","scope":"*","mode":"active"},{"role":"superadmin","scope":"*","mode":"eligible"}]' ]] ||
   die "the first admin's grants"
-[[ $(jq -c '[.data[] | select(.scope != "*") | "\(.role) \(.scope)"] | sort' <<<"$mine") == '["owner mailbox:hello@e2e.test","owner mailbox:owner@e2e.test"]' ]] ||
+[[ $(jq -c '[.data[] | select(.role == "owner" and .scope != "*") | "\(.role) \(.scope)"] | sort' <<<"$mine") == '["owner mailbox:hello@e2e.test","owner mailbox:owner@e2e.test"]' ]] ||
   die "the first admin does not own the accounts it made: $(jq -c '[.data[] | {role, scope}]' <<<"$mine")"
+jq -e --arg scope "mailbox:$ADMIN" '.data | any(.role == "receiver" and .scope == $scope and .mode == "active")' <<<"$mine" >/dev/null ||
+  die "the first admin lacks its default receive grant"
 super=$(jq -r '.data[] | select(.role == "superadmin") | .id' <<<"$mine")
 # add_admin -> the status of granting a role with an empty body: 403 refused, 4xx reached.
 add_admin() { curl -s -o /dev/null -w '%{http_code}' "$API/admin/grants" "${auth[@]}" -d '{}'; }

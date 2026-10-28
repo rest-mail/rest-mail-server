@@ -33,6 +33,7 @@ type deliveryReadDB struct {
 	steps                      []deliveryReadStep
 	reads, writes, lostContext int
 	started                    chan struct{}
+	receiveErr                 error
 }
 type deliveryContextKey struct{}
 
@@ -48,6 +49,12 @@ func (d *deliveryReadDB) ExecContext(context.Context, string, []driver.NamedValu
 	return nil, errors.New("unexpected delivery write")
 }
 func (d *deliveryReadDB) QueryContext(ctx context.Context, query string, _ []driver.NamedValue) (driver.Rows, error) {
+	if rows, ok := receiveFixtureRows(query); ok {
+		if d.receiveErr != nil {
+			return nil, d.receiveErr
+		}
+		return rows, nil
+	}
 	if !strings.HasPrefix(query, "SELECT ") {
 		d.writes++
 		return nil, errors.New("unexpected delivery write")

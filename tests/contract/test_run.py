@@ -299,6 +299,7 @@ class ContractCommand(unittest.TestCase):
                 "pin",
                 "chore:test:contract-fixtures",
                 "chore:test:contract-api-keys",
+                "chore:test:contract-mfa-admin",
                 "run:gate --tag Domains",
                 "scan",
                 "run:authorization --tag Domains",

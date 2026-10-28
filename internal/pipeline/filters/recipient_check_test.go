@@ -6,9 +6,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/restmail/restmail/internal/bootstrap"
 	"github.com/restmail/restmail/internal/config"
 	rmdb "github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/grants"
 	"github.com/restmail/restmail/internal/pipeline"
 	"gorm.io/gorm"
 )
@@ -30,6 +32,12 @@ func openRecipientCheckTestDB(t *testing.T) *gorm.DB {
 	}
 	if err := gdb.AutoMigrate(&models.Domain{}, &models.Mailbox{}, &models.Alias{}); err != nil {
 		t.Skipf("recipient_check DB test skipped: migrate failed (%v)", err)
+	}
+	if err := rmdb.AutoMigrate(gdb); err != nil {
+		t.Fatal(err)
+	}
+	if err := bootstrap.EnsureRBAC(gdb); err != nil {
+		t.Fatal(err)
 	}
 	return gdb
 }
@@ -74,6 +82,9 @@ func TestRecipientCheck_Subaddressing(t *testing.T) {
 	}
 	if err := db.Create(&mb).Error; err != nil {
 		t.Fatalf("create mailbox: %v", err)
+	}
+	if err := grants.EnsureReceive(db, &mb); err != nil {
+		t.Fatal(err)
 	}
 	// Explicit alias for a full "+detail" address that has NO base mailbox.
 	al := models.Alias{

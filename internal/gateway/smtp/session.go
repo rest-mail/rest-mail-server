@@ -702,6 +702,13 @@ func (s *session) Data(r io.Reader) error {
 			continue
 		}
 		if !check.Data.Exists {
+			// A recipient accepted at RCPT can lose receive permission before
+			// DATA. Inbound mail must never become an outbound relay then.
+			if !(s.isSubmission && s.authenticated) {
+				failCode, failEnhanced, failMsg = 550, gosmtp.EnhancedCode{5, 1, 1}, "No such user"
+				failed++
+				continue
+			}
 			// Non-local: insert into the outbound queue for the queue worker.
 			recipientDomain := rcpt
 			if idx := strings.LastIndex(rcpt, "@"); idx >= 0 {
@@ -814,6 +821,8 @@ func (s *session) Data(r io.Reader) error {
 			var apiErr *apiclient.APIError
 			if errors.As(err, &apiErr) {
 				switch {
+				case apiErr.StatusCode == 404:
+					failCode, failEnhanced, failMsg = 550, gosmtp.EnhancedCode{5, 1, 1}, "No such user"
 				case apiErr.StatusCode == 403 || apiErr.StatusCode == 550:
 					failCode, failEnhanced, failMsg = 550, gosmtp.EnhancedCode{5, 7, 1}, "Rejected by policy"
 				case apiErr.StatusCode == 422:

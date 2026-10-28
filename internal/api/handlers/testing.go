@@ -16,6 +16,7 @@ import (
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
+	"github.com/restmail/restmail/internal/grants"
 	rmail "github.com/restmail/restmail/internal/mail"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -332,8 +333,23 @@ func (h *TestHandler) restoreSnapshot(r *http.Request, in RestoreTestSnapshot) (
 			}
 		}
 		for i := range snap.Mailboxes {
+			var existing int64
+			if err := tx.Model(&models.Mailbox{}).Where("id = ? OR address = ?", snap.Mailboxes[i].ID, snap.Mailboxes[i].Address).Count(&existing).Error; err != nil {
+				return err
+			}
 			if err := restoreTestRow(tx, &snap.Mailboxes[i], true); err != nil {
 				return fmt.Errorf("restore mailboxes: %w", err)
+			}
+			// Snapshots contain fixture rows, not grants. Newly restored
+			// accounts get the ordinary default; retained accounts keep theirs.
+			if existing == 0 {
+				var mailbox models.Mailbox
+				if err := tx.Where("address = ?", snap.Mailboxes[i].Address).First(&mailbox).Error; err != nil {
+					return err
+				}
+				if err := grants.EnsureReceive(tx, &mailbox); err != nil {
+					return err
+				}
 			}
 		}
 		for i := range snap.Aliases {
@@ -411,7 +427,8 @@ func clearTestData(tx *gorm.DB) error {
 		"DELETE FROM quarantine", "DELETE FROM vacation_configs", "DELETE FROM vacation_responses",
 		"DELETE FROM contacts", "DELETE FROM sieve_scripts", "DELETE FROM quota_usage",
 		"DELETE FROM credentials WHERE account_id NOT IN " + testDataAdmins,
-		"DELETE FROM grants WHERE holder_kind = 'account' AND (scope LIKE 'mailbox:%' OR holder_id NOT IN " + testDataAdmins + ")",
+		"DELETE FROM grants WHERE holder_kind = 'account' AND (holder_id NOT IN " + testDataAdmins +
+			" OR (scope LIKE 'mailbox:%' AND scope <> (SELECT 'mailbox:' || address FROM mailboxes WHERE id = grants.holder_id)))",
 		"DELETE FROM aliases", "DELETE FROM message_traces",
 		"DELETE FROM custom_filters", "DELETE FROM bans",
 		"DELETE FROM restmail_capabilities", "DELETE FROM certificates",
@@ -549,6 +566,9 @@ func seedTestData(database *gorm.DB) error {
 			return fmt.Errorf("seed quota: %w", err)
 		}
 		if res.RowsAffected > 0 {
+			if err := grants.EnsureReceive(database, &mailboxes[i]); err != nil {
+				return err
+			}
 			if _, err := creds.SetPassword(mailboxes[i].ID, defaultPassword, nil, time.Now()); err != nil {
 				return err
 			}

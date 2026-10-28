@@ -43,10 +43,11 @@ func TestRestmailDeliver_RecipientSchema(t *testing.T) {
 	if len(schema.Required) != 0 {
 		t.Errorf("unconditionally required = %v; recipient sources are alternatives", schema.Required)
 	}
+	// Each alternative states only what it adds; the properties below give the types.
 	want := []rule{
-		{Required: []string{"to"}, Properties: map[string]property{"to": {Type: "array", MinItems: 1}}},
-		{Required: []string{"recipients"}, Properties: map[string]property{"recipients": {Type: "array", MinItems: 1}}},
-		{Required: []string{"raw_message"}, Properties: map[string]property{"raw_message": {Type: "string", MinLength: 1}}},
+		{Required: []string{"to"}, Properties: map[string]property{"to": {MinItems: 1}}},
+		{Required: []string{"recipients"}, Properties: map[string]property{"recipients": {MinItems: 1}}},
+		{Required: []string{"raw_message"}, Properties: map[string]property{"raw_message": {MinLength: 1}}},
 	}
 	if !reflect.DeepEqual(schema.AnyOf, want) {
 		t.Errorf("recipient alternatives = %+v, want %+v", schema.AnyOf, want)
@@ -93,6 +94,7 @@ func TestRestmailDeliver_RecipientSources(t *testing.T) {
 	if err := tx.Create(&mailbox).Error; err != nil {
 		t.Fatal(err)
 	}
+	seedReceiveFixture(t, tx, mailbox)
 	h := NewRestmailHandler(tx, nil, nil, RestmailTarpitConfig{}, RestmailDeliverAuthConfig{TrustedCIDRs: []string{"203.0.113.0/24"}})
 	raw := "From: sender@external.test\r\nTo: " + mailbox.Address + "\r\nDate: Sat, 17 Oct 2026 12:00:00 +0000\r\nSubject: Recipient source\r\n\r\nhello"
 	for _, tc := range []struct {

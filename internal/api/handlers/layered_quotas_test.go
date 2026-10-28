@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/auth"
@@ -99,7 +100,24 @@ func quotaChild(t *testing.T, db *gorm.DB, owner models.Mailbox, local string, q
 	if err := db.Create(&models.QuotaUsage{MailboxID: mb.ID}).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := grants.EnsureReceive(db, &mb); err != nil {
+		t.Fatal(err)
+	}
+	// Its creator holds the owner role on it, which bounds what it holds.
+	grantOwnerRole(t, db, owner.ID, mb.Address)
 	return mb
+}
+
+func grantOwnerRole(t *testing.T, db *gorm.DB, holder uint, address string) {
+	t.Helper()
+	var role models.Role
+	if err := db.Where("name = ?", models.RoleOwner).First(&role).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&models.Grant{HolderKind: models.GrantHolderAccount, HolderID: holder, RoleID: role.ID,
+		Scope: "mailbox:" + address, Mode: models.GrantActive, GrantedByKind: models.AuditActorSystem, GrantedAt: time.Now()}).Error; err != nil {
+		t.Fatal(err)
+	}
 }
 
 func deliverQuotaMessage(db *gorm.DB, id uint, subject string) *httptest.ResponseRecorder {
@@ -117,9 +135,14 @@ func TestOwnedQuotaSharedDeliveryBudget(t *testing.T) {
 	if err := tx.Model(&fx.admin).Updates(map[string]any{"quota_bytes": 100, "quota_used_bytes": 60}).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := grants.EnsureReceive(tx, &fx.admin); err != nil {
+		t.Fatal(err)
+	}
 	a := quotaChild(t, tx, fx.admin, "a", 0, 20)
 	b := quotaChild(t, tx, fx.admin, "b", 0, 10)
 	grandchild := quotaChild(t, tx, a, "grandchild", 0, 0)
+	// Every owner up the chain bounds it, so the top owner holds it too.
+	grantOwnerRole(t, tx, fx.admin.ID, grandchild.Address)
 	for _, target := range []uint{a.ID, b.ID, fx.admin.ID, grandchild.ID} {
 		rr := deliverQuotaMessage(tx, target, strings.Repeat("x", 11))
 		if rr.Code != http.StatusUnprocessableEntity || errorCode(rr) != "mailbox_full" {

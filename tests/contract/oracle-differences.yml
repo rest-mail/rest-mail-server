@@ -770,10 +770,6 @@
   reason: >-
     Null leaves an optional patch field unchanged, as the handlers have always done.
 - operation: updateMailbox
-  difference: "request body application/json.properties.password.minLength: openapi.yaml 12, generated absent"
-  reason: >-
-    The existing password rule counts bytes (len), while the binder minLength counts Unicode code points. Keep the handler rule to avoid rejecting previously valid non-ASCII passwords; short passwords still receive the pinned 422 password message.
-- operation: updateMailbox
   difference: "request body application/json.properties.password.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
   reason: >-
     Null leaves an optional patch field unchanged, as the handlers have always done.
@@ -2222,12 +2218,6 @@
   reason: >-
     A missing or blank address was always refused; binding now answers it 422 with the
     handler's "address query parameter required".
-- operation: restmailDeliver
-  difference: "request body application/json.anyOf: openapi.yaml [{\"properties\":{\"to\":{\"minItems\":1,\"type\":\"array\"}},\"required\":[\"to\"]},{\"properties\":{\"recipients\":{\"minItems\":1,\"type\":\"array\"}},\"required\":[\"recipients\"]},{\"properties\":{\"raw_message\":{\"minLength\":1,\"type\":\"string\"}},\"required\":[\"raw_message\"]}], generated absent"
-  reason: >-
-    Recipients come from to, else recipients, else the To header of raw_message, which struct
-    tags cannot express. The handler still answers the documented 422 on to when none of them
-    supplies one.
 - operation: restmailDeliver
   difference: "request body application/json.properties.from.format: openapi.yaml \"email\", generated absent"
   reason: >-

@@ -81,6 +81,7 @@ func TestRESTMAILDeliver_Subaddressing(t *testing.T) {
 	if err := db.Create(&base).Error; err != nil {
 		t.Fatalf("create base mailbox: %v", err)
 	}
+	seedReceiveFixture(t, db, base)
 	// A base mailbox "claimed@domain" exists, AND an alias claims the full
 	// "+detail" address claimed+promo@domain. Absent the alias, a "+detail"
 	// delivery would strip to this base mailbox — so the alias-wins case is only
@@ -90,6 +91,7 @@ func TestRESTMAILDeliver_Subaddressing(t *testing.T) {
 	if err := db.Create(&claimedBox).Error; err != nil {
 		t.Fatalf("create claimed mailbox: %v", err)
 	}
+	seedReceiveFixture(t, db, claimedBox)
 	alias := models.Alias{DomainID: dom.ID, SourceAddress: "claimed+promo@" + domainName, DestinationAddress: baseAddr, Active: true}
 	if err := db.Create(&alias).Error; err != nil {
 		t.Fatalf("create alias: %v", err)
