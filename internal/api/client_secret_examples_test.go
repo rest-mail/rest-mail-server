@@ -324,8 +324,9 @@ func TestClientSecretExamples(t *testing.T) {
 		session := twoFactorSession(f) // two_factor_session
 		rr := sendClientSecretExample(f, routes["revokeClientSecret"], pair, session)
 		assertRequirementResponse(t, pair, rr)
-		if es := f.entries(handlers.ActionClientSecretRevoke); len(es) != 0 {
-			t.Fatalf("refused revocation wrote %d audit entries", len(es))
+		// The audit middleware records failures only; the 404 is one.
+		if es := f.entries(handlers.ActionClientSecretRevoke); len(es) != 1 || es[0].Outcome != models.AuditOutcomeFailed {
+			t.Fatalf("refused revocation audit entries %+v, want one %q", es, models.AuditOutcomeFailed)
 		}
 	})
 
