@@ -1,0 +1,13 @@
+{
+  "647": [
+    "createCertificate",
+    "deleteCertificate",
+    "deleteDKIMKey",
+    "getCertificate",
+    "getDKIMRotation",
+    "listCertificates",
+    "listDKIMKeys",
+    "setDKIMKey",
+    "setDKIMRotation"
+  ]
+}
