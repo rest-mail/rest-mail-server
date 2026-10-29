@@ -257,8 +257,13 @@ func (h *AutoconfigHandler) Register(rs endpoint.Routes, checks AutoconfigRouteC
 // autoconfigRequest is a Mozilla autoconfig lookup. emailaddress is optional
 // (draft-ietf-mailmaint-autoconfig §4.1): without it, the email domain is the host the
 // request was made to.
+//
+// Its pattern is what requestDomain needs of an address, as far as a pattern can say it:
+// an @, and after the last one a domain with a dot that is not its trailing one, or one of
+// the full stops IDNA maps to a dot. Whether the domain is a valid name is IDNA's to say,
+// so an address that matches can still be refused. autodiscoverRequest states the same.
 type autoconfigRequest struct {
-	EmailAddress string `query:"emailaddress" description:"Optional (draft-ietf-mailmaint-autoconfig §4.1). Without it, the email domain is the host the request is made to."`
+	EmailAddress string `query:"emailaddress" pattern:"^$|@[^@]*(\\.[^@]*[^@\\s]|[。．｡])[^@]*$" message:"no email domain in the address or the host name" description:"Optional (draft-ietf-mailmaint-autoconfig §4.1). Without it, the email domain is the host the request is made to."`
 }
 
 // mozillaAutoconfig answers Thunderbird's autoconfig document for a hosted domain, at
@@ -283,9 +288,11 @@ func (h *AutoconfigHandler) mozillaAutoconfig(r *http.Request, in autoconfigRequ
 }
 
 // autodiscoverRequest is an Outlook Autodiscover request: its XML names the address, and with
-// no body, or one that is not Autodiscover XML, the emailaddress query parameter does.
+// no body, or one that is not Autodiscover XML, the emailaddress query parameter does. The
+// query parameter's pattern is autoconfigRequest's, and holds even when the body names the
+// address.
 type autodiscoverRequest struct {
-	EmailAddress string  `query:"emailaddress" description:"The address to look up when the body is not Autodiscover XML."`
+	EmailAddress string  `query:"emailaddress" pattern:"^$|@[^@]*(\\.[^@]*[^@\\s]|[。．｡])[^@]*$" message:"invalid email address" description:"The address to look up when the body is not Autodiscover XML."`
 	Body         *string `body:"application/xml"`
 }
 

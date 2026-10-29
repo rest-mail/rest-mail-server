@@ -2,10 +2,12 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
+	"github.com/restmail/restmail/internal/db/models"
 )
 
 // DomainPolicyRouteChecks preserves domain-scoped reads/writes and installation-wide checks.
@@ -51,14 +53,19 @@ type setRelayBody struct {
 }
 
 // AnyOf states that the transport is direct, or a relay with a host, port and TLS mode; a
-// relay is told each one it lacks, worded as the field's own refusal (go-oapifly#70).
+// relay is told each one it lacks or breaks, worded as the field's own refusal
+// (go-oapifly#70). The relay's host is a bare host name or IP address, as
+// models.ValidRelayHost checks it; direct ignores the host, so the rule is the relay's.
 func (setRelayBody) AnyOf() oapifly.AnyOfRule {
 	return oapifly.AnyOfRule{
 		Alternatives: []oapifly.Alternative{
 			{Fields: map[string]string{"transport": `enums:"direct"`}},
 			{
 				Required: []string{"host", "port", "tls_mode"},
-				Fields:   map[string]string{"transport": `enums:"relay"`},
+				Fields: map[string]string{
+					"transport": `enums:"relay"`,
+					"host":      `maxLength:"253" pattern:` + strconv.Quote(models.RelayHostPattern),
+				},
 				Messages: map[string]string{
 					"host":     "Must be a bare host name or IP address, with no scheme, port or path",
 					"port":     "Must be between 1 and 65535",
