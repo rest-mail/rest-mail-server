@@ -1,0 +1,10 @@
+{
+  "645": [
+    "createDomain",
+    "deleteDomain",
+    "domainDNSCheck",
+    "getDomain",
+    "listDomains",
+    "updateDomain"
+  ]
+}
