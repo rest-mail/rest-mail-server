@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/restmail/restmail/internal/api/limittest"
 )
 
 // fakeClock is a manually-advanced clock for deterministic limiter tests.
@@ -130,9 +132,7 @@ func TestRateLimit_Middleware_ThrottlesPerIP(t *testing.T) {
 	if rr.Code != http.StatusTooManyRequests {
 		t.Fatalf("request 3: expected 429, got %d", rr.Code)
 	}
-	if rr.Header().Get("Retry-After") == "" {
-		t.Error("429 response must carry a Retry-After header")
-	}
+	limittest.RetryAfter(t, rr.Header())
 	if code := parseErrorResponse(t, rr).Error.Code; code != "rate_limited" {
 		t.Errorf("expected error code %q, got %q", "rate_limited", code)
 	}

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rest-mail/rest-mail-server/internal/api/limittest"
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"github.com/rest-mail/rest-mail-server/internal/config"
@@ -150,9 +151,7 @@ func TestSendMessage_RateLimited(t *testing.T) {
 		rr := doRequest(router, http.MethodPost, "/api/v1/messages/send", token, body)
 		if rr.Code == http.StatusTooManyRequests {
 			got429 = true
-			if rr.Header().Get("Retry-After") == "" {
-				t.Errorf("429 response missing Retry-After header")
-			}
+			limittest.RetryAfter(t, rr.Header())
 			break
 		}
 		// A non-429 means the throttle admitted the request to the handler (which

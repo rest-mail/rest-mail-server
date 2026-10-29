@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/rest-mail/rest-mail-server/internal/api/limittest"
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"github.com/rest-mail/rest-mail-server/internal/config"
@@ -756,9 +757,7 @@ func TestPipelineTestRoutes_RateLimited(t *testing.T) {
 				rr := doRequest(router, http.MethodPost, path, token, `{}`)
 				if rr.Code == http.StatusTooManyRequests {
 					got429 = true
-					if rr.Header().Get("Retry-After") == "" {
-						t.Errorf("429 response missing Retry-After header")
-					}
+					limittest.RetryAfter(t, rr.Header())
 					break
 				}
 				// Anything that is not a 429 means the throttle admitted the
@@ -833,9 +832,7 @@ func TestVerifyOracleRoutes_RateLimited(t *testing.T) {
 				rr := doRequest(router, http.MethodPost, rt.path, token, wrongPassword)
 				if rr.Code == http.StatusTooManyRequests {
 					got429 = true
-					if rr.Header().Get("Retry-After") == "" {
-						t.Errorf("429 response missing Retry-After header")
-					}
+					limittest.RetryAfter(t, rr.Header())
 					break
 				}
 				// A non-429 means the throttle admitted the guess to the handler
@@ -922,9 +919,7 @@ func TestTwoFactorRoutes_RateLimited(t *testing.T) {
 				rr := doRequest(router, http.MethodPost, rt.path, token, `{"totp_code":"000000"}`)
 				if rr.Code == http.StatusTooManyRequests {
 					got429 = true
-					if rr.Header().Get("Retry-After") == "" {
-						t.Errorf("429 response missing Retry-After header")
-					}
+					limittest.RetryAfter(t, rr.Header())
 					break
 				}
 				// A non-429 means the throttle admitted the request to the handler

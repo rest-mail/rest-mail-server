@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rest-mail/rest-mail-server/internal/api/limittest"
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"github.com/rest-mail/rest-mail-server/internal/crypto"
@@ -173,9 +174,7 @@ func TestRecover_RefusalsAreBudgetedPerAddress(t *testing.T) {
 	if right.Code != http.StatusTooManyRequests || errorCode(right) != "rate_limited" {
 		t.Fatalf("both factors right after the budget: status %d code %q, want 429 rate_limited", right.Code, errorCode(right))
 	}
-	if right.Header().Get("Retry-After") == "" {
-		t.Error("429 without Retry-After")
-	}
+	limittest.RetryAfter(t, right.Header())
 
 	const unknown = "nobody-here@example.test"
 	for i, want := range []int{http.StatusUnauthorized, http.StatusUnauthorized, http.StatusTooManyRequests} {

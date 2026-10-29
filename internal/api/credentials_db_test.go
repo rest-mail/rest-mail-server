@@ -13,19 +13,20 @@ import (
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/api/handlers"
+	"github.com/rest-mail/rest-mail-server/internal/api/limittest"
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/audit"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
 	"github.com/rest-mail/rest-mail-server/internal/config"
-	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/internal/grants"
 	imapgw "github.com/rest-mail/rest-mail-server/internal/gateway/imap"
 	pop3gw "github.com/rest-mail/rest-mail-server/internal/gateway/pop3"
+	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	smtpgw "github.com/rest-mail/rest-mail-server/internal/gateway/smtp"
-	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"gorm.io/gorm"
 )
 
@@ -709,13 +710,41 @@ func TestAppPasswords_CreatingIsThrottledLikeLogin(t *testing.T) {
 		}
 	}
 	rr := f.do(http.MethodPost, path, f.session, guess)
-	if rr.Code != http.StatusTooManyRequests || rr.Header().Get("Retry-After") == "" {
+	if rr.Code != http.StatusTooManyRequests {
 		t.Fatalf("a guess past the budget: %d %s", rr.Code, rr.Body.String())
 	}
+	limittest.RetryAfter(t, rr.Header())
 	rr = f.do(http.MethodPost, "/api/v1/auth/login", "", fmt.Sprintf(`{"email":%q,"password":%q,"client":"native"}`, f.address, credentialTestPassword))
 	if rr.Code != http.StatusTooManyRequests {
 		t.Errorf("a sign-in after the guesses: %d, want 429 from the shared budget", rr.Code)
 	}
+}
+
+// Basic refusals past the budget are answered 429 by the production router,
+// with the whole-second Retry-After every 429 documents.
+func TestBasicCredentials_RefusalsPastTheBudgetAreThrottled(t *testing.T) {
+	f := newCredentialFixtureWith(t, &config.Config{
+		Environment:          "test",
+		AuthRateLimitEnabled: true,
+		// No refill during the test.
+		AuthRateLimitRPS:   0.0001,
+		AuthRateLimitBurst: 3,
+	})
+	folders := fmt.Sprintf("/api/v1/accounts/%d/folders", f.accountID)
+	for i := 0; i < 10; i++ {
+		rr := f.do(http.MethodGet, folders, basic("nobody@example.test", "a guess"), "")
+		if rr.Code == http.StatusTooManyRequests {
+			if i == 0 {
+				t.Fatal("the first refusal was already throttled")
+			}
+			limittest.RetryAfter(t, rr.Header())
+			return
+		}
+		if rr.Code != http.StatusUnauthorized {
+			t.Fatalf("guess %d: %d %s, want 401", i+1, rr.Code, rr.Body.String())
+		}
+	}
+	t.Fatal("10 refused Basic credentials were never throttled")
 }
 
 func TestAppPasswords_ReachOnlyTheirOwnMailbox(t *testing.T) {
