@@ -8,7 +8,7 @@ import sys
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import yaml
 
@@ -117,6 +117,37 @@ class TestPipeline(unittest.TestCase):
                 callback(transaction)
         sleep.assert_called_once_with(0.55)
         self.assertEqual(transaction, before)
+
+    def test_a_deleted_pipeline_is_replaced_before_the_next_preview(self):
+        # The authorization run replays the examples, whose delete removes the
+        # kept pipeline, then sends each principal's preview without after hooks.
+        stash = self.hooks.hooks.stash
+        for path in ("/api/v1/admin/pipelines/12", "/api/v1/admin/pipelines/abc"):
+            self.hooks.forget_a_deleted_pipeline({"fullPath": path})
+            self.assertEqual(stash["pipeline_id"], 11)
+        self.hooks.forget_a_deleted_pipeline({"fullPath": "/api/v1/admin/pipelines/11"})
+        self.assertNotIn("pipeline_id", stash)
+
+        def preview():
+            return {
+                "protocol": "http:", "host": "api", "port": "8080",
+                "request": {"body": json.dumps({"pipeline_id": 1, "email": {}})},
+            }
+
+        first, second = preview(), preview()
+        # The hook resolves fixture_call from its own module globals.
+        with patch.dict(self.hooks.test_the_created_pipeline.__globals__) as names:
+            call = names["fixture_call"] = Mock(return_value={"id": 23})
+            self.hooks.test_the_created_pipeline(first)
+            self.hooks.test_the_created_pipeline(second)
+        call.assert_called_once_with(first, "POST", "/api/v1/admin/pipelines", {
+            "domain_id": 17,
+            "direction": "inbound",
+            "filters": [{"name": "header_validate", "config": {}}],
+            "active": False,
+        })
+        for transaction in (first, second):
+            self.assertEqual(json.loads(transaction["request"]["body"])["pipeline_id"], 23)
 
     def test_nonplaceholder_and_invalid_targets_are_preserved(self):
         for pipeline_id in (0, 42, 2147483647, True, "1", None):
