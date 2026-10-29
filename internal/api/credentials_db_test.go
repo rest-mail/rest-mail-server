@@ -19,14 +19,14 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
 	"github.com/rest-mail/rest-mail-server/internal/config"
+	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
-	"github.com/rest-mail/rest-mail-server/internal/grants"
 	imapgw "github.com/rest-mail/rest-mail-server/internal/gateway/imap"
 	pop3gw "github.com/rest-mail/rest-mail-server/internal/gateway/pop3"
-	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	smtpgw "github.com/rest-mail/rest-mail-server/internal/gateway/smtp"
+	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"gorm.io/gorm"
 )
 

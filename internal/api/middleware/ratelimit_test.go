@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/api/limittest"
+	"github.com/rest-mail/rest-mail-server/internal/api/limittest"
 )
 
 // fakeClock is a manually-advanced clock for deterministic limiter tests.
