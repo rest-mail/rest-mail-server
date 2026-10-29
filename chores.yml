@@ -602,6 +602,7 @@ tasks:
         tests/contract/run.sh gate {{.CLI_ARGS}} || code=$?
         scan=0
         python3 -B tests/contract/secret_scan.py .cache/contract/examples.har --audit-from .cache/contract/vertrag-run.yml || scan=$?
+        chore test:contract-fixtures || echo "the queue fixtures could not be replenished; the authorization run's queue links find no held entry"
         tests/contract/run.sh authorization {{.CLI_ARGS}} || echo "the authorization phase is a report, not a gate"
         chore test:contract-domain-tenants || echo "the domain tenants could not be prepared; the ownership run of domains is not sent"
         tests/contract/run.sh ownership {{.CLI_ARGS}} || echo "the ownership phase is a report, not a gate"
