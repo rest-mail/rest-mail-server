@@ -293,9 +293,9 @@ Recommended order (inbound): `size_check → {spf,dkim,arc,dmarc}_check → doma
 
 Implementations at [internal/gateway/smtp/](../internal/gateway/smtp/), [internal/gateway/imap/](../internal/gateway/imap/), [internal/gateway/pop3/](../internal/gateway/pop3/). The wire-protocol engines are external libraries; each in-repo gateway supplies only the backend (accounts, folders, messages) and policy:
 
-- **SMTP**: inbound (25), submission (587), implicit TLS (465). Built on the `rest-mail/go-smtp` fork (`internal/gateway/smtp` is a thin layer over it) and still advertises the custom `RESTMAIL` EHLO capability for server-to-server upgrade. Wired for the outbound queue — inserts into `outbound_queue` on non-local RCPT with `ExpiresAt: now+5 days`, `MaxRetries: 60` (`models.QueueLifetime`, `models.DefaultMaxRetries`).
-- **IMAP**: 143 / 993. A thin `Backend` adapter over the `rest-mail/imap` server library; the library handles the IMAP protocol (SELECT/FETCH/SEARCH/EXPUNGE/CREATE etc.) and the gateway serves mailbox data from the REST/DB layer.
-- **POP3**: 110 / 995. A thin `Backend` adapter over the `rest-mail/pop3` server library (STAT/LIST/RETR/DELE/QUIT).
+- **SMTP**: inbound relay (25, STARTTLS offered) and submission (465, implicit TLS). There is no cleartext submission on 587. Built on the `rest-mail/go-smtp` fork (`internal/gateway/smtp` is a thin layer over it) and still advertises the custom `RESTMAIL` EHLO capability for server-to-server upgrade. Wired for the outbound queue — inserts into `outbound_queue` on non-local RCPT with `ExpiresAt: now+5 days`, `MaxRetries: 60` (`models.QueueLifetime`, `models.DefaultMaxRetries`).
+- **IMAP**: 993, implicit TLS only. A thin `Backend` adapter over the `rest-mail/imap` server library; the library handles the IMAP protocol (SELECT/FETCH/SEARCH/EXPUNGE/CREATE etc.) and the gateway serves mailbox data from the REST/DB layer.
+- **POP3**: 995, implicit TLS only. A thin `Backend` adapter over the `rest-mail/pop3` server library (STAT/LIST/RETR/DELE/QUIT).
 
 All three sign a client in through one path: `POST /api/v1/auth/protocol-sign-in` with HTTP Basic, which checks the secret against the account's credentials (an app password, recognised by its format, or one of its passwords), after which every API call carries it with HTTP Basic. A password signs in only an account without 2FA and out of setup; an account with 2FA uses app passwords. Over SMTP, only a password session may send as another account it holds `mail:send` on; an app password sends as its own address only.
 
@@ -797,16 +797,13 @@ gateways: run the instance task before restarting a gateway with a broken pair.
 |----------|---------|---------|
 | `GATEWAY_HOSTNAME` | `localhost` | Hostname announced by gateways (testbed sets `restmail.test`) |
 | `API_BASE_URL` | `http://localhost:8080` | Internal API URL |
-| `SMTP_PORT_INBOUND` | `25` | |
-| `SMTP_PORT_SUBMISSION` | `587` | |
-| `SMTP_PORT_SUBMISSION_TLS` | `465` | |
+| `SMTP_PORT_INBOUND` | `25` | Inbound relay; offers STARTTLS |
+| `SMTP_PORT_SUBMISSION_TLS` | `465` | Submission, implicit TLS |
 | `SMTP_MAX_MESSAGE_SIZE` | `10485760` (10 MiB) | Max accepted message size, bytes. Drives EHLO `SIZE`, `MAIL SIZE=` check, and DATA enforcement. Must be positive; a malformed/non-positive value is a hard startup error |
 | `SMTP_MIN_TRANSFER_RATE` | `16384` (16 KiB/s) | Anti-slowloris average transfer-rate floor for message bodies, bytes/sec. `0` disables the rate floor |
 | `SMTP_TRANSFER_GRACE_PERIOD` | `60` | Seconds at the start of a body transfer during which the rate floor is not enforced |
 | `SMTP_TRANSFER_STALL_TIMEOUT` | `300` | Seconds a body transfer may deliver zero bytes before the connection is dropped |
-| `IMAP_PORT` | `143` | |
 | `IMAP_TLS_PORT` | `993` | |
-| `POP3_PORT` | `110` | |
 | `POP3_TLS_PORT` | `995` | |
 | `QUEUE_WORKERS` | `4` | |
 | `QUEUE_POLL_INTERVAL` | `5s` | |
