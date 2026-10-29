@@ -29,6 +29,23 @@ response reader directly. They are proof-checker tests, not a claim that the liv
 API returns malformed bodies or rejects safe CSRF variants. No API handler,
 request/response type, oracle entry, named example pair, cookie policy, 403/404
 policy or 400/422 convention changes here. Full disposable-topology acceptance,
-recovery/reset cookie flows, header-schema coverage, wider authorization/limit
+successful recovery/reset cookie flows in the run, header-schema coverage, wider authorization/limit
 faults and installed-cluster behavior remain separate acceptance work. No local
 PostgreSQL or full E2E run is claimed.
+
+Reset and recovery are public sign-in routes, so they rely on `SameSite=Strict`
+rather than the CSRF guard. The browser command now sends a refused reset (an
+unknown token) and a refused recovery (a throwaway `restmail.test` address) from
+a browser that carries a session but no CSRF header. Each must answer 401 with
+its fixed error code, not 403 `csrf_failed`, and must set or clear no session
+cookie. A wrong token spends nothing, and the refused recovery is charged only to
+the throwaway address, not to any fixture's recovery budget.
+
+A successful reset or recovery runs only when `--session-starts` names a file
+with a reset token and new password, or a disposable account's address,
+authenticator secret, unspent recovery code and new password. The command then
+checks that the three session cookies have login's attributes and fresh values,
+that the body carries no token, that the session belongs to a disposable
+account other than the fixture admin, and that it signs out with expired
+cookies. The contract run does not pass this file yet: minting a reset token
+and enrolling a disposable account in 2FA for the gate are open owner decisions.

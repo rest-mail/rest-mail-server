@@ -8,8 +8,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/pquerna/otp/totp"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
 )
+
+const fixtureTOTPSecret = "JBSWY3DPEHPK3PXP"
 
 func cookies(expired bool) []*http.Cookie {
 	value, age := "contract-secret", 60
@@ -70,6 +73,57 @@ func browserFixture(t *testing.T, csrfGuard, secure bool, csrfFault ...string) *
 		w.WriteHeader(code)
 		_, _ = w.Write([]byte(body))
 	}
+	fault := ""
+	if len(csrfFault) > 0 {
+		fault = csrfFault[0]
+	}
+	// Reset and recovery are public and sign in like login; kind names the flow a fault breaks.
+	start := func(w http.ResponseWriter, r *http.Request, accepted bool, refusal, kind string) {
+		if fault == kind+" CSRF guarded" && r.Header.Get(auth.CSRFHeaderName) == "" {
+			answer(w, 403, `{"error":{"code":"csrf_failed"}}`)
+			return
+		}
+		if !accepted {
+			if fault == "refused "+kind+" sets cookies" {
+				set(w, false)
+			}
+			answer(w, 401, `{"error":{"code":"`+refusal+`"}}`)
+			return
+		}
+		revoked = false
+		for _, c := range cookies(false) {
+			c.Value = kind + "-" + c.Value
+			c.Secure = secure
+			switch {
+			case fault == kind+" cookie lax":
+				c.SameSite = http.SameSiteLaxMode
+			case fault == kind+" cookie readable" && c.Name == auth.AccessCookieName:
+				c.HttpOnly = false
+			case fault == kind+" reuses CSRF" && c.Name == auth.CSRFCookieName:
+				c.Value = "contract-secret"
+			}
+			http.SetCookie(w, c)
+		}
+		switch fault {
+		case kind + " token in body":
+			answer(w, 200, `{"data":{"access_token":"contract-secret","user":{"id":8,"email":"recovered@restmail.test"}}}`)
+		case kind + " signs in the fixture admin":
+			answer(w, 200, `{"data":{"user":{"id":7,"email":"admin@restmail.test"}}}`)
+		default:
+			answer(w, 200, `{"data":{"user":{"id":8,"email":"recovered@restmail.test"}}}`)
+		}
+	}
+	mux.HandleFunc("POST /api/v1/auth/reset", func(w http.ResponseWriter, r *http.Request) {
+		var request map[string]string
+		_ = json.NewDecoder(r.Body).Decode(&request)
+		start(w, r, request["token"] == "contract-reset-token" && len(request["password"]) >= 12, "invalid_token", "reset")
+	})
+	mux.HandleFunc("POST /api/v1/auth/recover", func(w http.ResponseWriter, r *http.Request) {
+		var request map[string]string
+		_ = json.NewDecoder(r.Body).Decode(&request)
+		accepted := request["recovery_code"] == "contract-recovery-code" && totp.Validate(request["totp_code"], fixtureTOTPSecret)
+		start(w, r, accepted, "recovery_failed", "recovery")
+	})
 	mux.HandleFunc("POST /api/v1/auth/login", func(w http.ResponseWriter, r *http.Request) {
 		var request map[string]interface{}
 		_ = json.NewDecoder(r.Body).Decode(&request)
@@ -177,7 +231,7 @@ func TestBrowserSessionProof(t *testing.T) {
 			}
 		}
 	}
-	for _, operation := range []string{"createFolder", "updateMessage", "deleteMessage", "account events", "refresh", "logout", "revoked refresh"} {
+	for _, operation := range []string{"createFolder", "updateMessage", "deleteMessage", "account events", "refused reset", "refused recovery", "refresh", "logout", "revoked refresh"} {
 		if !seen[operation] {
 			t.Errorf("missing receipt for %s", operation)
 		}
@@ -218,6 +272,74 @@ func TestBrowserSessionPartialCSRFFaultsFailTheGate(t *testing.T) {
 				t.Fatalf("fault failed outside the operation probe: %v", err)
 			}
 		})
+	}
+}
+
+func fixtureStarts() sessionStarts {
+	return sessionStarts{
+		Reset: &resetStart{Token: "contract-reset-token", Password: "contract-new-password"},
+		Recover: &recoverStart{Email: "recovered@restmail.test", TOTPSecret: fixtureTOTPSecret,
+			RecoveryCode: "contract-recovery-code", NewPassword: "contract-new-password"},
+	}
+}
+
+func TestBrowserSessionStartsProof(t *testing.T) {
+	server := browserFixture(t, true, true)
+	result, err := prove(server.URL, fixtureDescription(), principal{Address: "admin@restmail.test", Password: "fixture"}, fixtureStarts())
+	if err != nil || !result.Passed {
+		t.Fatalf("proof failed: %v", err)
+	}
+	seen := map[string]bool{}
+	for _, c := range result.Checks {
+		seen[c.Operation] = true
+	}
+	for _, operation := range []string{"refused reset", "refused recovery", "reset", "reset logout", "recovery", "recovery logout"} {
+		if !seen[operation] {
+			t.Errorf("missing receipt for %s", operation)
+		}
+	}
+	bytes, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, secret := range []string{"contract-secret", "contract-reset-token", "contract-recovery-code", "contract-new-password"} {
+		if strings.Contains(string(bytes), secret) {
+			t.Fatal("receipt contains a credential")
+		}
+	}
+}
+
+// Reset and recovery must set the cookies login sets and stay reachable without a CSRF
+// header; a refusal must leave the session cookies alone.
+func TestBrowserSessionStartFaultsFailTheGate(t *testing.T) {
+	for _, fault := range []string{
+		"reset CSRF guarded", "refused reset sets cookies", "reset cookie lax", "reset token in body",
+		"recovery CSRF guarded", "refused recovery sets cookies", "recovery cookie readable", "recovery reuses CSRF",
+		"recovery signs in the fixture admin",
+	} {
+		t.Run(fault, func(t *testing.T) {
+			server := browserFixture(t, true, true, fault)
+			result, err := prove(server.URL, fixtureDescription(), principal{Address: "admin@restmail.test", Password: "fixture"}, fixtureStarts())
+			if err == nil || result.Passed {
+				t.Fatal("fault was accepted")
+			}
+			kind := "recovery"
+			if strings.Contains(fault, "reset") {
+				kind = "reset"
+			}
+			if !strings.Contains(err.Error(), kind) {
+				t.Fatalf("fault failed outside the %s probe: %v", kind, err)
+			}
+		})
+	}
+}
+
+func TestBrowserSessionRecoveryRefusesFixtureAdmin(t *testing.T) {
+	server := browserFixture(t, true, true)
+	starts := fixtureStarts()
+	starts.Recover.Email = "Admin@restmail.test"
+	if _, err := prove(server.URL, fixtureDescription(), principal{Address: "admin@restmail.test", Password: "fixture"}, starts); err == nil {
+		t.Fatal("recovery of the fixture admin accepted")
 	}
 }
 
