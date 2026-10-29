@@ -3,8 +3,9 @@
 
 oasdiff handles OpenAPI 3.1 normalization and comparison. REST Mail classifies
 every security change as security, including a scope removed or anonymous
-access added, regardless of oasdiff's compatibility severity. Removing a field
-or enum value and changing a type are breaking under the owner's contract policy.
+access added, regardless of oasdiff's compatibility severity. Removing a field,
+enum value, response status or media type and changing a type are breaking
+under the owner's contract policy.
 """
 
 import argparse
@@ -30,6 +31,10 @@ def classification(change):
                 "enum-value-removed",
                 "header-removed",
                 "parameter-removed",
+                # oasdiff rates a removed error status INFO, but clients may
+                # handle it. Removed media types are listed for the same reason.
+                "status-removed",
+                "media-type-removed",
             )
         )
         or ("-type-" in rule and "-media-type-" not in rule)
