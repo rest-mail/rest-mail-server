@@ -1,0 +1,11 @@
+{
+  "639": [
+    "blockSender",
+    "createContact",
+    "deleteContact",
+    "importContacts",
+    "listContacts",
+    "suggestContacts",
+    "updateContact"
+  ]
+}
