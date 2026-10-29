@@ -420,5 +420,39 @@ class PhaseCommand(unittest.TestCase):
                     )
 
 
+class ExamplePairsCommand(unittest.TestCase):
+    def test_stray_arguments_are_refused_before_building(self):
+        # CI once passed `-count=1 -v` after the pattern: the shard count became
+        # "-count=1", no shard ran, and the step still passed.
+        for extra in (["-count=1", "-v"], ["-count=1"], ["0"], ["two"]):
+            with (
+                self.subTest(extra=extra),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                work = Path(directory)
+                go = work / "go"
+                go.write_text('#!/bin/sh\necho built >> "$CALLS"\n')
+                go.chmod(0o755)
+                calls = work / "calls"
+                result = subprocess.run(
+                    ["bash", str(ROOT / "tests/contract/example_pairs.sh"), "-run"]
+                    + ["^(TestAWithVertrag|TestBWithVertrag)$"]
+                    + extra,
+                    cwd=work,
+                    env=dict(
+                        os.environ,
+                        PATH=str(work) + os.pathsep + os.environ["PATH"],
+                        CALLS=str(calls),
+                    ),
+                    text=True,
+                    capture_output=True,
+                    timeout=10,
+                    check=False,
+                )
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertIn("usage:", result.stderr)
+                self.assertFalse(calls.exists())
+
+
 if __name__ == "__main__":
     unittest.main()
