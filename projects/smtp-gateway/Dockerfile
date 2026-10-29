@@ -27,7 +27,7 @@ RUN go install github.com/air-verse/air@v1.67.2
 # a tmpfs that user owns.
 RUN addgroup -S -g 10001 restmail && adduser -S -u 10001 -G restmail restmail
 USER 10001:10001
-EXPOSE 25 587 465
+EXPOSE 25 465
 CMD ["air", "-c", "projects/smtp-gateway/.air.toml"]
 
 # ── Stage 4: prod (minimal Alpine runtime, non-root) ─────────────────
@@ -45,7 +45,7 @@ COPY projects/smtp-gateway/entrypoint.sh /entrypoint.sh
 RUN chmod 0755 /entrypoint.sh
 # Numeric, so Kubernetes can tell it is not root without being told the uid.
 USER 10001:10001
-EXPOSE 25 587 465
+EXPOSE 25 465
 HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
     CMD nc -z localhost 25 || exit 1
 ENTRYPOINT ["/entrypoint.sh"]

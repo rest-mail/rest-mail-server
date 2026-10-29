@@ -11,7 +11,7 @@ version: "3"
 # In dev mode (default) the source tree is bind-mounted for air hot reload.
 #
 # The 993 (imaps) port is published via docker-proxy labels rather than a
-# host -p mapping; only 143 is exposed directly on the host.
+# host -p mapping. There is no cleartext 143 to expose.
 #
 # Output is friendly by default. Re-run with VERBOSE=1 to see the raw
 # docker / shell output (e.g. VERBOSE=1 chore imap-gateway:up).
