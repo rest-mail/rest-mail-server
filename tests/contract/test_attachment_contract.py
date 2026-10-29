@@ -63,9 +63,10 @@ class AttachmentContract(unittest.TestCase):
                     name += " > " + media
                 # The multipart 206 is sent: Vertrag compares its parts, not
                 # its per-response boundary (antimatter-studios/vertrag#121).
-                # The 500's pair requires a database fault, so the run does
-                # not send it without a pattern.
-                expected = path == PATH and status in {"304", "412"}
+                # The 500 stays excluded: its pair requires a database fault,
+                # but its media-type transactions are still built from the
+                # conditional headers' examples and answered 304 or 412.
+                expected = path == PATH and status in {"304", "412", "500"}
                 with self.subTest(name=name):
                     self.assertEqual(
                         any(p.search(name) for p in self.patterns), expected
@@ -88,7 +89,7 @@ class AttachmentContract(unittest.TestCase):
 
     def test_surface_exclusions_keep_whole_and_range_downloads_counted(self):
         own = [e for e in self.exclusions if e.get("operation") == "getAttachment"]
-        self.assertEqual({e["status"] for e in own}, {"304", "412"})
+        self.assertEqual({e["status"] for e in own}, {"304", "412", "500"})
         for entry in own:
             self.assertIn("#1166", entry["reason"])
             self.assertIn("TestAttachment", entry["reason"])

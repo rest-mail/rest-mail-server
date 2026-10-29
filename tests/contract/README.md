@@ -39,15 +39,16 @@ remain checked. Vertrag 0.31.3 and later keep optional response headers optional
 does not send invented empty conditional headers.
 
 Bodyless 304/412 cannot hold named media-type examples. Their topology
-transactions and multipart 206 remain explicitly excluded with reasons in
-`vertrag.yml`. They are not full-topology acceptance evidence. The 500's pair
-says it requires a database fault, so the run does not send it and the
-in-process suite proves it.
+transactions, multipart 206, and storage/writer 500s remain explicitly excluded
+with reasons in `vertrag.yml`. They are not full-topology acceptance evidence.
+The 500's pair says it requires a database fault, but the run still builds the
+500's media-type transactions from the conditional request headers' examples,
+which a healthy server answers 304 or 412, so the exclusion stays.
 The required `TestAttachmentDownloadExamplesWithVertrag` suite exercises the
 named conditional requests and dependency refusals through the real handler
 and storage client. `TestAttachmentConditionalResponsesDescribeTheWire` also
 checks multipart ranges and seek failures. The remaining topology conditional
-matrix stays open under #1166; no coverage baseline entry is added.
+and fault matrix stays open under #1166; no coverage baseline entry is added.
 
 ### Own-account authenticator contract
 
