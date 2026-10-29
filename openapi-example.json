@@ -31384,7 +31384,8 @@
             }
           ],
           "pagination": {
-            "has_more": false
+            "has_more": false,
+            "total": 1
           }
         },
         "mediaType": "application/json"
