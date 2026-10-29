@@ -333,7 +333,17 @@ def keep_the_refresh_token(transaction):
 def refresh_the_sign_in(transaction):
     body = hooks.get_json(transaction)
     if isinstance(body, dict) and body.get("refresh_token") == "fixture-refresh-token":
-        body["refresh_token"] = hooks.stash.get("refresh_token", "")
+        token = hooks.stash.get("refresh_token", "")
+        # The authorization run replays the examples, then sends this request
+        # once per principal without after hooks, so the rotated token is not
+        # kept and a second send would reuse a spent one. Spend each token once.
+        spent = hooks.stash.setdefault("spent_refresh_tokens", [])
+        if token and token in spent:
+            token = fresh_native_refresh_token(origin_of(transaction))
+            hooks.stash["refresh_token"] = token
+        if token:
+            spent.append(token)
+        body["refresh_token"] = token
         hooks.set_json(transaction, body)
     # A schema-valid body without a native token is the browser channel.
     # Supply its cookie only for success probes; named missing/invalid-token
@@ -351,14 +361,37 @@ def refresh_the_sign_in(transaction):
     headers = transaction["request"].get("headers", {})
     if any(key.lower() == "cookie" for key in headers):
         return  # Keep an explicitly supplied caller credential intact.
-    origin = "{}//{}:{}".format(
+    cookie = fresh_browser_refresh_cookie(origin_of(transaction))
+    headers["Cookie"] = cookie
+    transaction["request"]["headers"] = headers
+
+
+def origin_of(transaction):
+    return "{}//{}:{}".format(
         transaction["protocol"],
         transaction["host"],
         transaction["port"],
     )
-    cookie = fresh_browser_refresh_cookie(origin)
-    headers["Cookie"] = cookie
-    transaction["request"]["headers"] = headers
+
+
+def fresh_native_refresh_token(origin):
+    """Sign the fixture admin in again for an unspent native refresh token."""
+    pace_auth_requests(None)
+    request = urllib.request.Request(
+        origin + "/api/v1/auth/login",
+        data=json.dumps(
+            {"email": ADMIN, "password": ADMIN_PASSWORD, "client": "native"}
+        ).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        token = (json.load(response).get("data") or {}).get("refresh_token")
+    if not isinstance(token, str) or not token:
+        raise RuntimeError("fixture admin sign-in returned no refresh token")
+    # The setup login and the actual refresh share the auth rate bucket.
+    pace_auth_requests(None)
+    return token
 
 
 def fresh_browser_refresh_cookie(origin):
@@ -607,8 +640,35 @@ def test_the_created_pipeline(transaction):
         or body["pipeline_id"] != 1
     ):
         return
+    # The kept pipeline was deleted (forget_a_deleted_pipeline): make another,
+    # inactive, on the run's domain. Before the run has a domain, send as before.
+    if hooks.stash.get("pipeline_id") is None and hooks.stash.get("domain_id") is not None:
+        created = fixture_call(
+            transaction,
+            "POST",
+            "/api/v1/admin/pipelines",
+            {
+                "domain_id": hooks.stash["domain_id"],
+                "direction": "inbound",
+                "filters": [{"name": "header_validate", "config": {}}],
+                "active": False,
+            },
+        )
+        hooks.stash["pipeline_id"] = created["id"]
     body["pipeline_id"] = hooks.stash.get("pipeline_id")
     hooks.set_json(transaction, body)
+
+
+@hooks.before("deletePipeline")
+def forget_a_deleted_pipeline(transaction):
+    # The authorization run replays the examples, whose delete removes the
+    # kept pipeline, and then sends each principal's preview without after
+    # hooks. A delete aimed at the kept pipeline makes the next preview test
+    # one of its own rather than a deleted id.
+    path = transaction.get("fullPath", "").partition("?")[0]
+    pipeline_id = path.rstrip("/").rsplit("/", 1)[-1]
+    if pipeline_id.isdecimal() and int(pipeline_id) == hooks.stash.get("pipeline_id"):
+        hooks.stash.pop("pipeline_id")
 
 
 @hooks.before("createCustomFilter")
