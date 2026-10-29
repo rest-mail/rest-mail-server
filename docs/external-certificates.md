@@ -100,6 +100,12 @@ not establish that a gateway has the new certificate. See Certbot's
   retries. Repeated failures are logged once until a successful check. A valid
   replacement logs `tls: reloaded certificate`. Bad initial primary files stop
   startup. There is no automatic issuance or expiration extension on load failure.
+- Each process also reports failed replacements on its `/metrics` endpoint.
+  `restmail_tls_cert_reload_failures_total` counts each failed replacement once,
+  until a later check succeeds. `restmail_tls_cert_reload_failing` is the number
+  of pairs still serving their previous files because the current files do not
+  load; alert while it is above zero. Both update only when a new handshake
+  triggers a check, so a listener without traffic reports its last check.
 - Existing TLS connections keep their negotiated identity. Resumed TLS sessions
   may reuse their original authentication; verify with a fresh client/session.
 - The API's `INTERNAL_MTLS_SERVER_CERT` / `INTERNAL_MTLS_SERVER_KEY` pair and
