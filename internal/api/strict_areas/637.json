@@ -1,0 +1,18 @@
+{
+  "637": [
+    "createFolder",
+    "deleteFolder",
+    "deleteMessage",
+    "getAttachment",
+    "getMessage",
+    "getQuota",
+    "getRawMessage",
+    "getThread",
+    "listAttachments",
+    "listFolders",
+    "listMessages",
+    "renameFolder",
+    "searchMessages",
+    "updateMessage"
+  ]
+}
