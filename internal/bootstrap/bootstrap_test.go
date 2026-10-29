@@ -142,7 +142,7 @@ func TestEnsureRBAC_IdempotentAndSuperadminHasWildcard(t *testing.T) {
 	var ownerCaps []string
 	gdb.Table("role_capabilities rc").Joins("JOIN capabilities c ON c.id = rc.capability_id").
 		Where("rc.role_id = ?", owner.ID).Order("c.name").Pluck("c.name", &ownerCaps)
-	if want := []string{"mail:read", "mail:receive", "mail:send", "mail:send_as", "mail:send_on_behalf", "mail:write", "mailbox:manage"}; !reflect.DeepEqual(ownerCaps, want) {
+	if want := []string{"mail:read", "mail:receive", "mail:send", "mail:send_as", "mail:send_on_behalf", "mail:write", "mailbox:manage", "mailbox:session"}; !reflect.DeepEqual(ownerCaps, want) {
 		t.Errorf("owner capabilities = %v, want %v", ownerCaps, want)
 	}
 

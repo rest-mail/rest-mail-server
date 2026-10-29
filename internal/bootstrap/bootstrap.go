@@ -83,14 +83,29 @@ func EnsureRBAC(database *gorm.DB) error {
 		{Name: models.CapMailSendOnBehalf, Description: "Send on behalf of the represented mailbox, identifying the actor in Sender", Resource: "mail", Action: "send_on_behalf"},
 		{Name: models.CapMailReceive, Description: "Accept inbound mail for a mailbox", Resource: "mail", Action: "receive"},
 		{Name: models.CapMailboxManage, Description: "Manage a mailbox's settings and credentials", Resource: "mailbox", Action: "manage"},
+		{Name: models.CapMailboxSession, Description: "Sign in to and use a mailbox's own mail", Resource: "mailbox", Action: "session"},
+		{Name: models.CapAdminSession, Description: "Sign in to and use the administrative API", Resource: "admin", Action: "session"},
 	}
 
 	for i := range capabilities {
-		result := database.Where("name = ?", capabilities[i].Name).FirstOrCreate(&capabilities[i])
-		if result.Error != nil {
-			return result.Error
+		created := false
+		err := database.Transaction(func(tx *gorm.DB) error {
+			result := tx.Where("name = ?", capabilities[i].Name).FirstOrCreate(&capabilities[i])
+			if result.Error != nil {
+				return result.Error
+			}
+			created = result.RowsAffected > 0
+			// A capability an upgrade introduces is allowed by an existing
+			// server ceiling, as every capability was when it was initialized.
+			if created && capabilities[i].Name != grants.Wildcard {
+				return grants.AllowOnServer(tx, capabilities[i].ID)
+			}
+			return nil
+		})
+		if err != nil {
+			return err
 		}
-		slog.Info("capability", "name", capabilities[i].Name, "created", result.RowsAffected > 0)
+		slog.Info("capability", "name", capabilities[i].Name, "created", created)
 	}
 
 	// Create roles
@@ -139,6 +154,7 @@ func EnsureRBAC(database *gorm.DB) error {
 		"observability:read",
 		"audit:read",
 		"agents:create",
+		models.CapAdminSession,
 	}
 	for _, capName := range adminCaps {
 		var cap models.Capability
@@ -162,6 +178,7 @@ func EnsureRBAC(database *gorm.DB) error {
 		"domains:read", "mailboxes:read", "pipelines:read",
 		"users:read", "messages:read", "queue:read", "bans:read",
 		"observability:read",
+		models.CapAdminSession,
 	}
 	for _, capName := range readonlyCaps {
 		var cap models.Capability

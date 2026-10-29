@@ -41,8 +41,8 @@ type RoleCapability struct {
 func (RoleCapability) TableName() string { return "role_capabilities" }
 
 // The mail capabilities an account holds on a mailbox. The owner role holds
-// all of these. Receive is an explicit, revocable own-mailbox grant; the
-// others are implicit (grants.Load).
+// all of these, with mailbox:session. Receive is an explicit, revocable
+// own-mailbox grant; the others are implicit (grants.Load).
 const (
 	CapMailRead         = "mail:read"
 	CapMailWrite        = "mail:write"
@@ -53,8 +53,19 @@ const (
 	CapMailboxManage    = "mailbox:manage"
 )
 
+// The session capabilities (#324). mailbox:session lets a mailbox's own mail
+// be reached by a session: every account holds it on its own mailbox, and the
+// owner role holds it on an owned or linked one. admin:session lets an
+// administrator's grants reach anything else: the admin and readonly roles
+// hold it at their scope. Removing either from the server signs that kind of
+// session out without editing a role; superadmin is never capped.
+const (
+	CapMailboxSession = "mailbox:session"
+	CapAdminSession   = "admin:session"
+)
+
 // OwnerCapabilities are the owner role's: everything on one mailbox.
-var OwnerCapabilities = []string{CapMailRead, CapMailWrite, CapMailSend, CapMailReceive, CapMailSendAs, CapMailSendOnBehalf, CapMailboxManage}
+var OwnerCapabilities = []string{CapMailRead, CapMailWrite, CapMailSend, CapMailReceive, CapMailSendAs, CapMailSendOnBehalf, CapMailboxManage, CapMailboxSession}
 
 // RoleOwner is the role an account holds on a mailbox it created or linked.
 const RoleOwner = "owner"
