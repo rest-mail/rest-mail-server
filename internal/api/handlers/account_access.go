@@ -26,7 +26,9 @@ var errNoAccess = errors.New("account not found or access denied")
 // account holds all of them on its own mailbox, and holds what its grants give
 // on others: an owner grant on an account it created or linked, or an admin
 // role at a scope covering it. A request made with an app password reaches
-// only its own mailbox, with what the app password's scope holds (#344).
+// only its own mailbox, with what the app password's scope holds (#344) and
+// the account still holds there. Grants are read with grants.Load on every
+// call, so the server's capability ceiling applies to sessions already open.
 //
 // This is the single source of truth for /accounts/{id}/… and every other
 // route that acts on a mailbox. It answers errNoAccess, never another
@@ -39,15 +41,22 @@ func mayReach(db *gorm.DB, claims *auth.Claims, id uint, capability string) (*mo
 		}
 		return nil, err
 	}
-	if claims.MailboxOnly() {
-		if mailbox.ID == claims.AccountID && appPasswordHolds(capability) {
-			return &mailbox, nil
-		}
+	if claims.MailboxOnly() && (mailbox.ID != claims.AccountID || !appPasswordHolds(capability)) {
 		return nil, errNoAccess
 	}
+	// An app password's scope is read live too: it holds only what its account
+	// holds now, within the server's capability ceiling, so a protocol gateway
+	// session signed in before a capability was removed is refused on its
+	// next call.
 	held, err := grants.Load(db, claims.AccountID, time.Now())
 	if err != nil {
 		return nil, err
+	}
+	if claims.MailboxOnly() {
+		if held.Allows(capability, grants.Mailbox(mailbox.Address)) {
+			return &mailbox, nil
+		}
+		return nil, errNoAccess
 	}
 	if held.Allows(capability, grants.Mailbox(mailbox.Address)) &&
 		middleware.CredentialAllows(claims, capability, grants.Mailbox(mailbox.Address)) {

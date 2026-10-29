@@ -20,9 +20,10 @@ import (
 func quarantineReleaseFixture(t *testing.T) (*gorm.DB, models.Mailbox, models.Quarantine) {
 	t.Helper()
 	db := openCustomFilterCreateScratchDB(t)
-	if err := db.AutoMigrate(&models.Mailbox{}, &models.Message{}, &models.Quarantine{}); err != nil {
+	if err := db.AutoMigrate(append(accountModels, &models.Message{}, &models.Quarantine{})...); err != nil {
 		t.Fatal(err)
 	}
+	ensureDefaultServerCeiling(t, db)
 	domain := models.Domain{Name: "quarantine-release.test"}
 	if err := db.Create(&domain).Error; err != nil {
 		t.Fatal(err)

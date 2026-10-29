@@ -68,6 +68,9 @@ func (d *messageStorageDB) QueryContext(ctx context.Context, q string, args []dr
 			organizer = true
 		}
 	}
+	if rows, ok := defaultGrantRows(q); ok {
+		return rows, nil
+	}
 	switch {
 	case strings.HasPrefix(q, "INSERT"):
 		d.writes = append(d.writes, q)
