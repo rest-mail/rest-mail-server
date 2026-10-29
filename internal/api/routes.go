@@ -495,8 +495,9 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// OSI-7: bound the delivery body so a runaway upload cannot buffer without
 	// limit, while never capping below the configured max message size (the limit
 	// is a multiple of SMTP_MAX_MESSAGE_SIZE plus headroom). The recipient-check
-	// GET carries no body, so only the deliver POST is wrapped.
-	deliverBodyLimit := middleware.MaxBodyBytes(cfg.InternalDeliveryBodyLimit())
+	// GET carries no body, so only the deliver POST is wrapped. Its 413 is described
+	// like every other body cap's.
+	deliverBodyLimit := endpoint.Middleware{Wrap: middleware.MaxBodyBytes(cfg.InternalDeliveryBodyLimit()), Describes: describedBodyCap}
 	// Registered once, on whichever router serves them, so the description holds them either way.
 	registerInternal := func(rt chi.Router) {
 		internal := endpoint.Routes{Router: rt, Registry: registry}
@@ -504,7 +505,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 			internal = publicRoutes(rt)
 		}
 		mailboxH.RegisterAddressCheck(internal)
-		messageH.RegisterDelivery(internal, endpoint.Middleware{Wrap: deliverBodyLimit})
+		messageH.RegisterDelivery(internal, deliverBodyLimit)
 	}
 	if !cfg.InternalMTLSEnabled {
 		registerInternal(r)
@@ -519,7 +520,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	restmailDiscoveryH.Register(publicRoutes(r))
 	// OSI-7: same delivery-body bound as the machine deliver route — the RESTMAIL
 	// hop must accept up to a full max-size message but not buffer without limit.
-	restmailH.Register(publicRoutes(r), endpoint.Middleware{Wrap: deliverBodyLimit})
+	restmailH.Register(publicRoutes(r), deliverBodyLimit)
 
 	// ═══════════════════════════════════════════════════════════════
 	// SSE — a session from the restmail_access cookie (native EventSource) or an
