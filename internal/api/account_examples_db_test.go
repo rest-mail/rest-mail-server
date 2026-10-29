@@ -9,11 +9,11 @@ import (
 	"time"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
-	"github.com/restmail/restmail/internal/auth"
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/db/repositories"
-	"github.com/restmail/restmail/internal/examplepairs"
-	"github.com/restmail/restmail/internal/grants"
+	"github.com/rest-mail/rest-mail-server/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
+	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
+	"github.com/rest-mail/rest-mail-server/internal/grants"
 )
 
 // The account and credential pairs that create, link or look up an account run the
@@ -294,7 +294,11 @@ func TestAccountExamples(t *testing.T) {
 		if err := f.db.Model(&models.Credential{}).Where("account_id = ? AND kind = ?", f.mailboxID, models.CredentialKindTOTP).Update("confirmed_at", time.Now()).Error; err != nil {
 			t.Fatal(err)
 		}
-		rr := sendAccountExample(f, routes["createAppPassword"], withBodyField(t, onOwnAccount(f, pair), "password", f.password), f.session)
+		passwordOnly, err := f.jwt.GenerateSession(f.accountID, f.address, 0, []string{auth.AMRPassword}, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rr := sendAccountExample(f, routes["createAppPassword"], withBodyField(t, onOwnAccount(f, pair), "password", f.password), "Bearer "+passwordOnly.AccessToken)
 		assertRequirementResponse(t, pair, rr)
 		if n := credentials(f, models.CredentialKindAppPassword); n != 0 {
 			t.Fatalf("refused creation stored %d app passwords", n)

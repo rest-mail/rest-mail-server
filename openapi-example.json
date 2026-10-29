@@ -4468,8 +4468,7 @@
       "request": {
         "body": {
           "name": "Mail\nClient"
-        },
-        "invalid": true
+        }
       },
       "response": {
         "status": 422,
@@ -4504,7 +4503,7 @@
         "body": {
           "error": {
             "code": "two_factor_required",
-            "message": "This mailbox has two-factor authentication: sign in again with your code to create an app password"
+            "message": "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
           }
         },
         "mediaType": "application/json"
