@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# The registered Vertrag example-pair tests (internal/api *WithVertrag), as the
-# E2E job's "Registered example-pair boundary checks" step runs them:
+# The registered Vertrag example-pair tests (internal/api *WithVertrag), as
+# `chore contract:pairs` runs them (and `chore contract`, locally and in CI):
 #
 #   tests/contract/example_pairs.sh -run '^(TestA|TestB|...)$' [shards]
 #
@@ -8,11 +8,15 @@
 # vertrag. The test binary is built once and the named tests run in shards side
 # by side (three by default); each shard has the 25-minute limit, and the step
 # fails when any shard does. RESTMAIL_VERTRAG_BINARY must name vertrag.
+# Anything else after the pattern is refused: go test flags such as -count=1
+# were once read as the shard count, which ran no shard and still exited 0.
 set -euo pipefail
 
-[ "${1:-}" = "-run" ] && [ -n "${2:-}" ] || { echo "usage: $0 -run '^(TestA|TestB)\$' [shards]" >&2; exit 2; }
+usage() { echo "usage: $0 -run '^(TestA|TestB)\$' [shards]" >&2; exit 2; }
+[ "${1:-}" = "-run" ] && [ -n "${2:-}" ] && [ $# -le 3 ] || usage
 pattern=$2
 shards=${3:-3}
+[[ $shards =~ ^[1-9][0-9]*$ ]] || usage
 list=${pattern#^(}
 list=${list%)\$}
 IFS='|' read -r -a names <<<"$list"
