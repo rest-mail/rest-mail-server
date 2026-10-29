@@ -105,7 +105,7 @@ class TwoFactorContract(unittest.TestCase):
             faults = [
                 pair.get("requires")
                 for pair in examples[operation].values()
-                if pair["response"]["status"] == "500"
+                if pair["response"]["status"] == 500
             ]
             self.assertEqual(faults, [{"fault": "database"}])
 
