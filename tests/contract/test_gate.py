@@ -249,13 +249,15 @@ class PreviewFaultScope(unittest.TestCase):
             "testFilter": "/api/v1/admin/pipelines/test-filter",
             "testCustomFilter": "/api/v1/admin/custom-filters/{id}/test",
         }
+        # The 413s and 500s are not sent because their pairs say what they
+        # require; only the sidecar timeout has no such pair.
         faults = {
-            "testPipeline": {"500"},
-            "testFilter": {"500"},
-            "testCustomFilter": {"408", "413", "500"},
+            "testPipeline": set(),
+            "testFilter": set(),
+            "testCustomFilter": {"408"},
         }
         for operation, path in paths.items():
-            for status in faults[operation] | {"200", "400", "422"}:
+            for status in faults[operation] | {"200", "400", "413", "422", "500"}:
                 with self.subTest(operation=operation, status=status):
                     name = f"{path} > Preview > {status} > application/json"
                     self.assertEqual(

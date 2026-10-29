@@ -101,13 +101,13 @@ exclude-operation-id:
 exclude-matching:
   # The topology sends whole, single-range, multi-range and unsatisfiable
   # downloads with named parameter examples. Bodyless 304/412 cannot carry a
-  # named media-type example, and a healthy topology cannot provoke
-  # storage/writer faults. The mandatory
+  # named media-type example. The mandatory
   # TestAttachmentDownloadExamplesWithVertrag suite exercises conditional
   # requests and dependency refusals through the real handler and storage client;
   # TestAttachmentConditionalResponsesDescribeTheWire covers multipart/seek faults.
-  # #1166 tracks the remaining full-topology conditional and fault matrix.
-  - '^/api/v1/attachments/\{id\} > .* > (304|412|500)( >|$)'
+  # The 500's pair requires a database fault, so it is not sent (provides below).
+  # #1166 tracks the remaining full-topology conditional matrix.
+  - '^/api/v1/attachments/\{id\} > .* > (304|412)( >|$)'
   # A refusal for a missing capability needs a principal without it: vertrag's
   # authorization phase, not the admin's run.
   - '> 403( >|$)'
@@ -226,9 +226,6 @@ exclude-matching:
   - '^/api/v1/admin/bans > List IP bans > (400|422)( >|$)'
   - '^/api/v1/admin/logs/delivery > .* > (400|422)( >|$)'
   - '^/api/v1/admin/test/(verify|snapshot/restore) > .* > (400|422)( >|$)'
-  # The snapshot is never sent over the body cap, and a healthy fixture's
-  # database does not fail its read; #1166 tracks topology fault injection.
-  - '^/api/v1/admin/test/snapshot > .* > (413|500)( >|$)'
   - '^/\.well-known/(restmail|autoconfig|mta-sts\.txt|acme-challenge)(/| >).* > (400|422)( >|$)'
   - '^/restmail/(capabilities|mailboxes) > .* > (400|422)( >|$)'
   # A 401 for a wrong credential on an operation that takes none (#386).
@@ -240,26 +237,14 @@ exclude-matching:
   # and DB tests cover it. Only the 202 is held back, so the ordinary send is
   # still judged.
   - '^/api/v1/messages/send > .* > 202( >|$)'
-  # Discovery's database-outage response needs a fault-injected database.
-  - '^/\.well-known/restmail > .* > 500( >|$)'
-  # New 2FA reads/enrollment remain counted; only fault-injected internal
-  # errors cannot be produced against the healthy contract fixture.
-  - '^/api/v1/auth/2fa(/enroll)? > .* > 500( >|$)'
-  # A healthy fixture cannot produce these dependency/worker failures. Their
-  # production-router fault regressions run separately; #1166 tracks topology
-  # fault injection. This never ignores a 5xx answering a normal transaction.
-  - '^/api/v1/admin/pipelines/test(-filter)? > .* > 500( >|$)'
-  - '^/api/v1/admin/custom-filters/\{id\}/test > .* > (408|413|500)( >|$)'
-  # A healthy fixture cannot produce the live DNS check's oversized-request and
-  # domain-lookup-failure answers; #1166 tracks topology fault injection.
-  - '^/api/v1/admin/domains/\{id\}/dns > .* > (413|500)( >|$)'
-  # A healthy fixture sends no invitation request over the body cap and meets
-  # no failed database or cipher; #1166 tracks topology fault injection.
-  - '^/api/v1/(admin/mailboxes/\{id\}|auth)/invitation > .* > (413|500)( >|$)'
-  # Nor a message import over the cap or meeting a failed database.
-  - '^/api/v1/accounts/\{id\}/messages/import > .* > (413|500)( >|$)'
-  # Nor a recovery email read or link page over the body cap or meeting a
-  # failed database or response write.
+  # A healthy fixture cannot produce the custom-filter sidecar's timeout, and
+  # its 408 has no pair that requires a fault. Its transport regression tests
+  # cover it; #1166 tracks topology fault injection. This never ignores a 5xx
+  # answering a normal transaction.
+  - '^/api/v1/admin/custom-filters/\{id\}/test > .* > 408( >|$)'
+  # A healthy fixture sends no recovery email read or link page over the body
+  # cap and meets no failed database or response write, and these statuses
+  # have no pair that requires one.
   - '^/api/v1/auth/recovery-email(/link)? > .* > (413|500)( >|$)'
 
 # Each documented response has one example (#1236). One that says, in
@@ -289,9 +274,6 @@ surface:
     - operation: getAttachment
       status: "412"
       reason: "Bodyless responses cannot carry named media-type examples. The required TestAttachmentDownloadExamplesWithVertrag suite sends If-Match through the real handler/storage client; full topology coverage remains in #1166."
-    - operation: getAttachment
-      status: "500"
-      reason: "A healthy topology cannot provoke database/storage/seek faults. The required attachment example suite covers dependency refusals, and TestAttachmentConditionalResponsesDescribeTheWire covers seek errors; topology fault injection remains in #1166."
     - operation: listAPIKeys
       reason: "Required real-MFA API key lifecycle suite: chore test:contract-api-keys in e2e-suite.yml. It checks metadata, creation, scoped use and revocation without changing this run's principal."
     - operation: createAPIKey
@@ -332,12 +314,6 @@ surface:
       reason: "Wipe the data the rest of the run depends on."
     - operation: restoreTestSnapshot
       reason: "Wipe the data the rest of the run depends on."
-    - operation: snapshotTestData
-      status: "413"
-      reason: "The router's body cap answers before the handler, and the run sends the snapshot without a body (#1166)."
-    - operation: snapshotTestData
-      status: "500"
-      reason: "A failed snapshot read needs a fault-injected database (#1166); handler tests cover it."
     - operation: respondToCalendar
       reason: "Needs a message carrying a calendar invitation."
     - operation: releaseQuarantine
@@ -363,54 +339,9 @@ surface:
       reason: "a rate limit: not reachable in a contract run"
     - status: "503"
       reason: "an unavailable sidecar: not reachable in a contract run"
-    - operation: restmailDiscover
-      status: "500"
-      reason: "Discovery's database-outage response needs a fault-injected database."
-    - operation: getTwoFactorStatus
-      status: "500"
-      reason: "Enrollment-read failure needs a fault-injected database; its normal 200 and missing-session 401 remain counted."
-    - operation: enrollTwoFactor
-      status: "500"
-      reason: "Database or cryptography failure needs fault injection; normal enrollment and missing-session refusal remain counted."
-    - operation: testPipeline
-      status: "500"
-      reason: "Database, stored-configuration and engine failures need fault injection (#1166); production-router regression tests cover them."
-    - operation: testFilter
-      status: "500"
-      reason: "Engine execution failure needs fault injection (#1166); production-router regression tests cover it."
     - operation: testCustomFilter
       status: "408"
       reason: "A sidecar timeout needs a controlled dependency (#1166); transport regression tests cover it."
-    - operation: testCustomFilter
-      status: "413"
-      reason: "The sidecar's bare size refusal needs a controlled dependency (#1166); transport regression tests cover it."
-    - operation: testCustomFilter
-      status: "500"
-      reason: "Database or sidecar worker failure needs fault injection (#1166); production-router regression tests cover it."
-    - operation: domainDNSCheck
-      status: "413"
-      reason: "The router's body cap answers before the handler, and the check is a GET the run sends without a body (#1166)."
-    - operation: domainDNSCheck
-      status: "500"
-      reason: "A failed domain lookup needs a fault-injected database (#1166); resolver failures are reported in the 200 as missing records."
-    - operation: inviteAccount
-      status: "413"
-      reason: "The router's body cap answers before the handler, and the invitation is a POST the run sends without a body (#1166)."
-    - operation: inviteAccount
-      status: "500"
-      reason: "A failed token mint needs a fault-injected database (#1166); handler tests cover it."
-    - operation: acceptInvitation
-      status: "413"
-      reason: "An oversized body is refused by the router's body cap (#1166); handler tests cover it."
-    - operation: acceptInvitation
-      status: "500"
-      reason: "A failed credential write needs a fault-injected database (#1166); handler tests cover it."
-    - operation: importMessage
-      status: "413"
-      reason: "A message over the import size limit is larger than the run sends (#1166); handler tests cover it."
-    - operation: importMessage
-      status: "500"
-      reason: "A failed insert, quota or audit write needs a fault-injected database (#1166); handler tests cover it."
     - operation: getRecoveryEmail
       status: "413"
       reason: "The router's body cap answers before the handler, and the read is a GET the run sends without a body (#1166)."

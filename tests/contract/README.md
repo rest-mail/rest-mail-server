@@ -39,13 +39,15 @@ remain checked. Vertrag 0.31.3 and later keep optional response headers optional
 does not send invented empty conditional headers.
 
 Bodyless 304/412 cannot hold named media-type examples. Their topology
-transactions, multipart 206, and storage/writer 500s remain explicitly excluded
-with reasons in `vertrag.yml`. They are not full-topology acceptance evidence.
+transactions and multipart 206 remain explicitly excluded with reasons in
+`vertrag.yml`. They are not full-topology acceptance evidence. The 500's pair
+says it requires a database fault, so the run does not send it and the
+in-process suite proves it.
 The required `TestAttachmentDownloadExamplesWithVertrag` suite exercises the
 named conditional requests and dependency refusals through the real handler
 and storage client. `TestAttachmentConditionalResponsesDescribeTheWire` also
 checks multipart ranges and seek failures. The remaining topology conditional
-and fault matrix stays open under #1166; no coverage baseline entry is added.
+matrix stays open under #1166; no coverage baseline entry is added.
 
 ### Own-account authenticator contract
 
@@ -57,9 +59,9 @@ hook covers enrollment; it leaves the transaction's principal untouched.
 Confirm and disable stay outside this shared fixture's sequence because they
 would change its sign-in requirements or revoke its session.
 
-Both new operations document internal 500 errors. Those two fault responses
-alone have an operation-scoped exclusion mirrored under `surface.exclude`:
-the healthy topology cannot provoke a database/cryptography outage. Existing
+Both new operations document internal 500 errors. Each 500's pair says it
+requires a database fault, which the healthy topology cannot set up, so the run
+does not send it and the in-process example tests prove it. Existing
 coverage-baseline entries and existing refusal selection are unchanged.
 
 `TestOpenAPI_AdminAndTwoFactorRouteInventory` walks the real Chi registration
@@ -272,11 +274,14 @@ email) runs the created filter and gets the 200
 The preview hooks pace `testPipeline`, `testFilter` and `testCustomFilter`
 without rewriting requests or expectations, so the shared 2 requests/second
 preview bucket does not turn valid contract probes into 429s. The healthy
-topology cannot provoke the new pipeline 500s or custom-filter sidecar
-408/413/500 responses. Those exact expected transactions are excluded with
-matching surface reasons; production-router/transport fault regressions cover
-them, and #1166 retains topology fault-injection acceptance. A 5xx returned for
-a normal success or client-refusal transaction still fails the gate.
+topology cannot provoke the pipeline 500s or the custom-filter sidecar's
+408/413/500 responses. The 413 and 500 pairs say what they require (an
+oversized body, a database fault or a cancelled request), so the run does not
+send them and the in-process example tests prove them. The 408 has no such
+pair: that one transaction is excluded with a matching surface reason, its
+transport regression tests cover it, and #1166 retains topology fault-injection
+acceptance. A 5xx returned for a normal success or client-refusal transaction
+still fails the gate.
 
 `updateCustomFilter` pairs `updated` with 200 and five invalid requests with
 422: `name_empty`, `filter_type_invalid`, `direction_invalid`, `config_array`
