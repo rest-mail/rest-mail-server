@@ -4486,6 +4486,30 @@
         }
       }
     },
+    "password_only": {
+      "summary": "A session without the mailbox's second factor",
+      "requires": {
+        "state": "enrolled_authenticator"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "iPhone Mail"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "two_factor_required",
+            "message": "This mailbox has two-factor authentication: sign in again with your code to create an app password"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "rate_limited": {
       "summary": "The limit is already spent",
       "requires": {
