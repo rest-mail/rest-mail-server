@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
+
 	"github.com/restmail/restmail/internal/mtls/mtlstest"
 )
 
@@ -161,5 +163,47 @@ func TestLoaderRejectsBadInitialPair(t *testing.T) {
 	}
 	if cert, err := l.GetCertificate(&tls.ClientHelloInfo{}); cert != nil || err == nil {
 		t.Fatal("bad initial pair was served")
+	}
+}
+
+func TestLoaderReportsFailedReplacementInMetrics(t *testing.T) {
+	failures := testutil.ToFloat64(reloadFailures)
+	failing := testutil.ToFloat64(reloadFailing)
+	p, err := mtlstest.Write(t.TempDir(), "mail.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	l, err := New(p.ServerCert, p.ServerKey, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	good, err := os.ReadFile(p.ServerCert)
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial := l.Current()
+
+	replace(t, p.ServerCert, []byte("broken renewal"))
+	for range 3 {
+		if l.Current() != initial {
+			t.Fatal("broken replacement displaced the last usable pair")
+		}
+	}
+	if got := testutil.ToFloat64(reloadFailures) - failures; got != 1 {
+		t.Fatalf("failed replacement counted %v times, want 1", got)
+	}
+	if got := testutil.ToFloat64(reloadFailing) - failing; got != 1 {
+		t.Fatalf("failing pairs gauge moved by %v, want 1", got)
+	}
+
+	replace(t, p.ServerCert, good)
+	if l.Current() == nil || l.loadErr != nil {
+		t.Fatal("valid replacement did not recover")
+	}
+	if got := testutil.ToFloat64(reloadFailing) - failing; got != 0 {
+		t.Fatalf("failing pairs gauge stayed %v above baseline after recovery", got)
+	}
+	if got := testutil.ToFloat64(reloadFailures) - failures; got != 1 {
+		t.Fatalf("recovery changed the failure count to %v", got)
 	}
 }

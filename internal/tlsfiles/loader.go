@@ -69,6 +69,8 @@ func (l *Loader) load() (*tls.Certificate, error) {
 	// Once a pair has loaded, a failed renewal is always an operator error.
 	if l.loadErr != nil && l.cert != nil && !l.warned {
 		slog.Error("tls: certificate reload failed; retaining last usable pair", "cert", l.certPath, "key", l.keyPath, "error", l.loadErr)
+		reloadFailures.Inc()
+		reloadFailing.Inc()
 		l.warned = true
 	}
 	return l.cert, l.loadErr
@@ -85,7 +87,7 @@ func (l *Loader) reload() error {
 		return fmt.Errorf("stat TLS private key: %w", err)
 	}
 	if l.cert != nil && sameFileVersion(certInfo, l.certInfo) && sameFileVersion(keyInfo, l.keyInfo) {
-		l.warned = false
+		l.recovered()
 		return nil
 	}
 	cert, err := tls.LoadX509KeyPair(l.certPath, l.keyPath)
@@ -99,9 +101,17 @@ func (l *Loader) reload() error {
 		return fmt.Errorf("TLS certificate or key changed during reload")
 	}
 	l.cert, l.certInfo, l.keyInfo = &cert, newCertInfo, newKeyInfo
-	l.warned = false
+	l.recovered()
 	slog.Info("tls: reloaded certificate", "cert", l.certPath)
 	return nil
+}
+
+// recovered runs under mu and clears a reported failure once the files load again.
+func (l *Loader) recovered() {
+	if l.warned {
+		reloadFailing.Dec()
+		l.warned = false
+	}
 }
 
 func sameFileVersion(a, b os.FileInfo) bool {
