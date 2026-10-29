@@ -83,7 +83,7 @@ func TestDBStore_AccountMaySendFollowsServerCeiling(t *testing.T) {
 	}
 
 	ceiling(models.CapMailRead + "," + models.CapMailSend)
-	if !maySend(alice) || !maySend(alice) {
+	if !maySend(alice) || !maySend(root) {
 		t.Fatal("refused while the server allows mail:send")
 	}
 	ceiling(models.CapMailRead)
