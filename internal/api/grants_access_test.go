@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -14,10 +13,8 @@ import (
 
 	"github.com/restmail/restmail/internal/audit"
 	"github.com/restmail/restmail/internal/auth"
-	"github.com/restmail/restmail/internal/bootstrap"
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/crypto"
-	rmdb "github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
 	"github.com/restmail/restmail/internal/grants"
@@ -33,55 +30,12 @@ const (
 	accessMasterKey = "grants-access-master-key-0123456789abcdef"
 )
 
-func envOrDefault(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
-}
-
 // openAccessDB is a database of the test's own, dropped afterwards, migrated as
 // a server before grants migrated it. It skips (never fails) when no database
 // is reachable.
 func openAccessDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	port, _ := strconv.Atoi(envOrDefault("DB_PORT", "5432"))
-	cfg := config.Config{
-		DBHost: envOrDefault("DB_HOST", "localhost"),
-		DBPort: port,
-		DBName: envOrDefault("DB_NAME", "restmail"),
-		DBUser: envOrDefault("DB_USER", "restmail"),
-		DBPass: envOrDefault("DB_PASS", "restmail"),
-	}
-	server, err := rmdb.Connect(&cfg)
-	if err != nil {
-		t.Skipf("grants access test skipped: no database reachable (%v)", err)
-	}
-	name := fmt.Sprintf("restmail_grants_%d_%d", os.Getpid(), time.Now().UnixNano())
-	if err := server.Exec("CREATE DATABASE " + name).Error; err != nil {
-		t.Skipf("grants access test skipped: cannot create a database (%v)", err)
-	}
-	cfg.DBName = name
-	scratch, err := rmdb.Connect(&cfg)
-	if err != nil {
-		t.Fatalf("connect to scratch database: %v", err)
-	}
-	t.Cleanup(func() {
-		if sqlDB, err := scratch.DB(); err == nil {
-			_ = sqlDB.Close()
-		}
-		server.Exec("DROP DATABASE IF EXISTS " + name)
-		if sqlDB, err := server.DB(); err == nil {
-			_ = sqlDB.Close()
-		}
-	})
-	if err := rmdb.AutoMigrate(scratch); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	if err := bootstrap.EnsureRBAC(scratch); err != nil {
-		t.Fatalf("roles: %v", err)
-	}
-	return scratch
+	return createMigratedScratchDB(t, "grants")
 }
 
 // useRealGrants puts back what routes_seams_test.go stands aside, for one test.
