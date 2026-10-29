@@ -221,8 +221,12 @@ func newCustomFilterTestingScenarios(t *testing.T) (map[string]bulkQueueExampleS
 	t.Helper()
 	calls := &customFilterValidationCalls{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !fromCustomFilterAPI(r) {
+			http.NotFound(w, r)
+			return
+		}
 		if r.Method != "POST" || r.URL.Path != "/execute" || r.Header.Get("Content-Type") != "application/json" || r.Header.Get("Authorization") != "Bearer "+customFilterValidationToken {
-			t.Error("incorrect execution sidecar wiring")
+			t.Errorf("incorrect execution sidecar wiring: %s %s %q %q from %s ua=%q", r.Method, r.URL.Path, r.Header.Get("Content-Type"), r.Header.Get("Authorization"), r.RemoteAddr, r.UserAgent())
 			w.WriteHeader(401)
 			return
 		}
@@ -295,5 +299,17 @@ func TestCustomFilterTestingForwardedBytes(t *testing.T) {
 	want := " {\"result\":{\"custom\":42}, \"logs\":[\"checked\"]}\n"
 	if rr.Code != 200 || rr.Body.String() != want {
 		t.Fatalf("forwarded%d %q want200 %q", rr.Code, rr.Body.String(), want)
+	}
+}
+
+func TestCustomFilterTestingSidecarIgnoresForeignRequests(t *testing.T) {
+	f, calls := newCustomFilterTestingScenarios(t)
+	probeCustomFilterSidecar(t)
+	if n := len(calls.snapshot()); n != 0 {
+		t.Fatalf("probe recorded as sidecar call%d", n)
+	}
+	rr := mailboxSessionEndingRequest(t, f["valid"], http.MethodPost, "/api/v1/admin/custom-filters/1/test", []byte(`{}`))
+	if rr.Code != 200 || len(calls.snapshot()) != 1 {
+		t.Fatalf("execution after probe got%d calls%d want200 1", rr.Code, len(calls.snapshot()))
 	}
 }
