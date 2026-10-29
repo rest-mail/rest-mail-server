@@ -544,21 +544,21 @@ tasks:
     env:
       ENVIRONMENT: test
     cmds:
-      - go test -race -count=1 ./internal/...
+      - go test -race -count=1 ./internal/... ./tests/contract/fixtureplan ./tests/contract/browser_sessions
 
   test:unit:
     desc: Run unit tests (alias for test)
     env:
       ENVIRONMENT: test
     cmds:
-      - go test -race -count=1 ./internal/...
+      - go test -race -count=1 ./internal/... ./tests/contract/fixtureplan ./tests/contract/browser_sessions
 
   test:verbose:
     desc: Run unit tests with verbose output
     env:
       ENVIRONMENT: test
     cmds:
-      - go test -race -count=1 -v ./internal/...
+      - go test -race -count=1 -v ./internal/... ./tests/contract/fixtureplan ./tests/contract/browser_sessions
 
   deps:vertrag:
     desc: Pin the latest Vertrag release for the contract run (version and checksum together)
@@ -575,7 +575,7 @@ tasks:
     env:
       ENVIRONMENT: test
     cmds:
-      - go test -race -count=1 -coverprofile=coverage.out ./internal/...
+      - go test -race -count=1 -coverprofile=coverage.out ./internal/... ./tests/contract/fixtureplan ./tests/contract/browser_sessions
       - go tool cover -html=coverage.out -o coverage.html
       - echo "Coverage report written to coverage.html"
 
