@@ -155,8 +155,14 @@ jobs:
       # -timeout is per package, and the race detector slows these packages
       # several times over: internal/api/handlers once ran past go test's
       # default 10 minutes. 20 leaves headroom while a hung test still fails.
+      # internal/api alone came close to 20 minutes, so its shards run it (#1307).
       - name: Run unit tests with race detector
-        run: go test -race -count=1 -timeout=20m -coverprofile=coverage.out ./internal/... ./tests/contract/fixtureplan
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/proofs"
+          packages=$(go list ./internal/... | grep -vxF github.com/restmail/restmail/internal/api)
+          # shellcheck disable=SC2086 # one package per word
+          go test -race -count=1 -timeout=20m -coverprofile=coverage-rest.out $packages ./tests/contract/fixtureplan
         env:
           ENVIRONMENT: test
           DB_HOST: localhost
@@ -165,12 +171,166 @@ jobs:
           DB_USER: restmail
           DB_PASS: restmail
           # The in-process example tests write the pairs they proved here (#1237).
-          RESTMAIL_EXAMPLE_PROOFS: ${{ runner.temp }}/example-proofs.json
+          RESTMAIL_EXAMPLE_PROOFS: ${{ runner.temp }}/proofs/example-proofs-rest.json
+
+      # Today only internal/api writes proofs; the report reads whatever is here.
+      - name: Upload example proofs
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: example-proofs-rest
+          path: ${{ runner.temp }}/proofs
+          retention-days: 1
+          if-no-files-found: ignore
+          overwrite: true
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-part-rest
+          path: coverage-rest.out
+          retention-days: 1
+          if-no-files-found: error
+          overwrite: true
+
+  test-api:
+    name: Test internal/api (${{ matrix.shard }} of 4)
+    # internal/api is the slowest package by far: nearly 1000 s under the race
+    # detector, most of it in PostgreSQL fixtures, against a 20 minute limit per
+    # package (#1307). Each shard runs every fourth of its top-level tests, by
+    # name, against a database of its own, beside the Test job.
+    runs-on: ubuntu-latest
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: restmail_test
+          POSTGRES_USER: restmail
+          POSTGRES_PASSWORD: restmail
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U restmail"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.25.10"
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      # Every shard lists the same tests and takes those whose position in the
+      # sorted list falls to it, so together the shards run each test once.
+      - name: Choose this shard's tests
+        env:
+          SHARD: ${{ matrix.shard }}
+          SHARDS: "4"
+        run: |
+          set -euo pipefail
+          go test -race -list '.*' ./internal/api/ | grep -E '^(Test|Example|Fuzz)' | sort > "$RUNNER_TEMP/tests"
+          awk -v n="$SHARDS" -v i="$SHARD" '(NR - 1) % n == i - 1' "$RUNNER_TEMP/tests" > "$RUNNER_TEMP/shard-tests"
+          if [ ! -s "$RUNNER_TEMP/shard-tests" ]; then
+            echo "::error::shard $SHARD of $SHARDS has no tests" >&2
+            exit 1
+          fi
+          echo "shard $SHARD of $SHARDS runs $(wc -l < "$RUNNER_TEMP/shard-tests") of $(wc -l < "$RUNNER_TEMP/tests") tests"
+          echo "RUN_PATTERN=^($(paste -sd '|' "$RUNNER_TEMP/shard-tests"))\$" >> "$GITHUB_ENV"
+
+      - name: Run internal/api tests with race detector
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/proofs"
+          go test -race -count=1 -timeout=20m -coverprofile=coverage-api-${{ matrix.shard }}.out -run "$RUN_PATTERN" ./internal/api/
+        env:
+          ENVIRONMENT: test
+          DB_HOST: localhost
+          DB_PORT: "5432"
+          DB_NAME: restmail_test
+          DB_USER: restmail
+          DB_PASS: restmail
+          RESTMAIL_EXAMPLE_PROOFS: ${{ runner.temp }}/proofs/example-proofs-api-${{ matrix.shard }}.json
+
+      # TestMain writes the file whenever the variable is set, so a missing file is an error.
+      - name: Upload example proofs
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: example-proofs-api-${{ matrix.shard }}
+          path: ${{ runner.temp }}/proofs
+          retention-days: 1
+          if-no-files-found: error
+          overwrite: true
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-part-api-${{ matrix.shard }}
+          path: coverage-api-${{ matrix.shard }}.out
+          retention-days: 1
+          if-no-files-found: error
+          overwrite: true
+
+  test-report:
+    name: Test report
+    # Joins what the Test job and the internal/api shards wrote: the example
+    # proofs, judged as one set, and the coverage, as one profile.
+    runs-on: ubuntu-latest
+    needs: [test, test-api]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download example proofs
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: example-proofs-*
+          path: ${{ runner.temp }}/proofs
+          merge-multiple: true
 
       # A pair that needs setup (requires) is not sent by the live contract run, so an
       # in-process test must prove it; this fails on any that none did (#1237).
       - name: Every example that needs setup is proven
-        run: python3 scripts/example_proofs.py openapi-example.json "$RUNNER_TEMP/example-proofs.json"
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          proofs=("$RUNNER_TEMP"/proofs/*.json)
+          if [ "${#proofs[@]}" -lt 4 ]; then
+            echo "::error::expected example proofs from all 4 internal/api shards, found ${#proofs[@]} files" >&2
+            exit 1
+          fi
+          python3 scripts/example_proofs.py openapi-example.json "${proofs[@]}"
+
+      - name: Download coverage
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: coverage-part-*
+          path: ${{ runner.temp }}/coverage
+          merge-multiple: true
+
+      # go tool cover adds up the counts of a block that appears in more than one
+      # profile, so one mode line and every profile's blocks make the whole.
+      - name: Merge coverage
+        run: |
+          set -euo pipefail
+          profiles=("$RUNNER_TEMP"/coverage/*.out)
+          modes=$(head -qn1 "${profiles[@]}" | sort -u)
+          if [ "$(printf '%s\n' "$modes" | wc -l)" != 1 ]; then
+            echo "::error::coverage profiles disagree on the mode: $modes" >&2
+            exit 1
+          fi
+          { echo "$modes"; tail -qn +2 "${profiles[@]}"; } > coverage.out
+          echo "merged ${#profiles[@]} profiles, $(wc -l < coverage.out) lines"
 
       - name: Upload coverage report
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -195,7 +355,7 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: test
+    needs: [test, test-api]
     strategy:
       matrix:
         target:
@@ -378,7 +538,7 @@ jobs:
   #
   # This job always runs and fails only if a job that actually ran did not
   # succeed, so a skipped job is not a block. Requiring it — and nothing else
-  # from this workflow — makes the 13 job names above free to change.
+  # from this workflow — makes the job names above free to change.
   js-filter:
     name: JS Filter
     # The sidecar that runs javascript filters: its own tests (the sandbox
@@ -597,7 +757,7 @@ jobs:
 
   ci:
     name: CI
-    needs: [contract-diff, lint, test, attachments-s3, build, helm, webmail, admin, js-filter, first-start, webapp-images, guide]
+    needs: [contract-diff, lint, test, test-api, test-report, attachments-s3, build, helm, webmail, admin, js-filter, first-start, webapp-images, guide]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -607,6 +767,8 @@ jobs:
             contract-diff=${{ needs.contract-diff.result }}
             lint=${{ needs.lint.result }}
             test=${{ needs.test.result }}
+            test-api=${{ needs.test-api.result }}
+            test-report=${{ needs.test-report.result }}
             attachments-s3=${{ needs.attachments-s3.result }}
             build=${{ needs.build.result }}
             helm=${{ needs.helm.result }}
@@ -618,8 +780,8 @@ jobs:
             guide=${{ needs.guide.result }}
         run: |
           set -euo pipefail
-          # `needs.build.result` covers the whole matrix: it is `success` only
-          # when every target built.
+          # `needs.build.result` and `needs.test-api.result` cover the whole
+          # matrix: each is `success` only when every target or shard passed.
           fail=0
           while IFS='=' read -r job result; do
             [ -n "$job" ] || continue
