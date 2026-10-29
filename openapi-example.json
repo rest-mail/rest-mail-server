@@ -2745,6 +2745,7 @@
       }
     },
     "malformed_json": {
+      "summary": "The body is not JSON",
       "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
       "requires": {
         "body": "malformed"
@@ -3350,6 +3351,24 @@
           "error": {
             "code": "bad_request",
             "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "no_pending": {
+      "summary": "No enrollment is waiting to be confirmed",
+      "request": {
+        "body": {
+          "totp_code": "123456"
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "No pending 2FA enrollment to confirm"
           }
         },
         "mediaType": "application/json"
@@ -10835,6 +10854,24 @@
           "error": {
             "code": "bad_request",
             "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "not_enabled": {
+      "summary": "The account has no authenticator to turn off",
+      "request": {
+        "body": {
+          "totp_code": "123456"
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Two-factor authentication is not enabled"
           }
         },
         "mediaType": "application/json"
