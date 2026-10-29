@@ -2663,7 +2663,7 @@
 - operation: deliverMessage
   difference: "request body application/json.required: openapi.yaml [\"address\",\"sender\"], generated absent"
   reason: >-
-    The handler takes a mailbox_id or an address, and refuses neither with 400 (mailbox_id or
+    The handler takes a mailbox_id or an address, and refuses neither with 422 (mailbox_id or
     address required); a bounce's sender is empty.
 - operation: deliverMessage
   difference: "response 200: generated only"
@@ -2673,7 +2673,7 @@
 - operation: deliverMessage
   difference: "response 400: generated only"
   reason: >-
-    A body that is not JSON, or one that names no mailbox, is 400 bad_request.
+    A body that is not JSON is 400 bad_request; one that names no mailbox is 422.
 - operation: deliverMessage
   difference: "response 404: generated only"
   reason: >-
