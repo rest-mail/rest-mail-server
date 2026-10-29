@@ -3,7 +3,7 @@
 // submit per minute and per hour and is used by every outbound-submission entry
 // point so a single compromised credential cannot flood outbound mail:
 //
-//   - the SMTP submission ports (587/465), see internal/gateway/smtp (#171); and
+//   - the SMTP submission port (465), see internal/gateway/smtp (#171); and
 //   - the webmail/API send path, see internal/api/handlers (#184).
 //
 // Keeping one implementation here means both paths cap a sender's outbound

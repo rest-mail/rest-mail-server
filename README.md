@@ -172,9 +172,9 @@ HTTP services are routed by a reverse proxy on `:80` reading `docker-proxy.*` co
 | Swagger UI     | http://localhost:8080/api/docs            |
 | Webmail        | http://restmail.localhost/webmail         |
 | Admin UI       | http://restmail.localhost/admin           |
-| SMTP           | localhost:25 / 587 / 465                  |
-| IMAP           | localhost:143 / 993                       |
-| POP3           | localhost:110 / 995                       |
+| SMTP           | localhost:25 (STARTTLS) / 465 (implicit TLS) |
+| IMAP           | localhost:993 (implicit TLS)              |
+| POP3           | localhost:995 (implicit TLS)              |
 | Health check   | http://localhost:8080/api/health          |
 | Metrics        | http://localhost:8080/metrics             |
 
@@ -546,13 +546,10 @@ For standalone issuance and automated renewal, follow the
 | `GATEWAY_HOSTNAME`            | `localhost`        | Hostname announced by gateways |
 | `API_BASE_URL`                | `http://localhost:8080` | Internal API URL for gateways |
 | `RESTMAIL_RECOVERY_EMAIL_BASE_URL` | empty | User-facing HTTPS API origin for recovery links, e.g. `https://mail.example.com` (no `/api` suffix). Required for registering or sending recovery email links; outbound mail must be running. Helm: `api.recoveryEmailBaseURL`. |
-| `SMTP_PORT_INBOUND`           | `25`               | SMTP inbound port             |
-| `SMTP_PORT_SUBMISSION`        | `587`              | SMTP submission port          |
-| `SMTP_PORT_SUBMISSION_TLS`    | `465`              | SMTP implicit TLS port        |
+| `SMTP_PORT_INBOUND`           | `25`               | SMTP inbound (relay) port; offers STARTTLS |
+| `SMTP_PORT_SUBMISSION_TLS`    | `465`              | SMTP submission port, implicit TLS |
 | `SMTP_MAX_MESSAGE_SIZE`       | `10485760` (10 MiB) | Maximum accepted message size in bytes — drives both the EHLO `SIZE` advertisement and DATA enforcement. A maximum always exists: zero/negative values are a startup error, and values over 100 MiB log a startup warning (messages are buffered and parsed in memory) |
-| `IMAP_PORT`                   | `143`              | IMAP port                     |
 | `IMAP_TLS_PORT`               | `993`              | IMAP implicit TLS port        |
-| `POP3_PORT`                   | `110`              | POP3 port                     |
 | `POP3_TLS_PORT`               | `995`              | POP3 implicit TLS port        |
 | `QUEUE_WORKERS`               | `4`                | Number of outbound queue workers |
 | `QUEUE_POLL_INTERVAL`         | `5s`               | Queue polling interval        |
@@ -562,6 +559,8 @@ For standalone issuance and automated renewal, follow the
 | `CORS_ALLOWED_ORIGINS`        | `http://localhost:3000` | Comma-separated CORS origins |
 | `PROXY_PROTOCOL_TRUSTED_CIDRS`| *(empty)*          | Trusted front-proxy CIDRs. Also gates HTTP `X-Forwarded-For`: a forwarded client IP is honored only when the direct peer is listed; empty = trust no proxy, use the real socket peer |
 | `DNS_PROVIDER`                | `dnsmasq`          | DNS provider (`dnsmasq`, `externaldns`, `manual`) |
+
+Client access is implicit TLS only: submission on 465, IMAP on 993, POP3 on 995. Port 25 is inbound relay from other servers and offers STARTTLS. There is no cleartext submission on 587, and no IMAP on 143 or POP3 on 110. `SMTP_PORT_SUBMISSION`, `IMAP_PORT` and `POP3_PORT` are no longer read: a gateway that finds one of them set refuses to start in production and logs a warning in development.
 
 ### Internal mTLS (gateway → API)
 

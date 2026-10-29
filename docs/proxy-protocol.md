@@ -84,7 +84,7 @@ PROXY_PROTOCOL_TRUSTED_CIDRS=10.99.0.0/16
 ## HAProxy Configuration
 
 HAProxy supports PROXY protocol natively in TCP mode. Below is an example that
-proxies SMTP (ports 25, 587, 465) to the SMTP gateway with PROXY headers. IMAP
+proxies SMTP (ports 25 and 465) to the SMTP gateway with PROXY headers. IMAP
 and POP3 do not read PROXY headers (see Scope above); if you also front them,
 forward those ports as plain TCP without `send-proxy`.
 
@@ -108,14 +108,6 @@ frontend ft_smtp
 
 backend bk_smtp
     server smtp1 10.99.0.13:25 send-proxy-v2
-
-# ── SMTP Submission (port 587) ───────────────────────────────────────
-frontend ft_smtp_submission
-    bind *:587
-    default_backend bk_smtp_submission
-
-backend bk_smtp_submission
-    server smtp1 10.99.0.13:587 send-proxy-v2
 
 # ── SMTP Submission TLS (port 465) ───────────────────────────────────
 frontend ft_smtp_submission_tls
@@ -169,16 +161,6 @@ stream {
     server {
         listen 25;
         proxy_pass smtp_backend;
-        proxy_protocol on;
-    }
-
-    # ── SMTP Submission (port 587) ──────────────────────────────────
-    upstream smtp_submission_backend {
-        server 10.99.0.13:587;
-    }
-    server {
-        listen 587;
-        proxy_pass smtp_submission_backend;
         proxy_protocol on;
     }
 
@@ -242,11 +224,8 @@ services:
     restart: unless-stopped
     ports:
       - "25:25"
-      - "587:587"
       - "465:465"
-      - "143:143"
       - "993:993"
-      - "110:110"
       - "995:995"
     volumes:
       - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
@@ -267,7 +246,6 @@ services:
     # Remove host port mappings since HAProxy handles them:
     # ports:
     #   - "25:25"
-    #   - "587:587"
     #   - "465:465"
     networks:
       mailnet:
@@ -410,6 +388,6 @@ These tests cover:
 | Source file | `internal/gateway/smtp/proxyproto.go` |
 | Test file | `internal/gateway/proxyproto_test.go` |
 | Default gateway IPs | SMTP: `10.99.0.13`, IMAP: `10.99.0.15`, POP3: `10.99.0.16` |
-| SMTP ports | 25 (inbound), 587 (submission), 465 (submission TLS) |
-| IMAP ports (plain TCP behind a proxy) | 143 (plain/STARTTLS), 993 (implicit TLS) |
-| POP3 ports (plain TCP behind a proxy) | 110 (plain/STARTTLS), 995 (implicit TLS) |
+| SMTP ports | 25 (inbound, STARTTLS offered), 465 (submission, implicit TLS) |
+| IMAP ports (plain TCP behind a proxy) | 993 (implicit TLS) |
+| POP3 ports (plain TCP behind a proxy) | 995 (implicit TLS) |

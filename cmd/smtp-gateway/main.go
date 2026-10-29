@@ -86,7 +86,7 @@ func main() {
 
 	// Secure-by-construction (production-only): refuse to boot when a listener
 	// would serve plaintext where it shouldn't — no TLS keypair to advertise
-	// STARTTLS on 25/587 or bind implicit TLS on 465 (which would also accept AUTH
+	// STARTTLS on 25 or bind implicit TLS on 465 (which would also accept AUTH
 	// before TLS) — or when an insecure knob is set (QUEUE_TLS_INSECURE). In
 	// development/test (the testbed & e2e default) each finding only warns and boot
 	// proceeds unchanged.

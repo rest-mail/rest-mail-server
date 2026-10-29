@@ -17,7 +17,7 @@ import (
 
 // Server listens for SMTP connections and serves them with go-smtp, one
 // underlying go-smtp server per listener so inbound (25) and submission
-// (587/465) get their distinct policies.
+// (465) get their distinct policies.
 type Server struct {
 	hostname           string
 	api                Backend
@@ -209,7 +209,7 @@ func (s *Server) newSMTPServer(isSubmission bool) *smtpserver.Server {
 	srv.ReadTimeout = 5 * time.Minute
 	srv.WriteTimeout = 5 * time.Minute
 	// Without a TLS config there is nothing to upgrade to; otherwise AUTH is
-	// only offered on TLS connections (STARTTLS on 587, implicit on 465).
+	// only offered on TLS connections (submission is implicit TLS on 465).
 	srv.AllowInsecureAuth = s.tlsConfig == nil
 	srv.ErrorLog = slogAdapter{}
 	// Advertise the RESTMAIL capability for server-to-server upgrade.
