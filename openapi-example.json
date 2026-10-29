@@ -24369,18 +24369,19 @@
     },
     "invalid_address": {
       "summary": "The address has no usable domain",
-      "description": "The optional query is a valid string but names no email domain. The handler refuses it before looking up any domain; this is a business refusal, not a schema-invalid request.",
+      "description": "The optional query names no email domain: it has no @, which the parameter's pattern requires. Binding refuses it before the handler looks up any domain, in the handler's own words.",
       "request": {
         "query": {
           "emailaddress": "not-an-address"
-        }
+        },
+        "invalid": true
       },
       "response": {
         "status": 422,
         "body": {
           "error": {
             "code": "validation_failed",
-            "message": "Request body failed validation",
+            "message": "Query parameters failed validation",
             "details": {
               "fields": {
                 "emailaddress": "no email domain in the address or the host name"
@@ -24465,18 +24466,19 @@
     },
     "invalid_address": {
       "summary": "The address has no usable domain",
-      "description": "The optional query is a valid string but names no email domain. The handler refuses it before looking up any domain; this is a business refusal, not a schema-invalid request.",
+      "description": "The optional query names no email domain: it has no @, which the parameter's pattern requires. Binding refuses it before the handler looks up any domain, in the handler's own words.",
       "request": {
         "query": {
           "emailaddress": "not-an-address"
-        }
+        },
+        "invalid": true
       },
       "response": {
         "status": 422,
         "body": {
           "error": {
             "code": "validation_failed",
-            "message": "Request body failed validation",
+            "message": "Query parameters failed validation",
             "details": {
               "fields": {
                 "emailaddress": "no email domain in the address or the host name"

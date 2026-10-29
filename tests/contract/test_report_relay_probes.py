@@ -62,7 +62,7 @@ class ReportRelayProbes(unittest.TestCase):
         def permits(body):
             for branch in relay["anyOf"]:
                 if all(field in body for field in branch.get("required", [])) and all(
-                        body.get(name) in rule["enum"]
+                        "enum" not in rule or body.get(name) in rule["enum"]
                         for name, rule in branch.get("properties", {}).items()):
                     return True
             return False
