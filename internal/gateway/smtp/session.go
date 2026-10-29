@@ -497,13 +497,19 @@ func (s *session) followSendingPolicy(fromAddr string, data []byte) error {
 // maySendAs accepts the login spelling or another spelling that resolves to
 // the same mailbox ID. Only a password session may use grants to send as a
 // different mailbox; app passwords remain scoped to their own identity.
+// Sending as its own mailbox is checked against the account's grants too, on
+// every call, so the server's capability ceiling stops a session signed in
+// before mail:send was removed.
 func (s *session) maySendAs(addr string) (bool, error) {
-	if addr == s.authEmail {
-		return true, nil
+	same := addr == s.authEmail
+	if !same {
+		var err error
+		if same, err = s.store.SenderMatchesAccount(s.accountID, addr); err != nil {
+			return false, err
+		}
 	}
-	same, err := s.store.SenderMatchesAccount(s.accountID, addr)
-	if err != nil || same {
-		return same, err
+	if same {
+		return s.store.AccountMaySend(s.accountID)
 	}
 	if s.credentialKind != "password" {
 		return false, nil
