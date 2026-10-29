@@ -77,24 +77,30 @@ type Claims struct {
 	// refuses a token without it.
 	SessionID string `json:"sid,omitempty"`
 	TokenType string `json:"token_type"`
+	// MachineCredentialID binds a short-lived access token to a credential.
+	// Its kind, usability and permissions are reloaded on every request.
+	MachineCredentialID uint `json:"machine_credential_id,omitempty"`
 
-	// CredentialID and CredentialKind are the credential a request was made
-	// with over HTTP Basic: an app password, or the account's password through
-	// a protocol gateway. Zero for a session. They are never part of a token:
-	// only the API sets them, on claims it builds from a credential it has just
-	// checked.
+	// CredentialID and CredentialKind identify the credential just checked:
+	// HTTP Basic, an API key, or a machine token's live credential. Zero for
+	// a human session. They are never serialized into a token.
 	CredentialID   uint   `json:"-"`
 	CredentialKind string `json:"-"`
-	// APIKeyPermissions are what a request made with an API key may do, on
+	// APIKeyPermissions are what an API key or client-secret token may do, on
 	// top of its account's live grants: the request may use a capability at
-	// a scope only where both allow it. Empty, it may do nothing. Set only
-	// with CredentialKind CredentialKindAPIKey, never part of a token.
+	// a scope only where both allow it. Empty, it may do nothing. They are
+	// loaded from the credential, never serialized into a token.
 	APIKeyPermissions []ScopedPermission `json:"-"`
 }
 
 // IsAPIKey reports whether the request was made with an API key.
 func (c *Claims) IsAPIKey() bool {
 	return c.CredentialKind == CredentialKindAPIKey
+}
+
+// IsScopedCredential reports whether explicit credential permissions narrow access.
+func (c *Claims) IsScopedCredential() bool {
+	return c.IsAPIKey() || c.CredentialKind == CredentialKindClientSecret
 }
 
 // HasAMR reports whether the session signed in with method.

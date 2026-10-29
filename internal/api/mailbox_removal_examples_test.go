@@ -75,10 +75,10 @@ func TestMailboxRemovalExamples(t *testing.T) {
 				}
 				if strings.HasPrefix(q.query, `UPDATE "credentials"`) {
 					credentials++
-					if len(q.args) != 7 || q.args[1].Value != int64(pair.Request.Path["id"].(float64)) {
+					if len(q.args) != 8 || q.args[1].Value != int64(pair.Request.Path["id"].(float64)) {
 						t.Fatal("credential target/kinds changed")
 					}
-					for _, kind := range []string{"password", "totp", "recovery_code", "app_password", "api_key"} {
+					for _, kind := range []string{"password", "totp", "recovery_code", "app_password", "api_key", "client_secret"} {
 						found := false
 						for _, arg := range q.args[2:] {
 							if arg.Value == kind {

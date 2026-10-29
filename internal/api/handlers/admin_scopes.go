@@ -97,3 +97,22 @@ func AliasScopeOf(db *gorm.DB) middleware.ScopeOf {
 		return grants.Domain(names[0]), true, nil
 	}
 }
+
+// DomainResourceScopeOf resolves a pipeline or custom filter's owning domain.
+func DomainResourceScopeOf(db *gorm.DB, table string) middleware.ScopeOf {
+	if table != "pipelines" && table != "custom_filters" {
+		panic("unsupported domain resource")
+	}
+	return func(r *http.Request) (string, bool, error) {
+		id, err := pathID(r, "id")
+		if err != nil {
+			return "", false, nil
+		}
+		var names []string
+		err = db.WithContext(r.Context()).Table(table).Joins("JOIN domains ON domains.id = "+table+".domain_id").Where(table+".id = ?", id).Pluck("domains.name", &names).Error
+		if err != nil || len(names) == 0 {
+			return "", false, err
+		}
+		return grants.Domain(names[0]), true, nil
+	}
+}

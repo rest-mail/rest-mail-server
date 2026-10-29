@@ -56,6 +56,10 @@ func (c adminResourceReadConnection) Connect(context.Context) (driver.Conn, erro
 func (c adminResourceReadConnection) Driver() driver.Driver                        { return c }
 func (c adminResourceReadConnection) Open(string) (driver.Conn, error)             { return c, nil }
 func (c adminResourceReadConnection) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
+	if strings.Contains(query, "JOIN domains ON domains.id = custom_filters.domain_id") {
+		rows, _, err := pipelineDomainRows(query, args)
+		return rows, err
+	}
 	if len(args) == 0 {
 		return nil, errors.New("admin read lost its resource restriction")
 	}
@@ -173,6 +177,9 @@ func adminResourceReadRouters(t *testing.T) (map[string]http.Handler, *auth.JWTS
 		"keys_unavailable": global, "awaiting_publication": global, "waiting_ttl": global, "retiring": global, "unreadable_key": global,
 		"unauthenticated": unavailable, "session_unavailable": unavailable, "request_too_large": global, "invalid_id": global, "invalid_format": global,
 		"domain_scope": domain, "outside_domain": outside, "permission_store_unavailable": grantFailure, "target_lookup_unavailable": domain,
+		// Custom filter 1 belongs to example.com: a grant there reads it, and
+		// the domain-scope refusal is one on another domain.
+		"matching_domain": domain, "getCustomFilter/domain_scope": outside,
 	}, jwt
 }
 
@@ -206,7 +213,10 @@ func TestAdminResourceReadExamples(t *testing.T) {
 		for name, pair := range pairs[operation] {
 			t.Run(operation+"/"+name, func(t *testing.T) {
 				examplepairs.Proven(t, operation, name)
-				handler, ok := routers[name]
+				handler, ok := routers[operation+"/"+name]
+				if !ok {
+					handler, ok = routers[name]
+				}
 				if !ok {
 					t.Fatalf("no scenario for %s", name)
 				}

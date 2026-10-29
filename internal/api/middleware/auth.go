@@ -44,7 +44,7 @@ func AccessTokenFromRequest(r *http.Request) (token, errMsg string) {
 // Authorization: Bearer header or the restmail_access cookie (see
 // AccessTokenFromRequest). Validation is unchanged — only the accepted transport
 // widens to include the httpOnly cookie.
-func JWTMiddleware(jwtService *auth.JWTService) func(http.Handler) http.Handler {
+func JWTMiddleware(jwtService *auth.JWTService, machineVerify ...func(*auth.Claims) error) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			token, errMsg := AccessTokenFromRequest(r)
@@ -57,6 +57,15 @@ func JWTMiddleware(jwtService *auth.JWTService) func(http.Handler) http.Handler 
 			if err != nil {
 				writeError(w, http.StatusUnauthorized, "unauthorized", "Invalid or expired token")
 				return
+			}
+			if claims.MachineCredentialID != 0 {
+				// Routes must explicitly opt in to machine tokens. Person-only
+				// routes keep JWTMiddleware's default, which refuses them.
+				if len(machineVerify) != 1 || machineVerify[0](claims) != nil ||
+					claims.CredentialKind != auth.CredentialKindClientSecret || claims.CredentialID != claims.MachineCredentialID || claims.TwoFactor || len(claims.AMR) != 0 {
+					writeError(w, http.StatusUnauthorized, "unauthorized", "Invalid or expired machine token")
+					return
+				}
 			}
 
 			ctx := context.WithValue(r.Context(), ClaimsKey, claims)
@@ -126,7 +135,7 @@ func RequireCapability(held HeldGrants, capability string, target ScopeOf) func(
 				writeError(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
 				return
 			}
-			if claims.CredentialID != 0 && !claims.IsAPIKey() {
+			if claims.CredentialID != 0 && !claims.IsScopedCredential() {
 				writeError(w, http.StatusForbidden, "forbidden", "Sign in to do this")
 				return
 			}

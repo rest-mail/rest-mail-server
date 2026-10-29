@@ -44,6 +44,11 @@ func (c adminResourceDeleteConnection) Begin() (driver.Tx, error) { return bulkQ
 // adapters. No live resource is removed; database constraints, transactions
 // and persistence remain the component/CI tests' responsibility.
 func (c adminResourceDeleteConnection) QueryContext(_ context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
+	if c.table != "certificates" {
+		if rows, ok, err := pipelineDomainRows(query, args); ok {
+			return rows, err
+		}
+	}
 	if c.table != "certificates" || !strings.Contains(query, `FROM "certificates"`) {
 		return nil, errors.New("unexpected resource delete lookup")
 	}
@@ -114,7 +119,14 @@ func adminResourceDeleteScenarios(t *testing.T, operation string) map[string]que
 	}
 	out["internal_error"] = makeRouter(all, false, true)
 	out["required_capability"] = makeRouter([]grants.Entry{{Capability: route.capability, Scope: grants.All}}, false, false)
-	out["domain_scope"] = makeRouter([]grants.Entry{{Capability: route.capability, Scope: grants.Domain("example.com")}}, false, false)
+	// Certificates stay installation-wide. Pipelines and custom filters belong
+	// to example.com, so a grant there deletes them and one elsewhere does not.
+	if operation == "deleteCertificate" {
+		out["domain_scope"] = makeRouter([]grants.Entry{{Capability: route.capability, Scope: grants.Domain("example.com")}}, false, false)
+	} else {
+		out["domain_scope"] = makeRouter([]grants.Entry{{Capability: route.capability, Scope: grants.Domain("other.test")}}, false, false)
+		out["matching_domain"] = makeRouter([]grants.Entry{{Capability: route.capability, Scope: grants.Domain("example.com")}}, false, false)
+	}
 	out["read_only"] = makeRouter([]grants.Entry{{Capability: route.readCapability, Scope: grants.All}}, false, false)
 	other := middleware.CapDomainsWrite
 	if operation == "deleteCertificate" {

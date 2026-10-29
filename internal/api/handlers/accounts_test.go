@@ -79,7 +79,7 @@ func seedAccountsFixture(t *testing.T, db *gorm.DB) accountsFixture {
 	t.Cleanup(func() {
 		var ids []uint
 		db.Model(&models.Mailbox{}).Where("domain_id = ?", domain.ID).Pluck("id", &ids)
-		db.Where("holder_id IN ? OR scope LIKE ?", ids, "%@"+domain.Name).Delete(&models.Grant{})
+		db.Where("holder_kind = ? AND (holder_id IN ? OR scope LIKE ?)", models.GrantHolderAccount, ids, "%@"+domain.Name).Delete(&models.Grant{})
 		db.Where("account_id IN ?", ids).Delete(&models.Credential{})
 		db.Where("mailbox_id IN ?", ids).Delete(&models.QuotaUsage{})
 		db.Where("domain_id = ?", domain.ID).Delete(&models.Mailbox{})
