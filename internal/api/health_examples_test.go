@@ -38,6 +38,13 @@ func (c healthProbeConnection) Begin() (driver.Tx, error) {
 
 func healthExampleRouter(t *testing.T, pingError error) http.Handler {
 	t.Helper()
+	return registeredHealthExampleRouter(healthProbeDB(t, pingError))
+}
+
+// healthProbeDB is a GORM handle over the probe connection: Ping answers pingError and
+// every query fails, as it would against a database that is down.
+func healthProbeDB(t *testing.T, pingError error) *gorm.DB {
+	t.Helper()
 	pool := sql.OpenDB(healthProbeConnection{pingError: pingError})
 	t.Cleanup(func() { _ = pool.Close() })
 	db, err := gorm.Open(postgres.New(postgres.Config{Conn: pool}), &gorm.Config{
@@ -46,7 +53,7 @@ func healthExampleRouter(t *testing.T, pingError error) http.Handler {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return registeredHealthExampleRouter(db)
+	return db
 }
 
 func registeredHealthExampleRouter(db *gorm.DB) http.Handler {
