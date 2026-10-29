@@ -405,7 +405,7 @@ func main() {
 	// Create HTTP server
 	srv := &http.Server{
 		Addr:    cfg.APIAddr(),
-		Handler: router,
+		Handler: injectFaults(router),
 		// Tight header read (slowloris on headers) with a size-aware whole-request
 		// budget so a max-size delivery body (POST /restmail/messages, or the deliver
 		// route when internal mTLS is off) is not stranded (OSI-7). Non-delivery

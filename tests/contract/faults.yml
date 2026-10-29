@@ -1,0 +1,32 @@
+# Faults the contract run must catch (#654). Each entry breaks the API in one
+# known way, and the nightly `Contract faults` workflow
+# (.github/workflows/contract-faults.yml, `chore contract:faults`) builds the API
+# with it, runs the phase named here narrowed to the operation, and fails unless
+# that phase turns red there. Adding a fault: tests/contract/README.md, "Fault
+# catalogue".
+#
+#   name        the fault; its switch is internal/faultinject/fault_<name>.go
+#   build_tags  how it is applied: the API is built with these Go build tags
+#               (GOFLAGS=-tags=...). A normal build has neither tag, so it holds
+#               no fault code.
+#   operation   the operationId whose answer it breaks
+#   phase       the contract phase expected to catch it (examples)
+#   breaks      what a client would see
+faults:
+  - name: discover_endpoint_renamed
+    build_tags: faultinject,fault_discover_endpoint_renamed
+    operation: restmailDiscover
+    phase: examples
+    breaks: GET /.well-known/restmail answers without its required endpoint field (sent as url)
+
+  - name: discover_wrong_media_type
+    build_tags: faultinject,fault_discover_wrong_media_type
+    operation: restmailDiscover
+    phase: examples
+    breaks: GET /.well-known/restmail answers its JSON as text/plain
+
+  - name: health_data_as_list
+    build_tags: faultinject,fault_health_data_as_list
+    operation: getHealth
+    phase: examples
+    breaks: GET /api/health answers its data object as an empty list
