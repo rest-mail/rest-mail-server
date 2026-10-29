@@ -59,6 +59,24 @@ func (s *dbStore) SenderAuthorized(accountID uint, from string) (bool, error) {
 	return held.Allows(models.CapMailSend, grants.Mailbox(mb.Address)), nil
 }
 
+// AccountMaySend reads the account's grants as SenderAuthorized does, for its
+// own mailbox. grants.Load applies the server's ceiling live (and exempts only
+// the global superadmin), so nothing here is cached between messages.
+func (s *dbStore) AccountMaySend(accountID uint) (bool, error) {
+	var mb models.Mailbox
+	if err := s.db.Select("id", "address").Where("id = ? AND active", accountID).Take(&mb).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	held, err := grants.Load(s.db, accountID, time.Now())
+	if err != nil {
+		return false, err
+	}
+	return held.Allows(models.CapMailSend, grants.Mailbox(mb.Address)), nil
+}
+
 // PersistSubmittedMessage records an authenticated submission as a message row
 // owned by the sender's mailbox (folder "Sent") and returns its id, so an
 // eventual bounce/DSN can be authenticated back to the submitting mailbox. When

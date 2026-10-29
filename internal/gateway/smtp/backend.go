@@ -35,6 +35,11 @@ type Store interface {
 	// mail:send on that account (it owns or has linked it). An error is
 	// treated by the caller as "not authorized".
 	SenderAuthorized(accountID uint, from string) (bool, error)
+	// AccountMaySend reports whether the authenticated account may send as
+	// its own mailbox now: whether it holds mail:send there, within the
+	// server's capability ceiling. Checked for every message, so removing the
+	// capability stops sessions already signed in.
+	AccountMaySend(accountID uint) (bool, error)
 	// PersistSubmittedMessage records an authenticated submission as a message
 	// row owned by the sender's mailbox and returns its id. The returned id is
 	// threaded onto the outbound queue rows for the message's remote recipients

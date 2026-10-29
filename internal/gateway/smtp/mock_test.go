@@ -171,7 +171,10 @@ type mockStore struct {
 	// credentialErr is a forced CredentialUsable error.
 	unusable      map[uint]bool
 	credentialErr error
-	enqueueErr    error // forced EnqueueOutbound error
+	// sendDenied marks accounts AccountMaySend refuses, as when the server's
+	// capability ceiling no longer allows mail:send.
+	sendDenied map[uint]bool
+	enqueueErr error // forced EnqueueOutbound error
 	// policies maps a domain to its sending policy; policyErr is a forced
 	// SendingPolicy error.
 	policies   map[string]string
@@ -236,6 +239,12 @@ func (s *mockStore) SenderMatchesAccount(accountID uint, from string) (bool, err
 	}
 	id, ok := s.identities[from]
 	return ok && id == accountID, nil
+}
+
+func (s *mockStore) AccountMaySend(accountID uint) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return !s.sendDenied[accountID], nil
 }
 
 func (s *mockStore) CredentialUsable(id uint) (bool, error) {
