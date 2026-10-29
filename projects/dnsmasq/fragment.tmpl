@@ -37,9 +37,14 @@ txt-record=_mta-sts.${MAIL_HOSTNAME},"v=STSv1; id=${MTA_STS_ID}"
 # TLS-RPT
 txt-record=_smtp._tls.${MAIL_HOSTNAME},"v=TLSRPTv1; rua=mailto:tls-reports@${MAIL_HOSTNAME}"
 
-# SRV — point clients at the correct gateway hosts
-srv-host=_imap._tcp.${MAIL_HOSTNAME},imap.${MAIL_HOSTNAME},143,0,5
+# SRV — point clients at the correct gateway hosts (RFC 6186, RFC 8314).
+# Client access is implicit TLS only: submission on 465, IMAP on 993, POP3 on 995.
+srv-host=_submissions._tcp.${MAIL_HOSTNAME},${MAIL_HOSTNAME},465,0,5
 srv-host=_imaps._tcp.${MAIL_HOSTNAME},imap.${MAIL_HOSTNAME},993,0,5
-srv-host=_pop3._tcp.${MAIL_HOSTNAME},pop3.${MAIL_HOSTNAME},110,0,5
 srv-host=_pop3s._tcp.${MAIL_HOSTNAME},pop3.${MAIL_HOSTNAME},995,0,5
-srv-host=_submission._tcp.${MAIL_HOSTNAME},${MAIL_HOSTNAME},587,0,5
+# Nothing listens on 587, 143 or 110, so those services are published as not
+# available (RFC 6186 §3.4): the "." target tells a client not to try the
+# service rather than guess a port. internal/dns writes the same records.
+srv-host=_submission._tcp.${MAIL_HOSTNAME},.,0,0,0
+srv-host=_imap._tcp.${MAIL_HOSTNAME},.,0,0,0
+srv-host=_pop3._tcp.${MAIL_HOSTNAME},.,0,0,0
