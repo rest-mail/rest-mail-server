@@ -16,6 +16,7 @@ import (
 	"net/mail"
 	"net/netip"
 	"net/textproto"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -56,8 +57,9 @@ type Report struct {
 	// types are kept as sent.
 	FeedbackType string
 	UserAgent    string
-	// Version is kept as sent. RFC 5965 fixes it at 1, but drafts before the
-	// RFC used 0.1 and some programmes still send it.
+	// Version is kept as sent. RFC 5965 sets it to 1 and its grammar allows
+	// only a whole number. "0.1" is also accepted, because drafts before the
+	// RFC used it and some programmes still send it.
 	Version string
 
 	// OriginalMailFrom and OriginalRcptTo have any enclosing angle brackets
@@ -66,8 +68,12 @@ type Report struct {
 	OriginalRcptTo   []string
 	// SourceIP is the zero Addr when the field is absent.
 	SourceIP netip.Addr
-	// ArrivalDate is the zero Time when the field is absent.
-	ArrivalDate           time.Time
+	// ArrivalDate is the zero Time when the field is absent. It is read from
+	// the historic Received-Date field when Arrival-Date is not sent.
+	ArrivalDate time.Time
+	// Incidents is how many incidents the report stands for. It is 1 when the
+	// field is absent, as RFC 5965 §3.2 says.
+	Incidents             uint32
 	ReportedDomain        []string
 	AuthenticationResults []string
 	ReportedURI           []string
@@ -175,9 +181,9 @@ func Parse(raw []byte) (*Report, error) {
 	return report, nil
 }
 
-// parseFields applies RFC 5965 §3.1 and §3.2: which fields are required, which
+// parseFields applies RFC 5965 §3.1 to §3.3: which fields are required, which
 // may appear only once, and which may repeat. Field names are matched without
-// regard to case.
+// regard to case. Unknown fields are ignored, as §6 requires.
 func parseFields(fields mail.Header) (*Report, error) {
 	report := new(Report)
 	var err error
@@ -194,6 +200,9 @@ func parseFields(fields mail.Header) (*Report, error) {
 	if report.Version, err = single(fields, "Version", true); err != nil {
 		return nil, err
 	}
+	if !isVersion(report.Version) {
+		return nil, fmt.Errorf("%w: Version %q is not a version number", ErrMalformed, report.Version)
+	}
 
 	mailFrom, err := single(fields, "Original-Mail-From", false)
 	if err != nil {
@@ -205,20 +214,44 @@ func parseFields(fields mail.Header) (*Report, error) {
 		return nil, err
 	}
 	if sourceIP != "" {
-		if report.SourceIP, err = netip.ParseAddr(sourceIP); err != nil {
+		if report.SourceIP, err = parseSourceIP(sourceIP); err != nil {
 			return nil, fmt.Errorf("%w: Source-IP: %v", ErrMalformed, err)
 		}
 	}
+	// §3.2: the historic Received-Date means the same as Arrival-Date, and a
+	// report with both is malformed.
 	arrivalDate, err := single(fields, "Arrival-Date", false)
 	if err != nil {
 		return nil, err
+	}
+	receivedDate, err := single(fields, "Received-Date", false)
+	if err != nil {
+		return nil, err
+	}
+	if arrivalDate != "" && receivedDate != "" {
+		return nil, fmt.Errorf("%w: both Arrival-Date and Received-Date", ErrMalformed)
+	}
+	if arrivalDate == "" {
+		arrivalDate = receivedDate
 	}
 	if arrivalDate != "" {
 		if report.ArrivalDate, err = mail.ParseDate(arrivalDate); err != nil {
 			return nil, fmt.Errorf("%w: Arrival-Date: %v", ErrMalformed, err)
 		}
 	}
-	for _, name := range []string{"Original-Envelope-Id", "Reporting-MTA", "Incidents"} {
+	incidents, err := single(fields, "Incidents", false)
+	if err != nil {
+		return nil, err
+	}
+	report.Incidents = 1
+	if incidents != "" {
+		count, err := strconv.ParseUint(incidents, 10, 32)
+		if err != nil {
+			return nil, fmt.Errorf("%w: Incidents %q is not an unsigned 32-bit integer", ErrMalformed, incidents)
+		}
+		report.Incidents = uint32(count)
+	}
+	for _, name := range []string{"Original-Envelope-Id", "Reporting-MTA"} {
 		if _, err := single(fields, name, false); err != nil {
 			return nil, err
 		}
@@ -324,6 +357,42 @@ func path(value string) string {
 		return strings.TrimSpace(value[1 : len(value)-1])
 	}
 	return value
+}
+
+// isVersion reports whether value is a Version as RFC 5965 §3.5 writes it, a
+// digit from 1 to 9 followed by any digits, or the "0.1" of the drafts before
+// the RFC.
+func isVersion(value string) bool {
+	if value == "0.1" {
+		return true
+	}
+	if value == "" || value[0] < '1' || value[0] > '9' {
+		return false
+	}
+	for i := 1; i < len(value); i++ {
+		if value[i] < '0' || value[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// parseSourceIP reads Source-IP. RFC 5965 §3.5 takes its form from RFC 5321
+// §4.1.3: an IPv4 address, or an IPv6 address after an "IPv6:" tag. An IPv6
+// address without the tag is also accepted, because providers send it so.
+func parseSourceIP(value string) (netip.Addr, error) {
+	tagged := len(value) > len("IPv6:") && strings.EqualFold(value[:len("IPv6:")], "IPv6:")
+	if tagged {
+		value = value[len("IPv6:"):]
+	}
+	addr, err := netip.ParseAddr(value)
+	if err != nil {
+		return netip.Addr{}, err
+	}
+	if (tagged && !addr.Is6()) || addr.Zone() != "" {
+		return netip.Addr{}, fmt.Errorf("%q is not an address literal", value)
+	}
+	return addr, nil
 }
 
 // isToken reports whether value is an RFC 2045 token.
