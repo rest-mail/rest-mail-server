@@ -146,6 +146,10 @@ type Config struct {
 	// An empty recipient list means the installation's superadmin accounts.
 	AuditAnchorEmailEnabled bool
 	AuditAnchorEmailTo      []string
+	// Optional second target: the same anchors POSTed to an HTTPS endpoint on
+	// another host, with the bearer token when set. An empty URL means off.
+	AuditAnchorHTTPSURL   string
+	AuditAnchorHTTPSToken string
 
 	// DNS Provider
 	DNSProvider string
@@ -838,6 +842,9 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	if err := cfg.loadAuditAnchorEmail(); err != nil {
+		return nil, err
+	}
+	if err := cfg.loadAuditAnchorHTTPS(); err != nil {
 		return nil, err
 	}
 

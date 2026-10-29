@@ -447,6 +447,8 @@ The most common knobs at install time:
 | `api.image.repository` | `ghcr.io/rest-mail/api` | |
 | `api.auditAnchorEmail.enabled` | `true` | Email audit-chain heads daily and after administrative changes, at most hourly |
 | `api.auditAnchorEmail.to` | _(empty)_ | Comma-separated destinations; defaults to installation superadmin accounts. Prefer an independent mailbox outside this server. |
+| `api.auditAnchorHTTPS.url` | _(empty)_ | Optional: also POST each anchor to this `https://` endpoint on another host, ideally append-only. Empty = off; `http://` is refused at startup |
+| `api.auditAnchorHTTPS.existingSecret` | _(empty)_ | Optional Secret with key `TOKEN`, sent as the bearer token |
 | `smtpGateway.service.type` | `LoadBalancer` | `NodePort` for dev |
 | `imapGateway.service.type` | `LoadBalancer` | |
 | `pop3Gateway.service.type` | `LoadBalancer` | |

@@ -8,6 +8,7 @@ data:
   TLSRPT_REPORT_ADDRESS: {{ .Values.api.tlsReportAddress | quote }}
   RESTMAIL_AUDIT_ANCHOR_EMAIL_ENABLED: {{ .Values.api.auditAnchorEmail.enabled | quote }}
   RESTMAIL_AUDIT_ANCHOR_EMAIL_TO: {{ .Values.api.auditAnchorEmail.to | quote }}
+  RESTMAIL_AUDIT_ANCHOR_HTTPS_URL: {{ .Values.api.auditAnchorHTTPS.url | quote }}
   API_PORT: {{ .Values.api.port | quote }}
   RESTMAIL_RECOVERY_EMAIL_BASE_URL: {{ .Values.api.recoveryEmailBaseURL | default "" | quote }}
   # Public HTTPS delivery host advertised by /.well-known/restmail (#291).

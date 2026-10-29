@@ -674,6 +674,8 @@ Implemented in slices; issue #153 remains open.
 | `RESTMAIL_BOOTSTRAP_ADMIN_ADDRESS` | *(empty)* | The address of that first account. The Helm chart sets it to `admin@<mailserver.domain>`; its domain is created with it if this server does not host it yet. |
 | `RESTMAIL_AUDIT_ANCHOR_EMAIL_ENABLED` | `true` | Email audit-chain anchors daily and after administrative changes. |
 | `RESTMAIL_AUDIT_ANCHOR_EMAIL_TO` | *(empty)* | Comma-separated mailbox addresses. Empty uses active accounts with a non-expired `superadmin` grant at `*`, active or eligible (the installation owners). Use an independent mailbox to retain anchors outside this server. |
+| `RESTMAIL_AUDIT_ANCHOR_HTTPS_URL` | *(empty)* | Optional second anchor target: an append-only HTTPS endpoint on another host. Empty = off. Must be `https://` with a host and no credentials; anything else stops the API at startup. |
+| `RESTMAIL_AUDIT_ANCHOR_HTTPS_TOKEN` | *(empty)* | Optional bearer token sent with each anchor POST; keep it in a secret. Setting it without the URL stops the API at startup. |
 | `RESTMAIL_APNS_KEY_FILE` | *(empty)* | Path to the APNs auth key (`.p8`), mounted from a secret. Push is off unless this, the key id and the team id are all set; a key that is set and does not load stops the API starting. |
 | `RESTMAIL_APNS_KEY_ID` | *(empty)* | The key's id, from the Apple Developer portal. |
 | `RESTMAIL_APNS_TEAM_ID` | *(empty)* | The developer team the key belongs to. |
@@ -709,7 +711,29 @@ retry and bounce handling follow the usual mail queue. Each copy names only its
 own recipient. The sender is `audit-anchor@<first owner's mail domain>`, or
 `audit-anchor@<GATEWAY_HOSTNAME>` when only explicit recipients exist. A queued
 event records dispatch, not confirmed receipt; retain the received email as the
-external evidence. The optional HTTPS/object-storage target is separate work.
+external evidence.
+
+When `RESTMAIL_AUDIT_ANCHOR_HTTPS_URL` is set, the API also POSTs each anchor
+to that endpoint as `text/plain; charset=utf-8`, with
+`Authorization: Bearer <token>` when a token is set. The body is exactly the
+email body above, so it never contains log entries. The endpoint follows the
+same schedule (initial, daily, after a burst, at most hourly) with its own
+previous anchor: `Previous-Seq`/`Previous-Hash` name the last anchor that
+endpoint accepted. Any 2xx answer is acceptance. Each attempt makes up to three
+POSTs, 10 seconds each, two and then four seconds apart; network errors, 408,
+429 and 5xx are retried, any other answer (including a redirect, which is not
+followed) is final. The endpoint should keep what it receives append-only, on
+infrastructure this server's operator cannot rewrite.
+
+Every attempt appends `audit.anchor.https` with the anchored and previous
+sequence/hash, the endpoint host, `attempts`, the HTTP `status` when there was
+one, and `delivery`: `accepted` (outcome `success`), or `refused` or
+`unreachable` (outcome `failed`, also logged as an error). A failed attempt is
+retried after an hour. The token is never recorded. The HTTPS target has its
+own lock and schedule, so a slow or failing endpoint never delays or prevents
+email anchors, and email can be switched off while the endpoint stays on.
+Helm: `api.auditAnchorHTTPS.url` and `api.auditAnchorHTTPS.existingSecret` (a
+Secret with key `TOKEN`). Object storage with object lock is not supported yet.
 
 ### 6.2 TLS / certs
 
