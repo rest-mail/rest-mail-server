@@ -37658,12 +37658,12 @@
       }
     },
     "password_short": {
-      "description": "This request matches the published string type but is refused by the handler's byte-count password rule. Preserve the exact 422 answer without marking this schema-valid request invalid.",
       "request": {
         "body": {
           "display_name": "Contract Test",
           "password": "short"
-        }
+        },
+        "invalid": true
       },
       "response": {
         "status": 422,
@@ -37854,7 +37854,6 @@
             "last_login_at": null,
             "password_change_required": false,
             "two_factor_required": false,
-            "last_password_change": null,
             "created_at": "2026-10-21T12:00:00Z",
             "updated_at": "2026-10-21T12:00:00Z"
           }

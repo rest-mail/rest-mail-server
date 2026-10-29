@@ -6,6 +6,8 @@
     "endMailboxSessions",
     "getAlias",
     "getMailbox",
+    "importMessage",
+    "inviteAccount",
     "listAliases",
     "listMailboxes",
     "updateAlias",

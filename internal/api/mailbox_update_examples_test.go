@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/config"
-	"github.com/restmail/restmail/internal/examplepairs"
+	"github.com/rest-mail/rest-mail-server/internal/config"
+	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
 )
 
 const mailboxUpdatePath = "/api/v1/admin/mailboxes/{id}"
