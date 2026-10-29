@@ -2,8 +2,9 @@ name: E2E suite
 
 # The full end-to-end topology and everything run against it, as a reusable
 # workflow: e2e.yml runs it on every code change (its gate is the required
-# check `E2E (full topology)`), and contract-fuzz.yml runs it nightly with the
-# contract tests' fuzz phase instead of their gating phases.
+# check `E2E (full topology)`), contract-fuzz.yml runs it nightly with the
+# contract tests' fuzz phase instead of their gating phases, and
+# contract-faults.yml runs it nightly with the fault run (#654) instead.
 on:
   workflow_call:
     inputs:
@@ -11,7 +12,9 @@ on:
         description: >-
           "gate" runs the examples and coverage gates, then the authorization
           matrix report-only; "fuzz" runs the fuzz phase, reports what it
-          finds as an artifact, and fails nothing.
+          finds as an artifact, and fails nothing; "faults" builds the API
+          with each fault in tests/contract/faults.yml and fails unless the
+          phase each one names turns red.
         type: string
         default: gate
       description-mode:
@@ -261,6 +264,17 @@ jobs:
           CONTRACT_LOGS: ${{ runner.temp }}
           CONTRACT_DESCRIPTION_MODE: ${{ inputs.description-mode }}
         run: tests/contract/run.sh fuzz
+
+      - name: Contract faults (each fault must turn its phase red)
+        # The API rebuilt with each fault in tests/contract/faults.yml, and the
+        # phase the fault names run narrowed to its operation, first on the
+        # normal API (green) and then on the faulted one (red). Fails if any
+        # fault is not caught; faults.md says which (#654).
+        if: inputs.contract-phases == 'faults'
+        env:
+          CONTRACT_LOGS: ${{ runner.temp }}
+          CONTRACT_DESCRIPTION_MODE: ${{ inputs.description-mode }}
+        run: chore contract:faults
 
       - name: Collect container logs
         if: always()

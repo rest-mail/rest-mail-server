@@ -141,6 +141,8 @@ includes:
       # (manifest `internal_mtls: true`). Defaults off — unchanged behavior.
       API_INTERNAL_MTLS: '{{.RESTMAIL_INTERNAL_MTLS | default "false"}}'
       API_INTERNAL_MTLS_PORT: '{{.RESTMAIL_INTERNAL_MTLS_PORT | default "8443"}}'
+      # Empty except in the contract fault run (contract:faults).
+      API_BUILD_TAGS: '{{.RESTMAIL_API_BUILD_TAGS | default ""}}'
 
   smtp-gateway:
     taskfile: ./tasks/smtp-gateway.yml
@@ -631,6 +633,22 @@ tasks:
     desc: 'The fuzz phase against a running topology, a report; replay a finding with -- --seed N'
     cmds:
       - tests/contract/run.sh fuzz {{.CLI_ARGS}}
+
+  contract:faults:
+    desc: 'Build the API with each fault in tests/contract/faults.yml and require the phase it names to turn red (#654); needs the E2E topology, and leaves its normal API running'
+    cmds:
+      - |
+        set -eu
+        CONTRACT_VERTRAG="$(python3 -B scripts/vertrag_pin.py ensure .cache/bin)"
+        export CONTRACT_VERTRAG
+        export RESTMAIL_VERTRAG_BINARY="$CONTRACT_VERTRAG"
+        export PATH="$(dirname "$CONTRACT_VERTRAG"):$PATH"
+        python3 -B -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
+        if [ ! -s .cache/contract-principals.json ]; then
+          API_BASE_URL="${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}" E2E_REQUIRE_STACK=1 chore test:e2e -- -run '^TestContractPrincipals$'
+        fi
+        chore test:contract-fixtures
+        python3 -B tests/contract/faults.py run --api-container "{{.RESTMAIL_PROJECT}}-api"
 
   contract:diff:
     desc: The generated description against openapi.yaml, operation by operation (#624), without a server

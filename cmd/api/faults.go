@@ -5,7 +5,7 @@ package main
 import (
 	"net/http"
 
-	"github.com/restmail/restmail/internal/faultinject"
+	"github.com/rest-mail/rest-mail-server/internal/faultinject"
 )
 
 // injectFaults breaks the public handler with the faults compiled into this

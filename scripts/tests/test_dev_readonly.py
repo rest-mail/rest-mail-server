@@ -29,6 +29,8 @@ class DevReadonlyTests(unittest.TestCase):
             "TASKFILE_DIR": str(ROOT / "tasks"),
             prefix + "_MODE": mode,
             prefix + "_INTERNAL_MTLS": "true",
+            # Only the contract fault run builds with tags, and only in dev.
+            "API_BUILD_TAGS": "",
             prefix + "_DB_PASS": "fixture-password",
             prefix + "_MASTER_KEY": "fixture-master-key",
             prefix + "_JWT_SECRET": "fixture-jwt-secret",
