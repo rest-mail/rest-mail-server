@@ -9,6 +9,13 @@ data:
   RESTMAIL_AUDIT_ANCHOR_EMAIL_ENABLED: {{ .Values.api.auditAnchorEmail.enabled | quote }}
   RESTMAIL_AUDIT_ANCHOR_EMAIL_TO: {{ .Values.api.auditAnchorEmail.to | quote }}
   RESTMAIL_AUDIT_ANCHOR_HTTPS_URL: {{ .Values.api.auditAnchorHTTPS.url | quote }}
+  {{- if .Values.api.auditAnchorS3.bucket }}
+  RESTMAIL_AUDIT_ANCHOR_S3_BUCKET: {{ .Values.api.auditAnchorS3.bucket | quote }}
+  RESTMAIL_AUDIT_ANCHOR_S3_ENDPOINT: {{ .Values.api.auditAnchorS3.endpoint | quote }}
+  RESTMAIL_AUDIT_ANCHOR_S3_REGION: {{ .Values.api.auditAnchorS3.region | quote }}
+  RESTMAIL_AUDIT_ANCHOR_S3_PREFIX: {{ .Values.api.auditAnchorS3.prefix | quote }}
+  RESTMAIL_AUDIT_ANCHOR_S3_FORCE_PATH_STYLE: {{ .Values.api.auditAnchorS3.forcePathStyle | quote }}
+  {{- end }}
   API_PORT: {{ .Values.api.port | quote }}
   RESTMAIL_RECOVERY_EMAIL_BASE_URL: {{ .Values.api.recoveryEmailBaseURL | default "" | quote }}
   # Public HTTPS delivery host advertised by /.well-known/restmail (#291).

@@ -157,6 +157,9 @@ type Config struct {
 	// another host, with the bearer token when set. An empty URL means off.
 	AuditAnchorHTTPSURL   string
 	AuditAnchorHTTPSToken string
+	// Optional third target: the same anchors written to a bucket with S3
+	// Object Lock. An empty bucket means off.
+	AuditAnchorS3 AuditAnchorS3Config
 
 	// DNS Provider
 	DNSProvider string
@@ -873,6 +876,9 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	if err := cfg.loadAuditAnchorHTTPS(); err != nil {
+		return nil, err
+	}
+	if err := cfg.loadAuditAnchorS3(); err != nil {
 		return nil, err
 	}
 

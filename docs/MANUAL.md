@@ -677,6 +677,13 @@ Implemented in slices; issue #153 remains open.
 | `RESTMAIL_AUDIT_ANCHOR_EMAIL_TO` | *(empty)* | Comma-separated mailbox addresses. Empty uses active accounts with a non-expired `superadmin` grant at `*`, active or eligible (the installation owners). Use an independent mailbox to retain anchors outside this server. |
 | `RESTMAIL_AUDIT_ANCHOR_HTTPS_URL` | *(empty)* | Optional second anchor target: an append-only HTTPS endpoint on another host. Empty = off. Must be `https://` with a host and no credentials; anything else stops the API at startup. |
 | `RESTMAIL_AUDIT_ANCHOR_HTTPS_TOKEN` | *(empty)* | Optional bearer token sent with each anchor POST; keep it in a secret. Setting it without the URL stops the API at startup. |
+| `RESTMAIL_AUDIT_ANCHOR_S3_BUCKET` | *(empty)* | Optional third anchor target: a bucket with S3 Object Lock and a default retention rule. Empty = off. Any other `RESTMAIL_AUDIT_ANCHOR_S3_*` credential or endpoint without it stops the API at startup. |
+| `RESTMAIL_AUDIT_ANCHOR_S3_ENDPOINT` | *(empty)* | S3-compatible store origin. Empty = AWS for the region. Must be `https://` with a host and no credentials, path or query. |
+| `RESTMAIL_AUDIT_ANCHOR_S3_REGION` | `us-east-1` | Signing region. |
+| `RESTMAIL_AUDIT_ANCHOR_S3_ACCESS_KEY_ID` | *(empty)* | Required with the bucket. Grant the key only `s3:PutObject` and `s3:GetBucketObjectLockConfiguration`. |
+| `RESTMAIL_AUDIT_ANCHOR_S3_SECRET_ACCESS_KEY` | *(empty)* | Required with the bucket; keep it in a secret. |
+| `RESTMAIL_AUDIT_ANCHOR_S3_PREFIX` | `audit-anchors/` | Relative object prefix ending in `/`. |
+| `RESTMAIL_AUDIT_ANCHOR_S3_FORCE_PATH_STYLE` | `false` | Path-style requests, for stores such as MinIO. |
 | `RESTMAIL_APNS_KEY_FILE` | *(empty)* | Path to the APNs auth key (`.p8`), mounted from a secret. Push is off unless this, the key id and the team id are all set; a key that is set and does not load stops the API starting. |
 | `RESTMAIL_APNS_KEY_ID` | *(empty)* | The key's id, from the Apple Developer portal. |
 | `RESTMAIL_APNS_TEAM_ID` | *(empty)* | The developer team the key belongs to. |
@@ -734,7 +741,29 @@ retried after an hour. The token is never recorded. The HTTPS target has its
 own lock and schedule, so a slow or failing endpoint never delays or prevents
 email anchors, and email can be switched off while the endpoint stays on.
 Helm: `api.auditAnchorHTTPS.url` and `api.auditAnchorHTTPS.existingSecret` (a
-Secret with key `TOKEN`). Object storage with object lock is not supported yet.
+Secret with key `TOKEN`).
+
+When `RESTMAIL_AUDIT_ANCHOR_S3_BUCKET` is set, the API also writes each anchor
+as an object to that bucket. The object holds the same text as the email body,
+as `text/plain; charset=utf-8`, under
+`<prefix><seq, 20 digits>-<UTC time>.txt`, with `Content-MD5`. The bucket must
+have Object Lock enabled with a default retention rule; that rule, set by the
+operator, is what keeps the object from being changed or deleted, and the
+server never sets or shortens retention. Before every write the API reads the
+bucket's Object Lock configuration and writes nothing when it is missing or has
+no default retention. Garage, which can hold attachments, does not implement
+Object Lock, so it cannot be this target; use a store that does, such as AWS S3.
+The schedule, previous anchor, attempts, backoff and
+retries are those of the HTTPS target (each attempt reads the configuration
+and then writes the object; SDK retries are off). Every attempt appends
+`audit.anchor.s3` with the anchored and previous sequence/hash, the endpoint
+host, the bucket, `attempts`, the HTTP `status` when there was one, and
+`delivery` (`accepted`, `refused` or `unreachable`). The credentials are never
+recorded. The bucket target has its own lock and schedule, independent of the
+email and HTTPS targets. Use a bucket in another account than this server's.
+Helm: `api.auditAnchorS3.bucket`, `endpoint`, `region`, `prefix`,
+`forcePathStyle` and `existingSecret` (a Secret with keys `ACCESS_KEY_ID` and
+`SECRET_ACCESS_KEY`).
 
 ### 6.2 TLS / certs
 
