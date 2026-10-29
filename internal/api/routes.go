@@ -129,7 +129,16 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// the metrics network-gate and the RealIP rewrite below.
 	trustedProxies := netallow.New("api-proxy", cfg.ProxyProtocolTrustedCIDRs)
 
-	// Metrics network-gate (OSI-12) MUST come first — before the RealIP rewrite — so
+	// Security headers (OSI-11) — HSTS/nosniff/frame-deny/referrer-policy/CSP on
+	// every response, so they come before any middleware that can answer on its
+	// own, the metrics gate's 404 included. Opt-out via SECURITY_HEADERS_ENABLED
+	// for deployments that terminate these at a reverse proxy.
+	if cfg.SecurityHeadersEnabled {
+		r.Use(middleware.SecurityHeaders(middleware.SecurityHeadersConfig{
+			HSTSMaxAgeSeconds: cfg.HSTSMaxAgeSeconds,
+		}))
+	}
+	// Metrics network-gate (OSI-12) MUST come before the RealIP rewrite so
 	// it evaluates the genuine TCP peer, not a client-spoofable X-Forwarded-For. It
 	// restricts /metrics to internal CIDRs (default loopback + RFC1918, so the
 	// in-cluster Prometheus scrape keeps working) and 404s any other peer; every
@@ -148,14 +157,6 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	r.Use(middleware.TrustedRealIP(trustedProxies))
 	r.Use(chimw.Logger)
 	r.Use(chimw.Recoverer)
-	// Security headers (OSI-11) — HSTS/nosniff/frame-deny/referrer-policy/CSP on
-	// every response. Opt-out via SECURITY_HEADERS_ENABLED for deployments that
-	// terminate these at a reverse proxy.
-	if cfg.SecurityHeadersEnabled {
-		r.Use(middleware.SecurityHeaders(middleware.SecurityHeadersConfig{
-			HSTSMaxAgeSeconds: cfg.HSTSMaxAgeSeconds,
-		}))
-	}
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   cfg.CORSAllowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
