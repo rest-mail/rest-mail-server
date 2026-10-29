@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -208,10 +209,55 @@ func gapWarningApplies(operations map[string]gapOperation, warning oapifly.Warni
 	return warning.Kind != "example-orphaned" || !registered
 }
 
+// TestStrictAPIAreas checks every supported configuration. One that omits an operation,
+// as production omits the test routes, reports that operation's pairs as orphaned; the
+// configuration that registers it checks them, so only those orphans are excused.
 func TestStrictAPIAreas(t *testing.T) {
-	for _, generator := range gapGenerators(t) {
-		if err := generator.Check(); err != nil {
-			t.Error(err)
+	generators := gapGenerators(t)
+	documented := make([]map[string]bool, len(generators))
+	registered := map[string]bool{}
+	for i, generator := range generators {
+		documented[i] = generatedOperationIDs(t, generator)
+		for id := range documented[i] {
+			registered[id] = true
 		}
 	}
+	for i, generator := range generators {
+		err := generator.Check()
+		var strict *oapifly.StrictError
+		if !errors.As(err, &strict) {
+			if err != nil {
+				t.Error(err)
+			}
+			continue
+		}
+		for _, w := range strict.Warnings {
+			if w.Kind == oapifly.WarnExampleOrphaned && !documented[i][w.OperationID] && registered[w.OperationID] {
+				continue
+			}
+			t.Errorf("%s: %s", w.Kind, w.Message)
+		}
+	}
+}
+
+// generatedOperationIDs are the operations a configuration's description documents.
+func generatedOperationIDs(t *testing.T, generator *oapifly.Generator) map[string]bool {
+	t.Helper()
+	data, err := json.Marshal(generator.Generate()["paths"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var paths map[string]map[string]struct {
+		OperationID string `json:"operationId"`
+	}
+	if err := json.Unmarshal(data, &paths); err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]bool{}
+	for _, methods := range paths {
+		for _, op := range methods {
+			ids[op.OperationID] = true
+		}
+	}
+	return ids
 }
