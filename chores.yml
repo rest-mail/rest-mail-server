@@ -580,7 +580,7 @@ tasks:
       - echo "Coverage report written to coverage.html"
 
   contract:
-    desc: 'The whole contract check, as CI runs it: the E2E topology (unless CONTRACT_ENDPOINT names a server), fixtures, the API key contract, the examples and coverage gates, and the authorization and ownership reports. Reports in .cache/contract/'
+    desc: 'The whole contract check, as CI runs it: the registered example-pair boundary checks, the E2E topology (unless CONTRACT_ENDPOINT names a server), fixtures, the API key contract, the examples and coverage gates, and the authorization and ownership reports. Reports in .cache/contract/'
     cmds:
       - |
         set -eu
@@ -591,6 +591,7 @@ tasks:
         export CONTRACT_VERTRAG
         export RESTMAIL_VERTRAG_BINARY="$CONTRACT_VERTRAG"
         export PATH="$(dirname "$CONTRACT_VERTRAG"):$PATH"
+        chore contract:pairs
         if [ -z "${CONTRACT_ENDPOINT:-}" ]; then chore e2e:up; fi
         if [ ! -s .cache/contract-principals.json ]; then
           API_BASE_URL="${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}" E2E_REQUIRE_STACK=1 chore test:e2e -- -run '^TestContractPrincipals$'
@@ -608,6 +609,18 @@ tasks:
         tests/contract/run.sh ownership {{.CLI_ARGS}} || echo "the ownership phase is a report, not a gate"
         if [ "$code" -ne 0 ]; then exit "$code"; fi
         exit "$scan"
+
+  contract:pairs:
+    desc: 'The registered example-pair boundary checks (internal/api *WithVertrag), in parallel shards; a gate in CI, no topology needed'
+    cmds:
+      - |
+        set -eu
+        if [ -z "${RESTMAIL_VERTRAG_BINARY:-}" ]; then
+          RESTMAIL_VERTRAG_BINARY="$(python3 -B scripts/vertrag_pin.py ensure .cache/bin)"
+          export RESTMAIL_VERTRAG_BINARY
+        fi
+        # Adding a *WithVertrag test to internal/api? Name it here, or no run sends it.
+        tests/contract/example_pairs.sh -run '^(TestPublicJSONExamplesWithVertrag|TestAuthenticatedReadExamplesWithVertrag|TestAuthenticatedReadBatchWithVertrag|TestPaginatedReadExamplesWithVertrag|TestAnalyticsExamplesWithVertrag|TestMozillaExamplesWithVertrag|TestAutodiscoverExamplesWithVertrag|TestDomainPolicyReadExamplesWithVertrag|TestDomainPolicyGetExamplesWithVertrag|TestDomainPolicyWriteExamplesWithVertrag|TestDomainPolicyDeleteExamplesWithVertrag|TestSenderRuleCreateExamplesWithVertrag|TestMtaStsPolicyFileExamplesWithVertrag|TestMailboxLookupExamplesWithVertrag|TestDomainAliasReadExamplesWithVertrag|TestAdminResourceReadExamplesWithVertrag|TestPublicDiscoveryExamplesWithVertrag|TestQueueTraceReadExamplesWithVertrag|TestAccountReadExamplesWithVertrag|TestAccountCredentialListExamplesWithVertrag|TestPersonalDataReadExamplesWithVertrag|TestFolderQuarantineReadExamplesWithVertrag|TestMailResourceReadExamplesWithVertrag|TestMessageCollectionReadExamplesWithVertrag|TestMessageSourceReadExamplesWithVertrag|TestAttachmentDownloadExamplesWithVertrag|TestAdminVerificationExamplesWithVertrag|TestBulkQueueCompleteExamplesWithVertrag|TestQueueEntryActionExamplesWithVertrag|TestAdminResourceDeleteExamplesWithVertrag|TestBanRemovalExamplesWithVertrag|TestScopedAdminRemovalExamplesWithVertrag|TestMailRemovalExamplesWithVertrag|TestPersonalRemovalExamplesWithVertrag|TestDeviceRemovalExamplesWithVertrag|TestCredentialRevocationExamplesWithVertrag|TestSieveMutationExamplesWithVertrag|TestSieveInstallationExamplesWithVertrag|TestVacationMutationExamplesWithVertrag|TestFolderMutationExamplesWithVertrag|TestContactMutationExamplesWithVertrag|TestContactImportSuggestExamplesWithVertrag|TestAliasMutationExamplesWithVertrag|TestCustomFilterMutationExamplesWithVertrag|TestCustomFilterValidationExamplesWithVertrag|TestBanCreationExamplesWithVertrag|TestDomainMutationExamplesWithVertrag|TestMailboxSessionEndingExamplesWithVertrag|TestInvitationExamplesWithVertrag|TestMessageImportExamplesWithVertrag|TestForwardAttachmentsExamplesWithVertrag|TestDomainCleanupExamplesWithVertrag)$'
 
   contract:run:
     desc: 'The contract gates against a running topology; narrow with -- --tag Domains, --operation-id getDomain or --only-matching REGEX'
