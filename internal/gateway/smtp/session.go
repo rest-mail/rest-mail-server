@@ -46,7 +46,7 @@ type session struct {
 	limiter      *connlimiter.Limiter
 	subLimiter   *ratelimit.SubmissionLimiter // per-account submission cap (nil = disabled)
 	hostname     string                       // this server's host name, stamped into the Received header
-	isSubmission bool                         // port 587/465 requires AUTH
+	isSubmission bool                         // port 465 requires AUTH
 
 	// Anti-abuse tarpit: the connection-scoped context is cancelled on server
 	// shutdown so an in-flight tarpit sleep aborts rather than blocking the
@@ -154,7 +154,7 @@ func tlsVersionName(v uint16) string {
 // inboundTransportSecurity derives the inbound transport-security fields for a
 // DeliverRequest from the connection's TLS state. This monitoring is scoped to
 // inbound-MX (port 25) mail — the plaintext-capable path from the public
-// internet — so on the authenticated submission path (587/465) it returns
+// internet — so on the authenticated submission path (465) it returns
 // (nil, "", ""): submission is authenticated client traffic tracked separately,
 // and a nil ReceivedTLS is persisted as NULL ("not applicable").
 //

@@ -4,7 +4,7 @@
 // authenticates at receivers for hosted domains).
 //
 // These transforms previously ran only on the webmail/API send path, which
-// rebuilds the message from structured fields. SMTP-submitted mail (587/465)
+// rebuilds the message from structured fields. SMTP-submitted mail (465)
 // enqueued its raw MUA bytes verbatim and the queue worker relayed them as-is —
 // unsigned and with any MUA-supplied Bcc header intact (#171). Centralizing the
 // transforms here lets the queue worker apply them to EVERY queued message,

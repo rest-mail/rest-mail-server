@@ -432,7 +432,7 @@ const (
 
 // API send-path limit defaults (#184) for the webmail/API send surface. They
 // mirror the shared SMTP submission caps (ratelimit.DefaultPerMinute /
-// ratelimit.DefaultPerHour) so submission (587/465) and the webmail/API send
+// ratelimit.DefaultPerHour) so submission (465) and the webmail/API send
 // path cap a sender's outbound volume the same way: 100 recipients per message,
 // 20 messages/minute and 100 messages/hour per account. Overridden by
 // API_MAX_RECIPIENTS_PER_MESSAGE / API_SEND_RATE_LIMIT_PER_MINUTE /
@@ -1634,10 +1634,10 @@ func (c *Config) RollupDownsampleInterval() time.Duration {
 //     but a TLS keypair MUST be present so STARTTLS can be advertised and AUTH is
 //     never taken before STARTTLS (go-smtp sets AllowInsecureAuth=false whenever
 //     a TLS config is present — see internal/gateway/smtp/server.go).
-//   - SMTP 587 submission: STARTTLS + keypair required; AUTH only after STARTTLS.
 //   - SMTP 465 / IMAP 993 / POP3 995: implicit TLS — a keypair MUST be present
 //     (without it the listener binds plaintext instead of TLS).
-//   - IMAP 143 / POP3 110: STARTTLS/STLS + keypair required; pre-TLS AUTH refused.
+//   - SMTP 587 / IMAP 143 / POP3 110: no listener exists; setting their old
+//     variables is a finding (removedCleartextPortFindings).
 //   - API: never serves TLS itself (TLS is terminated by a front proxy), so the
 //     operator must acknowledge that proxy with API_TLS_TERMINATED_BY_PROXY=true;
 //     otherwise it would serve auth/token traffic in cleartext.
