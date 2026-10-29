@@ -54,19 +54,11 @@ func withinServer(db *gorm.DB, held Held, now time.Time) (Held, error) {
 	if override := serverOverride.Load(); override != nil {
 		return held.Within(*override), nil
 	}
-	var entries []Entry
-	err := db.Table("grants AS g").
-		Select("g.scope, c.name AS capability").
-		Joins("JOIN role_capabilities rc ON rc.role_id = g.role_id").
-		Joins("JOIN capabilities c ON c.id = rc.capability_id").
-		Where("g.holder_kind = ? AND g.holder_id = ? AND g.scope = ?", models.GrantHolderServer, models.ServerHolderID, All).
-		Where("g.mode = ? AND (g.expires_at IS NULL OR g.expires_at > ?)", models.GrantActive, now).
-		Where("c.name <> ?", Wildcard).
-		Scan(&entries).Error
+	stored, err := storedServerCeiling(db, now)
 	if err != nil {
 		return Held{}, err
 	}
-	return held.Within(HeldOf(entries...)), nil
+	return held.Within(stored), nil
 }
 
 // ServerCapabilitiesEnv names the operator override for the server ceiling.
@@ -110,13 +102,8 @@ func parseServerCapabilities(raw string, known []string) (Held, error) {
 	}
 	for _, name := range strings.Split(raw, ",") {
 		name = strings.TrimSpace(name)
-		switch {
-		case name == "":
-			return Held{}, fmt.Errorf("%s: empty capability name in %q", ServerCapabilitiesEnv, raw)
-		case name == Wildcard:
-			return Held{}, fmt.Errorf("%s: the wildcard is not allowed; list capabilities explicitly", ServerCapabilitiesEnv)
-		case !vocabulary[name]:
-			return Held{}, fmt.Errorf("%s: unknown capability %q", ServerCapabilitiesEnv, name)
+		if err := checkServerCapability(name, vocabulary); err != nil {
+			return Held{}, fmt.Errorf("%s: %w in %q", ServerCapabilitiesEnv, err, raw)
 		}
 		entries = append(entries, Entry{Scope: All, Capability: name})
 	}

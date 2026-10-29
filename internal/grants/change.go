@@ -63,8 +63,9 @@ func Authorize(tx *gorm.DB, granterID uint, roleID uint, scope string) error {
 // acting and through which request. ErrExists if the holder already holds
 // that role at that scope. The caller holds Lock and has checked Authorize.
 func Add(tx *gorm.DB, g *models.Grant, entry models.AuditEntry) error {
-	// The server ceiling has no editing API yet. Account-grant operations
-	// must not become an unauthorised way to change installation policy.
+	// The server ceiling changes only through SetServerCeiling, by a
+	// superadmin. Account-grant operations must not become an unauthorised
+	// way to change installation policy.
 	if g.HolderKind == models.GrantHolderServer {
 		return ErrExceedsHeld
 	}

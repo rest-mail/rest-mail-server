@@ -10037,6 +10037,90 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/admin/server-capabilities:
+    get:
+      operationId: getServerCapabilities
+      tags: ["Admin: Roles & Grants"]
+      security:
+        - CookieAuth: [users:read]
+        - BearerAuth: [users:read]
+      summary: The server capability ceiling
+      description: >-
+        The capabilities the installation permits. Every account other than
+        superadmin holds only what both its own grants and this set allow.
+        `source` is `environment` while `RESTMAIL_SERVER_CAPABILITIES` sets
+        the ceiling, otherwise `database`. Superadmin only (`403
+        superadmin_required` otherwise).
+      responses:
+        "200":
+          description: The ceiling in force
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ServerCapabilities"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Not a superadmin (superadmin_required)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: updateServerCapabilities
+      tags: ["Admin: Roles & Grants"]
+      security:
+        - CookieAuth: [users:write]
+        - BearerAuth: [users:write]
+      summary: Replace the server capability ceiling
+      description: >-
+        Replaces the stored ceiling with the listed capabilities; `[]` permits
+        none. Names must be in the capability vocabulary; unknown names, empty
+        names and the wildcard are refused (`422`). Superadmin only, in a
+        session signed in with two-factor authentication (`403
+        superadmin_required` or `two_factor_required` otherwise). Refused
+        while `RESTMAIL_SERVER_CAPABILITIES` sets the ceiling (`409
+        server_capabilities_from_environment`). The change and its audit
+        entry (`server_capabilities.update`, with the set before and after)
+        commit together.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateServerCapabilitiesRequest"
+      responses:
+        "200":
+          description: The new ceiling
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ServerCapabilities"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Not a superadmin (superadmin_required), or a session without 2FA (two_factor_required)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: The environment sets the ceiling (server_capabilities_from_environment)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
   /api/v1/admin/grants/mine:
     get:
       operationId: listMyGrants
@@ -14917,6 +15001,31 @@ components:
           type: [string, "null"]
           format: date-time
           description: Optional; must be in the future
+
+    ServerCapabilities:
+      type: object
+      required: [capabilities, source]
+      properties:
+        capabilities:
+          type: array
+          items:
+            type: string
+          example: [mail:read, mail:send]
+        source:
+          type: string
+          enum: [database, environment]
+          description: environment while RESTMAIL_SERVER_CAPABILITIES sets the ceiling
+
+    UpdateServerCapabilitiesRequest:
+      type: object
+      required: [capabilities]
+      properties:
+        capabilities:
+          type: array
+          items:
+            type: string
+          description: Every capability the installation permits; [] for none
+          example: [mail:read, mail:send]
 
     Role:
       type: object

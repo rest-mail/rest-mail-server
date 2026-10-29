@@ -53,6 +53,7 @@ auth:
     - '/api/v1/admin/test/snapshot > Capture the current database state as JSON > 401 > application/json'
     - '/api/v1/admin/grants > List grants, oldest first > 401 > application/json'
     - '/api/v1/admin/grants/mine > The caller''s own grants > 401 > application/json'
+    - '/api/v1/admin/server-capabilities > The server capability ceiling > 401 > application/json'
     - '/api/v1/admin/domains/{id}/dns > Live DNS record check (MX, SPF, DMARC, DKIM, MTA-STS, TLS-RPT) for a domain > 401 > application/json'
     - '/api/v1/admin/mailboxes/{id}/invitation > Invite an account to choose its first password > 401 > application/json'
     - '/api/v1/accounts/{id}/messages/import > Import one historical message > 401 > application/json'
@@ -211,7 +212,7 @@ exclude-matching:
   - '^/api/v1/accounts/\{id\}/contacts/(\{cid\}|block|suggest)(/| >).* > (400|422)( >|$)'
   - '^/api/v1/accounts/\{id\}/contacts > List contacts for an account > (400|422)( >|$)'
   - '^/api/v1/accounts > List the accounts this one reaches > (400|422)( >|$)'
-  - '^/api/v1/admin/(audit|grants|tls-reports)(/| >).* > (400|422)( >|$)'
+  - '^/api/v1/admin/(audit|grants|server-capabilities|tls-reports)(/| >).* > (400|422)( >|$)'
   - '^/api/v1/admin/dkim/\{id\}/rotation > Read .* > (400|422)( >|$)'
   - '^/api/v1/admin/mailboxes > .* > (400|422)( >|$)'
   - '^/api/v1/admin/mailboxes/\{id\}/invitation > .* > 422( >|$)'
@@ -265,6 +266,9 @@ exclude-matching:
   # Nor a recovery email read or link page over the body cap or meeting a
   # failed database or response write.
   - '^/api/v1/auth/recovery-email(/link)? > .* > (413|500)( >|$)'
+  # Nor a server capability ceiling read over the body cap or meeting a failed
+  # database.
+  - '^/api/v1/admin/server-capabilities > The server capability ceiling > (413|500)( >|$)'
 
 # Each documented response has one example (#1236). One that says, in
 # x-requires, that proving it needs a principal, a body, a spent limit or a
@@ -427,6 +431,12 @@ surface:
     - operation: recoveryEmailLink
       status: "500"
       reason: "The page is static; only a failed response write answers 500, which needs fault injection (#1166)."
+    - operation: getServerCapabilities
+      status: "413"
+      reason: "The router's body cap answers before the handler, and the read is a GET the run sends without a body (#1166)."
+    - operation: getServerCapabilities
+      status: "500"
+      reason: "A failed superadmin or ceiling read needs a fault-injected database (#1166)."
 
 # The HAR records the traffic for the secret scan (tests/contract/secret_scan.py, #673).
 reporter: [cli, junit, har]
