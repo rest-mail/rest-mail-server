@@ -582,7 +582,10 @@ func Render(m *Manifest) ([]byte, error) {
 	b.WriteString("\n")
 
 	// Component IPs and ports (binding-derived). Each component maps to the
-	// RESTMAIL_* vars the Taskfile currently uses.
+	// RESTMAIL_* vars the Taskfile currently uses. Client access is implicit TLS
+	// only, so there is no 587, 143 or 110 to render: an older manifest's
+	// `submission` or `plain` port is ignored, because a production gateway
+	// refuses to start with SMTP_PORT_SUBMISSION, IMAP_PORT or POP3_PORT set.
 	for _, c := range m.Components {
 		switch c.Name {
 		case "postgres":
@@ -593,15 +596,12 @@ func Render(m *Manifest) ([]byte, error) {
 		case "smtp-gateway":
 			iv("SMTP_IP", c.IP)
 			iv("SMTP_PORT_INBOUND", port(c, "inbound"))
-			iv("SMTP_PORT_SUBMISSION", port(c, "submission"))
 			iv("SMTP_PORT_SUBMISSION_TLS", port(c, "submission_tls"))
 		case "imap-gateway":
 			iv("IMAP_IP", c.IP)
-			iv("IMAP_PORT", port(c, "plain"))
 			iv("IMAP_TLS_PORT", port(c, "tls"))
 		case "pop3-gateway":
 			iv("POP3_IP", c.IP)
-			iv("POP3_PORT", port(c, "plain"))
 			iv("POP3_TLS_PORT", port(c, "tls"))
 		case "js-filter":
 			iv("JS_FILTER_IP", c.IP)

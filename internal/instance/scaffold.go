@@ -317,13 +317,13 @@ components:
     port: 8080
   - name: smtp-gateway
     ip: {{index .IP "smtp-gateway"}}
-    ports: { inbound: 25, submission: 587, submission_tls: 465 }
+    ports: { inbound: 25, submission_tls: 465 }
   - name: imap-gateway
     ip: {{index .IP "imap-gateway"}}
-    ports: { plain: 143, tls: 993 }
+    ports: { tls: 993 }
   - name: pop3-gateway
     ip: {{index .IP "pop3-gateway"}}
-    ports: { plain: 110, tls: 995 }
+    ports: { tls: 995 }
   - { name: js-filter, ip: {{index .IP "js-filter"}} }
   - { name: webmail,   ip: {{index .IP "webmail"}} }
   - { name: admin,     ip: {{index .IP "admin"}} }
@@ -412,11 +412,11 @@ components:
   - name: api
     port: 8080
   - name: smtp-gateway
-    ports: { inbound: 25, submission: 587, submission_tls: 465 }
+    ports: { inbound: 25, submission_tls: 465 }
   - name: imap-gateway
-    ports: { plain: 143, tls: 993 }
+    ports: { tls: 993 }
   - name: pop3-gateway
-    ports: { plain: 110, tls: 995 }
+    ports: { tls: 995 }
   - { name: js-filter }
   - { name: webmail }
   - { name: admin }
