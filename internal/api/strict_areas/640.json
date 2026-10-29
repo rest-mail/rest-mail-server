@@ -1,0 +1,11 @@
+{
+  "640": [
+    "deleteSieveScript",
+    "disableVacation",
+    "getSieveScript",
+    "getVacation",
+    "putSieveScript",
+    "setVacation",
+    "validateSieveScript"
+  ]
+}
