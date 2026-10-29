@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -30,13 +29,6 @@ const (
 	accessPassword  = "an admin's own password, long"
 	accessMasterKey = "grants-access-master-key-0123456789abcdef"
 )
-
-func envOrDefault(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
-}
 
 // openAccessDB is a database of the test's own, dropped afterwards, migrated as
 // a server before grants migrated it. It skips (never fails) when no database
