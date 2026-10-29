@@ -1,0 +1,7 @@
+{
+  "641": [
+    "deleteQuarantine",
+    "listQuarantine",
+    "releaseQuarantine"
+  ]
+}
