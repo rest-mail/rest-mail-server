@@ -65,8 +65,8 @@ func (d *contactFaultDB) QueryContext(ctx context.Context, q string, _ []driver.
 	if d.failRead == d.read {
 		return nil, d.fault(ctx)
 	}
-	if strings.Contains(q, `FROM grants AS g`) {
-		return &deliveryReadRows{columns: []string{"scope", "capability"}}, nil
+	if rows, ok := defaultGrantRows(q); ok {
+		return rows, nil
 	}
 	if strings.Contains(q, `FROM "mailboxes"`) {
 		if strings.Contains(q, `SELECT "address"`) {
@@ -215,7 +215,7 @@ func assertContactFault(t *testing.T, d *contactFaultDB, rr *httptest.ResponseRe
 func TestContactReloadFailureRollsBackMutation(t *testing.T) {
 	for _, index := range []int{2, 4} {
 		t.Run(contactFaultRoutes[index].name, func(t *testing.T) {
-			d := &contactFaultDB{name: "Original", trust: "trusted", failRead: 3}
+			d := &contactFaultDB{name: "Original", trust: "trusted", failRead: accessReads + 2}
 			rr := httptest.NewRecorder()
 			contactFaultRouter(contactFaultGorm(t, d)).ServeHTTP(rr, contactFaultRequest(t, index))
 			d.mu.Lock()
@@ -254,9 +254,9 @@ func TestContactRoutesCarryCancellationThroughAccess(t *testing.T) {
 }
 func TestContactReadAndMutationFaults(t *testing.T) {
 	for _, index := range []int{0, 2, 3, 4, 6} {
-		stages := []int{2}
+		stages := []int{accessReads + 1}
 		if index == 0 || index == 2 || index == 4 {
-			stages = append(stages, 3)
+			stages = append(stages, accessReads+2)
 		}
 		for _, read := range stages {
 			for _, wait := range []bool{false, true} {

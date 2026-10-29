@@ -43,6 +43,9 @@ func (d *draftSendDB) state() *draftSendState {
 }
 func (d *draftSendDB) QueryContext(_ context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
 	s := d.state()
+	if rows, ok := defaultGrantRows(q); ok {
+		return rows, nil
+	}
 	switch {
 	case strings.Contains(q, `FROM "messages"`):
 		d.locked = d.locked || strings.Contains(q, "FOR UPDATE")

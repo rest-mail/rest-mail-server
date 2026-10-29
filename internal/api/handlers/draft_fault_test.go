@@ -61,6 +61,9 @@ func (d *draftFaultDB) QueryContext(ctx context.Context, q string, _ []driver.Na
 	if d.failRead == d.read {
 		return nil, d.fault(ctx)
 	}
+	if rows, ok := defaultGrantRows(q); ok {
+		return rows, nil
+	}
 	if strings.Contains(q, `FROM "messages"`) {
 		cols := []string{"id", "mailbox_id", "sender", "subject", "is_draft", "recipients_to", "recipients_cc"}
 		if d.missing {
@@ -216,7 +219,7 @@ func TestDraftUpdateWriteAndReloadAreAtomic(t *testing.T) {
 		failWrite, zeroWrite bool
 		failRead, status     int
 	}{
-		{"update failure", true, false, 0, 500}, {"reload failure", false, false, 3, 500}, {"draft disappeared", false, true, 0, 404}, {"success", false, false, 0, 200},
+		{"update failure", true, false, 0, 500}, {"reload failure", false, false, accessReads + 2, 500}, {"draft disappeared", false, true, 0, 404}, {"success", false, false, 0, 200},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			d := &draftFaultDB{failRead: tc.failRead, failWrite: tc.failWrite, zeroWrite: tc.zeroWrite}
@@ -292,7 +295,7 @@ func TestDraftUpdateCancellationRollsBackWriteAndReload(t *testing.T) {
 		t.Run(map[bool]string{false: "write", true: "reload"}[reload], func(t *testing.T) {
 			d := &draftFaultDB{wait: true, started: make(chan struct{})}
 			if reload {
-				d.failRead = 3
+				d.failRead = accessReads + 2
 			} else {
 				d.failWrite = true
 			}

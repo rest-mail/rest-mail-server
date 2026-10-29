@@ -45,6 +45,9 @@ func (d *sendQueueDB) QueryContext(_ context.Context, q string, args []driver.Na
 			recipient = true
 		}
 	}
+	if rows, ok := defaultGrantRows(q); ok {
+		return rows, nil
+	}
 	switch {
 	case strings.HasPrefix(q, `INSERT INTO "outbound_queue"`):
 		if d.failQueue {
