@@ -1,0 +1,14 @@
+{
+  "648": [
+    "createAlias",
+    "deleteAlias",
+    "deleteMailbox",
+    "endMailboxSessions",
+    "getAlias",
+    "getMailbox",
+    "listAliases",
+    "listMailboxes",
+    "updateAlias",
+    "updateMailbox"
+  ]
+}
