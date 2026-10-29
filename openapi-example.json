@@ -26983,7 +26983,8 @@
           "email": "admin@restmail.test",
           "recovery_code": "AAAA-BBBB-CCCC",
           "new_password": "a new password of my own",
-          "client": "desktop"
+          "client": "desktop",
+          "totp_code": "123456"
         }
       },
       "response": {
