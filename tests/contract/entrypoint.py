@@ -7,3 +7,5 @@ directory = Path(__file__).resolve().parent
 shared = runpy.run_path(str(directory / "hooks.py"))
 policy = runpy.run_path(str(directory / "policy_lookup_hooks.py"))
 policy["register_policy_absent_hook"](shared["admin_token"])
+own = runpy.run_path(str(directory / "own_account_hooks.py"))
+own["register_own_account_hooks"](shared["admin_token"])
