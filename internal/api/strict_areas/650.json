@@ -1,0 +1,13 @@
+{
+  "650": [
+    "bounceQueueEntry",
+    "bulkBounceQueue",
+    "bulkDeleteQueue",
+    "bulkRetryQueue",
+    "deleteQueueEntry",
+    "getQueueEntry",
+    "getQueueStats",
+    "listQueue",
+    "retryQueueEntry"
+  ]
+}
