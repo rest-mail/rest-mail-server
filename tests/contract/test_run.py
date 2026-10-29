@@ -302,6 +302,9 @@ class ContractCommand(unittest.TestCase):
                 "chore:test:contract-mfa-admin",
                 "run:gate --tag Domains",
                 "scan",
+                # The gate's examples and coverage processes have consumed
+                # the held queue entries the authorization run's links need.
+                "chore:test:contract-fixtures",
                 "run:authorization --tag Domains",
                 "chore:test:contract-domain-tenants",
                 "run:ownership --tag Domains",
