@@ -680,6 +680,60 @@ def openssl(*args):
     subprocess.run(["openssl"] + list(args), check=True, capture_output=True)
 
 
+def the_admin_domain_id(transaction):
+    """restmail.test's id, through the admin API once per run, or None."""
+    if hooks.stash.get("admin_domain_id") is None:
+        hooks.stash["admin_domain_id"] = next(
+            (
+                d["id"]
+                for d in fixture_call(transaction, "GET", "/api/v1/admin/domains") or []
+                if d.get("name") == ADMIN.split("@")[1]
+            ),
+            None,
+        )
+    return hooks.stash["admin_domain_id"]
+
+
+@hooks.before("setDKIMKey")
+@hooks.before("deleteDKIMKey")
+@hooks.before("setDKIMRotation")
+def off_the_admin_domain(transaction):
+    # Coverage probes keep the documented example's id, 1: restmail.test, the
+    # fixture admin's domain. Their key deletes and replacements left it
+    # signing with selector `contract`, a key DNS does not publish, and their
+    # updates left it at dmarc_policy reject (and rewrote active and
+    # sending_policy), so the authorization run's self-addressed draft send
+    # met its own DMARC reject (503 deferred). A probe aimed at restmail.test
+    # goes to a disposable
+    # domain instead, made once per run; malformed and other ids reach the
+    # handler as generated. Only coverage probes move: the ownership run sends
+    # restmail.test's id to the other tenant on purpose, and the examples
+    # follow links to the run's own domain. updateDomain's hook calls this
+    # before it certifies the domain the request names.
+    if not transaction.get("name", "").startswith("coverage:"):
+        return
+    path, _, query = transaction["fullPath"].partition("?")
+    parts = path.split("/")
+    # /api/v1/admin/dkim/{id}[/rotation] and /api/v1/admin/domains/{id}
+    if len(parts) < 6 or not positive_id(parts[5]):
+        return
+    if int(parts[5]) != the_admin_domain_id(transaction):
+        return
+    if hooks.stash.get("probe_domain_id") is None:
+        domain = fixture_call(
+            transaction,
+            "POST",
+            "/api/v1/admin/domains",
+            {
+                "name": f"contract-probe-{time.time_ns()}.test",
+                "server_type": "traditional",
+            },
+        )
+        hooks.stash["probe_domain_id"] = domain["id"]
+    parts[5] = str(hooks.stash["probe_domain_id"])
+    transaction["fullPath"] = "/".join(parts) + ("?" + query if query else "")
+
+
 @hooks.before("setDKIMKey")
 def a_fresh_signing_key(transaction):
     body = hooks.get_json(transaction)
@@ -749,7 +803,9 @@ def a_certificate_before_going_live(transaction):
     # Setting active to true is refused with 409 certificate_required for a
     # domain with no valid certificate, which every created domain is when
     # the probes reach it. The domain gets a self-signed one through the
-    # admin API, once per run; the request is never rewritten.
+    # admin API, once per run; the request is never rewritten, except that a
+    # coverage probe aimed at restmail.test moves first (off_the_admin_domain).
+    off_the_admin_domain(transaction)
     body = hooks.get_json(transaction)
     if not isinstance(body, dict) or body.get("active") is not True:
         return
