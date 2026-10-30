@@ -25555,6 +25555,48 @@
         "mediaType": "application/json"
       }
     },
+    "missing": {
+      "description": "Nothing is retained at the ID; mail of an account the caller cannot manage answers the same.",
+      "requires": {
+        "state": "two_factor_session"
+      },
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "No scheduled message with that ID is waiting"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "not_held": {
+      "summary": "The scheduled message is not held by a send limit",
+      "requires": {
+        "state": "two_factor_session"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "not_held",
+            "message": "The message is not held"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "requires": {
@@ -29930,6 +29972,83 @@
         "mediaType": "application/json"
       }
     },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type. The route and Vertrag transport hook send those exact bytes rather than JSON-quoting them.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "description": "No account exists at the ID; an account the caller cannot manage answers the same.",
+      "requires": {
+        "state": "two_factor_session"
+      },
+      "request": {
+        "path": {
+          "id": 2147483647
+        },
+        "body": {
+          "messages_per_day": 500,
+          "messages_per_hour": 50,
+          "recipients_per_day": 2000,
+          "recipients_per_hour": 200
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "owner_limit_exceeded": {
+      "summary": "An owned account cannot be allowed more than its owner",
+      "requires": {
+        "state": "two_factor_session"
+      },
+      "request": {
+        "path": {
+          "id": 2
+        },
+        "body": {
+          "messages_per_day": 2000,
+          "messages_per_hour": 200,
+          "recipients_per_day": 20000,
+          "recipients_per_hour": 2000
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "owner_limit_exceeded",
+            "message": "owned account send limits must not exceed the owner's limits"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "requires": {
@@ -30005,6 +30124,35 @@
           "error": {
             "code": "unauthorized",
             "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "updated": {
+      "summary": "A two-factor session sets the account's own limits",
+      "requires": {
+        "state": "two_factor_session"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "messages_per_day": 500,
+          "messages_per_hour": 50,
+          "recipients_per_day": 2000,
+          "recipients_per_hour": 200
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "messages_per_day": 500,
+            "messages_per_hour": 50,
+            "recipients_per_day": 2000,
+            "recipients_per_hour": 200
           }
         },
         "mediaType": "application/json"
