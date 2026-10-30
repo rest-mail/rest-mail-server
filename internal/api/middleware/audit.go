@@ -122,6 +122,7 @@ func (a *Auditor) Audit(action string, opts ...AuditOption) func(http.Handler) h
 				next.ServeHTTP(w, r)
 				return
 			}
+			r = withAuditTarget(r)
 			started := time.Now()
 			var body []byte
 			if cfg.readsBody() {
@@ -180,6 +181,9 @@ func (a *Auditor) record(action string, cfg *auditConfig, r *http.Request, statu
 		return
 	}
 	e := newEntry(action, r, status, started)
+	for key, value := range requestAuditTarget(r) {
+		e.Target[key] = value
+	}
 	if status >= 400 {
 		var er ErrorResponse
 		if json.Unmarshal(resp, &er) == nil {

@@ -35,7 +35,7 @@ func (c mailResourceReadConnection) QueryContext(ctx context.Context, query stri
 		rows, err := c.personalDataReadConnection.QueryContext(ctx, query, args)
 		if err == nil && c.mode == "normal" {
 			r := rows.(*authReadSnapshotRows)
-			r.rows = append(r.rows, []driver.Value{"mailbox:linked@example.com", "mail:send", nil, nil})
+			r.rows = append(r.rows, []driver.Value{"mailbox:linked@example.com", "mail:send", nil, nil}, []driver.Value{"mailbox:linked@example.com", "mail:send_as", nil, nil})
 		}
 		return rows, err
 	}
@@ -139,7 +139,7 @@ func mailResourceReadScenarios(t *testing.T) map[string]accountReadScenario {
 		if err != nil {
 			t.Fatal(err)
 		}
-		data, err := json.Marshal(models.CredentialScope{Permissions: []auth.ScopedPermission{{Capability: "mail:send", Scope: scope}}})
+		data, err := json.Marshal(models.CredentialScope{Permissions: []auth.ScopedPermission{{Capability: "mail:send", Scope: scope}, {Capability: "mail:send_as", Scope: scope}}})
 		if err != nil {
 			t.Fatal(err)
 		}

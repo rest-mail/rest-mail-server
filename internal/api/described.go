@@ -196,6 +196,7 @@ var exampleRequirements = map[string][]string{
 	"limit":     {"rate", "message_size"},
 	"fault":     {"database", "database_pool", "session_store", "permission_store", "context_cancelled", "sidecar_response", "error_adapter"},
 	"state": {
+		"send_as_grant", "send_on_behalf_grant", "read_only_mailbox_grant",
 		"active_grant", "active_policy", "calendar_invitation", "client_secret", "discarding_pipeline", "eligible_grant",
 		"enrolled_authenticator", "enrollment_disabled", "event_stream", "existing_grant", "existing_link", "existing_policy", "existing_script",
 		"full_mailbox", "future_time", "hosted_restmail_domain", "known_password", "mail_host_unconfigured", "own_account", "owner_key",

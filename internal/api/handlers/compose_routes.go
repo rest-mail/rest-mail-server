@@ -8,6 +8,7 @@ import (
 	oapifly "github.com/antimatter-studios/go-oapifly"
 
 	"github.com/restmail/restmail/internal/api/endpoint"
+	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
 )
@@ -151,7 +152,13 @@ type updateDraftBody struct {
 
 // RegisterCompose mounts the drafts, the scheduled sends, the calendar invitations and the
 // replies to them.
-func (h *MessageHandler) RegisterCompose(rs endpoint.Routes) {
+func (h *MessageHandler) RegisterCompose(rs endpoint.Routes, audit ...func(string, ...middleware.AuditOption) endpoint.Middleware) {
+	sendAudit := func(action string) []endpoint.Middleware {
+		if len(audit) == 0 {
+			return nil
+		}
+		return []endpoint.Middleware{audit[0](action, middleware.AuditBodyFields("from"))}
+	}
 	reads := handlerChecked(models.CapMailRead, folderSchemes...)
 	writes := handlerChecked(models.CapMailWrite, folderSchemes...)
 	readAndSend := make([]oapifly.SecurityRequirement, len(folderSchemes))
@@ -166,43 +173,38 @@ func (h *MessageHandler) RegisterCompose(rs endpoint.Routes) {
 		OperationID: "updateDraft", Summary: "Update an existing draft", Tags: []string{"Drafts"},
 		Description: "Update and reload commit together. A failed write/reload returns 500 and rolls back; an absent or no-longer-draft row is 404. Declared in_reply_to and references fields are persisted; omitted/null fields stay unchanged. Dependency errors are distinct from denied access, and SQL follows request cancellation.",
 		Errors:      []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.updateDraft)
-	// A scheduled send is seen and called back with what sending it takes: mail:send as its
-	// from address, checked in the handler (#743).
-	sends := handlerChecked(models.CapMailSend, folderSchemes...)
+	// Seeing or cancelling a scheduled send needs its selected sending capability.
+	sends := delegatedSendSecurity()
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/messages/scheduled",
 		OperationID: "listScheduledMessages", Summary: "List the messages waiting to be sent", Tags: []string{"Messages"},
-		Description: "The account's waiting sends from the addresses the session may send as (mail:send); the others are left out.",
+		Description: "The account's waiting sends that the session may send using their stored mode (mail:send, mail:send_as or mail:send_on_behalf); the others are left out.",
 		Errors:      []int{http.StatusUnauthorized}, Security: sends}, h.listScheduledSends)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/messages/scheduled/{id}",
 		OperationID: "cancelScheduledMessage", Summary: "Cancel a scheduled message", Tags: []string{"Messages"},
-		Description: "A waiting send from an address the session may not send as (mail:send) is not found, as the list leaves it out. Lookup, authorization and cancellation update follow request cancellation.",
+		Description: "A waiting send the session may not send using its stored mode is not found, as the list leaves it out. Lookup, authorization and cancellation update follow request cancellation.",
 		Status:      http.StatusNoContent, Errors: []int{http.StatusUnauthorized, http.StatusNotFound}, Security: sends}, h.cancelScheduledSend)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/{id}/calendar-reply",
 		OperationID: "respondToCalendar", Summary: "Reply to a calendar invitation", Tags: []string{"Calendar"},
 		Description: "The invitation's message is read with mail:read; the reply is sent from an address the session may send as (mail:send).",
 		Errors:      []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusServiceUnavailable},
 		Security:    readAndSend}, h.respondToCalendar)
-	writeAndSend := make([]oapifly.SecurityRequirement, len(folderSchemes))
-	for i, scheme := range folderSchemes {
-		writeAndSend[i] = oapifly.SecurityRequirement{scheme: {models.CapMailWrite, models.CapMailSend}}
-	}
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/send",
 		OperationID: "sendMessage", Summary: "Send a message", Tags: []string{"Messages"},
 		Description: "Sent at once (201), or with scheduled_at stored and sent then (202); the outbound pipeline may " +
-			"discard it (200). The sender is an address the session may send as (mail:send).",
+			"discard it (200). " + delegatedSendingDescription,
 		Status: http.StatusCreated, SuccessStatuses: []int{http.StatusOK, http.StatusAccepted},
 		Responses: append(append([]oapifly.EndpointResponse{}, sendOutcomes...), oapifly.EndpointResponse{Status: http.StatusUnprocessableEntity, Description: "Binding validation, sender policy or scheduling refusal", Type: oapifly.TypeOf[ForwardRefusalResponse]()}),
-		Errors:    sendRefusals, Security: sends}, h.sendMessage)
+		Errors:    sendRefusals, Security: delegatedSendSecurity(), Middleware: sendAudit("mail.send")}, h.sendMessage)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/draft/{id}/send",
 		OperationID: "sendDraft", Summary: "Send a draft", Tags: []string{"Drafts"},
-		Description: "The draft (mail:write) is sent as sendMessage sends, and deleted once it is; a refused send keeps it. Draft lookup/access dependency failures return 500 and follow request cancellation.",
+		Description: "The draft (mail:write) is sent as sendMessage sends, and deleted once it is; a refused send keeps it. Draft lookup/access dependency failures return 500 and follow request cancellation. " + delegatedSendingDescription,
 		Status:      http.StatusCreated, SuccessStatuses: []int{http.StatusOK}, Responses: sentOrDiscarded,
-		Errors: append([]int{http.StatusNotFound}, sendRefusals...), Security: writeAndSend}, h.sendDraft)
+		Errors: append([]int{http.StatusNotFound}, sendRefusals...), Security: delegatedSendSecurity(models.CapMailWrite), Middleware: sendAudit("mail.send_draft")}, h.sendDraft)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/{id}/forward",
 		OperationID: "forwardMessage", Summary: "Forward a message", Tags: []string{"Messages"},
-		Description: "The message (mail:read) is forwarded through the normal sender authorization, rate limit and outbound policy, with Fwd: and the note above its original header. Stored attachments, including empty and inline parts, are re-attached; the Sent copy owns independent attachment objects. The final signed MIME message is bounded by SMTP_MAX_MESSAGE_SIZE, and sender quota includes the copied parts. Sent, attachment references, quota and recipient work commit together. Unavailable or changed source objects fail the forward instead of dropping parts.",
+		Description: "The message (mail:read) is forwarded through the normal sender authorization, rate limit and outbound policy, with Fwd: and the note above its original header. Stored attachments, including empty and inline parts, are re-attached; the Sent copy owns independent attachment objects. The final signed MIME message is bounded by SMTP_MAX_MESSAGE_SIZE, and sender quota includes the copied parts. Sent, attachment references, quota and recipient work commit together. Unavailable or changed source objects fail the forward instead of dropping parts. " + delegatedSendingDescription,
 		Status:      http.StatusCreated, SuccessStatuses: []int{http.StatusOK}, Responses: append(append([]oapifly.EndpointResponse{}, sentOrDiscarded...), oapifly.EndpointResponse{Status: http.StatusUnprocessableEntity, Description: "Binding validation, sender policy or sender quota refusal", Type: oapifly.TypeOf[ForwardRefusalResponse]()}),
-		Errors: append([]int{http.StatusNotFound}, sendRefusals...), Security: readAndSend}, h.forwardMessage)
+		Errors: append([]int{http.StatusNotFound}, sendRefusals...), Security: delegatedSendSecurity(models.CapMailRead), Middleware: sendAudit("mail.forward")}, h.forwardMessage)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/calendar-events",
 		OperationID: "listCalendarEvents", Summary: "List the calendar invitations an account has received", Tags: []string{"Calendar"},
 		Errors: []int{http.StatusUnauthorized, http.StatusForbidden}, Security: reads}, h.listCalendarEvents)

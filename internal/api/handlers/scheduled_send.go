@@ -194,10 +194,11 @@ func truncateForStore(s string) string {
 var errNoScheduledSend = endpoint.Refuse(http.StatusNotFound, "not_found", "No scheduled message with that ID is waiting")
 
 // mayCallBack reports whether the request may see and cancel a scheduled message from
-// address: what sending it takes, mail:send as that address (#743). A credential scoped
-// elsewhere, an API key without mail:send or an app password of another mailbox, may not.
-func (h *MessageHandler) mayCallBack(ctx context.Context, claims *auth.Claims, address string) (bool, error) {
-	_, err := mayActAs(h.db.WithContext(ctx), claims, address, models.CapMailSend)
+// address using its stored sending mode. The account's live capability and the
+// credential's scope must both permit that mode on the represented mailbox.
+func (h *MessageHandler) mayCallBack(ctx context.Context, claims *auth.Claims, address string, onBehalf ...bool) (bool, error) {
+	behalf := len(onBehalf) > 0 && onBehalf[0]
+	_, err := maySendFrom(h.db.WithContext(ctx), claims, address, behalf)
 	if errors.Is(err, errNoAccess) {
 		return false, nil
 	}
@@ -221,13 +222,19 @@ func (h *MessageHandler) listScheduledSends(r *http.Request, _ struct{}) ([]Sche
 	allowed := map[string]bool{}
 	out := make([]ScheduledMessage, 0, len(rows))
 	for _, row := range rows {
-		may, seen := allowed[row.From]
+		var request sendMessageRequest
+		_ = json.Unmarshal(row.Request, &request)
+		key := row.From
+		if request.OnBehalf {
+			key += ":on_behalf"
+		}
+		may, seen := allowed[key]
 		if !seen {
 			var err error
-			if may, err = h.mayCallBack(r.Context(), claims, row.From); err != nil {
+			if may, err = h.mayCallBack(r.Context(), claims, row.From, request.OnBehalf); err != nil {
 				return nil, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to list scheduled messages")
 			}
-			allowed[row.From] = may
+			allowed[key] = may
 		}
 		if may {
 			out = append(out, scheduledMessageOf(row))
@@ -251,7 +258,9 @@ func (h *MessageHandler) cancelScheduledSend(r *http.Request, in scheduledPath) 
 	if err != nil {
 		return endpoint.Empty{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to cancel the scheduled message")
 	}
-	may, err := h.mayCallBack(r.Context(), claims, row.From)
+	var request sendMessageRequest
+	_ = json.Unmarshal(row.Request, &request)
+	may, err := h.mayCallBack(r.Context(), claims, row.From, request.OnBehalf)
 	if err != nil {
 		return endpoint.Empty{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to cancel the scheduled message")
 	}

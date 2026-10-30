@@ -2918,11 +2918,6 @@
     The outbound pipeline may discard the message: 200 with status discarded, nothing sent and
     nothing kept.
 - operation: sendDraft
-  difference: "request body: generated only"
-  reason: >-
-    An optional body supplies the send API's list_unsubscribe (#144), which a draft does not
-    hold and a bulk domain's mail needs. Without a body the draft is sent as it always was.
-- operation: sendDraft
   difference: "response 201 application/json.properties.data*.required: *"
   reason: >-
     A message always writes every field its model writes; the oracle marks some of them

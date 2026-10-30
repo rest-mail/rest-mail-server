@@ -128,7 +128,7 @@ func (h *MessageHandler) commitForward(r *http.Request, req sendMessageRequest, 
 		parts[i].Content = base64.StdEncoding.EncodeToString(data)
 		parts[i].Size = int64(len(data))
 	}
-	raw, err := buildOutboundRaw(outboundMessage{FromName: sender.DisplayName, From: req.From, To: req.To, Cc: req.Cc, Subject: req.Subject, BodyText: req.BodyText, BodyHTML: req.BodyHTML, MessageID: sent.MsgID, InReplyTo: req.InReplyTo, Date: sent.ReceivedAt, Extra: withListUnsubscribe(extra, req.ListUnsubscribe), Attachments: parts})
+	raw, err := buildOutboundRaw(outboundMessage{Sender: req.Sender, FromName: sender.DisplayName, From: req.From, To: req.To, Cc: req.Cc, Subject: req.Subject, BodyText: req.BodyText, BodyHTML: req.BodyHTML, MessageID: sent.MsgID, InReplyTo: req.InReplyTo, Date: sent.ReceivedAt, Extra: withListUnsubscribe(extra, req.ListUnsubscribe), Attachments: parts})
 	if err != nil {
 		return zero, endpoint.Refuse(500, "internal_error", "Failed to build the forwarded message")
 	}

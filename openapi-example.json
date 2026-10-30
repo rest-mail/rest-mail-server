@@ -364,6 +364,14 @@
               },
               {
                 "scope": "mailbox:admin@example.com",
+                "capability": "mail:send_as"
+              },
+              {
+                "scope": "mailbox:admin@example.com",
+                "capability": "mail:send_on_behalf"
+              },
+              {
+                "scope": "mailbox:admin@example.com",
                 "capability": "mail:write"
               },
               {
@@ -6629,6 +6637,14 @@
               {
                 "scope": "mailbox:admin@example.com",
                 "capability": "mail:send"
+              },
+              {
+                "scope": "mailbox:admin@example.com",
+                "capability": "mail:send_as"
+              },
+              {
+                "scope": "mailbox:admin@example.com",
+                "capability": "mail:send_on_behalf"
               },
               {
                 "scope": "mailbox:admin@example.com",
@@ -22346,6 +22362,14 @@
               },
               {
                 "scope": "mailbox:admin@example.com",
+                "capability": "mail:send_as"
+              },
+              {
+                "scope": "mailbox:admin@example.com",
+                "capability": "mail:send_on_behalf"
+              },
+              {
+                "scope": "mailbox:admin@example.com",
                 "capability": "mail:write"
               },
               {
@@ -24582,6 +24606,14 @@
               {
                 "scope": "mailbox:admin@restmail.test",
                 "capability": "mail:send"
+              },
+              {
+                "scope": "mailbox:admin@restmail.test",
+                "capability": "mail:send_as"
+              },
+              {
+                "scope": "mailbox:admin@restmail.test",
+                "capability": "mail:send_on_behalf"
               },
               {
                 "scope": "mailbox:admin@restmail.test",
@@ -28852,6 +28884,59 @@
         "mediaType": "application/json"
       }
     },
+    "read_only_send_as": {
+      "summary": "Delegated read only send as",
+      "requires": {
+        "state": "read_only_mailbox_grant"
+      },
+      "request": {
+        "body": {
+          "from": "shared@restmail.test",
+          "to": [
+            "recipient@example.net"
+          ],
+          "subject": "Hello",
+          "body_text": "Sent through the REST API."
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "You are not authorized to send from this address"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "read_only_send_on_behalf": {
+      "summary": "Delegated read only send on behalf",
+      "requires": {
+        "state": "read_only_mailbox_grant"
+      },
+      "request": {
+        "body": {
+          "from": "shared@restmail.test",
+          "to": [
+            "recipient@example.net"
+          ],
+          "subject": "Hello",
+          "body_text": "Sent through the REST API.",
+          "on_behalf": true
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "You are not authorized to send from this address"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "requires": {
@@ -28914,6 +28999,111 @@
           }
         },
         "mediaType": "application/json"
+      }
+    },
+    "send_as": {
+      "summary": "Delegated send as",
+      "requires": {
+        "state": "send_as_grant"
+      },
+      "request": {
+        "body": {
+          "from": "shared@restmail.test",
+          "to": [
+            "recipient@example.net"
+          ],
+          "subject": "Hello",
+          "body_text": "Sent through the REST API."
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 2,
+            "folder": "Sent",
+            "sender": "shared@restmail.test",
+            "message_id": "\u003c00000000-0000-4000-8000-000000000001@restmail.test\u003e",
+            "in_reply_to": "",
+            "references": "",
+            "thread_id": "\u003c00000000-0000-4000-8000-000000000001@restmail.test\u003e",
+            "sender_name": "",
+            "recipients_to": [
+              "recipient@example.net"
+            ],
+            "recipients_cc": [],
+            "subject": "Hello",
+            "body_text": "Sent through the REST API.",
+            "size_bytes": 31,
+            "raw_size": 297,
+            "downgraded_size": 297,
+            "has_attachments": false,
+            "is_dsn": false,
+            "date_header": null,
+            "is_read": true,
+            "is_flagged": false,
+            "is_starred": false,
+            "is_draft": false,
+            "is_deleted": false,
+            "received_at": "2026-10-21T12:00:00Z",
+            "created_at": "2026-10-21T12:00:00Z",
+            "updated_at": "2026-10-21T12:00:00Z"
+          }
+        }
+      }
+    },
+    "send_on_behalf": {
+      "summary": "Delegated send on behalf",
+      "requires": {
+        "state": "send_on_behalf_grant"
+      },
+      "request": {
+        "body": {
+          "from": "shared@restmail.test",
+          "to": [
+            "recipient@example.net"
+          ],
+          "subject": "Hello",
+          "body_text": "Sent through the REST API.",
+          "on_behalf": true
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 2,
+            "folder": "Sent",
+            "sender": "shared@restmail.test",
+            "message_id": "\u003c00000000-0000-4000-8000-000000000001@restmail.test\u003e",
+            "in_reply_to": "",
+            "references": "",
+            "thread_id": "\u003c00000000-0000-4000-8000-000000000001@restmail.test\u003e",
+            "sender_name": "",
+            "recipients_to": [
+              "recipient@example.net"
+            ],
+            "recipients_cc": [],
+            "subject": "Hello",
+            "body_text": "Sent through the REST API.",
+            "size_bytes": 31,
+            "raw_size": 297,
+            "downgraded_size": 297,
+            "has_attachments": false,
+            "is_dsn": false,
+            "date_header": null,
+            "is_read": true,
+            "is_flagged": false,
+            "is_starred": false,
+            "is_draft": false,
+            "is_deleted": false,
+            "received_at": "2026-10-21T12:00:00Z",
+            "created_at": "2026-10-21T12:00:00Z",
+            "updated_at": "2026-10-21T12:00:00Z"
+          }
+        }
       }
     },
     "session_unavailable": {
