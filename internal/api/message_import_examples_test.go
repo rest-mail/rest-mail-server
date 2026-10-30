@@ -104,6 +104,14 @@ func (c *importConnection) QueryContext(ctx context.Context, q string, args []dr
 		permissions, _ := json.Marshal(map[string]any{"permissions": []map[string]string{{"capability": "mailboxes:write", "scope": scope}}})
 		return importRows(map[string]any{"id": int64(31), "account_id": int64(1), "kind": "api_key", "public_id": c.keyPublic, "secret_hash": c.keyHash, "scope": string(permissions), "revoked_at": nil, "expires_at": nil}), nil
 	}
+	if strings.HasPrefix(q, "WITH RECURSIVE owned") {
+		// The fixture's mailboxes own no accounts: the subtree's usage is the mailbox's.
+		used := c.state.quota
+		if c.mode == "full" {
+			used = 1 << 40
+		}
+		return invitationRows([]string{"coalesce"}, []driver.Value{used}), nil
+	}
 	if strings.Contains(q, `FROM "mailboxes"`) {
 		if c.mode == "scope_failure" {
 			c.failed = true

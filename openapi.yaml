@@ -1592,9 +1592,9 @@ paths:
         "403":
           description: No mailboxes:write covering the domain, or a session in setup
         "409":
-          description: An account with this address exists
+          description: An account with this address exists, or the operator's owned-account limit has been reached (owned_account_limit).
         "422":
-          description: Not an address, a password under 12 characters, or a domain this server does not host
+          description: Not an address, a password under 12 characters, a domain this server does not host, or a quota above the owner's ceiling.
           content:
             application/json:
               schema:
@@ -12885,6 +12885,11 @@ components:
           description: On a domain this server hosts.
         display_name:
           type: string
+        quota_bytes:
+          type: [integer, "null"]
+          format: int64
+          minimum: 0
+          description: Storage cap in bytes. An owned account inherits live when omitted or zero; a positive cap cannot exceed its owner's ceiling. Usage by all owned accounts shares the owner's budget.
         password:
           type: string
           minLength: 12
@@ -14032,6 +14037,7 @@ components:
         quota_bytes:
           type: integer
           format: int64
+          description: Storage cap in bytes. Non-positive values inherit for an owned account, otherwise unlimited. A positive cap above the owner's live ceiling is refused with 422.
         active:
           type: boolean
 

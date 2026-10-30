@@ -33,11 +33,16 @@ type AccountHandler struct {
 	// here empties it.
 	cache *grants.Cache
 	// masterKey decrypts TOTP secrets, for linking an account with 2FA.
-	masterKey string
+	masterKey        string
+	maxOwnedAccounts int
 }
 
-func NewAccountHandler(db *gorm.DB, cache *grants.Cache, masterKey string) *AccountHandler {
-	return &AccountHandler{db: db, cache: cache, masterKey: masterKey}
+func NewAccountHandler(db *gorm.DB, cache *grants.Cache, masterKey string, maxOwnedAccounts ...int) *AccountHandler {
+	h := &AccountHandler{db: db, cache: cache, masterKey: masterKey}
+	if len(maxOwnedAccounts) > 0 {
+		h.maxOwnedAccounts = maxOwnedAccounts[0]
+	}
+	return h
 }
 
 // forRequest gives the handler's SQL work the HTTP request's budget and
@@ -312,9 +317,32 @@ func (h *AccountHandler) create(r *http.Request, req createAccountRequest) (acco
 	if req.Owned {
 		owner := claims.AccountID
 		account.OwnerID = &owner
+		account.QuotaBytes = 0
+	}
+	if req.QuotaBytes != nil {
+		account.QuotaBytes = *req.QuotaBytes
 	}
 	errExists := errors.New("exists")
+	errOwnedLimit := endpoint.Refuse(http.StatusConflict, "owned_account_limit", "The maximum number of owned accounts has been reached")
 	err = h.db.Transaction(func(tx *gorm.DB) error {
+		if req.Owned {
+			chain, err := repositories.StorageQuotaChain(tx, claims.AccountID, true)
+			if err != nil {
+				return err
+			}
+			if cap := repositories.StorageQuotaCeiling(chain); cap > 0 && account.QuotaBytes > cap {
+				return endpoint.Invalid(map[string]string{"quota_bytes": "must not exceed the owner's storage quota"})
+			}
+			if h.maxOwnedAccounts > 0 {
+				var owned int64
+				if err := tx.Model(&models.Mailbox{}).Where("owner_id = ?", claims.AccountID).Count(&owned).Error; err != nil {
+					return err
+				}
+				if owned >= int64(h.maxOwnedAccounts) {
+					return errOwnedLimit
+				}
+			}
+		}
 		var count int64
 		// Earlier versions could store decomposed local parts. Do not create a
 		// second identity equivalent to one of those existing accounts.
@@ -329,6 +357,14 @@ func (h *AccountHandler) create(r *http.Request, req createAccountRequest) (acco
 				return errExists
 			}
 			return err
+		}
+		// GORM's ordinary-mailbox default replaces a zero on INSERT. Restore
+		// zero explicitly so an owned account keeps inheriting future changes.
+		if (req.Owned && req.QuotaBytes == nil) || (req.QuotaBytes != nil && *req.QuotaBytes == 0) {
+			if err := tx.Model(&account).Update("quota_bytes", 0).Error; err != nil {
+				return err
+			}
+			account.QuotaBytes = 0
 		}
 		if err := tx.Create(&models.QuotaUsage{MailboxID: account.ID}).Error; err != nil {
 			return err

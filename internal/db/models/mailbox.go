@@ -6,11 +6,13 @@ import "time"
 // credentials (Credential), and holds grants (Grant). There is no other kind
 // of account: an administrator is an account holding admin grants.
 type Mailbox struct {
-	ID             uint       `gorm:"primaryKey" json:"id"`
-	DomainID       uint       `gorm:"not null;index" json:"domain_id"`
-	LocalPart      string     `gorm:"size:64;not null" json:"local_part"`
-	Address        string     `gorm:"size:255;not null;uniqueIndex" json:"address"`
-	DisplayName    string     `gorm:"size:255" json:"display_name"`
+	ID          uint   `gorm:"primaryKey" json:"id"`
+	DomainID    uint   `gorm:"not null;index" json:"domain_id"`
+	LocalPart   string `gorm:"size:64;not null" json:"local_part"`
+	Address     string `gorm:"size:255;not null;uniqueIndex" json:"address"`
+	DisplayName string `gorm:"size:255" json:"display_name"`
+	// QuotaBytes is an explicit cap. Zero inherits the live owner's ceiling
+	// for owned accounts; without an owner, zero means unlimited.
 	QuotaBytes     int64      `gorm:"default:1073741824" json:"quota_bytes"`
 	QuotaUsedBytes int64      `gorm:"default:0" json:"quota_used_bytes"`
 	Active         bool       `gorm:"default:true" json:"active"`

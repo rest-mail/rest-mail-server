@@ -15,6 +15,7 @@ data:
   GATEWAY_HOSTNAME: {{ .Values.mailserver.hostname | quote }}
   ENVIRONMENT: {{ .Values.api.environment | quote }}
   LOG_LEVEL: {{ .Values.api.logLevel | quote }}
+  MAX_OWNED_ACCOUNTS: {{ .Values.api.maxOwnedAccounts | default 0 | quote }}
   ATTACHMENT_STORAGE_TYPE: {{ .Values.api.attachments.storageType | quote }}
   {{- if eq .Values.api.attachments.storageType "s3" }}
   ATTACHMENT_S3_ENDPOINT: {{ .Values.api.attachments.s3.endpoint | quote }}

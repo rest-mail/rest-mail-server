@@ -159,6 +159,7 @@ type createAccountRequest struct {
 	// creator and never holding more than it does. It needs agents:create on
 	// the domain and a session that signed in with a second factor.
 	Owned        bool   `json:"owned,omitempty"`
+	QuotaBytes   *int64 `json:"quota_bytes,omitempty" minimum:"0" description:"Storage cap in bytes; owned accounts inherit live when omitted or zero and a positive cap cannot exceed the owner's ceiling"`
 	PasswordHash string `json:"password_hash,omitempty" maxLength:"256" pattern:"^((\\{BLF-CRYPT\\})?\\$2[aby]\\$(0[4-9]|1[0-4])\\$[./A-Za-z0-9]{53}|(\\{SHA256-CRYPT\\})?\\$5\\$(rounds=([1-9][0-9]{3,5}|1000000)\\$)?[./A-Za-z0-9]{1,16}\\$[./A-Za-z0-9]{43}|(\\{SHA512-CRYPT\\})?\\$6\\$(rounds=([1-9][0-9]{3,5}|1000000)\\$)?[./A-Za-z0-9]{1,16}\\$[./A-Za-z0-9]{86}|(\\{ARGON2ID\\})?\\$argon2id\\$v=19\\$m=([89]|[1-9][0-9]{1,4}|1[0-9]{5}|2[0-5][0-9]{4}|26[01][0-9]{3}|2620[0-9]{2}|2621[0-3][0-9]|26214[0-4]),t=([1-9]|10),p=[1-8]\\$[A-Za-z0-9+/]{11,86}\\$[A-Za-z0-9+/]{22,86}|(\\{ARGON2I\\})?\\$argon2i\\$v=19\\$m=([89]|[1-9][0-9]{1,4}|1[0-9]{5}|2[0-5][0-9]{4}|26[01][0-9]{3}|2620[0-9]{2}|2621[0-3][0-9]|26214[0-4]),t=([1-9]|10),p=[1-8]\\$[A-Za-z0-9+/]{11,86}\\$[A-Za-z0-9+/]{22,86}|)$"`
 }
 
@@ -175,7 +176,7 @@ type updateMailboxRequest struct {
 	// Keep the byte-count rule in the handler; minLength would count code points.
 	Password    *string `json:"password,omitempty" format:"password" description:"At least 12 bytes when supplied; null leaves the password unchanged"`
 	DisplayName *string `json:"display_name,omitempty"`
-	QuotaBytes  *int64  `json:"quota_bytes,omitempty"`
+	QuotaBytes  *int64  `json:"quota_bytes,omitempty" description:"Storage cap in bytes; non-positive values inherit for an owned account, otherwise unlimited; a positive cap cannot exceed the owner's ceiling"`
 	Active      *bool   `json:"active,omitempty"`
 }
 

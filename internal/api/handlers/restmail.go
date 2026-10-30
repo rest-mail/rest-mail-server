@@ -511,12 +511,6 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 		}
 		flags := sieveFlagsOf(final)
 
-		// Check quota
-		if mailbox.QuotaBytes > 0 && mailbox.QuotaUsedBytes >= mailbox.QuotaBytes {
-			failed = append(failed, rcpt)
-			continue
-		}
-
 		// RFC 5233: when the recipient was resolved by stripping a "+detail" tag
 		// down to the base mailbox, record the original recipient in a
 		// Delivered-To header so downstream Sieve rules can still match the tag.
@@ -560,10 +554,10 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 		// copy behind for the peer's retry, and HTTP cancellation must reach
 		// every write and the transaction's commit.
 		if err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
-			if err := tx.Create(&msg).Error; err != nil {
+			if err := repositories.ReserveStorage(tx, mailbox.ID, int64(sizeBytes)); err != nil {
 				return err
 			}
-			if err := tx.Model(&mailbox).Update("quota_used_bytes", gorm.Expr("quota_used_bytes + ?", sizeBytes)).Error; err != nil {
+			if err := tx.Create(&msg).Error; err != nil {
 				return err
 			}
 			return tx.Model(&models.QuotaUsage{}).Where("mailbox_id = ?", mailbox.ID).Updates(map[string]interface{}{

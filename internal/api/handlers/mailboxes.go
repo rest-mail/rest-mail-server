@@ -152,6 +152,15 @@ func (h *MailboxHandler) update(r *http.Request, in updateMailboxInput) (Mailbox
 	}
 	if len(cols) > 0 || hashed != "" {
 		change := func(tx *gorm.DB) error {
+			if req.QuotaBytes != nil {
+				chain, err := repositories.StorageQuotaChain(tx, mailbox.ID, true)
+				if err != nil {
+					return err
+				}
+				if cap := repositories.StorageQuotaCeiling(chain[1:]); cap > 0 && *req.QuotaBytes > cap {
+					return endpoint.Invalid(map[string]string{"quota_bytes": "must not exceed the owner's storage quota"})
+				}
+			}
 			if len(cols) > 0 {
 				if err := tx.Model(&mailbox).Select(cols).Updates(updates).Error; err != nil {
 					return err
@@ -182,6 +191,10 @@ func (h *MailboxHandler) update(r *http.Request, in updateMailboxInput) (Mailbox
 			return reload(tx)
 		})
 		if err != nil {
+			var refusal *endpoint.Error
+			if errors.As(err, &refusal) {
+				return Mailbox{}, err
+			}
 			return Mailbox{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to update mailbox")
 		}
 		if hashed != "" || req.Active != nil {
