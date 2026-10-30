@@ -17,6 +17,7 @@ import (
 	yaml "go.yaml.in/yaml/v2"
 
 	"github.com/restmail/restmail/internal/api/endpoint"
+	"github.com/restmail/restmail/internal/metrics"
 	"github.com/restmail/restmail/internal/version"
 )
 
@@ -113,9 +114,10 @@ func TestPublicReadExamplesMatchRegisteredResponses(t *testing.T) {
 	}
 }
 
-// A failed scrape has a real sanitized error response. The other public reads
-// above succeed on a failing database. Their fallback 500 examples describe the
-// shared error adapter, rather than claiming that these handlers query SQL.
+// A failed scrape has a real sanitized error response: the production DKIM
+// key-age collector cannot read a database that refuses queries. The other public
+// reads above succeed on a failing database. Their fallback 500 examples describe
+// the shared error adapter, rather than claiming that these handlers query SQL.
 func TestPublicReadFailureExamplesMatchErrorAdapter(t *testing.T) {
 	pairs, err := examplepairs.Read()
 	if err != nil {
@@ -130,10 +132,11 @@ func TestPublicReadFailureExamplesMatchErrorAdapter(t *testing.T) {
 			}
 			rr := httptest.NewRecorder()
 			if id == "prometheusMetrics" {
+				registry := prometheus.NewRegistry()
+				registry.MustRegister(metrics.NewDKIMKeyAgeCollector(healthProbeDB(t, nil)))
 				router := chi.NewRouter()
-				registerMetrics(endpoint.Routes{Router: router, Registry: endpoint.NewRegistry()}, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-					http.Error(w, "collector dependency details must stay private", http.StatusServiceUnavailable)
-				}))
+				registerMetrics(endpoint.Routes{Router: router, Registry: endpoint.NewRegistry()},
+					promhttp.HandlerFor(prometheus.Gatherers{registry}, promhttp.HandlerOpts{}))
 				router.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/metrics", nil))
 			} else {
 				endpoint.WriteError(rr, errors.New("dependency details must stay private"))

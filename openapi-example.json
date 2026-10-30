@@ -23617,8 +23617,8 @@
       }
     },
     "internal_error": {
-      "summary": "An unexpected handler failure uses the shared error envelope",
-      "description": "This fault response is exercised through the endpoint error adapter; a healthy GET does not provoke it. Metrics additionally exercises a failing scrape.",
+      "summary": "A scrape that cannot read the database fails without detail",
+      "description": "Fault precondition: the database refuses queries, so the DKIM key-age collector cannot read the key inventory and the scrape fails. The public response does not disclose the collector's error.",
       "requires": {
         "fault": "database"
       },
