@@ -20,7 +20,8 @@ type Entry struct {
 
 // Held is what an account holds right now: a capability at a scope for each
 // capability of each of its unexpired grants that is active, or eligible and
-// switched on (Activate), and the owner's capabilities on its own mailbox.
+// switched on (Activate), and implicit own-mailbox capabilities. Receiving is
+// an explicit own-mailbox grant so it can be withheld or revoked.
 // The zero Held holds nothing.
 type Held struct {
 	entries []Entry
@@ -174,9 +175,9 @@ func IntersectScopes(a, b []string) []string {
 }
 
 // Load reads what an account holds at now: its active, unexpired grants, and
-// the owner's capabilities (models.OwnerCapabilities) on its own mailbox,
-// which every active account holds without a grant. An inactive or missing
-// account holds nothing on its own mailbox, but its grants are still read:
+// the implicit own-mailbox capabilities (models.OwnerCapabilities except
+// mail:receive), which every active account holds without a grant. An inactive
+// or missing account holds nothing on its own mailbox, but its grants are still read:
 // whoever acts for it is refused elsewhere.
 //
 // An owned account (models.Mailbox.OwnerID) holds only what its owner holds
@@ -240,6 +241,10 @@ func loadBounded(db *gorm.DB, accountID uint, now time.Time, visited map[uint]bo
 	}
 	if len(own) == 1 {
 		for _, c := range models.OwnerCapabilities {
+			// Receiving is stored as a normal grant so removing it works.
+			if c == models.CapMailReceive {
+				continue
+			}
 			held.entries = append(held.entries, Entry{Scope: Mailbox(own[0].Address), Capability: c})
 		}
 	}

@@ -6,7 +6,5 @@
 #   schema can state, take the mark off the example.
 # - example-invalid on a response: the example and the response type disagree.
 example-invalid createAppPassword/name_control
-example-invalid restmailDeliver/recipients_missing
 example-invalid sendMessage/from_missing
 example-invalid sendMessage/unsubscribe_not_allowed
-example-invalid updateMailbox/password_short

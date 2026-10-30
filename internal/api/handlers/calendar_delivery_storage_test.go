@@ -67,6 +67,9 @@ func (d *calendarDeliveryDB) Driver() driver.Driver                        { ret
 func (d *calendarDeliveryDB) Open(string) (driver.Conn, error)             { return d, nil }
 
 func (d *calendarDeliveryDB) QueryContext(_ context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
+	if rows, ok := receiveFixtureRows(q); ok {
+		return rows, nil
+	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	switch {

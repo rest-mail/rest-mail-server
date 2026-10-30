@@ -42,6 +42,10 @@ func (c *mailRequirementConnection) QueryContext(ctx context.Context, q string, 
 		if c.readOnly {
 			return invitationRows(cols, []driver.Value{"mailbox:admin@restmail.test", "mail:read", nil, nil}), nil
 		}
+		if c.op == "deliverMessage" {
+			// The fixed recipient holds its default receive grant.
+			return invitationRows(cols, []driver.Value{"mailbox:admin@restmail.test", "mail:receive", nil, nil}), nil
+		}
 		return invitationRows(cols), nil
 	case strings.Contains(q, `FROM "mailboxes"`):
 		if strings.Contains(q, "owner_id") {

@@ -42,7 +42,7 @@ type mailboxInfo struct {
 // other unknown recipient.
 func (f *recipientCheckFilter) lookupMailbox(localPart, domain string) (mailboxInfo, error) {
 	var mailbox models.Mailbox
-	err := repositories.FindActiveMailboxByAddress(f.db, localPart+"@"+domain, &mailbox)
+	err := repositories.FindReceivingMailboxByAddress(f.db, localPart+"@"+domain, &mailbox)
 	if errors.Is(err, repositories.ErrMailboxUnavailable) {
 		return mailboxInfo{}, err
 	}

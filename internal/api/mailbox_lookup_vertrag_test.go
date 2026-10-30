@@ -108,7 +108,25 @@ func checkMailboxLookupWithVertrag(t *testing.T, binary string, handler http.Han
 	if err := os.WriteFile(filepath.Join(dir, "pair.py"), []byte(hook), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "vertrag.yml"), []byte("language: python\nhookfiles: ./pair.py\n"), 0600); err != nil {
+	// This in-process fixture supplies the selected pair's declared state,
+	// faults and principal. New Vertrag versions refuse unprovided exchanges.
+	provides := map[string][]string{}
+	fixtureConfig := map[string]any{"language": "python", "hookfiles": "./pair.py", "provides": provides}
+	for kind, value := range pair.Requires {
+		provides[kind] = []string{value}
+		if kind == "principal" {
+			principal := map[string]any{"name": value}
+			if token != "" {
+				principal["auth"] = map[string]string{"header": "Authorization: Bearer " + token}
+			}
+			fixtureConfig["principals"] = []any{principal}
+		}
+	}
+	configData, err := json.Marshal(fixtureConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "vertrag.yml"), configData, 0600); err != nil {
 		t.Fatal(err)
 	}
 	server := httptest.NewServer(handler)
@@ -134,7 +152,7 @@ func checkMailboxLookupWithVertrag(t *testing.T, binary string, handler http.Han
 		Summary struct{ Total, Passing, Failing, Errors, Skipped int }
 	}
 	if err := json.Unmarshal(data, &report); err != nil {
-		t.Fatal(err)
+		t.Fatalf("decode Vertrag report: %v; report=%q; output=%s", err, data, output)
 	}
 	if report.Summary.Total != 1 || report.Summary.Passing != 1 || report.Summary.Failing != 0 || report.Summary.Errors != 0 || report.Summary.Skipped != 0 {
 		t.Fatalf("exchange did not run and pass: %s", data)

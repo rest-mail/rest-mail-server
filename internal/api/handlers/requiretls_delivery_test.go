@@ -32,6 +32,7 @@ func TestDelivery_KeepsTheREQUIRETLSTag(t *testing.T) {
 			if err := db.Create(&mb).Error; err != nil {
 				t.Fatal(err)
 			}
+			seedReceiveFixture(t, db, mb)
 			// The default redirect policy allows only the recipient's own domains (OSI-13).
 			target := "fwd@" + dom.Name
 			cfg, _ := json.Marshal(map[string]string{"script": `require ["copy"]; redirect :copy "` + target + `";`})

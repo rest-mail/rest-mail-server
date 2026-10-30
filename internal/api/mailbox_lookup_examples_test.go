@@ -41,6 +41,9 @@ func (c mailboxLookupConnection) Connect(context.Context) (driver.Conn, error) {
 func (c mailboxLookupConnection) Driver() driver.Driver                        { return c }
 func (c mailboxLookupConnection) Open(string) (driver.Conn, error)             { return c, nil }
 func (c mailboxLookupConnection) QueryContext(_ context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
+	if rows, ok := defaultReceiveAccountRows(query); ok {
+		return rows, nil
+	}
 	if len(args) == 0 {
 		return nil, errors.New("lookup lost its identity restriction")
 	}

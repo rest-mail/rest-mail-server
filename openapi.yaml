@@ -12903,6 +12903,12 @@ components:
             creator and never holding more than it does, checked live. Needs
             agents:create on the domain and a session that signed in with a
             second factor; otherwise 403.
+        receive:
+          type: [boolean, "null"]
+          description: >
+            Accept inbound mail through a mail:receive grant; defaults to true.
+            False creates the account without that grant. Later changes use
+            the audited grants API and require a 2FA session.
         password_hash:
           type: string
           maxLength: 256
@@ -13798,17 +13804,14 @@ components:
         - required: [to]
           properties:
             to:
-              type: array
               minItems: 1
         - required: [recipients]
           properties:
             recipients:
-              type: array
               minItems: 1
         - required: [raw_message]
           properties:
             raw_message:
-              type: string
               minLength: 1
       properties:
         from:

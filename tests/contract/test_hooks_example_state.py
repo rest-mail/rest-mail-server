@@ -162,6 +162,16 @@ class ExampleStateHookTest(unittest.TestCase):
             },
         )
 
+    def test_the_minimum_id_probe_of_an_invitation_is_left_out(self):
+        name = (
+            "/api/v1/admin/mailboxes/{id}/invitation > Invite an account to choose its first password"
+            " > 201 > application/json"
+        )
+        transaction = self.transaction(name, "/api/v1/admin/mailboxes/1/invitation")
+        self.hooks.invite_an_account_without_credentials(transaction)
+        self.assertTrue(transaction.get("skip"))
+        self.assertEqual(transaction["fullPath"], "/api/v1/admin/mailboxes/1/invitation")
+
     def test_a_new_sender_is_unblocked_first_and_an_existing_one_added(self):
         name = "/api/v1/accounts/{id}/contacts/block > Block a sender > %s > application/json"
         self.server.state["contacts"] = [{"id": 5, "email": "new@example.com"}]

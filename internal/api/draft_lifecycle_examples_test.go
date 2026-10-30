@@ -14,6 +14,7 @@ import (
 	"github.com/restmail/restmail"
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/grants"
 )
 
 var draftExampleNames = map[string][]string{
@@ -49,6 +50,14 @@ func newDraftExampleFixture(t *testing.T, operation, name string) draftExampleFi
 		t.Fatal(err)
 	}
 	f.address = "admin@restmail.test"
+	// The receive grant is scoped by address: the renamed mailbox needs its own.
+	var renamed models.Mailbox
+	if err := f.db.First(&renamed, f.mailboxID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := grants.EnsureReceive(f.db, &renamed); err != nil {
+		t.Fatal(err)
+	}
 	if name == "discarded" {
 		if err := f.db.Create(&models.Pipeline{DomainID: 1, Direction: "outbound", Active: true,
 			Filters: json.RawMessage(`[{"name":"sieve","type":"action","enabled":true,"config":{"script":"discard;"}}]`)}).Error; err != nil {

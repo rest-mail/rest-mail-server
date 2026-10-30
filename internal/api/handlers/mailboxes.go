@@ -208,11 +208,13 @@ func (h *MailboxHandler) update(r *http.Request, in updateMailboxInput) (Mailbox
 	return mailboxOf(mailbox), nil
 }
 
-// delete deletes an account. Its credentials are revoked (the rows stay, for
-// the audit trail) and its sessions end. Every grant it held is removed under
-// the grants API's rules, since deleting an admin takes away what it held: the
-// session must have signed in with 2FA and hold everything removed, and the
-// last superadmin cannot go. Every grant others held on it (owners) is removed
+// delete deletes an account. It always takes a session signed in with 2FA:
+// an account and all its mail are gone at once, so a password alone, or any
+// machine credential, never deletes one. Its credentials are revoked (the rows
+// stay, for the audit trail) and its sessions end. Every grant it held is
+// removed under the grants API's rules, since deleting an admin takes away
+// what it held: the session must hold everything removed, and the last
+// superadmin cannot go. Every grant others held on it (owners) is removed
 // too, so a new account at the same address inherits nobody. Each removal has
 // its audit entry, in the same transaction.
 func (h *MailboxHandler) delete(r *http.Request, in adminAddressPath) (endpoint.Empty, error) {
@@ -226,6 +228,9 @@ func (h *MailboxHandler) delete(r *http.Request, in adminAddressPath) (endpoint.
 		return endpoint.Empty{}, fmt.Errorf("find mailbox for deletion: %w", err)
 	}
 	claims := middleware.GetClaims(r)
+	if claims == nil || claims.CredentialID != 0 || !claims.HasAMR(auth.AMROTP) {
+		return endpoint.Empty{}, mailboxGrantError(errTwoFactorRequired)
+	}
 
 	err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
 		if err := grants.Lock(tx); err != nil {
@@ -235,9 +240,6 @@ func (h *MailboxHandler) delete(r *http.Request, in adminAddressPath) (endpoint.
 		if err := tx.Preload("Role").Where("holder_kind = ? AND holder_id = ?", models.GrantHolderAccount, mailbox.ID).
 			Order("id").Find(&heldBy).Error; err != nil {
 			return err
-		}
-		if len(heldBy) > 0 && (claims == nil || !claims.HasAMR(auth.AMROTP)) {
-			return errTwoFactorRequired
 		}
 		for i := range heldBy {
 			if err := (grantChange{r: r, claims: claims}).remove(tx, &heldBy[i], http.StatusNoContent); err != nil {
@@ -320,7 +322,7 @@ func (h *MailboxHandler) checkAddress(r *http.Request, in addressCheckQuery) (Ad
 	}
 
 	var mailbox models.Mailbox
-	if err := repositories.FindActiveMailboxByAddress(h.db, address, &mailbox); err != nil {
+	if err := repositories.FindReceivingMailboxByAddress(h.db, address, &mailbox); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			// "Not local" is a valid answer to this query, not an error. The
 			// SMTP gateway's apiclient (and its tests) expect 200 + exists=false

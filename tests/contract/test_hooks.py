@@ -2,13 +2,16 @@
 repeated probe create its account afresh, without touching the request."""
 
 import json
+import os
 import sys
+import tempfile
 import threading
 import types
 import unittest
 import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import ClassVar
 from unittest.mock import patch
 
@@ -127,7 +130,21 @@ class FixtureAPI(BaseHTTPRequestHandler):
     def do_POST(self):
         state = self.server.state
         if self.path == "/api/v1/auth/login":
+            body = self.read_body()
+            # The two-factor administrator signs in with its enrolled factor.
+            if body.get("recovery_code") or body.get("totp_code"):
+                if not state.get("mfa_enrolled"):
+                    return self.answer(401)
+                return self.answer(200, {"data": {"access_token": "mfa"}})
             return self.answer(200, {"data": {"access_token": "setup"}})
+        if self.path == "/api/v1/auth/2fa/enroll":
+            return self.answer(
+                200,
+                {"data": {"secret": "JBSWY3DPEHPK3PXP", "recovery_codes": ["AAAA-BBBB-CCCC"]}},
+            )
+        if self.path == "/api/v1/auth/2fa/confirm":
+            state["mfa_enrolled"] = True
+            return self.answer(204)
         if self.path == "/api/v1/admin/domains":
             name = self.read_body()["name"]
             if name.endswith(".invalid"):
@@ -199,6 +216,9 @@ class FixtureAPI(BaseHTTPRequestHandler):
                 return self.answer(404)
             state["linked"].remove(account_id)
             return self.answer(204)
+        # Deleting an account always takes a session signed in with 2FA.
+        if self.headers.get("Authorization") != "Bearer mfa":
+            return self.answer(403, {"error": {"code": "two_factor_required"}})
         state["deleted"].append(account_id)
         state["accounts"] = [a for a in state["accounts"] if a["id"] != account_id]
         self.answer(204)
@@ -207,12 +227,22 @@ class FixtureAPI(BaseHTTPRequestHandler):
 class AdminAPITestCase(unittest.TestCase):
     def setUp(self):
         vertrag_hooks.stash.clear()
+        # The two-factor administrator, as chore test:contract-mfa-admin
+        # leaves it enrolled.
+        state = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False)
+        json.dump({"secret": "JBSWY3DPEHPK3PXP", "recovery_codes": ["AAAA-BBBB-CCCC"] * 10, "step": 0}, state)
+        state.close()
+        self.addCleanup(os.unlink, state.name)
+        mfa = patch.object(hooks.mfa_admin, "STATE", Path(state.name))
+        mfa.start()
+        self.addCleanup(mfa.stop)
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureAPI)
         self.server.state = {
             "domains": [{"id": 1, "name": "restmail.test"}],
             "accounts": [{"id": 1, "domain_id": 1, "address": "admin@restmail.test"}],
             "deleted": [],
             "linked": set(),
+            "mfa_enrolled": True,
         }
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.addCleanup(self.server.server_close)
