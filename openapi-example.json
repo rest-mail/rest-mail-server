@@ -29878,6 +29878,31 @@
     }
   },
   "setAccountSendLimits": {
+    "body_array": {
+      "summary": "The body is not a JSON object",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": [],
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "internal_error": {
       "summary": "A database fault is not a client error",
       "requires": {
@@ -29900,35 +29925,6 @@
           "error": {
             "code": "internal_error",
             "message": "Internal server error"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "invalid_id": {
-      "request": {
-        "path": {
-          "id": 0
-        },
-        "body": {
-          "messages_per_day": 1000,
-          "messages_per_hour": 100,
-          "recipients_per_day": 10000,
-          "recipients_per_hour": 1000
-        },
-        "invalid": true
-      },
-      "response": {
-        "status": 422,
-        "body": {
-          "error": {
-            "code": "validation_failed",
-            "message": "Path parameters failed validation",
-            "details": {
-              "fields": {
-                "id": "must be at least 1"
-              }
-            }
           }
         },
         "mediaType": "application/json"
