@@ -156,13 +156,17 @@ jobs:
       # several times over: internal/api/handlers once ran past go test's
       # default 10 minutes. 20 leaves headroom while a hung test still fails.
       # internal/api alone came close to 20 minutes, so its shards run it (#1307).
+      # Each package's binary runs through testdb-exec, in a database of its
+      # own: packages run side by side, and in one shared database their
+      # migrations and audit-log appends deadlocked one another.
       - name: Run unit tests with race detector
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/proofs"
+          go build -o "$RUNNER_TEMP/testdb-exec" ./tools/testdb-exec
           packages=$(go list ./internal/... | grep -vxF github.com/restmail/restmail/internal/api)
           # shellcheck disable=SC2086 # one package per word
-          go test -race -count=1 -timeout=20m -coverprofile=coverage-rest.out $packages ./tests/contract/fixtureplan
+          go test -race -count=1 -timeout=20m -exec "$RUNNER_TEMP/testdb-exec" -coverprofile=coverage-rest.out $packages ./tests/contract/fixtureplan
         env:
           ENVIRONMENT: test
           DB_HOST: localhost
