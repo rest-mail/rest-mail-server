@@ -11,6 +11,7 @@ import (
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	apitypes "github.com/restmail/restmail/internal/api/types"
+	"github.com/restmail/restmail/internal/bootstrap"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
 	"github.com/restmail/restmail/internal/grants"
@@ -127,7 +128,7 @@ func (h *MailboxHandler) update(r *http.Request, in updateMailboxInput) (Mailbox
 		if err := RequireFreshTwoFactor(r); err != nil {
 			return Mailbox{}, err
 		}
-		if len(*req.Password) < minChosenPasswordLength {
+		if bootstrap.PasswordTooShort(*req.Password) {
 			return Mailbox{}, endpoint.Invalid(map[string]string{"password": fmt.Sprintf("must be at least %d characters", minChosenPasswordLength)})
 		}
 		if hashed, err = hashPassword(*req.Password); err != nil {

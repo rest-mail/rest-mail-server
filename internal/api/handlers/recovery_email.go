@@ -249,8 +249,8 @@ func (h *RecoveryEmailHandler) request(r *http.Request, req requestRecoveryEmail
 }
 
 func (h *RecoveryEmailHandler) redeem(r *http.Request, req redeemRecoveryEmailRequest) (passwordChanged, error) {
-	if len(req.NewPassword) < 12 || len(req.NewPassword) > 72 {
-		return passwordChanged{}, endpoint.Invalid(map[string]string{"new_password": "must be between 12 and 72 bytes"})
+	if bootstrap.PasswordTooShort(req.NewPassword) || len(req.NewPassword) > 72 {
+		return passwordChanged{}, endpoint.Invalid(map[string]string{"new_password": "must be at least 12 characters and at most 72 bytes"})
 	}
 	hash, err := hashPassword(req.NewPassword)
 	if err != nil {

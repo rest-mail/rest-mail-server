@@ -179,7 +179,7 @@ type updateMailboxRequest struct {
 	// The handler counts bytes; minLength counts code points. Twelve code points
 	// are always at least twelve bytes, so the schema never admits a password the
 	// handler refuses.
-	Password    *string `json:"password,omitempty" format:"password" minLength:"12" description:"At least 12 bytes when supplied; null leaves the password unchanged"`
+	Password    *string `json:"password,omitempty" format:"password" minLength:"12" description:"At least 12 characters when supplied; null leaves the password unchanged"`
 	DisplayName *string `json:"display_name,omitempty"`
 	QuotaBytes  *int64  `json:"quota_bytes,omitempty" description:"Storage cap in bytes; non-positive values inherit for an owned account, otherwise unlimited; a positive cap cannot exceed the owner's ceiling"`
 	Active      *bool   `json:"active,omitempty"`
