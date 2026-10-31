@@ -109,8 +109,9 @@ func assertHeldExample(t *testing.T, f *credentialFixture, pair oapifly.ExampleP
 		data["sent_message_id"] = want["data"]["sent_message_id"]
 	}
 	for key, stored := range map[string]time.Time{"scheduled_at": row.SendAt, "created_at": row.CreatedAt, "updated_at": row.UpdatedAt} {
+		// The database keeps microseconds; a fresh hold answers what it wrote.
 		at, err := time.Parse(time.RFC3339Nano, fmt.Sprint(data[key]))
-		if err != nil || !at.Equal(stored) {
+		if err != nil || at.Sub(stored).Abs() >= time.Microsecond {
 			t.Fatalf("%s is %v, stored %v", key, data[key], stored)
 		}
 		data[key] = want["data"][key]
@@ -243,6 +244,10 @@ func TestSendLimitTwoFactorExamples(t *testing.T) {
 		pair := pairs["releaseHeldMessage"]["released"]
 		f := newSendLimitFixture(t)
 		spendSendLimit(f, sendlimits.AccountScope(f.accountID)) // a release bypasses account budgets
+		// A created account has its quota usage row, which sending charges.
+		if err := f.db.Create(&models.QuotaUsage{MailboxID: f.mailboxID}).Error; err != nil {
+			t.Fatal(err)
+		}
 		held := seedHeld(f)
 		rr := sendSendLimitExample(f, routes["releaseHeldMessage"], withPathID(pair, held.ID), twoFactorSession(f)) // held_message, two-factor session
 		row := assertHeldExample(t, f, pair, rr, "")
