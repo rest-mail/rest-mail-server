@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/antimatter-studios/go-oapifly"
+
 	"github.com/restmail/restmail/internal/grants"
 	"github.com/restmail/restmail/internal/pipeline"
 )
@@ -398,6 +400,20 @@ type ProtocolSignInRequest = protocolSignInRequest
 
 // SendMessageRequest is the sendMessageRequest wire type used by the endpoint registration.
 type SendMessageRequest = sendMessageRequest
+
+// AnyOf states what no one field can: a delivery names its mailbox by a nonzero
+// mailbox_id or a nonempty address. The binder refuses a body naming neither
+// with the handler's own words, as its description says.
+func (deliverMessageBody) AnyOf() oapifly.AnyOfRule {
+	return oapifly.AnyOfRule{
+		Alternatives: []oapifly.Alternative{
+			{Required: []string{"mailbox_id"}, Fields: map[string]string{"mailbox_id": `minimum:"1"`}},
+			{Required: []string{"address"}, Fields: map[string]string{"address": `minLength:"1"`}},
+		},
+		Field:   "address",
+		Message: "mailbox_id or address required",
+	}
+}
 
 // DeliverMessageBody is the deliverMessageBody wire type used by the endpoint registration.
 type DeliverMessageBody = deliverMessageBody

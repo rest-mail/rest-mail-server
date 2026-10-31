@@ -14520,6 +14520,17 @@ components:
     DeliverMessageRequest:
       type: object
       required: [address, sender]
+      # A delivery names its mailbox by a nonzero mailbox_id or a nonempty
+      # address; the binder refuses one naming neither.
+      anyOf:
+        - required: [mailbox_id]
+          properties:
+            mailbox_id:
+              minimum: 1
+        - required: [address]
+          properties:
+            address:
+              minLength: 1
       properties:
         is_answered:
           type:
