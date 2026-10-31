@@ -109,6 +109,14 @@ func TestDomainCleanupPostgresLifecycleRetentionAndRollback(t *testing.T) {
 	if err := db.Create(&models.RoleCapability{RoleID: role.ID, CapabilityID: capability.ID}).Error; err != nil {
 		t.Fatal(err)
 	}
+	// An administrative role carries admin:session, as real ones do (#324).
+	session := models.Capability{Name: models.CapAdminSession}
+	if err := db.Where("name = ?", session.Name).FirstOrCreate(&session).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&models.RoleCapability{RoleID: role.ID, CapabilityID: session.ID}).Error; err != nil {
+		t.Fatal(err)
+	}
 	seedGrant := func(scope, mode string) models.Grant {
 		g := models.Grant{HolderKind: models.GrantHolderAccount, HolderID: reader.ID, RoleID: role.ID, Scope: scope, Mode: mode, GrantedByKind: models.AuditActorSystem, GrantedAt: time.Now()}
 		if err := db.Create(&g).Error; err != nil {

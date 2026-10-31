@@ -351,6 +351,10 @@
             "capabilities": [],
             "scoped_capabilities": [
               {
+                "capability": "admin:session",
+                "scope": "domain:example.com"
+              },
+              {
                 "scope": "domain:example.com",
                 "capability": "domains:read"
               },
@@ -377,6 +381,10 @@
               {
                 "scope": "mailbox:admin@example.com",
                 "capability": "mailbox:manage"
+              },
+              {
+                "capability": "mailbox:session",
+                "scope": "mailbox:admin@example.com"
               }
             ]
           }
@@ -7020,6 +7028,10 @@
             "capabilities": [],
             "scoped_capabilities": [
               {
+                "capability": "admin:session",
+                "scope": "domain:example.com"
+              },
+              {
                 "scope": "domain:example.com",
                 "capability": "domains:read"
               },
@@ -7046,6 +7058,10 @@
               {
                 "scope": "mailbox:admin@example.com",
                 "capability": "mailbox:manage"
+              },
+              {
+                "capability": "mailbox:session",
+                "scope": "mailbox:admin@example.com"
               }
             ]
           }
@@ -15670,8 +15686,10 @@
         "body": {
           "data": {
             "capabilities": [
+              "admin:session",
               "mail:read",
-              "mail:send"
+              "mail:send",
+              "mailbox:session"
             ],
             "source": "database"
           }
@@ -23312,6 +23330,30 @@
         "mediaType": "application/json"
       }
     },
+    "sessions_restricted": {
+      "summary": "The server's capabilities leave the account no session",
+      "description": "Precondition: the server ceiling holds neither mailbox:session nor admin:session for this account. The password is right, but no session may be issued.",
+      "requires": {
+        "state": "sessions_restricted"
+      },
+      "request": {
+        "body": {
+          "email": "admin@restmail.test",
+          "password": "contract-admin-password",
+          "client": "native"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "access_restricted",
+            "message": "This server is not accepting sign-ins for this account right now"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "signed_in": {
       "request": {
         "body": {
@@ -23685,6 +23727,10 @@
             "capabilities": [],
             "scoped_capabilities": [
               {
+                "capability": "admin:session",
+                "scope": "domain:example.com"
+              },
+              {
                 "scope": "domain:example.com",
                 "capability": "domains:read"
               },
@@ -23711,6 +23757,10 @@
               {
                 "scope": "mailbox:admin@example.com",
                 "capability": "mailbox:manage"
+              },
+              {
+                "capability": "mailbox:session",
+                "scope": "mailbox:admin@example.com"
               }
             ]
           }
@@ -25208,6 +25258,28 @@
         "mediaType": "application/json"
       }
     },
+    "sessions_restricted": {
+      "summary": "The server's capabilities leave the mailbox no session",
+      "description": "Precondition: the server ceiling no longer holds mailbox:session. Being an administrator does not stand in for it.",
+      "requires": {
+        "state": "sessions_restricted"
+      },
+      "request": {
+        "body": {
+          "protocol": "imap"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "access_restricted",
+            "message": "This server is not accepting sign-ins for this account right now"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "signed_in": {
       "request": {
         "body": {
@@ -26044,6 +26116,10 @@
               {
                 "scope": "mailbox:admin@restmail.test",
                 "capability": "mailbox:manage"
+              },
+              {
+                "capability": "mailbox:session",
+                "scope": "mailbox:admin@restmail.test"
               }
             ]
           }

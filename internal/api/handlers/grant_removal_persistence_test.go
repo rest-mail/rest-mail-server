@@ -53,6 +53,10 @@ func TestGrantRemovalPersistenceAndAtomicAudit(t *testing.T) {
 			create(&readCap)
 			create(&models.RoleCapability{RoleID: root.ID, CapabilityID: rootCap.ID})
 			create(&models.RoleCapability{RoleID: read.ID, CapabilityID: readCap.ID})
+			// A role reading mail carries mailbox:session, as real ones do (#324).
+			sessionCap := models.Capability{Name: models.CapMailboxSession}
+			create(&sessionCap)
+			create(&models.RoleCapability{RoleID: read.ID, CapabilityID: sessionCap.ID})
 			actorGrant := models.Grant{HolderKind: "account", HolderID: actor.ID, RoleID: root.ID, Scope: "*", Mode: "active", GrantedByKind: "system", GrantedAt: time.Now()}
 			target := models.Grant{HolderKind: "account", HolderID: holder.ID, RoleID: read.ID, Scope: grants.Domain(d.Name), Mode: "eligible", GrantedByKind: "system", GrantedAt: time.Now()}
 			if scenario == "active" {

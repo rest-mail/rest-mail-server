@@ -129,7 +129,7 @@ func (c *domainCleanupConnection) QueryContext(ctx context.Context, q string, ar
 				rows = append(rows, []driver.Value{g["scope"], "domains:read", nil, nil})
 			}
 		}
-		return invitationRows(cols, rows...), nil
+		return grantLookupRows(cols, rows...), nil
 	}
 	if strings.Contains(q, `FROM "domains"`) {
 		id := cleanupID(args)

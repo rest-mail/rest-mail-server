@@ -29,12 +29,12 @@ func (c personalDataReadConnection) QueryContext(ctx context.Context, query stri
 	}
 	if strings.Contains(query, "JOIN role_capabilities") {
 		if c.mode == "domain_manager" {
-			return &authReadSnapshotRows{columns: []string{"scope", "capability", "expires_at", "activation_expires_at"}, rows: [][]driver.Value{{"domain:example.com", "mail:read", nil, nil}}}, nil
+			return &authReadSnapshotRows{columns: []string{"scope", "capability", "expires_at", "activation_expires_at"}, rows: withSessionRows([][]driver.Value{{"domain:example.com", "mail:read", nil, nil}})}, nil
 		}
 		rows, err := c.accountCredentialListConnection.QueryContext(ctx, query, args)
 		if err == nil && c.mode == "normal" {
 			r := rows.(*authReadSnapshotRows)
-			r.rows = append(r.rows, []driver.Value{"mailbox:account5@example.com", "mail:read", nil, nil})
+			r.rows = withSessionRows(append(r.rows, []driver.Value{"mailbox:account5@example.com", "mail:read", nil, nil}))
 		}
 		return rows, err
 	}

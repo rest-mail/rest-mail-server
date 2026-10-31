@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/auth"
+	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/grants"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -128,9 +129,9 @@ func publicPolicySteps() []publicReadStep {
 func publicHealthSteps(scope string) []publicReadStep {
 	return []publicReadStep{
 		publicReadRow("mailboxes", []string{"id", "active", "credential_epoch"}, int64(7), true, int64(0)),
-		{query: "FROM grants AS g", columns: []string{"scope", "capability", "expires_at", "activation_expires_at"}, rows: [][]driver.Value{{scope, "domains:read", nil, nil}}},
+		{query: "FROM grants AS g", columns: []string{"scope", "capability", "expires_at", "activation_expires_at"}, rows: [][]driver.Value{{scope, "domains:read", nil, nil}, {scope, models.CapAdminSession, nil, nil}}},
 		publicReadRow("mailboxes", []string{"address"}, "reader@example.test"),
-		{query: "FROM grants AS g", columns: []string{"scope", "capability"}, rows: [][]driver.Value{{"*", "domains:read"}}},
+		{query: "FROM grants AS g", columns: []string{"scope", "capability"}, rows: [][]driver.Value{{"*", "domains:read"}, {"*", models.CapAdminSession}}},
 		publicReadRow("certificates", []string{"id", "domain_id", "issuer", "not_after", "cert_pem", "key_pem"}, int64(5), int64(1), "fixture issuer", time.Now().Add(-time.Hour), "private-certificate-bytes", "private-key-bytes"),
 		publicReadRow("domains", []string{"id", "name"}, int64(1), "example.test"),
 	}

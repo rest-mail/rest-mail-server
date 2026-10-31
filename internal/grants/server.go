@@ -43,22 +43,87 @@ func EnsureServerCeiling(db *gorm.DB) error {
 	})
 }
 
+// AllowOnServer adds a capability to the server ceiling of an installation
+// that already has one. Bootstrap calls it only in the transaction that
+// created the capability's row: that creation happens once, so a capability
+// an upgrade introduces is allowed like every other one was at
+// initialization, and one a superadmin later removes stays removed across
+// restarts. Before the server object exists it does nothing:
+// EnsureServerCeiling initializes it with every capability.
+func AllowOnServer(tx *gorm.DB, capabilityID uint) error {
+	if err := Lock(tx); err != nil {
+		return err
+	}
+	return tx.Exec(`INSERT INTO role_capabilities (role_id, capability_id)
+		SELECT id, ? FROM roles WHERE name = ?
+		ON CONFLICT DO NOTHING`, capabilityID, models.RoleServer).Error
+}
+
 // withinServer applies the installation's ceiling in the shared authorization
-// path. Only the global wildcard is superadmin: a wildcard scoped to one
-// domain or mailbox is still capped. Missing/empty grants hold nothing;
-// database failures are errors, never permission to use cached server state.
+// path, then the session capabilities (withinSessions). Only the global
+// wildcard is superadmin: a wildcard scoped to one domain or mailbox is still
+// capped. Missing/empty grants hold nothing; database failures are errors,
+// never permission to use cached server state.
 func withinServer(db *gorm.DB, held Held, now time.Time) (Held, error) {
 	if held.Allows(Wildcard, All) {
 		return held, nil
 	}
 	if override := serverOverride.Load(); override != nil {
-		return held.Within(*override), nil
+		return held.Within(*override).withinSessions(), nil
 	}
 	stored, err := storedServerCeiling(db, now)
 	if err != nil {
 		return Held{}, err
 	}
-	return held.Within(stored), nil
+	return held.Within(stored).withinSessions(), nil
+}
+
+// withinSessions is what h reaches through a session (#324): a mailbox
+// capability (models.OwnerCapabilities) only where h holds mailbox:session,
+// and any other capability only where it holds admin:session, each at a
+// scope covering the entry's. Being an administrator therefore never reaches
+// a personal mailbox once mailbox:session is gone, and a mailbox stays
+// reachable when only admin:session is. The session capabilities themselves
+// are kept, so sign-in can tell which kind of session the account may hold.
+func (h Held) withinSessions() Held {
+	var out Held
+	for _, e := range h.entries {
+		session := models.CapAdminSession
+		switch {
+		case e.Capability == models.CapMailboxSession || e.Capability == models.CapAdminSession,
+			e.Capability == models.CapMailReceive:
+			// Inbound delivery is not a session: neither switch stops mail
+			// arriving.
+			session = ""
+		case mailboxCapability(e.Capability):
+			session = models.CapMailboxSession
+		}
+		if session == "" || h.Allows(session, e.Scope) {
+			out.entries = append(out.entries, e)
+		}
+	}
+	return out
+}
+
+func mailboxCapability(capability string) bool {
+	for _, c := range models.OwnerCapabilities {
+		if c == capability {
+			return true
+		}
+	}
+	return false
+}
+
+// MailboxSession reports whether h may hold a session on the mailbox at
+// address: the account's own, to sign in to its mail.
+func (h Held) MailboxSession(address string) bool {
+	return h.Allows(models.CapMailboxSession, Mailbox(address))
+}
+
+// AdminSession reports whether h may hold an administrative session at some
+// scope.
+func (h Held) AdminSession() bool {
+	return h.AllowsSomewhere(models.CapAdminSession)
 }
 
 // ServerCapabilitiesEnv names the operator override for the server ceiling.

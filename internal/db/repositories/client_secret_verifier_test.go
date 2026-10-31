@@ -63,7 +63,7 @@ func (s *clientSecretStore) QueryContext(_ context.Context, q string, args []dri
 		for _, arg := range args {
 			if arg.Value == models.GrantHolderServer {
 				rows := &clientSecretRows{columns: []string{"scope", "capability"}}
-				for _, capability := range append([]string{"pipelines:write"}, models.OwnerCapabilities...) {
+				for _, capability := range append([]string{"pipelines:write", models.CapAdminSession}, models.OwnerCapabilities...) {
 					rows.values = append(rows.values, []driver.Value{"*", capability})
 				}
 				return rows, nil
@@ -72,7 +72,7 @@ func (s *clientSecretStore) QueryContext(_ context.Context, q string, args []dri
 		s.grantReads++
 		rows := &clientSecretRows{columns: []string{"scope", "capability", "expires_at", "activation_expires_at"}}
 		if s.granted {
-			rows.values = [][]driver.Value{{"domain:example.test", "pipelines:write", nil, nil}}
+			rows.values = [][]driver.Value{{"domain:example.test", "pipelines:write", nil, nil}, {"domain:example.test", models.CapAdminSession, nil, nil}}
 		}
 		return rows, nil
 	}

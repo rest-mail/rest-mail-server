@@ -35,7 +35,7 @@ func (c mailResourceReadConnection) QueryContext(ctx context.Context, query stri
 		rows, err := c.personalDataReadConnection.QueryContext(ctx, query, args)
 		if err == nil && c.mode == "normal" {
 			r := rows.(*authReadSnapshotRows)
-			r.rows = append(r.rows, []driver.Value{"mailbox:linked@example.com", "mail:send", nil, nil}, []driver.Value{"mailbox:linked@example.com", "mail:send_as", nil, nil})
+			r.rows = withSessionRows(append(r.rows, []driver.Value{"mailbox:linked@example.com", "mail:send", nil, nil}, []driver.Value{"mailbox:linked@example.com", "mail:send_as", nil, nil}))
 		}
 		return rows, err
 	}

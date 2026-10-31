@@ -79,7 +79,9 @@ func TestFreshTwoFactorGrantCapabilities(t *testing.T) {
 			if err := db.Create(&role).Error; err != nil {
 				t.Fatal(err)
 			}
-			setRoleCaps(t, db, role.ID, []string{tc.capability})
+			// Exactly the capability under test: which ones a grant needs a
+			// fresh second factor for is what this checks.
+			setExactRoleCaps(t, db, role.ID, []string{tc.capability})
 			c := *actor
 			if tc.fresh {
 				c.AuthTime = jwt.NewNumericDate(time.Now())

@@ -19,7 +19,7 @@ func TestDBStore_AccountMaySendFollowsServerCeiling(t *testing.T) {
 		&models.Grant{}, &models.GrantActivation{}); err != nil {
 		t.Skipf("smtp dbStore test skipped: migrate failed (%v)", err)
 	}
-	for _, name := range []string{models.CapMailRead, models.CapMailSend, grants.Wildcard} {
+	for _, name := range []string{models.CapMailRead, models.CapMailSend, models.CapMailboxSession, grants.Wildcard} {
 		if err := db.Where("name = ?", name).FirstOrCreate(&models.Capability{Name: name}).Error; err != nil {
 			t.Fatal(err)
 		}
@@ -75,6 +75,8 @@ func TestDBStore_AccountMaySendFollowsServerCeiling(t *testing.T) {
 		}
 		return ok
 	}
+	// Every override names mailbox:session, as an operator's must: without it
+	// no session reaches mail at all (#324).
 	ceiling := func(raw string) {
 		t.Helper()
 		if err := grants.ConfigureServerOverride(db, raw, true); err != nil {
@@ -82,18 +84,18 @@ func TestDBStore_AccountMaySendFollowsServerCeiling(t *testing.T) {
 		}
 	}
 
-	ceiling(models.CapMailRead + "," + models.CapMailSend)
+	ceiling(models.CapMailRead + "," + models.CapMailSend + "," + models.CapMailboxSession)
 	if !maySend(alice) || !maySend(root) {
 		t.Fatal("refused while the server allows mail:send")
 	}
-	ceiling(models.CapMailRead)
+	ceiling(models.CapMailRead + "," + models.CapMailboxSession)
 	if maySend(alice) {
 		t.Error("allowed after the server lost mail:send")
 	}
 	if !maySend(root) {
 		t.Error("the superadmin was refused; it is exempt from the server ceiling")
 	}
-	ceiling(models.CapMailRead + "," + models.CapMailSend)
+	ceiling(models.CapMailRead + "," + models.CapMailSend + "," + models.CapMailboxSession)
 	if !maySend(alice) {
 		t.Error("refused after mail:send was restored")
 	}

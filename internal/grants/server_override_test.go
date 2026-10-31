@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-var testVocabulary = []string{"domains:read", "mail:read", "mail:send", "mailboxes:write"}
+var testVocabulary = []string{"admin:session", "domains:read", "mail:read", "mail:send", "mailbox:session", "mailboxes:write"}
 
 func overrideServer(t *testing.T, raw string) {
 	t.Helper()
@@ -24,13 +24,13 @@ func overrideServer(t *testing.T, raw string) {
 // would panic) and a capability the database would allow stays refused.
 // The actor's own grants still bound the result.
 func TestServerOverrideReplacesStoredCeiling(t *testing.T) {
-	overrideServer(t, "mail:read, domains:read")
-	actor := HeldOf(Entry{"mailbox:x@a.test", "mail:read"}, Entry{"mailbox:x@a.test", "mail:send"}, Entry{All, "mailboxes:write"})
+	overrideServer(t, "mail:read, domains:read, mailbox:session")
+	actor := HeldOf(Entry{"mailbox:x@a.test", "mail:read"}, Entry{"mailbox:x@a.test", "mail:send"}, Entry{"mailbox:x@a.test", "mailbox:session"}, Entry{All, "mailboxes:write"})
 	got, err := withinServer(nil, actor, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []Entry{{"mailbox:x@a.test", "mail:read"}}; !reflect.DeepEqual(got.entries, want) {
+	if want := []Entry{{"mailbox:x@a.test", "mail:read"}, {"mailbox:x@a.test", "mailbox:session"}}; !reflect.DeepEqual(got.entries, want) {
 		t.Fatalf("held = %v, want %v", got.entries, want)
 	}
 	if got.Allows("domains:read", All) {
@@ -62,7 +62,7 @@ func TestServerOverrideExemptsSuperadmin(t *testing.T) {
 }
 
 func TestServerOverrideCapsScopedWildcard(t *testing.T) {
-	overrideServer(t, "mail:read")
+	overrideServer(t, "mail:read, mailbox:session")
 	got, err := withinServer(nil, HeldOf(Entry{"domain:a.test", Wildcard}), time.Now())
 	if err != nil {
 		t.Fatal(err)

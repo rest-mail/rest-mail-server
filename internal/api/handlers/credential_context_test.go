@@ -378,7 +378,8 @@ func TestCredentialSuccessfulWritesAndAuditUseRequestContext(t *testing.T) {
 		base := credentialAccessSteps()
 		status := 204
 		if index == 6 {
-			base = base[:1]
+			// Protocol sign-in looks the account up, then loads what it holds
+			// to check mailbox:session (#324): the access steps, all of them.
 			status = 200
 		} else if index == 2 || index == 3 {
 			status = 201

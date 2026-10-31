@@ -539,7 +539,7 @@ func TestGrants_ChangingThemNeedsTwoFactorAndOnlyWhatYouHold(t *testing.T) {
 	reader := models.Role{Name: "domain-reader"}
 	f.db.Create(&delegate)
 	f.db.Create(&reader)
-	for role, caps := range map[uint][]string{delegate.ID: {"users:read", "users:write", "domains:read"}, reader.ID: {"domains:read"}} {
+	for role, caps := range map[uint][]string{delegate.ID: {"users:read", "users:write", "domains:read", models.CapAdminSession}, reader.ID: {"domains:read", models.CapAdminSession}} {
 		for _, name := range caps {
 			var c models.Capability
 			f.db.Where("name = ?", name).First(&c)

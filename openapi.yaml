@@ -673,6 +673,17 @@ paths:
                 wrong_password:
                   value:
                     error: {code: unauthorized, message: Invalid email or password}
+        "403":
+          description: >
+            `access_restricted`: the password and second factor are right, but
+            the server's capabilities leave the account neither a session on
+            its own mailbox (`mailbox:session`) nor an administrative one
+            (`admin:session`). A superadmin is never refused.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples: {}
         "422":
           description: Request body failed validation
           content:
@@ -1410,6 +1421,17 @@ paths:
             `unauthorized` for a wrong address or password;
             `app_password_required` for the right password of an account with
             two-factor authentication; `setup_required` for one still in setup.
+        "403":
+          description: >
+            `access_restricted`: the server's capabilities leave the account no
+            session on its own mailbox (`mailbox:session`). Being an
+            administrator does not stand in for it; a superadmin is never
+            refused.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples: {}
         '422':
           description: Request failed validation (validation_failed), with details.fields naming each failing field
           content:

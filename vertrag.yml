@@ -40,6 +40,7 @@ auth:
     - '/api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 200 > application/json'
     - '/api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 400 > application/json'
     - '/api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 401 > application/json'
+    - '/api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 403 > application/json'
     - '/api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 422 > application/json'
     - '/api/v1/accounts > List the accounts this one reaches > 401 > application/json'
     - '/api/v1/accounts/{id}/events > Server-Sent Events stream for real-time updates > 401 > application/json'

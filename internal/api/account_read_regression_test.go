@@ -96,6 +96,7 @@ func (c accountReadConnection) QueryContext(_ context.Context, query string, arg
 				r.rows = append(r.rows, []driver.Value{"mailbox:" + accountReadAddress(id), capability, nil, nil})
 			}
 		}
+		r.rows = withSessionRows(r.rows)
 		return r, nil
 	}
 	if len(args) == 0 {

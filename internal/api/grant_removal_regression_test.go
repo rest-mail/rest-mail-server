@@ -159,7 +159,7 @@ func (c *grantRemovalConnection) QueryContext(ctx context.Context, q string, arg
 			if c.target == 10 || c.self {
 				cap = "users:write"
 			}
-			r.rows = [][]driver.Value{{"*", cap, nil, nil}}
+			r.rows = withSessionRows([][]driver.Value{{"*", cap, nil, nil}})
 		}
 		return r, nil
 	}

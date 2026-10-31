@@ -137,7 +137,9 @@ func TestServerOverrideDB_EnvReplacesDisagreeingStoredCeiling(t *testing.T) {
 		t.Fatal("stored ceiling without mail:read allowed it before the override")
 	}
 
-	mustConfigureServerEnv(t, f.db, "mail:read, domains:read", true)
+	// An override names the session capabilities too: without them no session
+	// reaches mail or administration at all (#324).
+	mustConfigureServerEnv(t, f.db, "mail:read, domains:read, mailbox:session, admin:session", true)
 
 	// The environment allows mail:read although the stored ceiling denies it.
 	if !f.allows(t, cache, f.owner, models.CapMailRead, own) {
@@ -205,7 +207,7 @@ func TestServerOverrideDB_InvalidValuesNeverWiden(t *testing.T) {
 	f := newOverrideFixture(t)
 	cache := grants.NewCache(f.db, time.Hour)
 	own := grants.Mailbox(f.owner.Address)
-	mustConfigureServerEnv(t, f.db, "mail:read", true)
+	mustConfigureServerEnv(t, f.db, "mail:read, mailbox:session", true)
 	for _, raw := range []string{"mail:reed", "*", "mail:read,*", "mail:read,,mail:send", "mail:read,mail:send,"} {
 		if err := configureServerEnv(t, f.db, raw, true); err == nil {
 			t.Errorf("%q accepted, want refusal", raw)

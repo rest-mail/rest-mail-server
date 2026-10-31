@@ -430,8 +430,24 @@ func (h *AuthHandler) login(r *http.Request, req loginRequest) (endpoint.Headed[
 	if err != nil {
 		return zero, err
 	}
+	held, err := grants.Load(h.db, account.ID, now)
+	if err != nil {
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to load the account's capabilities")
+	}
+	if !held.MailboxSession(account.Address) && !held.AdminSession() {
+		return zero, errAccessRestricted()
+	}
 
 	return h.newSession(&account, req.Client == clientNative, signInMethods(verified))
+}
+
+// errAccessRestricted refuses a sign-in the server does not allow right now
+// (#324): the server's capabilities leave the account neither a session on its
+// own mailbox (mailbox:session) nor an administrative one (admin:session).
+// Only a correct password and second factor reach it. Superadmin is never
+// refused.
+func errAccessRestricted() error {
+	return endpoint.Refuse(http.StatusForbidden, "access_restricted", "This server is not accepting sign-ins for this account right now")
 }
 
 // enforce2FA gates token issuance on the second factor when an account has TOTP
@@ -638,7 +654,7 @@ func (h *AuthHandler) RegisterSignIn(rs endpoint.Routes, checks SessionRouteChec
 	tags := []string{"Auth"}
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/auth/login",
 		OperationID: "login", Summary: "Sign an account in with its address and password", Tags: tags,
-		Security: oapifly.Public, Headers: sessionCookies, Errors: []int{http.StatusUnauthorized},
+		Security: oapifly.Public, Headers: sessionCookies, Errors: []int{http.StatusUnauthorized, http.StatusForbidden},
 		Middleware: []endpoint.Middleware{checks.Throttle, checks.Audit("auth.sign_in", middleware.AuditSignIn())}}, h.login)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/auth/logout",
 		OperationID: "logout", Summary: "Log out — revoke the session and clear the auth cookies", Tags: tags,

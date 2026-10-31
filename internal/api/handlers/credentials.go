@@ -20,6 +20,7 @@ import (
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
+	"github.com/restmail/restmail/internal/grants"
 	"gorm.io/gorm"
 )
 
@@ -331,7 +332,7 @@ type ProtocolSignedIn = apitypes.ProtocolSignedIn
 func (h *CredentialHandler) RegisterProtocolSignIn(rs endpoint.Routes, checks SessionRouteChecks) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/auth/protocol-sign-in",
 		OperationID: "protocolSignIn", Summary: "Sign a mail client in (protocol gateways)", Tags: []string{"Auth"},
-		Security:   []oapifly.SecurityRequirement{{"BasicAuth": nil}},
+		Security: []oapifly.SecurityRequirement{{"BasicAuth": nil}}, Errors: []int{http.StatusForbidden},
 		Middleware: []endpoint.Middleware{checks.Throttle, checks.Audit("auth.protocol_sign_in", middleware.AuditBodyFields("protocol"))}}, h.protocolSignIn)
 }
 
@@ -357,6 +358,15 @@ func (h *CredentialHandler) protocolSignIn(r *http.Request, req protocolSignInRe
 	var account models.Mailbox
 	if err := h.db.Select("id", "address", "display_name").Take(&account, claims.AccountID).Error; err != nil {
 		return ProtocolSignedIn{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to load the account")
+	}
+	// A mail client reaches only the account's own mailbox: being an
+	// administrator never stands in for mailbox:session (#324).
+	held, err := grants.Load(h.db, account.ID, time.Now())
+	if err != nil {
+		return ProtocolSignedIn{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to load the account's capabilities")
+	}
+	if !held.MailboxSession(account.Address) {
+		return ProtocolSignedIn{}, errAccessRestricted()
 	}
 	return ProtocolSignedIn{
 		CredentialID:   claims.CredentialID,

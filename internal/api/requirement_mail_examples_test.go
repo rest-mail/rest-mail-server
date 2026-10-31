@@ -40,11 +40,11 @@ func (c *mailRequirementConnection) QueryContext(ctx context.Context, q string, 
 	case strings.Contains(q, "JOIN role_capabilities"):
 		cols := []string{"scope", "capability", "expires_at", "activation_expires_at"}
 		if c.readOnly {
-			return invitationRows(cols, []driver.Value{"mailbox:admin@restmail.test", "mail:read", nil, nil}), nil
+			return grantLookupRows(cols, []driver.Value{"mailbox:admin@restmail.test", "mail:read", nil, nil}), nil
 		}
 		if c.op == "deliverMessage" {
 			// The fixed recipient holds its default receive grant.
-			return invitationRows(cols, []driver.Value{"mailbox:admin@restmail.test", "mail:receive", nil, nil}), nil
+			return grantLookupRows(cols, []driver.Value{"mailbox:admin@restmail.test", "mail:receive", nil, nil}), nil
 		}
 		return invitationRows(cols), nil
 	case strings.Contains(q, `FROM "mailboxes"`):
