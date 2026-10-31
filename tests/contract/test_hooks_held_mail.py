@@ -26,15 +26,26 @@ class HeldMailHookTests(unittest.TestCase):
         self.assertIn("delete_the_fixture_quarantined_message", self.registered["deleteQuarantine"])
         self.assertIn("clear_the_fixture_suppression", self.registered["clearSuppression"])
 
-    def test_found_deletes_the_newest_unreleased_message(self):
+    def test_found_deletes_the_admins_newest_unreleased_message(self):
+        patch.object(self.module, "mailbox_id", return_value=6).start()
         self.answers([{"id": 7, "released": False}, {"id": 9, "released": True}, {"id": 8, "released": False}])
         t = transaction("/api/v1/accounts/1/quarantine/41", session(self.module.ADMIN))
         self.module.delete_the_fixture_quarantined_message(t)
-        self.assertEqual(t["fullPath"], "/api/v1/accounts/1/quarantine/8")
+        self.assertEqual(t["fullPath"], "/api/v1/accounts/6/quarantine/8")
+        self.module.mailbox_id.assert_called_once_with("http://api:8080", self.module.ADMIN)
         request = self.urlopen.call_args.args[0]
-        self.assertEqual(request.full_url, "http://api:8080/api/v1/accounts/1/quarantine?limit=100")
+        self.assertEqual(request.full_url, "http://api:8080/api/v1/accounts/6/quarantine?limit=100")
+
+    def test_the_admins_id_is_looked_up_by_address(self):
+        patch.object(self.module, "admin_token", return_value="admin-token").start()
+        self.answers([{"id": 1, "address": "other@restmail.test"}, {"id": 6, "address": self.module.ADMIN}])
+        self.assertEqual(self.module.mailbox_id("http://api:8080", self.module.ADMIN), 6)
+        self.answers([{"id": 1, "address": "other@restmail.test"}])
+        with self.assertRaises(RuntimeError):
+            self.module.mailbox_id("http://api:8080", self.module.ADMIN)
 
     def test_no_held_message_is_an_error(self):
+        patch.object(self.module, "mailbox_id", return_value=6).start()
         self.answers([{"id": 9, "released": True}])
         t = transaction("/api/v1/accounts/1/quarantine/41", session(self.module.ADMIN))
         with self.assertRaises(RuntimeError):

@@ -136,15 +136,26 @@ def an_api_key_from_the_two_factor_admin(transaction):
     hooks.set_json(transaction, body)
 
 
-def mailbox_address(origin, account_id):
-    """The address of the account with that id, or None (a probe's id)."""
+def hosted_mailboxes(origin):
     request = urllib.request.Request(
         origin + "/api/v1/admin/mailboxes?limit=1000",
         headers={"Authorization": "Bearer " + admin_token(origin)},
     )
     with urllib.request.urlopen(request, timeout=10) as response:
-        accounts = json.load(response).get("data") or []
-    return next((a["address"] for a in accounts if str(a.get("id")) == str(account_id)), None)
+        return json.load(response).get("data") or []
+
+
+def mailbox_address(origin, account_id):
+    """The address of the account with that id, or None (a probe's id)."""
+    return next((a["address"] for a in hosted_mailboxes(origin) if str(a.get("id")) == str(account_id)), None)
+
+
+def mailbox_id(origin, address):
+    """The id of the account with that address."""
+    found = next((a["id"] for a in hosted_mailboxes(origin) if a.get("address") == address), None)
+    if found is None:
+        raise RuntimeError("no hosted mailbox has the address " + address)
+    return found
 
 
 @hooks.before("deleteGrant")
@@ -1805,18 +1816,33 @@ def an_account_without_credentials(origin):
         return json.load(response)["data"]["id"]
 
 
+@hooks.before("checkMailboxAddress")
+def look_up_a_hosted_mailbox(transaction):
+    # found names the in-process fixture's user@example.com; on the topology
+    # the hosted mailbox is the fixture admin's. Other values are the
+    # refusals' and the probes', sent as they are.
+    path, _, query = transaction["fullPath"].partition("?")
+    pairs = urllib.parse.parse_qsl(query, keep_blank_values=True)
+    if pairs != [("address", "user@example.com")]:
+        return
+    transaction["fullPath"] = path + "?" + urllib.parse.urlencode({"address": ADMIN})
+
+
 @hooks.before("deleteQuarantine")
 def delete_the_fixture_quarantined_message(transaction):
-    # found names message 41 of the fixture admin (1). Mail is quarantined by
-    # filters a healthy run does not trip, so the contract fixtures hold a
-    # message for the admin (prepareHeldMail); the newest unreleased one is
-    # deleted. Other ids are the refusals' and the probes', sent as they are.
+    # found names message 41 of the in-process fixture's account 1. Mail is
+    # quarantined by filters a healthy run does not trip, so the contract
+    # fixtures hold a message for the fixture admin (prepareHeldMail); the
+    # newest unreleased one is deleted, from the admin's own account. Other ids
+    # are the refusals' and the probes', sent as they are.
     path, _, query = transaction["fullPath"].partition("?")
-    parent, _, message_id = path.rpartition("/")
+    message_id = path.rpartition("/")[2]
     if message_id != "41" or not with_the_fixture_admins_session(transaction):
         return
+    origin = origin_of(transaction)
+    collection = "/api/v1/accounts/{}/quarantine".format(mailbox_id(origin, ADMIN))
     request = urllib.request.Request(
-        origin_of(transaction) + parent + "?limit=100",
+        origin + collection + "?limit=100",
         headers={"Authorization": transaction["request"]["headers"]["Authorization"]},
     )
     with urllib.request.urlopen(request, timeout=10) as response:
@@ -1824,7 +1850,7 @@ def delete_the_fixture_quarantined_message(transaction):
     if not held:
         raise RuntimeError("the contract fixtures hold no quarantined message for the admin")
     newest = max(held, key=lambda m: m["id"])
-    transaction["fullPath"] = parent + "/" + str(newest["id"]) + ("?" + query if query else "")
+    transaction["fullPath"] = collection + "/" + str(newest["id"]) + ("?" + query if query else "")
 
 
 @hooks.before("clearSuppression")
