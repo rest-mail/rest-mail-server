@@ -88,7 +88,11 @@ func TestRequirementExamplesThroughTheProductionRouter(t *testing.T) {
 		route, described := byOperation[op]
 		for name, pair := range pairs[op] {
 			requirement := requirementOf(pair)
-			if !requirementSetups[requirement] || !described {
+			// A pair refused for a session still in setup is the SetupDone
+			// middleware's, the same on every route: it is proven here too.
+			// Other principals without a capability need routes of their own.
+			setupPending := requirement == "principal=without_capability" && refusalCode(t, pair) == "setup_required"
+			if (!requirementSetups[requirement] && !setupPending) || !described {
 				continue
 			}
 			t.Run(op+"/"+name, func(t *testing.T) {
@@ -114,6 +118,13 @@ func TestRequirementExamplesThroughTheProductionRouter(t *testing.T) {
 					router = real.Public
 				}
 				router, credential, body = requirementExampleSetup(t, op, name, requirement, jwt, cfg, router, credential, body)
+				if setupPending {
+					setup, err := jwt.GenerateSession(testAdminHolding([]string{"*"}), "admin@example.test", 0, []string{auth.AMRPassword}, true)
+					if err != nil {
+						t.Fatal(err)
+					}
+					router, credential = stubbed.Public, setup.AccessToken
+				}
 				req := httptest.NewRequest(route.method, messageCollectionReadURI(route.path, pair), bytes.NewReader(body))
 				req.RemoteAddr = "127.0.0.1:12345"
 				if requirement == "body=over_cap" {
@@ -202,4 +213,18 @@ func TestRequirementExamplesThroughTheProductionRouter(t *testing.T) {
 			}
 		})
 	}
+}
+
+// refusalCode is the error code a pair's response body carries, or "".
+func refusalCode(t *testing.T, pair oapifly.ExamplePair) string {
+	t.Helper()
+	var body struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if len(pair.Response.Body) == 0 || json.Unmarshal(pair.Response.Body, &body) != nil {
+		return ""
+	}
+	return body.Error.Code
 }

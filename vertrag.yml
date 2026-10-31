@@ -90,25 +90,15 @@ exclude-matching:
   # getAttachment
   - '^/api/v1/attachments/\{id\} > .* > (304|412|500)( >|$)'
   # listClientSecrets
-  - '^/api/v1/accounts/\{id\}/client-secrets > List an account''s client secrets > (403|404)( >|$)'
+  - '^/api/v1/accounts/\{id\}/client-secrets > List an account''s client secrets > 404( >|$)'
   # createClientSecret
   - '^/api/v1/accounts/\{id\}/client-secrets > Make a scoped OAuth client secret > (404|429)( >|$)'
-  # revokeClientSecret
-  - '^/api/v1/accounts/\{id\}/client-secrets/\{credential_id\} > Revoke a client secret and its tokens > 403( >|$)'
-  # listHeldMessages
-  - '^/api/v1/accounts/\{id\}/held-messages > List an account''s retained send-limit holds > 403( >|$)'
-  # searchMessages
-  - '^/api/v1/accounts/\{id\}/search > Search messages > 403( >|$)'
-  # getAccountSendLimits
-  - '^/api/v1/accounts/\{id\}/send-limits > Read effective account send limits > 403( >|$)'
   # updateServerCapabilities
   - '^/api/v1/admin/server-capabilities > Replace the server capability ceiling > 429( >|$)'
   # getServerCapabilities
   - '^/api/v1/admin/server-capabilities > The server capability ceiling > 429( >|$)'
   # requestRecoveryEmail
   - '^/api/v1/auth/recover/email > Request a password recovery link > 503( >|$)'
-  # getRecoveryEmail
-  - '^/api/v1/auth/recovery-email > Read your registered recovery email > 403( >|$)'
   # registerRecoveryEmail
   - '^/api/v1/auth/recovery-email > Register an external recovery email before lockout > 503( >|$)'
   # recoveryEmailLink

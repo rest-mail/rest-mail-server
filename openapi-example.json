@@ -11941,6 +11941,27 @@
         "mediaType": "application/json"
       }
     },
+    "setup_required": {
+      "summary": "A session still in setup cannot use this route",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "unauthenticated": {
       "requires": {
         "principal": "anonymous"
@@ -15588,6 +15609,23 @@
           "error": {
             "code": "unavailable",
             "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "setup_required": {
+      "summary": "A session still in setup cannot use this route",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
           }
         },
         "mediaType": "application/json"
@@ -19698,6 +19736,27 @@
         },
         "mediaType": "application/json"
       }
+    },
+    "setup_required": {
+      "summary": "A session still in setup cannot use this route",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
     }
   },
   "listContacts": {
@@ -21039,6 +21098,27 @@
           "error": {
             "code": "unavailable",
             "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "setup_required": {
+      "summary": "A session still in setup cannot use this route",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
           }
         },
         "mediaType": "application/json"
@@ -29622,6 +29702,28 @@
         },
         "mediaType": "application/json"
       }
+    },
+    "setup_required": {
+      "summary": "A session still in setup cannot use this route",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "credential_id": 34,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
     }
   },
   "revokeCredential": {
@@ -30185,6 +30287,30 @@
           "error": {
             "code": "unavailable",
             "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "setup_required": {
+      "summary": "A session still in setup cannot use this route",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "q": "Subject"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
           }
         },
         "mediaType": "application/json"
