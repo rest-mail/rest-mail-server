@@ -44,9 +44,16 @@ func clientSecretExamplePairs(t *testing.T) map[string]map[string]oapifly.Exampl
 // to the fixture's account in place of the pair's {id}.
 func sendClientSecretExample(f *credentialFixture, route requirementRoute, pair oapifly.ExamplePair, authorization string) *httptest.ResponseRecorder {
 	f.t.Helper()
+	return sendClientSecretExampleTo(f, route, pair, authorization, float64(f.accountID))
+}
+
+// sendClientSecretExampleTo sends pair with its path id set to accountID: the
+// fixture's account, or the pair's own id when the account must not exist.
+func sendClientSecretExampleTo(f *credentialFixture, route requirementRoute, pair oapifly.ExamplePair, authorization string, accountID any) *httptest.ResponseRecorder {
+	f.t.Helper()
 	path := maps.Clone(pair.Request.Path)
 	if _, ok := path["id"]; ok {
-		path["id"] = float64(f.accountID)
+		path["id"] = accountID
 	}
 	pair.Request.Path = path
 	body := []byte(pair.Request.Body)
@@ -269,7 +276,8 @@ func TestClientSecretExamples(t *testing.T) {
 		f := newCredentialFixture(t)
 		knownPassword(f, passwordOf(t, pair))
 		session := twoFactorSession(f) // two_factor_session
-		rr := sendClientSecretExample(f, routes["createClientSecret"], pair, session)
+		// The pair's own id, which no account has: not the fixture's.
+		rr := sendClientSecretExampleTo(f, routes["createClientSecret"], pair, session, pair.Request.Path["id"])
 		assertRequirementResponse(t, pair, rr)
 		if n := clientSecrets(f); n != 0 {
 			t.Fatalf("refused creation stored %d client secrets", n)
