@@ -5780,7 +5780,15 @@ paths:
           schema:
             type: string
             format: email
-          example: admin@restmail.test
+          examples:
+            address_empty:
+              value: ""
+            address_missing:
+              summary: No address is sent
+            address_unavailable:
+              value: unavailable@example.com
+            found:
+              value: user@example.com
       responses:
         "200":
           description: Mailbox lookup result
@@ -5799,6 +5807,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ValidationErrorResponse'
+              examples:
+                address_empty:
+                  value: {"error": {"code": "validation_failed", "message": "Request body failed validation", "details": {"fields": {"address": "address query parameter required"}}}}
+                address_missing:
+                  value: {"error": {"code": "validation_failed", "message": "Query parameters failed validation", "details": {"fields": {"address": "required"}}}}
   /api/v1/messages/deliver:
     post:
       operationId: deliverMessage
@@ -5817,6 +5830,23 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/DeliverMessageRequest"
+            examples:
+              body_array:
+                value: []
+              deferred:
+                value: {"address": "admin@restmail.test", "sender": "sender@example.net", "subject": "Hello", "body_text": "Hello"}
+              delivered:
+                value: {"address": "admin@restmail.test", "sender": "sender@example.net", "subject": "Subject", "body_text": "Hello"}
+              folder_invalid:
+                value: {"address": "admin@restmail.test", "sender": "sender@example.net", "subject": "Hello", "body_text": "Hello", "folder": " Archive"}
+              internal_error:
+                value: {"address": "admin@restmail.test", "sender": "sender@example.net", "subject": "Subject", "body_text": "Hello"}
+              no_mailbox:
+                value: {"address": "nobody@restmail.test", "sender": "sender@example.net", "subject": "Hello", "body_text": "Hello"}
+              processed:
+                value: {"address": "admin@restmail.test", "sender": "sender@example.net", "subject": "Hello", "body_text": "Hello"}
+              rejected:
+                value: {"address": "admin@restmail.test", "sender": "sender@example.net", "subject": "Hello", "body_text": "Hello"}
       responses:
         "201":
           description: Message delivered
@@ -5829,7 +5859,16 @@ paths:
                   data:
                     $ref: "#/components/schemas/Message"
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+              examples:
+                body_array:
+                  value: {"error": {"code": "validation_failed", "message": "Request body failed validation", "details": {"fields": {"body": "the body is not a JSON object"}}}}
+                folder_invalid:
+                  value: {"error": {"code": "validation_failed", "message": "Request body failed validation", "details": {"fields": {"folder": "must not begin or end with a space"}}}}
 
   # ═══════════════════════════════════════════════════════════════
   # RESTMAIL Protocol

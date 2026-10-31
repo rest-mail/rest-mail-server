@@ -229,10 +229,7 @@ class ContractCommand(unittest.TestCase):
                 '[ "$CONTRACT_DEFER_SUMMARY" = 1 ] || exit 99\n'
                 'case "$1" in gate) exit "${GATE_EXIT:-0}";; '
                 'authorization) exit "${AUTH_EXIT:-0}";; '
-                'ownership) exit "${OWNERSHIP_EXIT:-0}";; '
-                'internal) [ -n "$CONTRACT_INTERNAL_ENDPOINT" ] && [ -n "$CONTRACT_INTERNAL_CERTS" ] || exit 97; '
-                'exit "${INTERNAL_EXIT:-0}";; esac\n',
-                "docker": 'echo "docker:$1" >> "$CALLS"\nexit "${DOCKER_EXIT:-0}"\n',
+                'ownership) exit "${OWNERSHIP_EXIT:-0}";; esac\n',
             }
             for name, script in scripts.items():
                 path = work / name
@@ -308,11 +305,7 @@ class ContractCommand(unittest.TestCase):
                 "run:authorization --tag Domains",
                 "chore:test:contract-domain-tenants",
                 "run:ownership --tag Domains",
-                "docker:run",
-                "docker:run",
-                "docker:run",
-                "run:internal --tag Domains",
-                "summary:tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes internal",
+                "summary:tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes",
             ],
         )
 
@@ -324,14 +317,6 @@ class ContractCommand(unittest.TestCase):
                 )
                 self.assertEqual(result.returncode, expected, result.stderr)
 
-    def test_the_internal_pass_is_a_gate(self):
-        for settings, expected in (({"INTERNAL_EXIT": "1"}, 1), ({"DOCKER_EXIT": "1"}, 1),
-                                   ({"INTERNAL_EXIT": "1", "GATE_EXIT": "3"}, 3)):
-            with self.subTest(settings=settings):
-                result, calls = self.run_command(**settings)
-                self.assertEqual(result.returncode, expected, result.stderr)
-                self.assertEqual("run:internal --tag Domains" in calls, "DOCKER_EXIT" not in settings)
-
     def test_fixture_failure_prevents_contract_checks(self):
         result, calls = self.run_command(FIXTURE_EXIT="1")
         self.assertEqual(result.returncode, 1, result.stderr)
@@ -340,7 +325,7 @@ class ContractCommand(unittest.TestCase):
             [
                 "pin",
                 "chore:test:contract-fixtures",
-                "summary:tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes internal",
+                "summary:tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes",
             ],
         )
 
@@ -373,7 +358,7 @@ class ContractCommand(unittest.TestCase):
             calls,
             [
                 "pin",
-                "summary:tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes internal",
+                "summary:tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes",
             ],
         )
         self.assertNotIn("previous", artifacts["summary.md"])

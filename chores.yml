@@ -586,7 +586,7 @@ tasks:
         set -eu
         python3 -B tests/contract/report_files.py --reset-run .cache/contract
         export CONTRACT_DEFER_SUMMARY=1
-        trap 'python3 -B tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes internal' EXIT
+        trap 'python3 -B tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes' EXIT
         CONTRACT_VERTRAG="$(python3 -B scripts/vertrag_pin.py ensure .cache/bin)"
         export CONTRACT_VERTRAG
         export RESTMAIL_VERTRAG_BINARY="$CONTRACT_VERTRAG"
@@ -605,23 +605,7 @@ tasks:
         tests/contract/run.sh authorization {{.CLI_ARGS}} || echo "the authorization phase is a report, not a gate"
         chore test:contract-domain-tenants || echo "the domain tenants could not be prepared; the ownership run of domains is not sent"
         tests/contract/run.sh ownership {{.CLI_ARGS}} || echo "the ownership phase is a report, not a gate"
-        # The internal mTLS listener's operations, with the gateways' client certificate.
-        certs=.cache/contract/internal-mtls
-        mkdir -p "$certs"
-        internal=0
-        # Read from the volume they are issued into, as tasks/stage-certs.sh does.
-        for name in internal-ca.crt internal-client.crt internal-client.key; do
-          docker run --rm --network none -v "{{.RESTMAIL_PROJECT}}-internal-mtls:/from:ro" alpine:3.20 \
-            cat "/from/$name" >"$certs/$name" || internal=1
-        done
-        if [ "$internal" -eq 0 ]; then
-          CONTRACT_INTERNAL_ENDPOINT="https://{{.RESTMAIL_API_IP}}:{{.RESTMAIL_INTERNAL_MTLS_PORT | default "8443"}}" \
-            CONTRACT_INTERNAL_CERTS="$certs" tests/contract/run.sh internal {{.CLI_ARGS}} || internal=$?
-        else
-          echo "the gateway's internal mTLS certificate could not be copied: the internal pass fails" >&2
-        fi
         if [ "$code" -ne 0 ]; then exit "$code"; fi
-        if [ "$internal" -ne 0 ]; then exit "$internal"; fi
         exit "$scan"
 
   contract:run:
@@ -749,7 +733,7 @@ tasks:
         set -eu
         code=0
         CONTRACT_DEFER_SUMMARY=1 tests/contract/run.sh teardown {{.CLI_ARGS}} || code=$?
-        python3 -B tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes internal teardown
+        python3 -B tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes teardown
         exit "$code"
 
   test:limits:

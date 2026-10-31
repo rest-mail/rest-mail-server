@@ -34,7 +34,6 @@ class SelectedGate(unittest.TestCase):
                 "summary.py",
                 "reports.py",
                 "probes.py",
-                "internal.py",
             ):
                 shutil.copy2(ROOT / "tests/contract" / name, helpers / name)
             (helpers / "fixtures").mkdir()
@@ -103,10 +102,6 @@ class SelectedGate(unittest.TestCase):
                 path = tools / name
                 path.write_text("#!/bin/sh\nexit 0\n")
                 path.chmod(0o755)
-            # Reading the internal mTLS certificates from their volume.
-            docker = tools / "docker"
-            docker.write_text("#!/bin/sh\nexit 0\n")
-            docker.chmod(0o755)
             (work / ".cache").mkdir()
             (work / ".cache/contract-principals.json").write_text("{}")
             calls_file = work / "calls.jsonl"

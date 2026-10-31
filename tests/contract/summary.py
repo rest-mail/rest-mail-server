@@ -21,7 +21,6 @@ PHASES = (
     ("ownership-domains", "ownership of domains (report only)"),
     ("ownership-mailboxes", "ownership of mailboxes (report only)"),
     ("fuzz", "fuzz (report only)"),
-    ("internal", "internal listener"),
     ("teardown", "teardown"),
 )
 

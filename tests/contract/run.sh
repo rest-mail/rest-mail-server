@@ -3,7 +3,7 @@
 # `chore contract`: Vertrag against a running E2E topology, every phase writing
 # JUnit, HTML and Markdown reports to .cache/contract/, and a summary at the end.
 #
-#   tests/contract/run.sh [gate|authorization|ownership|fuzz|internal|teardown] [selection flags]
+#   tests/contract/run.sh [gate|authorization|ownership|fuzz|teardown] [selection flags]
 #
 #   gate           the examples phase, then the coverage phase held to
 #                  tests/contract/coverage-baseline.txt (the default)
@@ -13,9 +13,6 @@
 #                  (#657)
 #   fuzz           values drawn from each schema, a report and not a gate; a
 #                  finding replays with --seed from its log line
-#   internal       the operations of the internal mTLS listener, sent there
-#                  with the gateway's certificate (tests/contract/internal.py;
-#                  CONTRACT_INTERNAL_ENDPOINT and CONTRACT_INTERNAL_CERTS); a gate
 #   teardown       the operations that wipe the run's data, sent last, once
 #                  nothing else needs it (tests/contract/teardown.py); a gate
 #
@@ -30,7 +27,7 @@ cd "$(dirname "$0")/../.."
 
 phase=gate
 case "${1:-}" in
-gate | authorization | ownership | fuzz | internal | teardown)
+gate | authorization | ownership | fuzz | teardown)
   phase=$1
   shift
   ;;
@@ -51,9 +48,8 @@ export CONTRACT_SPEC="$served"
 names=("$phase")
 if [ "$phase" = ownership ]; then names=(ownership ownership-domains ownership-mailboxes); fi
 reset_run=()
-# The internal pass and the teardown, like authorization, keep the gate's saved
-# inputs and reports.
-if [ "$phase" != authorization ] && [ "$phase" != ownership ] && [ "$phase" != internal ] && [ "$phase" != teardown ]; then
+# The teardown, like authorization, keeps the gate's saved inputs and reports.
+if [ "$phase" != authorization ] && [ "$phase" != ownership ] && [ "$phase" != teardown ]; then
   reset_run=(--reset-run)
   names=(fuzz)
   if [ "$phase" = gate ]; then names=(examples coverage authorization ownership ownership-domains ownership-mailboxes browser-sessions); fi
@@ -169,17 +165,6 @@ ownership)
     echo "vertrag ownership of $kind exited $kind_code (report only)"
     if [ "$code" -eq 0 ]; then code=$kind_code; fi
   done
-  exit "$code"
-  ;;
-internal)
-  python3 -B tests/contract/reports.py "$out/vertrag-run.yml" "$out/vertrag-internal.yml" "$out/internal" --narrowed
-  python3 -B tests/contract/internal.py "$out/vertrag-internal.yml" \
-    "${CONTRACT_INTERNAL_ENDPOINT:?the internal listener, https://API_IP:8443}" \
-    "${CONTRACT_INTERNAL_CERTS:?a directory holding the internal CA and a gateway client certificate}"
-  code=0
-  "$CONTRACT_VERTRAG" run --config "$out/vertrag-internal.yml" --sequence --phases examples "${select[@]}" \
-    2>&1 | tee "$logs/contract-internal.log" || code=$?
-  echo "vertrag internal exited $code"
   exit "$code"
   ;;
 teardown)

@@ -188,6 +188,8 @@ class PairedRefusals(unittest.TestCase):
         "listHeldMessages",
         "releaseHeldMessage",
         "createAPIKey",
+        "checkMailboxAddress",
+        "deliverMessage",
     }
 
     PAIRED_400: ClassVar[set[str]] = {"microsoftAutodiscover"}
