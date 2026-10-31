@@ -3195,7 +3195,13 @@ paths:
         schema:
           minimum: 1
           type: integer
-        example: 1
+        examples:
+          none_held:
+            value: 1
+          missing:
+            value: 2147483647
+          invalid_id:
+            value: 0
       responses:
         '200':
           description: OK
@@ -3289,6 +3295,15 @@ paths:
           description: Unprocessable Entity
           content:
             application/json:
+              examples:
+                invalid_id:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Path parameters failed validation
+                      details:
+                        fields:
+                          id: must be at least 1
               schema:
                 $ref: '#/components/schemas/ValidationErrorResponse'
         '500':
@@ -3321,7 +3336,13 @@ paths:
         schema:
           minimum: 1
           type: integer
-        example: 1
+        examples:
+          effective:
+            value: 1
+          missing:
+            value: 2147483647
+          invalid_id:
+            value: 0
       responses:
         '200':
           description: OK
@@ -3388,6 +3409,15 @@ paths:
           description: Unprocessable Entity
           content:
             application/json:
+              examples:
+                invalid_id:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Path parameters failed validation
+                      details:
+                        fields:
+                          id: must be at least 1
               schema:
                 $ref: '#/components/schemas/ValidationErrorResponse'
         '500':
@@ -3452,6 +3482,15 @@ paths:
               - recipients_per_hour
               - recipients_per_day
               type: object
+            examples:
+              updated:
+                value:
+                  messages_per_hour: 50
+                  messages_per_day: 500
+                  recipients_per_hour: 200
+                  recipients_per_day: 2000
+              body_array:
+                value: []
       responses:
         '200':
           description: OK
@@ -3528,6 +3567,15 @@ paths:
           description: Unprocessable Entity
           content:
             application/json:
+              examples:
+                body_array:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          body: the body is not a JSON object
               schema:
                 $ref: '#/components/schemas/ValidationErrorResponse'
         '500':
@@ -3566,7 +3614,13 @@ paths:
         schema:
           minimum: 1
           type: integer
-        example: 1
+        examples:
+          released:
+            value: 1
+          missing:
+            value: 2147483647
+          invalid_id:
+            value: 0
       responses:
         '200':
           description: The retained message after release
@@ -3722,6 +3776,15 @@ paths:
           description: Binding validation or live sender policy refusal
           content:
             application/json:
+              examples:
+                invalid_id:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Path parameters failed validation
+                      details:
+                        fields:
+                          id: must be at least 1
               schema:
                 additionalProperties: false
                 properties:
