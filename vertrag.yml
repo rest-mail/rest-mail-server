@@ -113,49 +113,7 @@ exclude-matching:
   # a segment none of them names is sent.
   # #672: parsed JSON examples exercise 422; malformed-body refusals
   # need their own raw request setup before this topology can send them.
-  - '^/\.well\-known/smtp\-tlsrpt > .* > 400( >|$)'
-  - '^/api/v1/accounts > .* > 400( >|$)'
-  - '^/api/v1/accounts/\{id\}/contacts > .* > 400( >|$)'
-  - '^/api/v1/accounts/\{id\}/contacts/import > .* > 400( >|$)'
-  - '^/api/v1/accounts/\{id\}/credentials > .* > 400( >|$)'
-  - '^/api/v1/accounts/\{id\}/folders > .* > 400( >|$)'
-  - '^/api/v1/accounts/\{id\}/messages/import > .* > 400( >|$)'
-  - '^/api/v1/accounts/\{id\}/sieve > .* > 400( >|$)'
-  - '^/api/v1/accounts/\{id\}/sieve/validate > .* > 400( >|$)'
-  - '^/api/v1/accounts/\{id\}/vacation > .* > 400( >|$)'
-  - '^/api/v1/accounts/link > .* > 400( >|$)'
-  - '^/api/v1/admin/aliases > .* > 400( >|$)'
-  - '^/api/v1/admin/aliases/\{id\} > .* > 400( >|$)'
-  - '^/api/v1/admin/bans > .* > 400( >|$)'
-  - '^/api/v1/admin/certificates > .* > 400( >|$)'
-  - '^/api/v1/admin/custom\-filters > .* > 400( >|$)'
-  - '^/api/v1/admin/custom\-filters/\{id\} > .* > 400( >|$)'
-  - '^/api/v1/admin/custom\-filters/\{id\}/test > .* > 400( >|$)'
-  - '^/api/v1/admin/custom\-filters/validate > .* > 400( >|$)'
-  - '^/api/v1/admin/dkim/\{id\} > .* > 400( >|$)'
-  - '^/api/v1/admin/dkim/\{id\}/rotation > .* > 400( >|$)'
-  - '^/api/v1/admin/domains > .* > 400( >|$)'
-  - '^/api/v1/admin/domains/\{id\} > .* > 400( >|$)'
-  - '^/api/v1/admin/domains/\{id\}/allowlist > .* > 400( >|$)'
-  - '^/api/v1/admin/domains/\{id\}/blocklist > .* > 400( >|$)'
-  - '^/api/v1/admin/domains/\{id\}/mta\-sts > .* > 400( >|$)'
-  - '^/api/v1/admin/domains/\{id\}/relay > .* > 400( >|$)'
-  - '^/api/v1/admin/mailboxes/\{id\} > .* > 400( >|$)'
-  - '^/api/v1/admin/pipelines > .* > 400( >|$)'
-  - '^/api/v1/admin/pipelines/\{id\} > .* > 400( >|$)'
-  - '^/api/v1/admin/pipelines/test > .* > 400( >|$)'
-  - '^/api/v1/admin/pipelines/test\-filter > .* > 400( >|$)'
-  - '^/api/v1/admin/queue/bulk\-bounce > .* > 400( >|$)'
-  - '^/api/v1/admin/queue/bulk\-delete > .* > 400( >|$)'
-  - '^/api/v1/admin/queue/bulk\-retry > .* > 400( >|$)'
-  - '^/api/v1/admin/test/probe > .* > 400( >|$)'
-  - '^/api/v1/admin/test/send > .* > 400( >|$)'
-  - '^/api/v1/auth/invitation > .* > 400( >|$)'
-  - '^/api/v1/auth/login > .* > 400( >|$)'
-  - '^/api/v1/auth/protocol\-sign\-in > .* > 400( >|$)'
-  - '^/api/v1/messages/send > .* > 400( >|$)'
   - '^/autodiscover/autodiscover\.xml > .* > 422( >|$)'
-  - '^/restmail/messages > .* > 400( >|$)'
   - '> 409( >|$)'
   # Reads, updates, deletes and pipeline previews have named missing IDs.
   # test_gate.py pins the complete enabled set.
@@ -179,50 +137,35 @@ exclude-matching:
   - '^/api/v1/auth/(logout|refresh|reset|recover(/email(/redeem)?)?|recovery-email(/verify)?|owner/[a-z]+|2fa/[a-z]+|password) > .* > (400|422)( >|$)'
   # The client-secret exchange lacks a named malformed-request pair (#386).
   - '^/api/v1/oauth/token > .* > 400( >|$)'
-  - '^/api/v1/devices(/| >).* > (400|422)( >|$)'
   - '^/api/v1/messages/(\{id\}|draft)(/| >).* > (400|422)( >|$)'
-  - '^/api/v1/accounts/link > .* > 400( >|$)'
   - '^/api/v1/accounts/\{id\} > .* > (400|422)( >|$)'
   - '^/api/v1/accounts/\{id\}/(threads|quota|search|quarantine|events|calendar-events)(/| >).* > (400|422)( >|$)'
   # Sieve's missing/null script 422s have named request/response pairs.
-  - '^/api/v1/accounts/\{id\}/sieve(/| >).* > 400( >|$)'
   - '^/api/v1/accounts/\{id\}/credentials/.* > (400|422)( >|$)'
   # Client-secret creation and path validation lack named refusal pairs (#386).
   - '^/api/v1/accounts/\{id\}/client-secrets(/\{credential_id\})? > .* > (400|422)( >|$)'
   - '^/api/v1/accounts/\{id\}/folders/.* > (400|422)( >|$)'
   - '^/api/v1/accounts/\{id\}/contacts/(\{cid\}|block|suggest)(/| >).* > (400|422)( >|$)'
   - '^/api/v1/accounts/\{id\}/contacts > List contacts for an account > (400|422)( >|$)'
-  - '^/api/v1/accounts > List the accounts this one reaches > (400|422)( >|$)'
   - '^/api/v1/admin/(audit|grants|server-capabilities|tls-reports)(/| >).* > (400|422)( >|$)'
   - '^/api/v1/admin/dkim/\{id\}/rotation > Read .* > (400|422)( >|$)'
   - '^/api/v1/admin/mailboxes > .* > (400|422)( >|$)'
   - '^/api/v1/admin/mailboxes/\{id\}/invitation > .* > 422( >|$)'
   - '^/api/v1/admin/queue > .* > (400|422)( >|$)'
   - '^/api/v1/admin/queue/(stats|\{id\})(/| >).* > (400|422)( >|$)'
-  - '^/api/v1/admin/aliases/.* > 400( >|$)'
-  - '^/api/v1/admin/pipelines/\{id\} > .* > 400( >|$)'
   - '^/api/v1/admin/pipelines/(logs|analytics)(/| >).* > (400|422)( >|$)'
-  - '^/api/v1/admin/domains/\{id\} > .* > 400( >|$)'
   - '^/api/v1/admin/domains/\{id\}/(dns|suppressions)(/| >).* > (400|422)( >|$)'
   - '^/api/v1/admin/domains/\{id\}/relay > Get .* > (400|422)( >|$)'
   - '^/api/v1/admin/domains/\{id\}/(allowlist|blocklist)/.* > (400|422)( >|$)'
   - '^/api/v1/admin/domains/\{id\}/(allowlist|blocklist) > List .* > (400|422)( >|$)'
-  - '^/api/v1/admin/custom-filters/\{id\} > .* > 400( >|$)'
   - '^/api/v1/admin/(aliases|custom-filters|pipelines) > List [a-z ]+, optionally filtered by domain > (400|422)( >|$)'
   - '^/api/v1/admin/bans > List IP bans > (400|422)( >|$)'
   - '^/api/v1/admin/logs/delivery > .* > (400|422)( >|$)'
   - '^/api/v1/admin/test/verify > .* > (400|422)( >|$)'
   - '^/\.well-known/(restmail|autoconfig|mta-sts\.txt|acme-challenge)(/| >).* > (400|422)( >|$)'
   - '^/restmail/(capabilities|mailboxes) > .* > (400|422)( >|$)'
-  # A 401 for a wrong credential on an operation that takes none (#386).
-  - '^/api/v1/auth/(reset|owner/[a-z]+) > .* > 401( >|$)'
   # Rate limits and an unavailable sidecar: not reachable in a contract run.
   - '> (429|503)( >|$)'
-  # The send example sends immediately. The scheduled branch needs a request
-  # carrying scheduled_at, which the examples phase does not have; the handler
-  # and DB tests cover it. Only the 202 is held back, so the ordinary send is
-  # still judged.
-  - '^/api/v1/messages/send > .* > 202( >|$)'
   # A healthy fixture cannot produce the custom-filter sidecar's timeout, and
   # its 408 has no pair that requires a fault. Its transport regression tests
   # cover it; #1166 tracks topology fault injection. This never ignores a 5xx
@@ -273,9 +216,6 @@ surface:
       reason: "Wipes the data the rest of the run depends on: sent last, by the teardown phase (tests/contract/teardown.py)."
     - operation: restoreTestSnapshot
       reason: "Wipes the data the rest of the run depends on: sent last, by the teardown phase (tests/contract/teardown.py)."
-    - operation: sendMessage
-      status: "202"
-      reason: "The contract's send example sends immediately; a scheduled request is not part of the examples phase. The scheduled branch is covered by the handler and DB tests, and the ordinary send is still counted."
     - operation: testCustomFilter
       status: "408"
       reason: "A sidecar timeout needs a controlled dependency (#1166); transport regression tests cover it."
