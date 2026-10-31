@@ -72,6 +72,11 @@ class AuditReadTest(unittest.TestCase):
             )
             thread.start()
             self.servers.append((server, thread))
+        # The reader signs in as the two-factor administrator; its factor
+        # comes from mfa_admin.py's enrollment, which this fixture has none of.
+        reader = patch.object(secret_scan, "audit_reader_body", return_value={"email": "reader", "totp_code": "1"})
+        reader.start()
+        self.addCleanup(reader.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.config = Path(self.temp.name) / "vertrag.yml"
         self.config.write_text(
@@ -278,6 +283,16 @@ class AuditReadTest(unittest.TestCase):
         self.assertEqual(result, 2)
         self.assertNotIn("Traceback", err)
         self.assertNotIn("0 findings", out)
+
+
+class AuditReaderTest(unittest.TestCase):
+    def test_the_reader_is_the_two_factor_administrator(self):
+        import mfa_admin
+
+        with patch.object(mfa_admin, "factor", return_value={"totp_code": "123456"}):
+            body = secret_scan.audit_reader_body()
+        self.assertEqual(body, {"email": mfa_admin.ADDRESS, "password": mfa_admin.PASSWORD,
+                                "client": "native", "totp_code": "123456"})
 
 
 if __name__ == "__main__":

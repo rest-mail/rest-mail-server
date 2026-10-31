@@ -431,11 +431,13 @@ func getDomainByName(t *testing.T, client *apiClient, name string) domainInfo {
 	return domainInfo{}
 }
 
-// createMailbox makes an account (POST /api/v1/accounts); the client's account
-// becomes its owner. An account that already exists is looked up instead.
+// createMailbox makes an account (POST /api/v1/accounts) as the two-factor
+// administrator, which becomes its owner: making an account takes a session
+// signed in with a second factor. An account that already exists is looked up
+// instead, with client.
 func createMailbox(t *testing.T, client *apiClient, address, password, displayName string) mailboxInfo {
 	t.Helper()
-	resp, err := client.post("/api/v1/accounts", map[string]string{
+	resp, err := twoFactorAdmin(t).post("/api/v1/accounts", map[string]string{
 		"address":      address,
 		"password":     password,
 		"display_name": displayName,

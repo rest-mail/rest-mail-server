@@ -35,7 +35,8 @@ func testStage8ConsoleFlows(t *testing.T) {
 		t.Logf("Created domain: %+v", testDomain)
 
 		// Delete it
-		delResp, err := adminClient.delete(fmt.Sprintf("/api/v1/admin/domains/%d", testDomain.ID))
+		// Deleting a domain grants are held on takes a second factor.
+		delResp, err := twoFactorAdmin(t).delete(fmt.Sprintf("/api/v1/admin/domains/%d", testDomain.ID))
 		requireNoError(t, err)
 		if delResp.StatusCode >= 400 {
 			body := readBody(delResp)
@@ -75,9 +76,10 @@ func testStage8ConsoleFlows(t *testing.T) {
 	})
 
 	t.Run("ConsolePasswordReset", func(t *testing.T) {
-		// Update mailbox password via PATCH
+		// Update mailbox password via PATCH, which takes recent proof of a
+		// second factor.
 		mb := getMailboxByAddress(t, adminClient, "consoleuser@restmail.test")
-		resp, err := adminClient.patch(fmt.Sprintf("/api/v1/admin/mailboxes/%d", mb.ID),
+		resp, err := twoFactorAdmin(t).patch(fmt.Sprintf("/api/v1/admin/mailboxes/%d", mb.ID),
 			map[string]string{"password": "newpassword123"})
 		requireNoError(t, err)
 		if resp.StatusCode >= 400 {
