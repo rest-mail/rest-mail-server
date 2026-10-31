@@ -37,7 +37,8 @@ class ContractScheduledFixtureTests(unittest.TestCase):
             spec.loader.exec_module(self.module)
         self.transaction = {
             "protocol": "http:", "host": "api", "port": "8080",
-            "fullPath": "/api/v1/messages/scheduled/1",
+            # The found example's message id.
+            "fullPath": "/api/v1/messages/scheduled/52",
             "request": {"headers": {"Authorization": "Bearer probe-session"}},
         }
         self.sleep = patch.object(self.module.time, "sleep").start()
@@ -99,7 +100,8 @@ class ContractScheduledFixtureTests(unittest.TestCase):
 
     def test_invalid_id_probes_need_no_fixture_and_keep_their_path(self):
         with patch.object(self.module.urllib.request, "urlopen") as network:
-            for value in ("0", "-1", "not-an-id", "1.5"):
+            # The missing example's id, which no message holds, is sent as it is too.
+            for value in ("0", "-1", "not-an-id", "1.5", "2147483647", "1"):
                 transaction = copy.deepcopy(self.transaction)
                 transaction["fullPath"] = "/api/v1/messages/scheduled/" + value
                 original = copy.deepcopy(transaction)
