@@ -92,7 +92,7 @@ exclude-matching:
   # listClientSecrets
   - '^/api/v1/accounts/\{id\}/client-secrets > List an account''s client secrets > (403|404|422|503)( >|$)'
   # createClientSecret
-  - '^/api/v1/accounts/\{id\}/client-secrets > Make a scoped OAuth client secret > (400|404|429|503)( >|$)'
+  - '^/api/v1/accounts/\{id\}/client-secrets > Make a scoped OAuth client secret > (404|429|503)( >|$)'
   # revokeClientSecret
   - '^/api/v1/accounts/\{id\}/client-secrets/\{credential_id\} > Revoke a client secret and its tokens > (403|422|503)( >|$)'
   # listHeldMessages
@@ -101,52 +101,18 @@ exclude-matching:
   - '^/api/v1/accounts/\{id\}/search > Search messages > 403( >|$)'
   # getAccountSendLimits
   - '^/api/v1/accounts/\{id\}/send-limits > Read effective account send limits > 403( >|$)'
-  # createGrant
-  - '^/api/v1/admin/grants > Grant a role at a scope > 400( >|$)'
-  # activateGrant
-  - '^/api/v1/admin/grants/\{id\}/activate > Switch an eligible grant on > 400( >|$)'
-  # makeGrantEligible
-  - '^/api/v1/admin/grants/\{id\}/make-eligible > Make an active grant eligible > 400( >|$)'
   # updateServerCapabilities
-  - '^/api/v1/admin/server-capabilities > Replace the server capability ceiling > (400|429|503)( >|$)'
+  - '^/api/v1/admin/server-capabilities > Replace the server capability ceiling > (429|503)( >|$)'
   # getServerCapabilities
   - '^/api/v1/admin/server-capabilities > The server capability ceiling > (413|429|500|503)( >|$)'
-  # confirmTwoFactor
-  - '^/api/v1/auth/2fa/confirm > Switch on a pending authenticator with its first code > 400( >|$)'
-  # disableTwoFactor
-  - '^/api/v1/auth/2fa/disable > Turn two-factor authentication off > 400( >|$)'
-  # logout
-  - '^/api/v1/auth/logout > Log out — revoke the session and clear the auth cookies > 400( >|$)'
-  # ownerStatus
-  - '^/api/v1/auth/owner/status > Trade a signed challenge for what the server runs > 400( >|$)'
-  # ownerToken
-  - '^/api/v1/auth/owner/token > Trade a signed challenge for a reset-admin token > 400( >|$)'
-  # changeOwnPassword
-  - '^/api/v1/auth/password > Replace your own password > 400( >|$)'
-  # recoverAccount
-  - '^/api/v1/auth/recover > Reset a forgotten password with the authenticator and a recovery code > 400( >|$)'
   # requestRecoveryEmail
-  - '^/api/v1/auth/recover/email > Request a password recovery link > (400|503)( >|$)'
-  # redeemRecoveryEmail
-  - '^/api/v1/auth/recover/email/redeem > Choose a new password with a recovery email link > 400( >|$)'
+  - '^/api/v1/auth/recover/email > Request a password recovery link > 503( >|$)'
   # getRecoveryEmail
   - '^/api/v1/auth/recovery-email > Read your registered recovery email > (403|413|500|503)( >|$)'
   # registerRecoveryEmail
-  - '^/api/v1/auth/recovery-email > Register an external recovery email before lockout > (400|503)( >|$)'
+  - '^/api/v1/auth/recovery-email > Register an external recovery email before lockout > 503( >|$)'
   # recoveryEmailLink
   - '^/api/v1/auth/recovery-email/link > Open a private recovery email link > (413|500)( >|$)'
-  # verifyRecoveryEmail
-  - '^/api/v1/auth/recovery-email/verify > Verify a recovery email with its single-use link > 400( >|$)'
-  # refreshToken
-  - '^/api/v1/auth/refresh > Refresh the session \(cookie, or body token for native clients\) > 400( >|$)'
-  # resetAdmin
-  - '^/api/v1/auth/reset > Let an account back in with a reset token; also hands a server over > 400( >|$)'
-  # updateMessage
-  - '^/api/v1/messages/\{id\} > Update message flags or move to a folder > 400( >|$)'
-  # respondToCalendar
-  - '^/api/v1/messages/\{id\}/calendar-reply > Reply to a calendar invitation > 400( >|$)'
-  # forwardMessage
-  - '^/api/v1/messages/\{id\}/forward > Forward a message > 400( >|$)'
 
 # Each documented response has one example (#1236). One that says, in
 # x-requires, that proving it needs a principal, a body, a spent limit or a
