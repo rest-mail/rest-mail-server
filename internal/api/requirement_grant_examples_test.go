@@ -42,7 +42,7 @@ func (c *grantRequirementConnection) QueryContext(ctx context.Context, q string,
 		if c.name == "exceeds_held" {
 			capability = "users:write"
 		}
-		return invitationRows([]string{"scope", "capability", "expires_at", "activation_expires_at"}, []driver.Value{scope, capability, nil, nil}), nil
+		return grantLookupRows([]string{"scope", "capability", "expires_at", "activation_expires_at"}, []driver.Value{scope, capability, nil, nil}), nil
 	case strings.Contains(q, `FROM "mailboxes"`):
 		if strings.Contains(q, "owner_id") {
 			return invitationRows([]string{"address", "owner_id"}, []driver.Value{"admin@example.com", nil}), nil

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -97,13 +98,15 @@ func seedAdminWithCaps(t *testing.T, db *gorm.DB, label string, capNames []strin
 	return admin
 }
 
-// setRoleCaps replaces the capabilities granted by a role with capNames.
+// setRoleCaps replaces the capabilities granted by a role with capNames, and
+// the session capability a real role carries with them (#324): mailbox:session
+// beside a mailbox capability, admin:session beside any other.
 func setRoleCaps(t *testing.T, db *gorm.DB, roleID uint, capNames []string) {
 	t.Helper()
 	if err := db.Where("role_id = ?", roleID).Delete(&models.RoleCapability{}).Error; err != nil {
 		t.Fatalf("clear role caps: %v", err)
 	}
-	for _, name := range capNames {
+	for _, name := range withSessionCaps(capNames) {
 		cap := models.Capability{Name: name}
 		if err := db.Where("name = ?", name).FirstOrCreate(&cap).Error; err != nil {
 			t.Fatalf("create cap %q: %v", name, err)
@@ -210,8 +213,9 @@ func TestRefresh_AdminCapabilitiesRederivedFromDB(t *testing.T) {
 	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if got := body.Data.Capabilities; len(got) != 1 || got[0] != "queue:read" {
-		t.Fatalf("capabilities not re-derived from DB: got %v, want [queue:read]", got)
+	got := slices.DeleteFunc(slices.Clone(body.Data.Capabilities), func(c string) bool { return c == models.CapAdminSession })
+	if len(got) != 1 || got[0] != "queue:read" {
+		t.Fatalf("capabilities not re-derived from DB: got %v, want [queue:read] beside admin:session", body.Data.Capabilities)
 	}
 }
 
@@ -443,4 +447,27 @@ func ledgerStatus(t *testing.T, db *gorm.DB, jti string) string {
 		t.Fatalf("get ledger row %q: %v", jti, err)
 	}
 	return rec.Status
+}
+
+// withSessionCaps is names with the session capabilities a real role holding
+// them carries (#324).
+func withSessionCaps(names []string) []string {
+	out := append([]string{}, names...)
+	var mailbox, admin bool
+	for _, name := range names {
+		switch {
+		case name == "*" || name == models.CapMailboxSession || name == models.CapAdminSession || name == models.CapMailReceive:
+		case slices.Contains(models.OwnerCapabilities, name):
+			mailbox = true
+		default:
+			admin = true
+		}
+	}
+	if mailbox && !slices.Contains(names, models.CapMailboxSession) {
+		out = append(out, models.CapMailboxSession)
+	}
+	if admin && !slices.Contains(names, models.CapAdminSession) {
+		out = append(out, models.CapAdminSession)
+	}
+	return out
 }

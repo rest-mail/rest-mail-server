@@ -44,7 +44,7 @@ func newServerCeilingFixture(t *testing.T) serverCeilingFixture {
 	create(&root)
 	create(&admin)
 	caps := map[string]*models.Capability{}
-	for _, name := range []string{grants.Wildcard, "mail:read", "mail:send", "users:read", "users:write"} {
+	for _, name := range []string{grants.Wildcard, "admin:session", "mail:read", "mail:send", "mailbox:session", "users:read", "users:write"} {
 		c := &models.Capability{Name: name}
 		create(c)
 		caps[name] = c
@@ -54,7 +54,7 @@ func newServerCeilingFixture(t *testing.T) serverCeilingFixture {
 	create(&superRole)
 	create(&adminRole)
 	create(&models.RoleCapability{RoleID: superRole.ID, CapabilityID: caps[grants.Wildcard].ID})
-	for _, name := range []string{"mail:read", "mail:send", "users:read", "users:write"} {
+	for _, name := range []string{"admin:session", "mail:read", "mail:send", "mailbox:session", "users:read", "users:write"} {
 		create(&models.RoleCapability{RoleID: adminRole.ID, CapabilityID: caps[name].ID})
 	}
 	create(&models.Grant{HolderKind: models.GrantHolderAccount, HolderID: root.ID, RoleID: superRole.ID, Scope: grants.All, Mode: models.GrantActive, GrantedByKind: models.AuditActorSystem, GrantedAt: time.Now()})
@@ -122,15 +122,15 @@ func TestServerCapabilitiesSuperadminUpdateIsAppliedAndAudited(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("read: %d %s", rr.Code, rr.Body.String())
 	}
-	if got := decodeServerCapabilities(t, rr); got.Source != serverCapabilitiesFromDatabase || !reflect.DeepEqual(got.Capabilities, []string{"mail:read", "mail:send", "users:read", "users:write"}) {
+	if got := decodeServerCapabilities(t, rr); got.Source != serverCapabilitiesFromDatabase || !reflect.DeepEqual(got.Capabilities, []string{"admin:session", "mail:read", "mail:send", "mailbox:session", "users:read", "users:write"}) {
 		t.Fatalf("initial ceiling = %+v", got)
 	}
 
-	rr = f.do(t, http.MethodPut, `{"capabilities":["users:write","mail:read","mail:read"]}`, f.superadmin)
+	rr = f.do(t, http.MethodPut, `{"capabilities":["users:write","mail:read","mail:read","mailbox:session","admin:session"]}`, f.superadmin)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("update: %d %s", rr.Code, rr.Body.String())
 	}
-	want := []string{"mail:read", "users:write"}
+	want := []string{"admin:session", "mail:read", "mailbox:session", "users:write"}
 	if got := decodeServerCapabilities(t, rr); !reflect.DeepEqual(got.Capabilities, want) {
 		t.Fatalf("response = %+v, want %v", got, want)
 	}
@@ -151,7 +151,7 @@ func TestServerCapabilitiesSuperadminUpdateIsAppliedAndAudited(t *testing.T) {
 	if e.ActorID == nil || *e.ActorID != f.superadmin.AccountID || e.Outcome != models.AuditOutcomeSuccess {
 		t.Fatalf("audit actor/outcome = %+v", e)
 	}
-	for k, v := range map[string]string{"before": "mail:read,mail:send,users:read,users:write", "after": "mail:read,users:write", "added": "", "removed": "mail:send,users:read"} {
+	for k, v := range map[string]string{"before": "admin:session,mail:read,mail:send,mailbox:session,users:read,users:write", "after": "admin:session,mail:read,mailbox:session,users:write", "added": "", "removed": "mail:send,users:read"} {
 		if e.Target[k] != v {
 			t.Errorf("audit target %s = %q, want %q", k, e.Target[k], v)
 		}

@@ -351,6 +351,10 @@
             "capabilities": [],
             "scoped_capabilities": [
               {
+                "capability": "admin:session",
+                "scope": "domain:example.com"
+              },
+              {
                 "scope": "domain:example.com",
                 "capability": "domains:read"
               },
@@ -377,6 +381,10 @@
               {
                 "scope": "mailbox:admin@example.com",
                 "capability": "mailbox:manage"
+              },
+              {
+                "capability": "mailbox:session",
+                "scope": "mailbox:admin@example.com"
               }
             ]
           }
@@ -6883,6 +6891,10 @@
             "capabilities": [],
             "scoped_capabilities": [
               {
+                "capability": "admin:session",
+                "scope": "domain:example.com"
+              },
+              {
                 "scope": "domain:example.com",
                 "capability": "domains:read"
               },
@@ -6909,6 +6921,10 @@
               {
                 "scope": "mailbox:admin@example.com",
                 "capability": "mailbox:manage"
+              },
+              {
+                "capability": "mailbox:session",
+                "scope": "mailbox:admin@example.com"
               }
             ]
           }
@@ -15401,8 +15417,10 @@
         "body": {
           "data": {
             "capabilities": [
+              "admin:session",
               "mail:read",
-              "mail:send"
+              "mail:send",
+              "mailbox:session"
             ],
             "source": "database"
           }
@@ -23243,6 +23261,10 @@
             "capabilities": [],
             "scoped_capabilities": [
               {
+                "capability": "admin:session",
+                "scope": "domain:example.com"
+              },
+              {
                 "scope": "domain:example.com",
                 "capability": "domains:read"
               },
@@ -23269,6 +23291,10 @@
               {
                 "scope": "mailbox:admin@example.com",
                 "capability": "mailbox:manage"
+              },
+              {
+                "capability": "mailbox:session",
+                "scope": "mailbox:admin@example.com"
               }
             ]
           }
@@ -25564,6 +25590,10 @@
               {
                 "scope": "mailbox:admin@restmail.test",
                 "capability": "mailbox:manage"
+              },
+              {
+                "capability": "mailbox:session",
+                "scope": "mailbox:admin@restmail.test"
               }
             ]
           }

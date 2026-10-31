@@ -47,6 +47,10 @@ func TestMailboxRemovalPersistenceAndRollback(t *testing.T) {
 			create(&readCap)
 			create(&models.RoleCapability{RoleID: rootRole.ID, CapabilityID: rootCap.ID})
 			create(&models.RoleCapability{RoleID: readRole.ID, CapabilityID: readCap.ID})
+			// A role reading mail carries mailbox:session, as real ones do (#324).
+			sessionCap := models.Capability{Name: models.CapMailboxSession}
+			create(&sessionCap)
+			create(&models.RoleCapability{RoleID: readRole.ID, CapabilityID: sessionCap.ID})
 			actorGrant := models.Grant{HolderKind: "account", HolderID: actor.ID, RoleID: rootRole.ID, Scope: "*", Mode: "active", GrantedByKind: "system", GrantedAt: time.Now()}
 			targetGrant := models.Grant{HolderKind: "account", HolderID: target.ID, RoleID: readRole.ID, Scope: grants.Mailbox(target.Address), Mode: "active", GrantedByKind: "system", GrantedAt: time.Now()}
 			observerGrant := models.Grant{HolderKind: "account", HolderID: observer.ID, RoleID: readRole.ID, Scope: grants.Mailbox(target.Address), Mode: "active", GrantedByKind: "system", GrantedAt: time.Now()}
