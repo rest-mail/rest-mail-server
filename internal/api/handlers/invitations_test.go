@@ -39,7 +39,10 @@ func TestInvitationRequestBoundaries(t *testing.T) {
 		{"/api/v1/auth/invitation", `{"token":"x","password":"a valid first password"}`, 503, "unavailable"},
 		{"/api/v1/auth/invitation", `{"token":"x","password":"` + strings.Repeat("x", 73) + `"}`, 422, "password"},
 		{"/api/v1/auth/invitation", `{"token":"x","password":"` + strings.Repeat("x", 72) + `","client":"native"}`, 503, "unavailable"},
-		{"/api/v1/auth/invitation", `{"token":"x","password":"éééééé"}`, 503, "unavailable"},
+		// The minimum counts characters: six é are 12 bytes and too short,
+		// twelve are 24 bytes and long enough.
+		{"/api/v1/auth/invitation", `{"token":"x","password":"éééééé"}`, 422, "password"},
+		{"/api/v1/auth/invitation", `{"token":"x","password":"éééééééééééé"}`, 503, "unavailable"},
 		{"/api/v1/admin/mailboxes/0/invitation", "", 422, "id"},
 		{"/api/v1/admin/mailboxes/nope/invitation", "", 422, "id"},
 		{"/api/v1/admin/mailboxes/1/invitation", "", 503, "unavailable"},

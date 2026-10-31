@@ -68,7 +68,7 @@ func MintInvitation(ctx context.Context, database *gorm.DB, accountID uint) (str
 // password together. The new session must finish authenticator enrollment and
 // save recovery codes before it can open mail. No grants are added or changed.
 func AcceptInvitation(ctx context.Context, database *gorm.DB, token, password string) (*models.Mailbox, error) {
-	if len(password) < MinChosenPasswordLength {
+	if PasswordTooShort(password) {
 		return nil, ErrPasswordTooShort
 	}
 	if err := ctx.Err(); err != nil {

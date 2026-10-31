@@ -742,7 +742,7 @@ func (h *AuthHandler) changePassword(r *http.Request, req changePasswordRequest)
 		// 403, never 401: the session is still good, only the password is wrong.
 		return passwordChanged{}, endpoint.Refuse(http.StatusForbidden, "invalid_password", "Current password is incorrect")
 	}
-	if len(req.NewPassword) < minChosenPasswordLength {
+	if bootstrap.PasswordTooShort(req.NewPassword) {
 		return passwordChanged{}, endpoint.Invalid(map[string]string{
 			"new_password": fmt.Sprintf("must be at least %d characters", minChosenPasswordLength),
 		})
@@ -929,7 +929,7 @@ func (h *AuthHandler) recoverAccount(r *http.Request, req recoverRequest) (endpo
 	if req.RecoveryCode == "" {
 		problems["recovery_code"] = "required: one of the account's recovery codes"
 	}
-	if len(req.NewPassword) < minChosenPasswordLength {
+	if bootstrap.PasswordTooShort(req.NewPassword) {
 		problems["new_password"] = fmt.Sprintf("must be at least %d characters", minChosenPasswordLength)
 	}
 	if req.Client != "" && req.Client != clientNative {

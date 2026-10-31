@@ -95,7 +95,7 @@ func (h *InvitationHandler) issue(r *http.Request, in adminAddressPath) (endpoin
 // handler.
 type acceptInvitationRequest struct {
 	Token    string `json:"token,omitempty"`
-	Password string `json:"password" missing:"must be between 12 and 72 bytes"`
+	Password string `json:"password" missing:"must be at least 12 characters and at most 72 bytes"`
 	Client   string `json:"client,omitempty" enums:"native" message:"must be \"native\" or omitted"`
 }
 
@@ -105,8 +105,8 @@ func (h *InvitationHandler) accept(r *http.Request, req acceptInvitationRequest)
 	if req.Client != "" && req.Client != clientNative {
 		problems["client"] = `must be "native" or omitted`
 	}
-	if len(req.Password) < bootstrap.MinChosenPasswordLength || len(req.Password) > 72 {
-		problems["password"] = "must be between 12 and 72 bytes"
+	if bootstrap.PasswordTooShort(req.Password) || len(req.Password) > 72 {
+		problems["password"] = "must be at least 12 characters and at most 72 bytes"
 	}
 	if len(problems) > 0 {
 		return zero, endpoint.Invalid(problems)

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
@@ -30,6 +31,13 @@ const DefaultTokenLifetime = 15 * time.Minute
 // account. Long enough that a passphrase clears it and a short dictionary
 // word does not.
 const MinChosenPasswordLength = 12
+
+// PasswordTooShort reports whether password has fewer than
+// MinChosenPasswordLength characters. Characters, not bytes: twelve Japanese
+// or Chinese characters are 36 bytes, and four of them are not twelve.
+func PasswordTooShort(password string) bool {
+	return utf8.RuneCountInString(password) < MinChosenPasswordLength
+}
 
 var (
 	// ErrNoSuchAdmin: reset-admin named an account that does not exist.
