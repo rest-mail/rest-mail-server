@@ -59,8 +59,18 @@ sign-in requirements until it is confirmed. The shared authentication pacing
 hook covers enrollment; it leaves the transaction's principal untouched.
 Confirm runs as the two-factor administrator (below), whose authenticator is
 already on, so it is refused and the fixture admin's sign-in requirements are
-left alone. Disable stays outside this shared fixture's sequence because it
-would revoke the session.
+left alone. Disable is sent with only its refusals: the fixture admin has no
+authenticator, and a disable that succeeded would revoke the session.
+
+### Operations whose setup the run makes, or whose refusals are all it sends
+
+The contract fixtures (`prepareHeldMail`) hold a quarantined message for the
+fixture admin and a suppressed recipient on `restmail.test`; the hooks point
+`deleteQuarantine` and `clearSuppression`'s `found` examples at them.
+`releaseQuarantine`, `respondToCalendar`, `resetAdmin`, `changeOwnPassword`,
+`disableTwoFactor` and the owner operations send the examples that need no
+setup (the topology lists no owner or status keys, so those answer 409); their
+other examples are proven in-process (#1334).
 
 ### Operations that take a two-factor session
 

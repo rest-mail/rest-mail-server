@@ -22,6 +22,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from email.utils import formatdate
 from http.cookies import SimpleCookie
 from pathlib import Path
 
@@ -136,15 +137,26 @@ def an_api_key_from_the_two_factor_admin(transaction):
     hooks.set_json(transaction, body)
 
 
-def mailbox_address(origin, account_id):
-    """The address of the account with that id, or None (a probe's id)."""
+def hosted_mailboxes(origin):
     request = urllib.request.Request(
         origin + "/api/v1/admin/mailboxes?limit=1000",
         headers={"Authorization": "Bearer " + admin_token(origin)},
     )
     with urllib.request.urlopen(request, timeout=10) as response:
-        accounts = json.load(response).get("data") or []
-    return next((a["address"] for a in accounts if str(a.get("id")) == str(account_id)), None)
+        return json.load(response).get("data") or []
+
+
+def mailbox_address(origin, account_id):
+    """The address of the account with that id, or None (a probe's id)."""
+    return next((a["address"] for a in hosted_mailboxes(origin) if str(a.get("id")) == str(account_id)), None)
+
+
+def mailbox_id(origin, address):
+    """The id of the account with that address."""
+    found = next((a["id"] for a in hosted_mailboxes(origin) if a.get("address") == address), None)
+    if found is None:
+        raise RuntimeError("no hosted mailbox has the address " + address)
+    return found
 
 
 @hooks.before("deleteGrant")
@@ -184,11 +196,22 @@ def delete_a_grant_made_for_it(transaction):
 @hooks.before("confirmTwoFactor")
 @hooks.before("recoverAccount")
 @hooks.before("acceptInvitation")
+@hooks.before("resetAdmin")
 def pace_auth_requests(transaction):
     # These operations share the default 1 request/second auth bucket. Coverage
     # repeats valid requests as well as refusals, so even correct credentials
     # drain its burst. Wait for a token without changing or retrying the probe.
     # Leave a small margin for clock/scheduling differences at the boundary.
+    time.sleep(1.1)
+
+
+@hooks.before("ownerChallenge")
+@hooks.before("ownerToken")
+@hooks.before("ownerStatus")
+def pace_owner_requests(transaction):
+    # The owner operations share a bucket of their own at login's rate (and
+    # describeServer's). The topology lists no owner or status keys, so the
+    # run sends their refusals; coverage repeats them, so pace each.
     time.sleep(1.1)
 
 
@@ -1792,6 +1815,95 @@ def an_account_without_credentials(origin):
     )
     with urllib.request.urlopen(request, timeout=10) as response:
         return json.load(response)["data"]["id"]
+
+
+@hooks.before("checkMailboxAddress")
+def look_up_a_hosted_mailbox(transaction):
+    # found names the in-process fixture's user@example.com; on the topology
+    # the hosted mailbox is the fixture admin's. Other values are the
+    # refusals' and the probes', sent as they are.
+    path, _, query = transaction["fullPath"].partition("?")
+    pairs = urllib.parse.parse_qsl(query, keep_blank_values=True)
+    if pairs != [("address", "user@example.com")]:
+        return
+    transaction["fullPath"] = path + "?" + urllib.parse.urlencode({"address": ADMIN})
+
+
+@hooks.before("deliverMessage")
+def deliver_a_whole_message(transaction):
+    # The examples are the in-process fixture's: a few fields, from
+    # sender@example.net. On the topology the inbound pipeline checks the
+    # message as the gateway hands it over: header_validate wants its Date and
+    # Message-ID, which only the raw message carries, and DMARC is checked
+    # against a From domain that publishes p=reject. So a delivery the
+    # examples make is sent as the gateway sends one, the whole message with
+    # its fields, from a domain that publishes no policy. Refusals (an array
+    # body, a refused folder, a missing mailbox) are answered before either.
+    body = hooks.get_json(transaction)
+    if not isinstance(body, dict) or body.get("sender") != "sender@example.net":
+        return
+    sender = body["sender"] = "sender@contract-sender.test"
+    if "raw_message" not in body:
+        stamp = time.time_ns()
+        message = (
+            f"From: {sender}\r\nTo: {body.get('address', '')}\r\n"
+            f"Subject: {body.get('subject', '')}\r\n"
+            f"Date: {formatdate(localtime=False)}\r\n"
+            f"Message-ID: <contract-deliver-{stamp}@contract-sender.test>\r\n"
+            "MIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n"
+            f"{body.get('body_text', '')}\r\n"
+        )
+        body["raw_message"] = base64.b64encode(message.encode()).decode()
+    hooks.set_json(transaction, body)
+
+
+@hooks.before("deleteQuarantine")
+def delete_the_fixture_quarantined_message(transaction):
+    # found names message 41 of the in-process fixture's account 1. Mail is
+    # quarantined by filters a healthy run does not trip, so the contract
+    # fixtures hold a message for the fixture admin (prepareHeldMail); the
+    # newest unreleased one is deleted, from the admin's own account. Other ids
+    # are the refusals' and the probes', sent as they are.
+    # Only the example's own path: a probe that changes either id is sent as it is.
+    path, _, query = transaction["fullPath"].partition("?")
+    if path != "/api/v1/accounts/1/quarantine/41" or not with_the_fixture_admins_session(transaction):
+        return
+    origin = origin_of(transaction)
+    collection = "/api/v1/accounts/{}/quarantine".format(mailbox_id(origin, ADMIN))
+    request = urllib.request.Request(
+        origin + collection + "?limit=100",
+        headers={"Authorization": transaction["request"]["headers"]["Authorization"]},
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        held = [m for m in json.load(response).get("data") or [] if not m.get("released")]
+    if not held:
+        raise RuntimeError("the contract fixtures hold no quarantined message for the admin")
+    newest = max(held, key=lambda m: m["id"])
+    transaction["fullPath"] = collection + "/" + str(newest["id"]) + ("?" + query if query else "")
+
+
+@hooks.before("clearSuppression")
+def clear_the_fixture_suppression(transaction):
+    # found names suppression 1 of domain 1. A recipient is suppressed only
+    # when mail to it hard-bounces, which the run does not send, so the
+    # contract fixtures suppress one on the fixture domain (prepareHeldMail);
+    # the newest is cleared. Other ids are sent as they are.
+    # Only the example's own path: a probe that changes either id is sent as it is.
+    path, _, query = transaction["fullPath"].partition("?")
+    if path != "/api/v1/admin/domains/1/suppressions/1" or not with_the_fixture_admins_session(transaction):
+        return
+    origin = origin_of(transaction)
+    headers = {"Authorization": transaction["request"]["headers"]["Authorization"]}
+    domain_id = hosted_domain_id(origin, headers, FIXTURE_PLAN["domain"])
+    collection = "/api/v1/admin/domains/{}/suppressions".format(domain_id)
+    request = urllib.request.Request(origin + collection, headers=headers)
+    with urllib.request.urlopen(request, timeout=10) as response:
+        suppressed = [s for s in json.load(response).get("data") or []
+                      if s.get("address", "").startswith("contract-suppressed-")]
+    if not suppressed:
+        raise RuntimeError("the contract fixtures suppress no recipient on the fixture domain")
+    newest = max(suppressed, key=lambda s: s["id"])
+    transaction["fullPath"] = collection + "/" + str(newest["id"]) + ("?" + query if query else "")
 
 
 @hooks.before("inviteAccount")

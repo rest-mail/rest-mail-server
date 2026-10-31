@@ -3,7 +3,7 @@
 # `chore contract`: Vertrag against a running E2E topology, every phase writing
 # JUnit, HTML and Markdown reports to .cache/contract/, and a summary at the end.
 #
-#   tests/contract/run.sh [gate|authorization|ownership|fuzz] [selection flags]
+#   tests/contract/run.sh [gate|authorization|ownership|fuzz|teardown] [selection flags]
 #
 #   gate           the examples phase, then the coverage phase held to
 #                  tests/contract/coverage-baseline.txt (the default)
@@ -13,6 +13,8 @@
 #                  (#657)
 #   fuzz           values drawn from each schema, a report and not a gate; a
 #                  finding replays with --seed from its log line
+#   teardown       the operations that wipe the run's data, sent last, once
+#                  nothing else needs it (tests/contract/teardown.py); a gate
 #
 # Selection flags are Vertrag's (--tag Domains, --operation-id getDomain,
 # --only-matching 'regex'), and narrow every phase to them. A narrowed run
@@ -25,7 +27,7 @@ cd "$(dirname "$0")/../.."
 
 phase=gate
 case "${1:-}" in
-gate | authorization | ownership | fuzz)
+gate | authorization | ownership | fuzz | teardown)
   phase=$1
   shift
   ;;
@@ -46,7 +48,8 @@ export CONTRACT_SPEC="$served"
 names=("$phase")
 if [ "$phase" = ownership ]; then names=(ownership ownership-domains ownership-mailboxes); fi
 reset_run=()
-if [ "$phase" != authorization ] && [ "$phase" != ownership ]; then
+# The teardown, like authorization, keeps the gate's saved inputs and reports.
+if [ "$phase" != authorization ] && [ "$phase" != ownership ] && [ "$phase" != teardown ]; then
   reset_run=(--reset-run)
   names=(fuzz)
   if [ "$phase" = gate ]; then names=(examples coverage authorization ownership ownership-domains ownership-mailboxes browser-sessions); fi
@@ -162,6 +165,15 @@ ownership)
     echo "vertrag ownership of $kind exited $kind_code (report only)"
     if [ "$code" -eq 0 ]; then code=$kind_code; fi
   done
+  exit "$code"
+  ;;
+teardown)
+  python3 -B tests/contract/teardown.py "$out/vertrag-run.yml" "$out/vertrag-teardown.yml"
+  python3 -B tests/contract/reports.py "$out/vertrag-teardown.yml" "$out/vertrag-teardown.yml" "$out/teardown" --narrowed
+  code=0
+  "$CONTRACT_VERTRAG" run --config "$out/vertrag-teardown.yml" --sequence --phases examples "${select[@]}" \
+    2>&1 | tee "$logs/contract-teardown.log" || code=$?
+  echo "vertrag teardown exited $code"
   exit "$code"
   ;;
 fuzz)

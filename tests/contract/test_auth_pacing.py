@@ -25,8 +25,13 @@ class AuthPacing(unittest.TestCase):
                  if function is module.pace_auth_requests}
         self.assertEqual(set(paced), {
             "login", "refreshToken", "linkAccount", "createAppPassword", "protocolSignIn", "enrollTwoFactor",
-            "confirmTwoFactor", "recoverAccount", "acceptInvitation",
+            "confirmTwoFactor", "recoverAccount", "acceptInvitation", "resetAdmin",
         })
+        owner = {pattern for pattern, function in registered if function is module.pace_owner_requests}
+        self.assertEqual(owner, {"ownerChallenge", "ownerToken", "ownerStatus"})
+        with patch.object(module.time, "sleep") as sleep:
+            module.pace_owner_requests({})
+        sleep.assert_called_once_with(1.1)
 
         # Begin with an exhausted bucket, then send more than its burst of 15
         # across different operations: all of them charge the same 1 rps bucket.
