@@ -32955,6 +32955,9 @@
       }
     },
     "sidecar_timeout": {
+      "requires": {
+        "fault": "sidecar_response"
+      },
       "request": {
         "path": {
           "id": 6

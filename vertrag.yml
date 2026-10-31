@@ -78,106 +78,77 @@ exclude-operation-id:
   - restoreTestSnapshot
 
 # Documented responses the examples phase cannot provoke yet, by pattern. A
-# transaction is named "<title> > <path> > <summary> > <status>[ > <type>]".
+# transaction is named "<path> > <summary> > <status>[ > <type>]". Each pattern
+# names one operation's documented statuses that no example proves (#1334):
+# give a status an example, with x-requires and an in-process proof if it needs
+# setup, and take it off here and out of tests/contract/status-baseline.txt.
 exclude-matching:
-  # The topology sends whole, single-range, multi-range and unsatisfiable
-  # downloads with named parameter examples. Bodyless 304/412 cannot carry a
-  # named media-type example. The 500's pair requires a database fault, but the
-  # run still builds its media-type transactions from the conditional request
-  # headers' examples, which a healthy server answers 304 or 412. The mandatory
-  # TestAttachmentDownloadExamplesWithVertrag suite exercises conditional
-  # requests and dependency refusals through the real handler and storage client;
-  # TestAttachmentConditionalResponsesDescribeTheWire covers multipart/seek faults.
-  # #1166 tracks the remaining full-topology conditional and fault matrix.
+  # getAttachment: bodyless 304/412 cannot carry a named media-type example,
+  # and its 500's media-type transactions are built from the conditional
+  # headers' examples, which a healthy server answers 304 or 412. Its
+  # surface.exclude entries give the reasons; #1166 tracks the rest.
+  # getAttachment
   - '^/api/v1/attachments/\{id\} > .* > (304|412|500)( >|$)'
-  # A refusal for a missing capability needs a principal without it: vertrag's
-  # authorization phase, not the admin's run.
-  - '> 403( >|$)'
-  # Each needs a request of its own that provokes it (a named request example
-  # paired with a named response example), which the spec does not have yet:
-  # #386. The 400s and 422s are excluded by path rather than everywhere, so the
-  # operations whose refusals have their pair are sent: login, createDomain,
-  # createAlias, createPipeline, createBan, createCustomFilter,
-  # validateCustomFilter, sendTestEmail, createAccount, restmailDeliver,
-  # bulkDeleteQueue, bulkRetryQueue, bulkBounceQueue, addToAllowlist,
-  # addToBlocklist, testFilter, testPipeline, testCustomFilter,
-  # receiveTlsReport, createCertificate, protocolSignIn, createFolder,
-  # createContact, sendMessage, microsoftAutodiscover, setDomainRelay,
-  # setDKIMRotation, createAppPassword, linkAccount, setVacation, importContacts,
-  # updateMailbox, probeServices, setMtaStsPolicy, updateAlias, updateDomain,
-  # updatePipeline, updateCustomFilter, putSieveScript, validateSieveScript
-  # and setDKIMKey.
-  # Coverage probes built from a refused request are refused too;
-  # tests/contract/gate.py does not judge those (tests/contract/README.md).
-  # Each operation paired next comes off these patterns the same way. A path in
-  # a segment none of them names is sent.
-  # #672: parsed JSON examples exercise 422; malformed-body refusals
-  # need their own raw request setup before this topology can send them.
-  - '^/autodiscover/autodiscover\.xml > .* > 422( >|$)'
-  - '> 409( >|$)'
-  # Reads, updates, deletes and pipeline previews have named missing IDs.
-  # test_gate.py pins the complete enabled set.
-  # All other documented 404s still need a request that provokes them.
-  - '^/(api/v1/(auth|accounts|devices|messages|attachments)|restmail|mail|autodiscover|\.well-known)(/| >).* > 404( >|$)'
-  # Autoconfig's 400 (no email domain in the address or the host name) needs a
-  # request to a host that is not autoconfig.<domain>, which the run cannot make.
-  - '^/(mail|\.well-known/autoconfig)(/| >).* > (400|422)( >|$)'
-  - '^/api/v1/admin/(bans|grants|test)(/| >).* > 404( >|$)'
-  - '^/api/v1/admin/queue/\{id\} > Delete a queue entry > 404( >|$)'
-  - '^/api/v1/admin/queue/\{id\}/(retry|bounce) > .* > 404( >|$)'
-  - '^/api/v1/admin/dkim/\{id\} > .* > 404( >|$)'
-  - '^/api/v1/admin/dkim/\{id\}/rotation > Set .* > 404( >|$)'
-  - '^/api/v1/admin/mailboxes/\{id\}/sessions > .* > 404( >|$)'
-  - '^/api/v1/admin/custom-filters(/\{id\}/test| >).* > 404( >|$)'
-  - '^/api/v1/admin/aliases > .* > 404( >|$)'
-  - '^/api/v1/admin/domains/\{id\}/(allowlist|blocklist|suppressions)(/| >).* > 404( >|$)'
-  - '^/api/v1/admin/domains/\{id\}/(mta-sts|relay) > (Create|Set|Delete).* > 404( >|$)'
-  - '^/api/v1/admin/certificates/\{id\} > Delete a certificate > 404( >|$)'
-  # Recovery email's four POST routes also lack named refusal pairs (#386).
-  - '^/api/v1/auth/(logout|refresh|reset|recover(/email(/redeem)?)?|recovery-email(/verify)?|owner/[a-z]+|2fa/[a-z]+|password) > .* > (400|422)( >|$)'
-  # The client-secret exchange lacks a named malformed-request pair (#386).
-  - '^/api/v1/oauth/token > .* > 400( >|$)'
-  - '^/api/v1/messages/(\{id\}|draft)(/| >).* > (400|422)( >|$)'
-  - '^/api/v1/accounts/\{id\} > .* > (400|422)( >|$)'
-  - '^/api/v1/accounts/\{id\}/(threads|quota|search|quarantine|events|calendar-events)(/| >).* > (400|422)( >|$)'
-  # Sieve's missing/null script 422s have named request/response pairs.
-  - '^/api/v1/accounts/\{id\}/credentials/.* > (400|422)( >|$)'
-  # Client-secret creation and path validation lack named refusal pairs (#386).
-  - '^/api/v1/accounts/\{id\}/client-secrets(/\{credential_id\})? > .* > (400|422)( >|$)'
-  - '^/api/v1/accounts/\{id\}/folders/.* > (400|422)( >|$)'
-  - '^/api/v1/accounts/\{id\}/contacts/(\{cid\}|block|suggest)(/| >).* > (400|422)( >|$)'
-  - '^/api/v1/accounts/\{id\}/contacts > List contacts for an account > (400|422)( >|$)'
-  - '^/api/v1/admin/(audit|grants|server-capabilities|tls-reports)(/| >).* > (400|422)( >|$)'
-  - '^/api/v1/admin/dkim/\{id\}/rotation > Read .* > (400|422)( >|$)'
-  - '^/api/v1/admin/mailboxes > .* > (400|422)( >|$)'
-  - '^/api/v1/admin/mailboxes/\{id\}/invitation > .* > 422( >|$)'
-  - '^/api/v1/admin/queue > .* > (400|422)( >|$)'
-  - '^/api/v1/admin/queue/(stats|\{id\})(/| >).* > (400|422)( >|$)'
-  - '^/api/v1/admin/pipelines/(logs|analytics)(/| >).* > (400|422)( >|$)'
-  - '^/api/v1/admin/domains/\{id\}/(dns|suppressions)(/| >).* > (400|422)( >|$)'
-  - '^/api/v1/admin/domains/\{id\}/relay > Get .* > (400|422)( >|$)'
-  - '^/api/v1/admin/domains/\{id\}/(allowlist|blocklist)/.* > (400|422)( >|$)'
-  - '^/api/v1/admin/domains/\{id\}/(allowlist|blocklist) > List .* > (400|422)( >|$)'
-  - '^/api/v1/admin/(aliases|custom-filters|pipelines) > List [a-z ]+, optionally filtered by domain > (400|422)( >|$)'
-  - '^/api/v1/admin/bans > List IP bans > (400|422)( >|$)'
-  - '^/api/v1/admin/logs/delivery > .* > (400|422)( >|$)'
-  - '^/api/v1/admin/test/verify > .* > (400|422)( >|$)'
-  - '^/\.well-known/(restmail|autoconfig|mta-sts\.txt|acme-challenge)(/| >).* > (400|422)( >|$)'
-  - '^/restmail/(capabilities|mailboxes) > .* > (400|422)( >|$)'
-  # Rate limits and an unavailable sidecar: not reachable in a contract run.
-  - '> (429|503)( >|$)'
-  # A healthy fixture cannot produce the custom-filter sidecar's timeout, and
-  # its 408 has no pair that requires a fault. Its transport regression tests
-  # cover it; #1166 tracks topology fault injection. This never ignores a 5xx
-  # answering a normal transaction.
-  - '^/api/v1/admin/custom-filters/\{id\}/test > .* > 408( >|$)'
-  # A healthy fixture sends no recovery email read or link page over the body
-  # cap and meets no failed database or response write, and these statuses
-  # have no pair that requires one.
-  - '^/api/v1/auth/recovery-email(/link)? > .* > (413|500)( >|$)'
-  # Nor a server capability ceiling read over the body cap or meeting a failed
-  # database.
-  - '^/api/v1/admin/server-capabilities > The server capability ceiling > (413|500)( >|$)'
+  # listClientSecrets
+  - '^/api/v1/accounts/\{id\}/client-secrets > List an account''s client secrets > (403|404|422|503)( >|$)'
+  # createClientSecret
+  - '^/api/v1/accounts/\{id\}/client-secrets > Make a scoped OAuth client secret > (404|429|503)( >|$)'
+  # revokeClientSecret
+  - '^/api/v1/accounts/\{id\}/client-secrets/\{credential_id\} > Revoke a client secret and its tokens > (403|422|503)( >|$)'
+  # createAppPassword
+  - '^/api/v1/accounts/\{id\}/credentials > Make an app password > 403( >|$)'
+  # listHeldMessages
+  - '^/api/v1/accounts/\{id\}/held-messages > List an account''s retained send-limit holds > 403( >|$)'
+  # searchMessages
+  - '^/api/v1/accounts/\{id\}/search > Search messages > 403( >|$)'
+  # getAccountSendLimits
+  - '^/api/v1/accounts/\{id\}/send-limits > Read effective account send limits > 403( >|$)'
+  # createGrant
+  - '^/api/v1/admin/grants > Grant a role at a scope > 400( >|$)'
+  # activateGrant
+  - '^/api/v1/admin/grants/\{id\}/activate > Switch an eligible grant on > 400( >|$)'
+  # makeGrantEligible
+  - '^/api/v1/admin/grants/\{id\}/make-eligible > Make an active grant eligible > 400( >|$)'
+  # updateServerCapabilities
+  - '^/api/v1/admin/server-capabilities > Replace the server capability ceiling > (400|429|503)( >|$)'
+  # getServerCapabilities
+  - '^/api/v1/admin/server-capabilities > The server capability ceiling > (413|429|500|503)( >|$)'
+  # confirmTwoFactor
+  - '^/api/v1/auth/2fa/confirm > Switch on a pending authenticator with its first code > 400( >|$)'
+  # disableTwoFactor
+  - '^/api/v1/auth/2fa/disable > Turn two-factor authentication off > 400( >|$)'
+  # logout
+  - '^/api/v1/auth/logout > Log out — revoke the session and clear the auth cookies > 400( >|$)'
+  # ownerStatus
+  - '^/api/v1/auth/owner/status > Trade a signed challenge for what the server runs > 400( >|$)'
+  # ownerToken
+  - '^/api/v1/auth/owner/token > Trade a signed challenge for a reset-admin token > 400( >|$)'
+  # changeOwnPassword
+  - '^/api/v1/auth/password > Replace your own password > 400( >|$)'
+  # recoverAccount
+  - '^/api/v1/auth/recover > Reset a forgotten password with the authenticator and a recovery code > 400( >|$)'
+  # requestRecoveryEmail
+  - '^/api/v1/auth/recover/email > Request a password recovery link > (400|503)( >|$)'
+  # redeemRecoveryEmail
+  - '^/api/v1/auth/recover/email/redeem > Choose a new password with a recovery email link > 400( >|$)'
+  # getRecoveryEmail
+  - '^/api/v1/auth/recovery-email > Read your registered recovery email > (403|413|500|503)( >|$)'
+  # registerRecoveryEmail
+  - '^/api/v1/auth/recovery-email > Register an external recovery email before lockout > (400|503)( >|$)'
+  # recoveryEmailLink
+  - '^/api/v1/auth/recovery-email/link > Open a private recovery email link > (413|500)( >|$)'
+  # verifyRecoveryEmail
+  - '^/api/v1/auth/recovery-email/verify > Verify a recovery email with its single-use link > 400( >|$)'
+  # refreshToken
+  - '^/api/v1/auth/refresh > Refresh the session \(cookie, or body token for native clients\) > 400( >|$)'
+  # resetAdmin
+  - '^/api/v1/auth/reset > Let an account back in with a reset token; also hands a server over > 400( >|$)'
+  # updateMessage
+  - '^/api/v1/messages/\{id\} > Update message flags or move to a folder > 400( >|$)'
+  # respondToCalendar
+  - '^/api/v1/messages/\{id\}/calendar-reply > Reply to a calendar invitation > 400( >|$)'
+  # forwardMessage
+  - '^/api/v1/messages/\{id\}/forward > Forward a message > 400( >|$)'
 
 # Each documented response has one example (#1236). One that says, in
 # x-requires, that proving it needs a principal, a body, a spent limit or a
@@ -216,9 +187,6 @@ surface:
       reason: "Wipes the data the rest of the run depends on: sent last, by the teardown phase (tests/contract/teardown.py)."
     - operation: restoreTestSnapshot
       reason: "Wipes the data the rest of the run depends on: sent last, by the teardown phase (tests/contract/teardown.py)."
-    - operation: testCustomFilter
-      status: "408"
-      reason: "A sidecar timeout needs a controlled dependency (#1166); transport regression tests cover it."
     - operation: getRecoveryEmail
       status: "413"
       reason: "The router's body cap answers before the handler, and the read is a GET the run sends without a body (#1166)."
