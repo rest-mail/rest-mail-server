@@ -103,10 +103,17 @@ func seedAdminWithCaps(t *testing.T, db *gorm.DB, label string, capNames []strin
 // beside a mailbox capability, admin:session beside any other.
 func setRoleCaps(t *testing.T, db *gorm.DB, roleID uint, capNames []string) {
 	t.Helper()
+	setExactRoleCaps(t, db, roleID, withSessionCaps(capNames))
+}
+
+// setExactRoleCaps replaces the capabilities granted by a role with exactly
+// capNames, for a test about the capabilities themselves.
+func setExactRoleCaps(t *testing.T, db *gorm.DB, roleID uint, capNames []string) {
+	t.Helper()
 	if err := db.Where("role_id = ?", roleID).Delete(&models.RoleCapability{}).Error; err != nil {
 		t.Fatalf("clear role caps: %v", err)
 	}
-	for _, name := range withSessionCaps(capNames) {
+	for _, name := range capNames {
 		cap := models.Capability{Name: name}
 		if err := db.Where("name = ?", name).FirstOrCreate(&cap).Error; err != nil {
 			t.Fatalf("create cap %q: %v", name, err)
