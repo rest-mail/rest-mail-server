@@ -57,6 +57,8 @@ class SelectedGate(unittest.TestCase):
                 "print(Path(sys.argv[2]).resolve())\n"
             )
             (helpers / "repeat_fixtures.py").write_text("")
+            # The status ratchet has its own tests (test_status_baseline.py).
+            (helpers / "status_baseline.py").write_text("")
             (helpers / "secret_scan.py").write_text(
                 "print('fixture secret scan ran')\n"
             )
