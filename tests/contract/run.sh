@@ -87,6 +87,11 @@ CONTRACT_RUN_SPEC="$(python3 -B tests/contract/description_equivalence.py \
 # vertrag.yml as this run uses it: absolute paths, the endpoint, and the surface
 # gate only for a whole-API run.
 python3 -B tests/contract/reports.py vertrag.yml "$out/vertrag-run.yml" "$out/run" "${narrowed[@]}"
+# The documented statuses not proven yet, by operation: taken out of the
+# whole-API surface, and held to only shrink after the examples phase.
+if [ ${#narrowed[@]} -eq 0 ]; then
+  python3 -B tests/contract/status_baseline.py expand "$out/vertrag-run.yml" tests/contract/status-baseline.txt
+fi
 
 case "$phase" in
 gate)
@@ -101,6 +106,9 @@ gate)
   # at once. 2 is a failed boundary probe, which the baseline judges below.
   python3 -B tests/contract/reports.py "$out/vertrag-run.yml" "$out/vertrag-examples.yml" "$out/examples" "${narrowed[@]}"
   "$CONTRACT_VERTRAG" run --config "$out/vertrag-examples.yml" --sequence --phases examples "${select[@]}" 2>&1 | tee "$logs/contract-examples.log"
+  if [ ${#select[@]} -eq 0 ]; then
+    python3 -B tests/contract/status_baseline.py check "$served" "$out/examples.xml" tests/contract/status-baseline.txt
+  fi
 
   # The second process repeats create examples after the first one consumed
   # its queue entry and left its folder and contact behind.

@@ -252,7 +252,10 @@ named-values: illustrate
 # the examples phase and passed, none failed, none skipped, none answered 5xx.
 # A shortfall exits 3. Taken out of the count, each with its reason: the
 # operations never sent (exclude-operation-id above), and the documented
-# statuses exclude-matching keeps back, which must stay in step with it.
+# statuses exclude-matching keeps back, which must stay in step with it. The
+# statuses no example proves yet are listed by operation in
+# tests/contract/status-baseline.txt, which run.sh adds here and holds to only
+# shrink (tests/contract/status_baseline.py, #1334).
 surface:
   count: passed
   require: 100
@@ -273,20 +276,6 @@ surface:
     - operation: sendMessage
       status: "202"
       reason: "The contract's send example sends immediately; a scheduled request is not part of the examples phase. The scheduled branch is covered by the handler and DB tests, and the ordinary send is still counted."
-    - status: "403"
-      reason: "a refusal for a missing capability needs a principal without it: the authorization phase, not the admin's run"
-    - status: "400"
-      reason: "needs a request of its own that provokes it (#386)"
-    - status: "404"
-      reason: "needs a request of its own that provokes it (#386)"
-    - status: "409"
-      reason: "needs a request of its own that provokes it (#386)"
-    - status: "422"
-      reason: "needs a request of its own that provokes it (#386)"
-    - status: "429"
-      reason: "a rate limit: not reachable in a contract run"
-    - status: "503"
-      reason: "an unavailable sidecar: not reachable in a contract run"
     - operation: testCustomFilter
       status: "408"
       reason: "A sidecar timeout needs a controlled dependency (#1166); transport regression tests cover it."

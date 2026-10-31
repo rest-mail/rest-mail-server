@@ -126,7 +126,12 @@ Two gates judge the primary run:
   failed transaction 1, and the contract step fails on either. Each exclusion
   is printed with its reason: the operations `exclude-operation-id` never
   sends, and the documented statuses `exclude-matching` keeps back, which
-  `surface.exclude` mirrors.
+  `surface.exclude` mirrors. No status is excluded on every operation: the
+  ones no example proves yet are listed by operation in
+  `status-baseline.txt`, which `run.sh` adds to the run's `surface.exclude`
+  and `status_baseline.py` holds to only shrink. One the examples phase proves,
+  or the description no longer documents, fails the gate until it is taken
+  out (#1334).
 - **coverage, a ratchet, in `gate.py`:** `coverage-baseline.txt` lists the
   operations whose boundary probes still fail (#388). A failing probe on any
   other operation fails the job, and so does an operation in the baseline
