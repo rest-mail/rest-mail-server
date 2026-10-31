@@ -37,11 +37,11 @@ func (h *GrantHandler) serverCapabilities(r *http.Request, _ struct{}) (serverCa
 	h = h.forRequest(r)
 	claims := middleware.GetClaims(r)
 	if err := grants.RequireSuperadmin(h.db, claims.AccountID); err != nil {
-		return serverCapabilitiesResponse{}, serverCapabilitiesError(err)
+		return serverCapabilitiesResponse{}, serverCapabilitiesReadError(err)
 	}
 	names, overridden, err := grants.ServerCeiling(h.db, time.Now())
 	if err != nil {
-		return serverCapabilitiesResponse{}, serverCapabilitiesError(err)
+		return serverCapabilitiesResponse{}, serverCapabilitiesReadError(err)
 	}
 	return toServerCapabilitiesResponse(names, overridden), nil
 }
@@ -84,6 +84,16 @@ func toServerCapabilitiesResponse(names []string, overridden bool) serverCapabil
 		names = []string{}
 	}
 	return serverCapabilitiesResponse{Capabilities: names, Source: source}
+}
+
+// serverCapabilitiesReadError is serverCapabilitiesError for the read: it
+// changes nothing, so a failure is the plain internal error, not a failed
+// grant change.
+func serverCapabilitiesReadError(err error) error {
+	if errors.Is(err, grants.ErrSuperadminRequired) {
+		return serverCapabilitiesError(err)
+	}
+	return err
 }
 
 func serverCapabilitiesError(err error) error {
