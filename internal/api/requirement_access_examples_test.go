@@ -73,7 +73,7 @@ func TestRateRequirementExamples(t *testing.T) {
 				examplepairs.Proven(t, op, name)
 				var handler http.Handler
 				switch op {
-				case "login", "refreshToken", "recoverAccount", "resetAdmin", "acceptInvitation", "ownerChallenge", "ownerToken", "ownerStatus", "changeOwnPassword", "enrollTwoFactor", "confirmTwoFactor", "disableTwoFactor", "createAPIKey", "createAppPassword", "linkAccount", "receiveTlsReport",
+				case "login", "refreshToken", "recoverAccount", "resetAdmin", "acceptInvitation", "ownerChallenge", "ownerToken", "ownerStatus", "changeOwnPassword", "enrollTwoFactor", "confirmTwoFactor", "disableTwoFactor", "createAPIKey", "createAppPassword", "createClientSecret", "linkAccount", "receiveTlsReport",
 					"registerRecoveryEmail", "requestRecoveryEmail", "verifyRecoveryEmail", "redeemRecoveryEmail", "issueClientCredentialsToken":
 					jwt := auth.NewJWTService(routerTestSecret, time.Minute, time.Hour)
 					r := NewRouters(newFailingGormDB(t), jwt, &config.Config{Environment: "test", AuthRateLimitEnabled: true, AuthRateLimitRPS: 1.0 / 3600, AuthRateLimitBurst: 1, TLSRPTRateLimitEnabled: true, TLSRPTRateLimitRPS: 1.0 / 3600, TLSRPTRateLimitBurst: 1}, nil)

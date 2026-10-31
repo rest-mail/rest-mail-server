@@ -3,10 +3,3 @@
 # The list only shrinks: one that is proven, or no longer documented, fails the gate until
 # it is taken out. Give a status an example (and an in-process proof if it needs setup)
 # rather than adding it here.
-createClientSecret 404
-createClientSecret 429
-getServerCapabilities 429
-recoveryEmailLink 500
-registerRecoveryEmail 503
-requestRecoveryEmail 503
-updateServerCapabilities 429

@@ -90,18 +90,6 @@ exclude-matching:
   # surface.exclude entries give the reasons; #1166 tracks the rest.
   # getAttachment
   - '^/api/v1/attachments/\{id\} > .* > (304|412|500)( >|$)'
-  # createClientSecret
-  - '^/api/v1/accounts/\{id\}/client-secrets > Make a scoped OAuth client secret > (404|429)( >|$)'
-  # updateServerCapabilities
-  - '^/api/v1/admin/server-capabilities > Replace the server capability ceiling > 429( >|$)'
-  # getServerCapabilities
-  - '^/api/v1/admin/server-capabilities > The server capability ceiling > 429( >|$)'
-  # requestRecoveryEmail
-  - '^/api/v1/auth/recover/email > Request a password recovery link > 503( >|$)'
-  # registerRecoveryEmail
-  - '^/api/v1/auth/recovery-email > Register an external recovery email before lockout > 503( >|$)'
-  # recoveryEmailLink
-  - '^/api/v1/auth/recovery-email/link > Open a private recovery email link > 500( >|$)'
 
 # Each documented response has one example (#1236). One that says, in
 # x-requires, that proving it needs a principal, a body, a spent limit or a
@@ -140,9 +128,6 @@ surface:
       reason: "Wipes the data the rest of the run depends on: sent last, by the teardown phase (tests/contract/teardown.py)."
     - operation: restoreTestSnapshot
       reason: "Wipes the data the rest of the run depends on: sent last, by the teardown phase (tests/contract/teardown.py)."
-    - operation: recoveryEmailLink
-      status: "500"
-      reason: "The page is static; only a failed response write answers 500, which needs fault injection (#1166)."
 
 # The HAR records the traffic for the secret scan (tests/contract/secret_scan.py, #673).
 reporter: [cli, junit, har]

@@ -112,6 +112,26 @@
         "mediaType": "application/json"
       }
     },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "rate_limited": {
       "summary": "The limit is already spent",
       "requires": {
@@ -3485,6 +3505,29 @@
         "mediaType": "application/json"
       }
     },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "missing": {
       "summary": "The account does not exist or is out of reach",
       "request": {
@@ -3862,6 +3905,26 @@
           "error": {
             "code": "internal_error",
             "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
           }
         },
         "mediaType": "application/json"
@@ -4329,6 +4392,29 @@
           "error": {
             "code": "internal_error",
             "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
           }
         },
         "mediaType": "application/json"
@@ -5114,6 +5200,37 @@
         "mediaType": "application/json"
       }
     },
+    "missing": {
+      "summary": "The account does not exist",
+      "requires": {
+        "state": "two_factor_session"
+      },
+      "request": {
+        "path": {
+          "id": 2147483647
+        },
+        "body": {
+          "name": "Invoice robot",
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "pipelines:write",
+              "scope": "domain:example.test"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "name_missing": {
       "request": {
         "path": {
@@ -5171,6 +5288,58 @@
           "error": {
             "code": "two_factor_required",
             "message": "Sign in with a second factor to create client secrets"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "The shared throttle is spent",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Invoice robot",
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "pipelines:write",
+              "scope": "domain:example.test"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
           }
         },
         "mediaType": "application/json"
@@ -10211,6 +10380,26 @@
           "error": {
             "code": "internal_error",
             "message": "Failed to look up mailbox"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
           }
         },
         "mediaType": "application/json"
@@ -15731,6 +15920,23 @@
         "mediaType": "application/json"
       }
     },
+    "rate_limited": {
+      "summary": "The shared throttle is spent",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {},
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "requires": {
@@ -16923,6 +17129,29 @@
         "mediaType": "application/json"
       }
     },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "missing": {
       "requires": {
         "state": "deleted_account"
@@ -17379,6 +17608,23 @@
         "mediaType": "application/json"
       }
     },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "revoked": {
       "requires": {
         "state": "revoked_client_secret"
@@ -17549,6 +17795,26 @@
             "is_primary": false
           }
         }
+      }
+    },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "rate_limited": {
@@ -19746,6 +20012,27 @@
           "error": {
             "code": "not_found",
             "message": "Account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 0
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
           }
         },
         "mediaType": "application/json"
@@ -23284,6 +23571,26 @@
         "mediaType": "application/json"
       }
     },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "rate_limited": {
       "summary": "The limit is already spent",
       "requires": {
@@ -25175,6 +25482,26 @@
         "mediaType": "application/json"
       }
     },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "protocol_missing": {
       "request": {
         "body": {},
@@ -26171,6 +26498,24 @@
     }
   },
   "recoveryEmailLink": {
+    "internal_error": {
+      "summary": "The shared error adapter sanitizes an unexpected failure",
+      "description": "The endpoint layer advertises a fallback 500. This pair proves its shared response adapter directly; it does not claim that this operation queries a database.",
+      "requires": {
+        "fault": "error_adapter"
+      },
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "page": {
       "request": {},
       "response": {
@@ -26725,6 +27070,29 @@
           "error": {
             "code": "rate_limited",
             "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "recovery_unconfigured": {
+      "summary": "Email recovery is not configured",
+      "description": "Precondition: the server has no HTTPS RESTMAIL_RECOVERY_EMAIL_BASE_URL, so it cannot send a recovery link.",
+      "requires": {
+        "state": "recovery_email_unconfigured"
+      },
+      "request": {
+        "body": {
+          "email": "backup@external.test",
+          "current_password": "original password chosen"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Email recovery requires an HTTPS RESTMAIL_RECOVERY_EMAIL_BASE_URL"
           }
         },
         "mediaType": "application/json"
@@ -28138,6 +28506,28 @@
         "mediaType": "application/json"
       }
     },
+    "recovery_unconfigured": {
+      "summary": "Email recovery is not configured",
+      "description": "Precondition: the server has no HTTPS RESTMAIL_RECOVERY_EMAIL_BASE_URL, so it cannot send a recovery link.",
+      "requires": {
+        "state": "recovery_email_unconfigured"
+      },
+      "request": {
+        "body": {
+          "email": "person@example.test"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Email recovery requires an HTTPS RESTMAIL_RECOVERY_EMAIL_BASE_URL"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "requires": {
         "body": "over_cap"
@@ -28965,6 +29355,26 @@
         "mediaType": "application/json"
       }
     },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "recipients_missing": {
       "request": {
         "body": {
@@ -29755,6 +30165,28 @@
           "error": {
             "code": "not_found",
             "message": "Client secret not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "credential_id": 34,
+          "id": 0
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
           }
         },
         "mediaType": "application/json"
@@ -30922,6 +31354,26 @@
           "error": {
             "code": "internal_error",
             "message": "Failed to check the sender"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
           }
         },
         "mediaType": "application/json"
@@ -36387,6 +36839,29 @@
         "mediaType": "application/json"
       }
     },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "missing": {
       "request": {
         "path": {
@@ -37237,6 +37712,30 @@
         "mediaType": "application/json"
       }
     },
+    "rate_limited": {
+      "summary": "The shared throttle is spent",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "body": {
+          "capabilities": [
+            "mail:read",
+            "mail:send"
+          ]
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "replaced": {
       "summary": "A superadmin replaces the stored ceiling",
       "description": "Changing the ceiling needs a session that signed in with a second factor.",
@@ -37260,6 +37759,23 @@
               "mail:send"
             ],
             "source": "database"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
           }
         },
         "mediaType": "application/json"
