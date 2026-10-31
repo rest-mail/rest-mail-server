@@ -74,12 +74,6 @@ checks:
 exclude-operation-id:
   - checkMailboxAddress
   - deliverMessage
-  - resetAdmin
-  - ownerChallenge
-  - ownerToken
-  - ownerStatus
-  - changeOwnPassword
-  - disableTwoFactor
   - resetTestData
   - restoreTestSnapshot
 
@@ -276,18 +270,6 @@ surface:
       reason: "Served only on the internal mTLS listener, which the E2E topology turns on; the public listener vertrag reaches does not have it."
     - operation: deliverMessage
       reason: "Served only on the internal mTLS listener, which the E2E topology turns on; the public listener vertrag reaches does not have it."
-    - operation: resetAdmin
-      reason: "Needs a single-use token minted by the operator command (restmail-api mint-token) or for an owner key."
-    - operation: ownerChallenge
-      reason: "Needs an owner key in RESTMAIL_OWNER_KEYS, and a signature over the challenge; the E2E topology has no owner keys."
-    - operation: ownerToken
-      reason: "Needs an owner key in RESTMAIL_OWNER_KEYS, and a signature over the challenge; the E2E topology has no owner keys."
-    - operation: ownerStatus
-      reason: "Needs an owner key in RESTMAIL_OWNER_KEYS, and a signature over the challenge; the E2E topology has no owner keys."
-    - operation: changeOwnPassword
-      reason: "Replacing the password makes every session from before it stale, the run's own included, so everything after it would answer 401."
-    - operation: disableTwoFactor
-      reason: "Needs two-factor authentication on, and a code from its authenticator or a recovery code; the fixture admin has none. Turning it off would also end every session, the run's own included, as changeOwnPassword does."
     - operation: resetTestData
       reason: "Wipe the data the rest of the run depends on."
     - operation: restoreTestSnapshot

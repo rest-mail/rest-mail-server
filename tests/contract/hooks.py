@@ -184,11 +184,22 @@ def delete_a_grant_made_for_it(transaction):
 @hooks.before("confirmTwoFactor")
 @hooks.before("recoverAccount")
 @hooks.before("acceptInvitation")
+@hooks.before("resetAdmin")
 def pace_auth_requests(transaction):
     # These operations share the default 1 request/second auth bucket. Coverage
     # repeats valid requests as well as refusals, so even correct credentials
     # drain its burst. Wait for a token without changing or retrying the probe.
     # Leave a small margin for clock/scheduling differences at the boundary.
+    time.sleep(1.1)
+
+
+@hooks.before("ownerChallenge")
+@hooks.before("ownerToken")
+@hooks.before("ownerStatus")
+def pace_owner_requests(transaction):
+    # The owner operations share a bucket of their own at login's rate (and
+    # describeServer's). The topology lists no owner or status keys, so the
+    # run sends their refusals; coverage repeats them, so pace each.
     time.sleep(1.1)
 
 
