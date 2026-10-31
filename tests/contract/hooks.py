@@ -992,11 +992,11 @@ def list_has_a_message_to_show(transaction):
 @hooks.before("cancelScheduledMessage")
 def cancel_a_message_we_made(transaction):
     # A boundary probe (0, a word, a fraction) must reach the handler with its
-    # own id, so its refusal is the one being judged. Only the examples
-    # transaction, and the valid probe built from it, get a real message.
+    # own id, so its refusal is the one being judged, and so must the missing
+    # example's id that no message holds. Only the found example's message
+    # (52), and the valid probe built from it, get a real message.
     path = transaction.get("fullPath", "").split("?")[0]
-    last = path.rsplit("/", 1)[-1]
-    if not last.isdigit() or int(last) < 1:
+    if path.rsplit("/", 1)[-1] != "52":
         return
     scheduled_id = schedule_a_message(transaction)
     if isinstance(scheduled_id, int):
@@ -1534,6 +1534,9 @@ def remove_a_previous_alias_probe(transaction):
     local, domain = source.split("@")
     if not local or "." not in domain:
         return  # Leave a malformed address to the actual probe.
+    # domain_missing's domain is one no one hosts, so it stays unhosted.
+    if source.lower() == "sales@missing.test":
+        return
     origin = "{}//{}:{}".format(
         transaction["protocol"],
         transaction["host"],
@@ -1544,6 +1547,18 @@ def remove_a_previous_alias_probe(transaction):
     if domain_id is None:
         return
     alias = alias_on(origin, headers, domain_id, source)
+    # duplicate's source already has an alias: make it first, and keep it.
+    if source.lower() == "duplicate@restmail.test":
+        if alias is None:
+            request = urllib.request.Request(
+                origin + "/api/v1/admin/aliases",
+                data=json.dumps({"source_address": source, "destination_address": "new@destination.test"}).encode(),
+                headers=dict(headers, **{"Content-Type": "application/json"}),
+                method="POST",
+            )
+            with urllib.request.urlopen(request, timeout=10):
+                pass
+        return
     owned = hooks.stash.get("created_alias_probes", {})
     key = origin + "\n" + source.lower()
     if alias is None:

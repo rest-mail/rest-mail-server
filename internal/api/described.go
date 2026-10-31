@@ -204,6 +204,10 @@ var exampleRequirements = map[string][]string{
 		"full_mailbox", "future_time", "held_by_domain_limit", "held_message", "hosted_restmail_domain", "known_password", "mail_host_unconfigured", "own_account", "owner_key",
 		"pending_enrollment", "pending_recovery_email", "quarantined_message", "recovery_email_token",
 		"revoked_client_secret", "spent_send_limit", "two_factor_off", "two_factor_session", "verified_recovery_email",
+		// What the live run's seeded data cannot be in (#1334): a record the
+		// request meets or misses that the run's own fixtures make otherwise.
+		"concurrent_change", "deleted_account", "existing_contact", "existing_domain", "existing_folder",
+		"last_superadmin", "missing_recipient", "no_master_key", "uncertified_domain", "unhosted_domain",
 	},
 }
 
