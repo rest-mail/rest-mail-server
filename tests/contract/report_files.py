@@ -12,6 +12,7 @@ PHASES = (
     "ownership-mailboxes",
     "fuzz",
     "browser-sessions",
+    "teardown",
 )
 SUFFIXES = (".xml", ".html", ".md", ".har", ".json")
 RUN_FILES = (
@@ -23,6 +24,7 @@ RUN_FILES = (
     "vertrag-ownership.yml",
     "vertrag-ownership-domains.yml",
     "vertrag-ownership-mailboxes.yml",
+    "vertrag-teardown.yml",
 )
 
 

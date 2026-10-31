@@ -211,7 +211,7 @@ exclude-matching:
   - '^/api/v1/admin/(aliases|custom-filters|pipelines) > List [a-z ]+, optionally filtered by domain > (400|422)( >|$)'
   - '^/api/v1/admin/bans > List IP bans > (400|422)( >|$)'
   - '^/api/v1/admin/logs/delivery > .* > (400|422)( >|$)'
-  - '^/api/v1/admin/test/(verify|snapshot/restore) > .* > (400|422)( >|$)'
+  - '^/api/v1/admin/test/verify > .* > (400|422)( >|$)'
   - '^/\.well-known/(restmail|autoconfig|mta-sts\.txt|acme-challenge)(/| >).* > (400|422)( >|$)'
   - '^/restmail/(capabilities|mailboxes) > .* > (400|422)( >|$)'
   # A 401 for a wrong credential on an operation that takes none (#386).
@@ -271,9 +271,9 @@ surface:
     - operation: deliverMessage
       reason: "Served only on the internal mTLS listener, which the E2E topology turns on; the public listener vertrag reaches does not have it."
     - operation: resetTestData
-      reason: "Wipe the data the rest of the run depends on."
+      reason: "Wipes the data the rest of the run depends on: sent last, by the teardown phase (tests/contract/teardown.py)."
     - operation: restoreTestSnapshot
-      reason: "Wipe the data the rest of the run depends on."
+      reason: "Wipes the data the rest of the run depends on: sent last, by the teardown phase (tests/contract/teardown.py)."
     - operation: sendMessage
       status: "202"
       reason: "The contract's send example sends immediately; a scheduled request is not part of the examples phase. The scheduled branch is covered by the handler and DB tests, and the ordinary send is still counted."

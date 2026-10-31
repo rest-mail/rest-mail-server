@@ -223,6 +223,16 @@ jobs:
           set -o pipefail
           chore test:limits 2>&1 | tee "$RUNNER_TEMP/limits.log"
 
+      - name: Contract teardown (the operations that wipe the run's data)
+        # Last: resetTestData and restoreTestSnapshot clear every principal and
+        # fixture the steps above use (#1334). A gate, as the contract step is.
+        if: inputs.contract-phases == 'gate'
+        env:
+          CONTRACT_ENDPOINT: http://10.99.0.20:8080
+          CONTRACT_LOGS: ${{ runner.temp }}
+          CONTRACT_DESCRIPTION_MODE: ${{ inputs.description-mode }}
+        run: chore test:contract-teardown
+
       - name: Contract tests (fuzz)
         # Values drawn from each schema, with shrinking and a replayable seed
         # (in the log). Exploratory, so it reports and never fails the run:
