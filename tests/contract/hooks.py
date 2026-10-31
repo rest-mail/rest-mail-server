@@ -68,18 +68,23 @@ def origin_of(transaction):
     return "{}//{}:{}".format(transaction["protocol"], transaction["host"], transaction["port"])
 
 
-def with_the_fixture_admins_session(transaction):
-    """Whether the request carries the fixture admin's own session. The
-    authorization phase's principals and an unauthenticated 401 do not."""
+def fixture_admin_claims(transaction):
+    """The claims of the fixture admin's own session, when the request carries
+    it. The authorization phase's principals and an unauthenticated 401 do not."""
     header = transaction["request"]["headers"].get("Authorization", "")
     if not header.startswith("Bearer "):
-        return False
+        return None
     try:
         payload = header[len("Bearer "):].split(".")[1]
         claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
     except (IndexError, ValueError):
-        return False
-    return isinstance(claims, dict) and claims.get("address") == ADMIN
+        return None
+    return claims if isinstance(claims, dict) and claims.get("address") == ADMIN else None
+
+
+def with_the_fixture_admins_session(transaction):
+    """Whether the request carries the fixture admin's own session."""
+    return fixture_admin_claims(transaction) is not None
 
 
 def as_the_two_factor_admin(transaction):
@@ -111,13 +116,25 @@ def send_as_the_two_factor_admin(transaction):
 @hooks.before("createAPIKey")
 def an_api_key_from_the_two_factor_admin(transaction):
     # Making a key also takes the maker's current password.
+    claims = fixture_admin_claims(transaction)
     if not as_the_two_factor_admin(transaction):
         return
     body = hooks.get_json(transaction)
     # The body_array refusal sends a JSON array, which has no password to set.
-    if isinstance(body, dict) and "password" in body:
-        body["password"] = mfa_admin.PASSWORD
-        hooks.set_json(transaction, body)
+    if not isinstance(body, dict) or "password" not in body:
+        return
+    body["password"] = mfa_admin.PASSWORD
+    # A key holds only what its maker and the account it is for both hold
+    # (apiKeyWithinGrants). The example's key is for the fixture admin (1),
+    # whose grants reach restmail.test, not the example's robot@example.com:
+    # it is scoped to the admin's own mailbox, which an owner may read.
+    path = transaction["fullPath"].partition("?")[0]
+    account = path.rstrip("/").split("/")[-2]
+    if account == str(claims.get("account_id")) and isinstance(body.get("permissions"), list):
+        for permission in body["permissions"]:
+            if isinstance(permission, dict) and "scope" in permission:
+                permission["scope"] = "mailbox:" + ADMIN
+    hooks.set_json(transaction, body)
 
 
 @hooks.before("deleteGrant")

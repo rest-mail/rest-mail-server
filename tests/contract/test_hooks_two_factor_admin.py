@@ -80,6 +80,21 @@ class TwoFactorAdminHookTests(unittest.TestCase):
         self.assertEqual(json.loads(t["request"]["body"])["password"], self.module.mfa_admin.PASSWORD)
         self.assertEqual(t["request"]["headers"]["Authorization"], "Bearer two-factor-token")
 
+    def test_the_fixture_admins_key_is_scoped_to_its_own_mailbox(self):
+        permissions = [{"capability": "mail:read", "scope": "mailbox:robot@example.com"}]
+        body = {"name": "Invoice robot", "password": "current-password", "permissions": permissions}
+        t = transaction("/api/v1/accounts/1/api-keys", session(self.module.ADMIN), json.dumps(body))
+        self.module.an_api_key_from_the_two_factor_admin(t)
+        self.assertEqual(json.loads(t["request"]["body"])["permissions"],
+                         [{"capability": "mail:read", "scope": "mailbox:" + self.module.ADMIN}])
+
+    def test_a_key_for_another_account_keeps_its_scopes(self):
+        permissions = [{"capability": "mail:read", "scope": "mailbox:robot@example.com"}]
+        body = {"name": "Invoice robot", "password": "current-password", "permissions": permissions}
+        t = transaction("/api/v1/accounts/7/api-keys", session(self.module.ADMIN), json.dumps(body))
+        self.module.an_api_key_from_the_two_factor_admin(t)
+        self.assertEqual(json.loads(t["request"]["body"])["permissions"], permissions)
+
     def test_the_body_array_refusal_is_sent_as_it_is(self):
         t = transaction("/api/v1/accounts/1/api-keys", session(self.module.ADMIN), "[]")
         self.module.an_api_key_from_the_two_factor_admin(t)
