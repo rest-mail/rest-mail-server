@@ -10818,6 +10818,45 @@
         "status": 201
       }
     },
+    "held": {
+      "summary": "Held by a spent send limit until a person releases it",
+      "requires": {
+        "state": "spent_send_limit"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "from": "chris@example.test",
+          "to": [
+            "bob@example.org"
+          ],
+          "body_text": "See below."
+        }
+      },
+      "response": {
+        "status": 202,
+        "body": {
+          "data": {
+            "id": 3,
+            "account_id": 1,
+            "from": "chris@example.test",
+            "to": [
+              "bob@example.org"
+            ],
+            "subject": "Fwd: Quarterly report",
+            "scheduled_at": "2026-10-31T01:00:00Z",
+            "status": "held",
+            "attempts": 0,
+            "last_error": "account:1: messages_per_hour",
+            "created_at": "2026-10-31T00:10:00Z",
+            "updated_at": "2026-10-31T00:10:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "mailbox_full": {
       "request": {
         "path": {
@@ -25597,6 +25636,38 @@
         "mediaType": "application/json"
       }
     },
+    "released": {
+      "summary": "A person with a second factor sends the held message",
+      "requires": {
+        "state": "held_message"
+      },
+      "request": {
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 3,
+            "account_id": 1,
+            "from": "chris@example.test",
+            "to": [
+              "bob@example.org"
+            ],
+            "subject": "Quarterly report",
+            "scheduled_at": "2026-10-31T01:00:00Z",
+            "status": "sent",
+            "attempts": 0,
+            "sent_message_id": 9,
+            "created_at": "2026-10-31T00:10:00Z",
+            "updated_at": "2026-10-31T00:10:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "requires": {
@@ -25634,6 +25705,38 @@
           "error": {
             "code": "unavailable",
             "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "still_held": {
+      "summary": "The domain's budget is spent too, so the message stays held",
+      "requires": {
+        "state": "held_by_domain_limit"
+      },
+      "request": {
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 202,
+        "body": {
+          "data": {
+            "id": 3,
+            "account_id": 1,
+            "from": "chris@example.test",
+            "to": [
+              "bob@example.org"
+            ],
+            "subject": "Quarterly report",
+            "scheduled_at": "2026-10-31T01:00:00Z",
+            "status": "held",
+            "attempts": 0,
+            "last_error": "domain:1: messages_per_hour",
+            "created_at": "2026-10-31T00:10:00Z",
+            "updated_at": "2026-10-31T00:10:00Z"
           }
         },
         "mediaType": "application/json"
@@ -28997,6 +29100,39 @@
           "error": {
             "code": "forbidden",
             "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "held": {
+      "summary": "Held by a spent send limit until a person releases it",
+      "requires": {
+        "state": "spent_send_limit"
+      },
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {}
+      },
+      "response": {
+        "status": 202,
+        "body": {
+          "data": {
+            "id": 3,
+            "account_id": 1,
+            "from": "chris@example.test",
+            "to": [
+              "bob@example.org"
+            ],
+            "subject": "Quarterly report",
+            "scheduled_at": "2026-10-31T01:00:00Z",
+            "status": "held",
+            "attempts": 0,
+            "last_error": "account:1: messages_per_hour",
+            "created_at": "2026-10-31T00:10:00Z",
+            "updated_at": "2026-10-31T00:10:00Z"
           }
         },
         "mediaType": "application/json"
