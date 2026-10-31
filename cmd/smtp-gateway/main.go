@@ -22,6 +22,7 @@ import (
 	smtpgw "github.com/restmail/restmail/internal/gateway/smtp"
 	"github.com/restmail/restmail/internal/gateway/tlsutil"
 	"github.com/restmail/restmail/internal/grants"
+	"github.com/restmail/restmail/internal/sendlimits"
 )
 
 // loadCACert adds the PEM CA bundle at path to the gateway's outbound HTTP
@@ -198,7 +199,7 @@ func main() {
 	limiter := connlimiter.New(connlimiter.Config{MaxPerIP: 20, MaxGlobal: 1000})
 	limiter.SetProtocol("smtp")
 	bancheck.Wire(limiter, database, "smtp")
-	smtpServer := smtpgw.NewServer(cfg.GatewayHostname, api, tlsConfig, smtpgw.NewStore(database, cfg.MasterKey), limiter)
+	smtpServer := smtpgw.NewServer(cfg.GatewayHostname, api, tlsConfig, smtpgw.NewLimitedStore(database, cfg.MasterKey, sendlimits.FromConfig(cfg.SendLimits)), limiter)
 	smtpServer.SetMaxMessageSize(cfg.SMTPMaxMessageSize)
 	slog.Info("SMTP max message size configured", "max_message_size", cfg.SMTPMaxMessageSize)
 	if warn := cfg.SMTPMaxMessageSizeWarning(); warn != "" {

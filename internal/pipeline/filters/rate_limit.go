@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/restmail/restmail/internal/sendlimits"
 )
 
 type rateLimitConfig struct {
@@ -79,7 +80,10 @@ func (f *rateLimitFilter) rateKey(email *pipeline.EmailJSON) string {
 	return "sender:" + sender
 }
 
-func (f *rateLimitFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
+func (f *rateLimitFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
+	if sendlimits.IsHumanRelease(ctx) {
+		return &pipeline.FilterResult{Type: pipeline.FilterTypeAction, Action: pipeline.ActionContinue, Log: pipeline.FilterLog{Filter: "rate_limit", Result: "human_release", Detail: "Per-account cap overridden by an audited human release"}}, nil
+	}
 	id := f.rateKey(email)
 
 	f.store.mu.Lock()

@@ -59,8 +59,8 @@ func (c mailRemovalConnection) QueryContext(ctx context.Context, q string, args 
 	if !strings.Contains(q, `FROM "scheduled_sends"`) {
 		return c.mailResourceReadConnection.QueryContext(ctx, q, args)
 	}
-	if len(args) != 4 || !strings.Contains(q, "id =") || !strings.Contains(q, "account_id =") || !strings.Contains(q, "status =") || !strings.Contains(q, "LIMIT") || args[1].Value != int64(10) || args[2].Value != "pending" || args[3].Value != int64(1) {
-		return nil, errors.New("cancellation lookup lost ID, account or pending-state restriction")
+	if len(args) != 5 || !strings.Contains(q, "id =") || !strings.Contains(q, "account_id =") || !strings.Contains(q, "status IN") || !strings.Contains(q, "LIMIT") || args[1].Value != int64(10) || args[2].Value != "pending" || args[3].Value != "held" || args[4].Value != int64(1) {
+		return nil, errors.New("cancellation lookup lost ID, account or pending/held-state restriction")
 	}
 	c.record(q, args)
 	id := fmt.Sprint(args[0].Value)
@@ -89,8 +89,8 @@ func (c mailRemovalConnection) QueryContext(ctx context.Context, q string, args 
 
 func (c mailRemovalConnection) ExecContext(_ context.Context, q string, args []driver.NamedValue) (driver.Result, error) {
 	if strings.HasPrefix(q, `UPDATE "scheduled_sends" SET`) {
-		if len(args) != 4 || args[0].Value != "cancelled" || !strings.Contains(q, "id =") || !strings.Contains(q, "status =") || args[3].Value != "pending" {
-			return nil, errors.New("cancellation lost pending-state compare-and-update")
+		if len(args) != 5 || args[0].Value != "cancelled" || !strings.Contains(q, "id =") || !strings.Contains(q, "status IN") || args[3].Value != "pending" || args[4].Value != "held" {
+			return nil, errors.New("cancellation lost pending/held-state compare-and-update")
 		}
 		c.record(q, args)
 		if args[2].Value == int64(59) {

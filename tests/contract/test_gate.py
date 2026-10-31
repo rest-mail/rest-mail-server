@@ -3,6 +3,7 @@
 Run: python3 -m unittest discover -s tests/contract -p 'test_gate.py'
 """
 
+import json
 import os
 import re
 import tempfile
@@ -182,10 +183,27 @@ class PairedRefusals(unittest.TestCase):
         "setDKIMKey",
         "acceptInvitation",
         "importMessage",
+        "getAccountSendLimits",
+        "setAccountSendLimits",
+        "listHeldMessages",
+        "releaseHeldMessage",
     }
 
     PAIRED_400: ClassVar[set[str]] = {"microsoftAutodiscover"}
     PAIRED_422: ClassVar[set[str]] = PAIRED - PAIRED_400
+
+    @staticmethod
+    def required_only():
+        """(operation, status) pairs whose every example says what proving it
+        requires: the run does not send those, its in-process suites prove them."""
+        with open(os.path.join(ROOT, "openapi-example.json")) as source:
+            examples = json.load(source)
+        statuses = {}
+        for op, named in examples.items():
+            for pair in named.values():
+                key = (op, str(pair["response"]["status"]))
+                statuses[key] = statuses.get(key, True) and bool(pair.get("requires"))
+        return {key for key, required in statuses.items() if required}
 
     def test_exclude_matching_sends_exactly_the_paired_refusals(self):
         spec = topology_spec()
@@ -193,6 +211,7 @@ class PairedRefusals(unittest.TestCase):
             config = yaml.safe_load(source)
         patterns = [re.compile(p) for p in config["exclude-matching"]]
         never = set(config["exclude-operation-id"])
+        required_only = self.required_only()
         sent, paired = set(), set()
         for path, item in spec["paths"].items():
             for method in gate.METHODS:
@@ -200,7 +219,7 @@ class PairedRefusals(unittest.TestCase):
                 if op is None or op["operationId"] in never:
                     continue
                 for status in ("400", "422"):
-                    if status not in op["responses"]:
+                    if status not in op["responses"] or (op["operationId"], status) in required_only:
                         continue
                     if op["operationId"] in getattr(self, "PAIRED_" + status):
                         paired.add((op["operationId"], status))
@@ -218,9 +237,15 @@ class PairedRefusals(unittest.TestCase):
                 op = item.get(method)
                 if op is None or op["operationId"] not in self.PAIRED:
                     continue
-                request_content = op["requestBody"]["content"]
-                self.assertEqual(len(request_content), 1)
-                requests = next(iter(request_content.values()))
+                if "requestBody" in op:
+                    request_content = op["requestBody"]["content"]
+                    self.assertEqual(len(request_content), 1)
+                    requests = next(iter(request_content.values()))
+                else:
+                    # A request with no body is named by its parameters' examples.
+                    parameters = item.get("parameters", []) + op.get("parameters", [])
+                    self.assertTrue(all("$ref" not in p and "example" not in p for p in parameters))
+                    requests = {"examples": {n: e for p in parameters for n, e in p.get("examples", {}).items()}}
                 for status in ("400", "422"):
                     if status not in op["responses"] or op[
                         "operationId"

@@ -12,12 +12,18 @@ type ScheduledSend struct {
 	To        JSONB     `gorm:"type:jsonb;not null;default:'[]'" json:"to"`
 	Subject   string    `gorm:"type:text" json:"subject"`
 	SendAt    time.Time `gorm:"not null;index" json:"scheduled_at"`
-	// Status values: pending, sending, sent, failed, cancelled.
+	// Status values: pending, sending, sent, failed, cancelled, held.
+	// A held send is retained until a person with 2FA releases or cancels it.
 	Status   string `gorm:"size:20;not null;default:pending;index" json:"status"`
 	Attempts int    `gorm:"not null;default:0" json:"attempts"`
 	// Request is the POST /messages/send body as it arrived, with
 	// scheduled_at removed, so replaying it sends rather than schedules.
-	Request       JSONB     `gorm:"type:jsonb;not null" json:"-"`
+	Request JSONB `gorm:"type:jsonb;not null" json:"-"`
+	// ForwardParts retains attachment bytes for a held forward independently of
+	// the original mailbox objects. Never exposed by the listing API.
+	ForwardParts  JSONB     `gorm:"type:jsonb" json:"-"`
+	CredentialID  uint      `json:"-"`
+	SessionID     string    `gorm:"type:text" json:"-"`
 	SentMessageID *uint     `gorm:"index" json:"sent_message_id,omitempty"`
 	LastError     string    `gorm:"type:text" json:"last_error,omitempty"`
 	CreatedAt     time.Time `json:"created_at"`

@@ -124,6 +124,8 @@ type Config struct {
 	APIMaxRecipientsPerMessage int
 	APISendRateLimitPerMinute  int
 	APISendRateLimitPerHour    int
+	// Shared persistent submission budgets for REST and SMTP (#341).
+	SendLimits *SendLimitConfig
 
 	// Master key for encrypting private keys at rest
 	MasterKey string
@@ -611,6 +613,10 @@ func Load() (*Config, error) {
 	cfg.APIMaxRecipientsPerMessage = getEnvInt("API_MAX_RECIPIENTS_PER_MESSAGE", DefaultAPIMaxRecipientsPerMessage)
 	cfg.APISendRateLimitPerMinute = getEnvInt("API_SEND_RATE_LIMIT_PER_MINUTE", DefaultAPISendRateLimitPerMinute)
 	cfg.APISendRateLimitPerHour = getEnvInt("API_SEND_RATE_LIMIT_PER_HOUR", DefaultAPISendRateLimitPerHour)
+	cfg.SendLimits, err = loadSendLimits(cfg.APISendRateLimitPerHour, cfg.APISendRateLimitPerMinute)
+	if err != nil {
+		return nil, err
+	}
 
 	// Anti-slowloris message-transfer policy. Same strictness rationale as the
 	// max message size: these are security knobs, so a malformed value is a

@@ -81,6 +81,9 @@ func autoMigrate(db *gorm.DB) error {
 		// Mail the user asked the server to send later; replayed through the
 		// ordinary send path when due.
 		&models.ScheduledSend{},
+		&models.SendLimitPolicy{},
+		&models.SendLimitCounter{},
+		&models.SendLimitNotice{},
 		&models.QuotaUsage{},
 		&models.Certificate{},
 		// The API's ACME account key per CA directory, reused by renewals.

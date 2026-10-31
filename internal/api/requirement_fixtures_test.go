@@ -158,6 +158,14 @@ func requirementExampleSetup(t *testing.T, operation, name, requirement string, 
 		case operation == "deleteQuarantine" && name == "write_unavailable":
 			db = requirementDB(t, mailRemovalConnection{mailResourceReadConnection{personalDataReadConnection{accountCredentialListConnection{mode: "normal"}}}, &bulkQueueExampleStore{}})
 			token = mailboxToken(t, jwt)
+		case operation == "setAccountSendLimits" || operation == "releaseHeldMessage":
+			// Unconfigured send limits answer 503 before the handler reads anything;
+			// configured, the token's two-factor session reaches the failing database.
+			limited := *cfg
+			limited.SendLimits = &config.SendLimitConfig{}
+			routers := NewRouters(newFailingGormDB(t), jwt, &limited, nil)
+			t.Cleanup(routers.Close)
+			return routers.Public, token, body
 		case operation == "forwardMessage" && name == "attachment_write_failed":
 			useRealGrants(t)
 			fixture := newForwardFixture(t, "attachment_failure")
