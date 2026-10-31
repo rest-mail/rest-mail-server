@@ -64,12 +64,125 @@ def mfa_admin_token(origin):
     return sessions[origin]["token"]
 
 
+def origin_of(transaction):
+    return "{}//{}:{}".format(transaction["protocol"], transaction["host"], transaction["port"])
+
+
+def fixture_admin_claims(transaction):
+    """The claims of the fixture admin's own session, when the request carries
+    it. The authorization phase's principals and an unauthenticated 401 do not."""
+    header = transaction["request"]["headers"].get("Authorization", "")
+    if not header.startswith("Bearer "):
+        return None
+    try:
+        payload = header[len("Bearer "):].split(".")[1]
+        claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+    except (IndexError, ValueError):
+        return None
+    return claims if isinstance(claims, dict) and claims.get("address") == ADMIN else None
+
+
+def with_the_fixture_admins_session(transaction):
+    """Whether the request carries the fixture admin's own session."""
+    return fixture_admin_claims(transaction) is not None
+
+
+def as_the_two_factor_admin(transaction):
+    """Send a request made with the fixture admin's session with the two-factor
+    administrator's instead, and say whether it was."""
+    if not with_the_fixture_admins_session(transaction):
+        return False
+    transaction["request"]["headers"]["Authorization"] = "Bearer " + mfa_admin_token(origin_of(transaction))
+    return True
+
+
+@hooks.before("listAPIKeys")
+@hooks.before("revokeAPIKey")
+@hooks.before("confirmTwoFactor")
+@hooks.before("createGrant")
+@hooks.before("deleteGrant")
+@hooks.before("activateGrant")
+@hooks.before("deactivateGrant")
+@hooks.before("makeGrantEligible")
+def send_as_the_two_factor_admin(transaction):
+    # These take a session that signed in with a second factor, which the
+    # fixture admin has not. The run's requests are sent as the two-factor
+    # administrator, a superadmin as the fixture admin is, signed in for real.
+    # Confirming its authenticator again is refused (409): it is already on,
+    # and the fixture admin's sign-in requirements are left alone.
+    as_the_two_factor_admin(transaction)
+
+
+@hooks.before("createAPIKey")
+def an_api_key_from_the_two_factor_admin(transaction):
+    # Making a key also takes the maker's current password.
+    if not as_the_two_factor_admin(transaction):
+        return
+    body = hooks.get_json(transaction)
+    # The body_array refusal sends a JSON array, which has no password to set.
+    if not isinstance(body, dict) or "password" not in body:
+        return
+    body["password"] = mfa_admin.PASSWORD
+    # A key holds only what its maker and the account it is for both hold
+    # (apiKeyWithinGrants). The example's account holds nothing at the
+    # example's robot@example.com, but an account may read its own mailbox:
+    # the key is scoped to the address of the account in the path.
+    path = transaction["fullPath"].partition("?")[0]
+    address = mailbox_address(origin_of(transaction), path.rstrip("/").split("/")[-2])
+    if address and isinstance(body.get("permissions"), list):
+        for permission in body["permissions"]:
+            if isinstance(permission, dict) and "scope" in permission:
+                permission["scope"] = "mailbox:" + address
+    hooks.set_json(transaction, body)
+
+
+def mailbox_address(origin, account_id):
+    """The address of the account with that id, or None (a probe's id)."""
+    request = urllib.request.Request(
+        origin + "/api/v1/admin/mailboxes?limit=1000",
+        headers={"Authorization": "Bearer " + admin_token(origin)},
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        accounts = json.load(response).get("data") or []
+    return next((a["address"] for a in accounts if str(a.get("id")) == str(account_id)), None)
+
+
+@hooks.before("deleteGrant")
+def delete_a_grant_made_for_it(transaction):
+    # body_boundary names grant 1, which is a fixture principal's own. Delete a
+    # grant made for the purpose instead: an eligible admin role on the fixture
+    # domain, held by an account made without credentials. Other ids are the
+    # refusal examples' and the coverage probes', and are sent as they are.
+    path, _, query = transaction["fullPath"].partition("?")
+    parent, _, grant_id = path.rpartition("/")
+    if grant_id != "1":
+        return
+    origin = origin_of(transaction)
+    holder = an_account_without_credentials(origin)
+    request = urllib.request.Request(
+        origin + "/api/v1/admin/grants",
+        data=json.dumps({
+            "holder": {"kind": "account", "id": holder},
+            "role": "admin",
+            "scope": "domain:restmail.test",
+            "mode": "eligible",
+        }).encode(),
+        headers={"Content-Type": "application/json", "Authorization": "Bearer " + mfa_admin_token(origin)},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        grant = json.load(response)["data"]
+    transaction["fullPath"] = parent + "/" + str(grant["id"]) + ("?" + query if query else "")
+
+
 @hooks.before("login")
 @hooks.before("refreshToken")
 @hooks.before("linkAccount")
 @hooks.before("createAppPassword")
 @hooks.before("protocolSignIn")
 @hooks.before("enrollTwoFactor")
+@hooks.before("confirmTwoFactor")
+@hooks.before("recoverAccount")
 @hooks.before("acceptInvitation")
 def pace_auth_requests(transaction):
     # These operations share the default 1 request/second auth bucket. Coverage

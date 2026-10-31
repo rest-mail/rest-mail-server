@@ -40,15 +40,16 @@ class GuardTest(unittest.TestCase):
 
 
 class RequiredCI(unittest.TestCase):
-    def test_separate_suite_is_required_for_exactly_the_three_key_operations(self):
+    def test_separate_suite_is_required_beside_the_primary_run(self):
+        # The primary run sends the three key operations as the two-factor
+        # administrator (#1334); this suite still proves the whole lifecycle.
         root = os.path.join(os.path.dirname(__file__), "..", "..")
         with open(os.path.join(root, "vertrag.yml")) as source:
             config = yaml.safe_load(source)
-        expected = {"listAPIKeys", "createAPIKey", "revokeAPIKey"}
-        excluded = {item["operation"] for item in config["surface"]["exclude"]
-                    if "test:contract-api-keys" in item.get("reason", "")}
-        self.assertEqual(excluded, expected)
-        self.assertLessEqual(expected, set(config["exclude-operation-id"]))
+        operations = {"listAPIKeys", "createAPIKey", "revokeAPIKey"}
+        excluded = {item.get("operation") for item in config["surface"]["exclude"]}
+        self.assertFalse(operations & excluded)
+        self.assertFalse(operations & set(config["exclude-operation-id"]))
         with open(os.path.join(root, ".github/workflows/e2e-suite.yml")) as source:
             workflow = yaml.safe_load(source)
         steps = [step for step in workflow["jobs"]["suite"]["steps"]

@@ -72,24 +72,14 @@ checks:
 # Push and ACME are off in this topology, so their routes are absent from the
 # generated description and must not be named as exclusions.
 exclude-operation-id:
-  - listAPIKeys
-  - createAPIKey
-  - revokeAPIKey
   - checkMailboxAddress
   - deliverMessage
   - resetAdmin
-  - recoverAccount
   - ownerChallenge
   - ownerToken
   - ownerStatus
   - changeOwnPassword
-  - confirmTwoFactor
   - disableTwoFactor
-  - createGrant
-  - deleteGrant
-  - activateGrant
-  - deactivateGrant
-  - makeGrantEligible
   - resetTestData
   - restoreTestSnapshot
   - respondToCalendar
@@ -286,20 +276,12 @@ surface:
     - operation: getAttachment
       status: "500"
       reason: "A healthy topology cannot provoke database/storage/seek faults. The required attachment example suite covers dependency refusals, and TestAttachmentConditionalResponsesDescribeTheWire covers seek errors; topology fault injection remains in #1166."
-    - operation: listAPIKeys
-      reason: "Required real-MFA API key lifecycle suite: chore test:contract-api-keys in e2e-suite.yml. It checks metadata, creation, scoped use and revocation without changing this run's principal."
-    - operation: createAPIKey
-      reason: "Required real-MFA API key lifecycle suite: chore test:contract-api-keys in e2e-suite.yml. The primary fixture admin has no MFA."
-    - operation: revokeAPIKey
-      reason: "Required real-MFA API key lifecycle suite: chore test:contract-api-keys in e2e-suite.yml. The primary fixture admin has no MFA."
     - operation: checkMailboxAddress
       reason: "Served only on the internal mTLS listener, which the E2E topology turns on; the public listener vertrag reaches does not have it."
     - operation: deliverMessage
       reason: "Served only on the internal mTLS listener, which the E2E topology turns on; the public listener vertrag reaches does not have it."
     - operation: resetAdmin
       reason: "Needs a single-use token minted by the operator command (restmail-api mint-token) or for an owner key."
-    - operation: recoverAccount
-      reason: "Needs a current code from the account's authenticator and one of its recovery codes; the fixture admin has no 2FA."
     - operation: ownerChallenge
       reason: "Needs an owner key in RESTMAIL_OWNER_KEYS, and a signature over the challenge; the E2E topology has no owner keys."
     - operation: ownerToken
@@ -308,20 +290,8 @@ surface:
       reason: "Needs an owner key in RESTMAIL_OWNER_KEYS, and a signature over the challenge; the E2E topology has no owner keys."
     - operation: changeOwnPassword
       reason: "Replacing the password makes every session from before it stale, the run's own included, so everything after it would answer 401."
-    - operation: confirmTwoFactor
-      reason: "Needs a current code from a pending enrollment; confirming the fixture admin would change its sign-in requirements for the rest of the run."
     - operation: disableTwoFactor
       reason: "Needs two-factor authentication on, and a code from its authenticator or a recovery code; the fixture admin has none. Turning it off would also end every session, the run's own included, as changeOwnPassword does."
-    - operation: createGrant
-      reason: "Needs a session that signed in with a second factor, or a fresh code from an authenticator; the fixture admin has none."
-    - operation: deleteGrant
-      reason: "Needs a session that signed in with a second factor, or a fresh code from an authenticator; the fixture admin has none."
-    - operation: activateGrant
-      reason: "Needs a session that signed in with a second factor, or a fresh code from an authenticator; the fixture admin has none."
-    - operation: deactivateGrant
-      reason: "Needs a session that signed in with a second factor, or a fresh code from an authenticator; the fixture admin has none."
-    - operation: makeGrantEligible
-      reason: "Needs a session that signed in with a second factor, or a fresh code from an authenticator; the fixture admin has none."
     - operation: resetTestData
       reason: "Wipe the data the rest of the run depends on."
     - operation: restoreTestSnapshot
