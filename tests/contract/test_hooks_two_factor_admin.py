@@ -76,23 +76,34 @@ class TwoFactorAdminHookTests(unittest.TestCase):
     def test_an_api_key_is_made_with_the_two_factor_admins_password(self):
         body = {"name": "Invoice robot", "password": "current-password", "permissions": []}
         t = transaction("/api/v1/accounts/1/api-keys", session(self.module.ADMIN), json.dumps(body))
-        self.module.an_api_key_from_the_two_factor_admin(t)
+        with patch.object(self.module, "mailbox_address", return_value="a@restmail.test"):
+            self.module.an_api_key_from_the_two_factor_admin(t)
         self.assertEqual(json.loads(t["request"]["body"])["password"], self.module.mfa_admin.PASSWORD)
         self.assertEqual(t["request"]["headers"]["Authorization"], "Bearer two-factor-token")
 
-    def test_the_fixture_admins_key_is_scoped_to_its_own_mailbox(self):
+    def test_the_key_is_scoped_to_its_accounts_own_mailbox(self):
         permissions = [{"capability": "mail:read", "scope": "mailbox:robot@example.com"}]
         body = {"name": "Invoice robot", "password": "current-password", "permissions": permissions}
         t = transaction("/api/v1/accounts/1/api-keys", session(self.module.ADMIN), json.dumps(body))
-        self.module.an_api_key_from_the_two_factor_admin(t)
+        with patch.object(self.module, "admin_token", return_value="admin-token"), \
+                patch.object(self.module.urllib.request, "urlopen") as urlopen:
+            urlopen.return_value.__enter__.return_value = io.BytesIO(json.dumps(
+                {"data": [{"id": 2, "address": "b@restmail.test"}, {"id": 1, "address": "a@restmail.test"}]}).encode())
+            self.module.an_api_key_from_the_two_factor_admin(t)
         self.assertEqual(json.loads(t["request"]["body"])["permissions"],
-                         [{"capability": "mail:read", "scope": "mailbox:" + self.module.ADMIN}])
+                         [{"capability": "mail:read", "scope": "mailbox:a@restmail.test"}])
+        request = urlopen.call_args.args[0]
+        self.assertEqual(request.full_url, "http://api:8080/api/v1/admin/mailboxes?limit=1000")
+        self.assertEqual(request.headers["Authorization"], "Bearer admin-token")
 
-    def test_a_key_for_another_account_keeps_its_scopes(self):
+    def test_a_key_for_no_account_keeps_its_scopes(self):
         permissions = [{"capability": "mail:read", "scope": "mailbox:robot@example.com"}]
         body = {"name": "Invoice robot", "password": "current-password", "permissions": permissions}
-        t = transaction("/api/v1/accounts/7/api-keys", session(self.module.ADMIN), json.dumps(body))
-        self.module.an_api_key_from_the_two_factor_admin(t)
+        t = transaction("/api/v1/accounts/2147483647/api-keys", session(self.module.ADMIN), json.dumps(body))
+        with patch.object(self.module, "admin_token", return_value="admin-token"), \
+                patch.object(self.module.urllib.request, "urlopen") as urlopen:
+            urlopen.return_value.__enter__.return_value = io.BytesIO(json.dumps({"data": []}).encode())
+            self.module.an_api_key_from_the_two_factor_admin(t)
         self.assertEqual(json.loads(t["request"]["body"])["permissions"], permissions)
 
     def test_the_body_array_refusal_is_sent_as_it_is(self):

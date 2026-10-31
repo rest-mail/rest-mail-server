@@ -116,7 +116,6 @@ def send_as_the_two_factor_admin(transaction):
 @hooks.before("createAPIKey")
 def an_api_key_from_the_two_factor_admin(transaction):
     # Making a key also takes the maker's current password.
-    claims = fixture_admin_claims(transaction)
     if not as_the_two_factor_admin(transaction):
         return
     body = hooks.get_json(transaction)
@@ -125,16 +124,27 @@ def an_api_key_from_the_two_factor_admin(transaction):
         return
     body["password"] = mfa_admin.PASSWORD
     # A key holds only what its maker and the account it is for both hold
-    # (apiKeyWithinGrants). The example's key is for the fixture admin (1),
-    # whose grants reach restmail.test, not the example's robot@example.com:
-    # it is scoped to the admin's own mailbox, which an owner may read.
+    # (apiKeyWithinGrants). The example's account holds nothing at the
+    # example's robot@example.com, but an account may read its own mailbox:
+    # the key is scoped to the address of the account in the path.
     path = transaction["fullPath"].partition("?")[0]
-    account = path.rstrip("/").split("/")[-2]
-    if account == str(claims.get("account_id")) and isinstance(body.get("permissions"), list):
+    address = mailbox_address(origin_of(transaction), path.rstrip("/").split("/")[-2])
+    if address and isinstance(body.get("permissions"), list):
         for permission in body["permissions"]:
             if isinstance(permission, dict) and "scope" in permission:
-                permission["scope"] = "mailbox:" + ADMIN
+                permission["scope"] = "mailbox:" + address
     hooks.set_json(transaction, body)
+
+
+def mailbox_address(origin, account_id):
+    """The address of the account with that id, or None (a probe's id)."""
+    request = urllib.request.Request(
+        origin + "/api/v1/admin/mailboxes?limit=1000",
+        headers={"Authorization": "Bearer " + admin_token(origin)},
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        accounts = json.load(response).get("data") or []
+    return next((a["address"] for a in accounts if str(a.get("id")) == str(account_id)), None)
 
 
 @hooks.before("deleteGrant")
