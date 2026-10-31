@@ -53,6 +53,8 @@ class HeldMailHookTests(unittest.TestCase):
 
     def test_other_messages_and_principals_are_sent_as_they_are(self):
         for path, authorization in (("/api/v1/accounts/1/quarantine/2147483647", session(self.module.ADMIN)),
+                                    ("/api/v1/accounts/0/quarantine/41", session(self.module.ADMIN)),
+                                    ("/api/v1/accounts/vertrag-not-a-number/quarantine/41", session(self.module.ADMIN)),
                                     ("/api/v1/accounts/1/quarantine/41", None),
                                     ("/api/v1/accounts/1/quarantine/41", session("contract-ordinary@restmail.test"))):
             with self.subTest(path=path, authorization=authorization):
@@ -71,11 +73,13 @@ class HeldMailHookTests(unittest.TestCase):
         self.assertEqual(t["fullPath"], "/api/v1/admin/domains/4/suppressions/5")
 
     def test_other_suppressions_are_sent_as_they_are(self):
-        for sid in ("2147483647", "not-an-integer", "3"):
-            with self.subTest(sid=sid):
-                t = transaction("/api/v1/admin/domains/1/suppressions/" + sid, session(self.module.ADMIN))
+        for path in ("/api/v1/admin/domains/1/suppressions/2147483647", "/api/v1/admin/domains/1/suppressions/x",
+                     "/api/v1/admin/domains/1/suppressions/3", "/api/v1/admin/domains/0/suppressions/1",
+                     "/api/v1/admin/domains/1.5/suppressions/1"):
+            with self.subTest(path=path):
+                t = transaction(path, session(self.module.ADMIN))
                 self.module.clear_the_fixture_suppression(t)
-                self.assertEqual(t["fullPath"], "/api/v1/admin/domains/1/suppressions/" + sid)
+                self.assertEqual(t["fullPath"], path)
         self.urlopen.assert_not_called()
 
 

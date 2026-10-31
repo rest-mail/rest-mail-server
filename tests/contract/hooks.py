@@ -1835,9 +1835,9 @@ def delete_the_fixture_quarantined_message(transaction):
     # fixtures hold a message for the fixture admin (prepareHeldMail); the
     # newest unreleased one is deleted, from the admin's own account. Other ids
     # are the refusals' and the probes', sent as they are.
+    # Only the example's own path: a probe that changes either id is sent as it is.
     path, _, query = transaction["fullPath"].partition("?")
-    message_id = path.rpartition("/")[2]
-    if message_id != "41" or not with_the_fixture_admins_session(transaction):
+    if path != "/api/v1/accounts/1/quarantine/41" or not with_the_fixture_admins_session(transaction):
         return
     origin = origin_of(transaction)
     collection = "/api/v1/accounts/{}/quarantine".format(mailbox_id(origin, ADMIN))
@@ -1859,9 +1859,9 @@ def clear_the_fixture_suppression(transaction):
     # when mail to it hard-bounces, which the run does not send, so the
     # contract fixtures suppress one on the fixture domain (prepareHeldMail);
     # the newest is cleared. Other ids are sent as they are.
+    # Only the example's own path: a probe that changes either id is sent as it is.
     path, _, query = transaction["fullPath"].partition("?")
-    parent, _, suppression_id = path.rpartition("/")
-    if suppression_id != "1" or not with_the_fixture_admins_session(transaction):
+    if path != "/api/v1/admin/domains/1/suppressions/1" or not with_the_fixture_admins_session(transaction):
         return
     origin = origin_of(transaction)
     headers = {"Authorization": transaction["request"]["headers"]["Authorization"]}

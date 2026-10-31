@@ -103,9 +103,9 @@ class SelectedGate(unittest.TestCase):
                 path = tools / name
                 path.write_text("#!/bin/sh\nexit 0\n")
                 path.chmod(0o755)
-            # docker cp of the gateway's internal mTLS certificate.
+            # Reading the internal mTLS certificates from their volume.
             docker = tools / "docker"
-            docker.write_text('#!/bin/sh\n[ "$1" = cp ] && : > "$3"\nexit 0\n')
+            docker.write_text("#!/bin/sh\nexit 0\n")
             docker.chmod(0o755)
             (work / ".cache").mkdir()
             (work / ".cache/contract-principals.json").write_text("{}")
