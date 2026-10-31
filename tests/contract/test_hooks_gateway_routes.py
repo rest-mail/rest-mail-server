@@ -33,19 +33,27 @@ class GatewayRoutes(unittest.TestCase):
                 module.look_up_a_hosted_mailbox(t)
                 self.assertEqual(t["fullPath"], expected)
 
-    def test_delivery_is_from_a_domain_without_a_dmarc_policy(self):
+    def test_a_delivery_is_the_whole_message_from_a_domain_without_a_policy(self):
+        import base64
         import json
         module, hooks, registered = load_hooks()
-        self.assertIn("deliver_from_a_domain_without_a_dmarc_policy", registered["deliverMessage"])
-        for sender, expected in (("sender@example.net", "sender@contract-sender.test"),
-                                 ("other@example.org", "other@example.org")):
-            with self.subTest(sender=sender):
-                t = {"request": {"body": json.dumps({"address": "admin@restmail.test", "sender": sender})}}
-                module.deliver_from_a_domain_without_a_dmarc_policy(t)
-                self.assertEqual(json.loads(t["request"]["body"])["sender"], expected)
-        t = {"request": {"body": "[]"}}
-        module.deliver_from_a_domain_without_a_dmarc_policy(t)
-        self.assertEqual(t["request"]["body"], "[]")
+        self.assertIn("deliver_a_whole_message", registered["deliverMessage"])
+        body = {"address": "admin@restmail.test", "sender": "sender@example.net", "subject": "Subject", "body_text": "Hello"}
+        t = {"request": {"body": json.dumps(body)}}
+        module.deliver_a_whole_message(t)
+        sent = json.loads(t["request"]["body"])
+        self.assertEqual(sent["sender"], "sender@contract-sender.test")
+        raw = base64.b64decode(sent["raw_message"]).decode()
+        for header in ("From: sender@contract-sender.test", "To: admin@restmail.test", "Subject: Subject",
+                       "Date: ", "Message-ID: <contract-deliver-"):
+            self.assertIn(header, raw)
+        self.assertTrue(raw.endswith("\r\n\r\nHello\r\n"))
+        for kept in ({"address": "a@b.test", "sender": "other@example.org"}, []):
+            with self.subTest(body=kept):
+                t = {"request": {"body": json.dumps(kept)}}
+                module.deliver_a_whole_message(t)
+                self.assertEqual(json.loads(t["request"]["body"]), kept)
+
 
 if __name__ == "__main__":
     unittest.main()

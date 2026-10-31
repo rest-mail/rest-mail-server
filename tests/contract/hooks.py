@@ -22,6 +22,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from email.utils import formatdate
 from http.cookies import SimpleCookie
 from pathlib import Path
 
@@ -1829,16 +1830,31 @@ def look_up_a_hosted_mailbox(transaction):
 
 
 @hooks.before("deliverMessage")
-def deliver_from_a_domain_without_a_dmarc_policy(transaction):
-    # The examples send from the in-process fixture's sender@example.net. On
-    # the topology the inbound pipeline checks DMARC, and example.net
-    # publishes p=reject, so a delivery the API is not told passed SPF or DKIM
-    # is rejected (550). The sender is one of a domain that publishes no
-    # policy, so delivery proceeds; the refusals and probes keep the rest.
+def deliver_a_whole_message(transaction):
+    # The examples are the in-process fixture's: a few fields, from
+    # sender@example.net. On the topology the inbound pipeline checks the
+    # message as the gateway hands it over: header_validate wants its Date and
+    # Message-ID, which only the raw message carries, and DMARC is checked
+    # against a From domain that publishes p=reject. So a delivery the
+    # examples make is sent as the gateway sends one, the whole message with
+    # its fields, from a domain that publishes no policy. Refusals (an array
+    # body, a refused folder, a missing mailbox) are answered before either.
     body = hooks.get_json(transaction)
-    if isinstance(body, dict) and body.get("sender") == "sender@example.net":
-        body["sender"] = "sender@contract-sender.test"
-        hooks.set_json(transaction, body)
+    if not isinstance(body, dict) or body.get("sender") != "sender@example.net":
+        return
+    sender = body["sender"] = "sender@contract-sender.test"
+    if "raw_message" not in body:
+        stamp = time.time_ns()
+        message = (
+            f"From: {sender}\r\nTo: {body.get('address', '')}\r\n"
+            f"Subject: {body.get('subject', '')}\r\n"
+            f"Date: {formatdate(localtime=False)}\r\n"
+            f"Message-ID: <contract-deliver-{stamp}@contract-sender.test>\r\n"
+            "MIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n"
+            f"{body.get('body_text', '')}\r\n"
+        )
+        body["raw_message"] = base64.b64encode(message.encode()).decode()
+    hooks.set_json(transaction, body)
 
 
 @hooks.before("deleteQuarantine")
