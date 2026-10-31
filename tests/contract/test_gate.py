@@ -289,9 +289,10 @@ class PreviewFaultScope(unittest.TestCase):
             for status in faults[operation] | {"200", "400", "413", "422", "500"}:
                 with self.subTest(operation=operation, status=status):
                     name = f"{path} > Preview > {status} > application/json"
+                    # No 400 is documented for a preview, so none is held back.
                     self.assertEqual(
                         any(p.search(name) for p in patterns),
-                        status in faults[operation] or status == "400",
+                        status in faults[operation],
                     )
         name = "/api/v1/messages/send > Send > 500 > application/json"
         self.assertFalse(any(p.search(name) for p in patterns))
