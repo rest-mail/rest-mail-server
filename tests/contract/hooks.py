@@ -526,6 +526,16 @@ def delete_only_the_created_domain(transaction):
             "?" + query if query else ""
         )
         return
+    # missing names an id no domain holds: sent as it is, refused 404.
+    if domain_id == "2147483647":
+        return
+    # has_accounts names a domain with accounts: the fixture domain is one,
+    # which the server refuses to delete (409), so nothing is removed.
+    if domain_id == "6" and " > 409" in transaction.get("name", ""):
+        origin = origin_of(transaction)
+        fixture = hosted_domain_id(origin, {"Authorization": "Bearer " + admin_token(origin)}, FIXTURE_PLAN["domain"])
+        transaction["fullPath"] = f"{domains}/{fixture:d}" + ("?" + query if query else "")
+        return
     if int(domain_id) != hooks.stash.get("domain_id"):
         transaction["skip"] = True
 
