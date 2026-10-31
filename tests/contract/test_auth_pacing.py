@@ -25,7 +25,7 @@ class AuthPacing(unittest.TestCase):
                  if function is module.pace_auth_requests}
         self.assertEqual(set(paced), {
             "login", "refreshToken", "linkAccount", "createAppPassword", "protocolSignIn", "enrollTwoFactor",
-            "acceptInvitation",
+            "confirmTwoFactor", "recoverAccount", "acceptInvitation",
         })
 
         # Begin with an exhausted bucket, then send more than its burst of 15

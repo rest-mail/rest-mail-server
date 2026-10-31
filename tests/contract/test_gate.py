@@ -187,23 +187,25 @@ class PairedRefusals(unittest.TestCase):
         "setAccountSendLimits",
         "listHeldMessages",
         "releaseHeldMessage",
+        "createAPIKey",
     }
 
     PAIRED_400: ClassVar[set[str]] = {"microsoftAutodiscover"}
     PAIRED_422: ClassVar[set[str]] = PAIRED - PAIRED_400
 
     @staticmethod
-    def required_only():
-        """(operation, status) pairs whose every example says what proving it
-        requires: the run does not send those, its in-process suites prove them."""
+    def sendable():
+        """For each operation with examples, the statuses the run sends: those
+        with an example that does not say what proving it requires. Every
+        example is a named pair, so a status with none of its own is paired
+        with no request, and one whose every pair requires something is left
+        to the in-process suites."""
         with open(os.path.join(ROOT, "openapi-example.json")) as source:
             examples = json.load(source)
-        statuses = {}
-        for op, named in examples.items():
-            for pair in named.values():
-                key = (op, str(pair["response"]["status"]))
-                statuses[key] = statuses.get(key, True) and bool(pair.get("requires"))
-        return {key for key, required in statuses.items() if required}
+        return {
+            op: {str(pair["response"]["status"]) for pair in named.values() if not pair.get("requires")}
+            for op, named in examples.items()
+        }
 
     def test_exclude_matching_sends_exactly_the_paired_refusals(self):
         spec = topology_spec()
@@ -211,7 +213,7 @@ class PairedRefusals(unittest.TestCase):
             config = yaml.safe_load(source)
         patterns = [re.compile(p) for p in config["exclude-matching"]]
         never = set(config["exclude-operation-id"])
-        required_only = self.required_only()
+        sendable = self.sendable()
         sent, paired = set(), set()
         for path, item in spec["paths"].items():
             for method in gate.METHODS:
@@ -219,7 +221,7 @@ class PairedRefusals(unittest.TestCase):
                 if op is None or op["operationId"] in never:
                     continue
                 for status in ("400", "422"):
-                    if status not in op["responses"] or (op["operationId"], status) in required_only:
+                    if status not in op["responses"] or status not in sendable.get(op["operationId"], {status}):
                         continue
                     if op["operationId"] in getattr(self, "PAIRED_" + status):
                         paired.add((op["operationId"], status))

@@ -57,8 +57,25 @@ with their 200 responses and missing-session 401s counted. Enrollment has no
 request body, leaves a pending secret and does not change the fixture admin's
 sign-in requirements until it is confirmed. The shared authentication pacing
 hook covers enrollment; it leaves the transaction's principal untouched.
-Confirm and disable stay outside this shared fixture's sequence because they
-would change its sign-in requirements or revoke its session.
+Confirm runs as the two-factor administrator (below), whose authenticator is
+already on, so it is refused and the fixture admin's sign-in requirements are
+left alone. Disable stays outside this shared fixture's sequence because it
+would revoke the session.
+
+### Operations that take a two-factor session
+
+The grant operations (`createGrant`, `deleteGrant`, `activateGrant`,
+`deactivateGrant`, `makeGrantEligible`), the API key operations
+(`listAPIKeys`, `createAPIKey`, `revokeAPIKey`) and `confirmTwoFactor` are in
+the primary run (#1334). A request carrying the fixture admin's session is sent
+with the two-factor administrator's instead (`mfa_admin.py`: a superadmin
+enrolled in TOTP and signed in with a real second factor; nothing is forged).
+Requests with no credential, and the authorization phase's other principals,
+keep theirs. `createAPIKey` is made with that administrator's password.
+`deleteGrant`'s example names grant 1, a fixture principal's own, so the hook
+makes an eligible grant on an account without credentials and deletes that.
+`recoverAccount` is sent for the fixture admin, which has no authenticator, so
+it can never succeed; both are paced like the other sign-ins.
 
 Both new operations document internal 500 errors. Each 500's pair says it
 requires a database fault, which the healthy topology cannot set up, so the run
@@ -78,14 +95,14 @@ These checks detect missing routes and contract drift. Full mobile parity also
 needs request/response field, permission, UI and live integration evidence for
 each operation; route counts alone do not establish that evidence.
 
-The three API-key operations run in a required check,
+The three API-key operations also run in a required check,
 `chore test:contract-api-keys`, inside `chore contract` before the examples gate. It creates a fresh
 disposable `restmail.test` account with a domain-scoped admin grant, enrolls
 2FA through the public API, confirms a real TOTP and signs in with a recovery
 code. The suite checks create/list/revoke, metadata without secrets, password
 reauthentication, validation, refusals without MFA, scope restrictions and
-immediate revocation. These three operations alone are excluded from the
-primary vertrag run because its fixture admin has no MFA. The dedicated step
+immediate revocation. The primary run sends them too, as the two-factor administrator (above).
+The dedicated step
 has no `continue-on-error`, changes no primary principal, and adds no coverage
 baseline entries.
 
