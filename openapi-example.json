@@ -513,6 +513,29 @@
         "mediaType": "application/json"
       }
     },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "missing": {
       "summary": "No such grant of the caller's",
       "request": {
@@ -2670,6 +2693,26 @@
         "mediaType": "application/json"
       }
     },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "rate_limited": {
       "summary": "The limit is already spent",
       "requires": {
@@ -3236,6 +3279,26 @@
           "error": {
             "code": "invalid_totp",
             "message": "Invalid two-factor authentication code"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
           }
         },
         "mediaType": "application/json"
@@ -5020,6 +5083,29 @@
         "mediaType": "application/json"
       }
     },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "name_missing": {
       "request": {
         "path": {
@@ -6227,6 +6313,26 @@
           "error": {
             "code": "internal_error",
             "message": "Failed to change grants"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
           }
         },
         "mediaType": "application/json"
@@ -10282,6 +10388,26 @@
         "mediaType": "application/json"
       }
     },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "rate_limited": {
       "summary": "The limit is already spent",
       "requires": {
@@ -11273,6 +11399,29 @@
           "error": {
             "code": "mailbox_full",
             "message": "The sender account has insufficient quota"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
           }
         },
         "mediaType": "application/json"
@@ -22981,6 +23130,26 @@
         "mediaType": "application/json"
       }
     },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "request_too_large": {
       "summary": "The request exceeds the transport body cap",
       "requires": {
@@ -23155,6 +23324,29 @@
                 "id": "must be at least 1"
               }
             }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "path": {
+          "id": 7
+        },
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
           }
         },
         "mediaType": "application/json"
@@ -23925,6 +24117,26 @@
         "mediaType": "application/json"
       }
     },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "no_keys": {
       "summary": "The server has no status or owner keys",
       "request": {
@@ -24126,6 +24338,26 @@
           "error": {
             "code": "internal_error",
             "message": "Failed to read owner key registry"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
           }
         },
         "mediaType": "application/json"
@@ -25443,6 +25675,26 @@
         "mediaType": "application/json"
       }
     },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "rate_limited": {
       "summary": "The limit is already spent",
       "requires": {
@@ -25663,6 +25915,26 @@
         "mediaType": "application/json"
       }
     },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "rate_limited": {
       "requires": {
         "limit": "rate"
@@ -25788,6 +26060,26 @@
             "message": "Invalid or expired refresh token"
           }
         }
+      }
+    },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "rate_limited": {
@@ -26025,6 +26317,26 @@
           "error": {
             "code": "invalid_password",
             "message": "Current password is incorrect"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
           }
         },
         "mediaType": "application/json"
@@ -27419,6 +27731,26 @@
         "mediaType": "application/json"
       }
     },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "rate_limited": {
       "requires": {
         "limit": "rate"
@@ -27562,6 +27894,26 @@
           "error": {
             "code": "internal_error",
             "message": "Failed to redeem the token"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
           }
         },
         "mediaType": "application/json"
@@ -27894,6 +28246,29 @@
                 "id": "must be at least 1"
               }
             }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
           }
         },
         "mediaType": "application/json"
@@ -35869,6 +36244,29 @@
         "mediaType": "application/json"
       }
     },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "missing": {
       "summary": "No such message",
       "request": {
@@ -36332,6 +36730,26 @@
           "error": {
             "code": "server_capabilities_from_environment",
             "message": "the server capability ceiling is set by RESTMAIL_SERVER_CAPABILITIES; change it there and restart, or unset it to manage the ceiling here"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
           }
         },
         "mediaType": "application/json"
@@ -37247,6 +37665,26 @@
           "error": {
             "code": "invalid_token",
             "message": "the token is not valid: unknown, already used, or expired"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
           }
         },
         "mediaType": "application/json"

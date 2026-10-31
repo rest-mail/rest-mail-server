@@ -28,6 +28,7 @@ var requirementSetups = map[string]bool{
 	"principal=anonymous": true,
 	"fault=session_store": true,
 	"body=over_cap":       true,
+	"body=malformed":      true,
 	"fault=database":      true,
 }
 
@@ -102,6 +103,11 @@ func TestRequirementExamplesThroughTheProductionRouter(t *testing.T) {
 				}
 				if requirement == "body=over_cap" {
 					body = bytes.Repeat([]byte(" "), requirementBodyCap+1)
+				}
+				if requirement == "body=malformed" {
+					// The pair records the wire body as the string "{"; what is sent
+					// is that one byte, JSON cut off before it says anything.
+					body = []byte("{")
 				}
 				router, credential := stubbed.Public, token
 				if requirement == "fault=session_store" {

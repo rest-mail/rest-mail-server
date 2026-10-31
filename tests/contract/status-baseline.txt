@@ -3,16 +3,9 @@
 # The list only shrinks: one that is proven, or no longer documented, fails the gate until
 # it is taken out. Give a status an example (and an in-process proof if it needs setup)
 # rather than adding it here.
-activateGrant 400
-changeOwnPassword 400
-confirmTwoFactor 400
-createClientSecret 400
 createClientSecret 404
 createClientSecret 429
 createClientSecret 503
-createGrant 400
-disableTwoFactor 400
-forwardMessage 400
 getAccountSendLimits 403
 getRecoveryEmail 403
 getRecoveryEmail 413
@@ -27,27 +20,13 @@ listClientSecrets 404
 listClientSecrets 422
 listClientSecrets 503
 listHeldMessages 403
-logout 400
-makeGrantEligible 400
-ownerStatus 400
-ownerToken 400
-recoverAccount 400
 recoveryEmailLink 413
 recoveryEmailLink 500
-redeemRecoveryEmail 400
-refreshToken 400
-registerRecoveryEmail 400
 registerRecoveryEmail 503
-requestRecoveryEmail 400
 requestRecoveryEmail 503
-resetAdmin 400
-respondToCalendar 400
 revokeClientSecret 403
 revokeClientSecret 422
 revokeClientSecret 503
 searchMessages 403
-updateMessage 400
-updateServerCapabilities 400
 updateServerCapabilities 429
 updateServerCapabilities 503
-verifyRecoveryEmail 400
