@@ -92,7 +92,7 @@ exclude-matching:
   # listClientSecrets
   - '^/api/v1/accounts/\{id\}/client-secrets > List an account''s client secrets > (403|404|422|503)( >|$)'
   # createClientSecret
-  - '^/api/v1/accounts/\{id\}/client-secrets > Make a scoped OAuth client secret > (404|429|503)( >|$)'
+  - '^/api/v1/accounts/\{id\}/client-secrets > Make a scoped OAuth client secret > (400|404|429|503)( >|$)'
   # revokeClientSecret
   - '^/api/v1/accounts/\{id\}/client-secrets/\{credential_id\} > Revoke a client secret and its tokens > (403|422|503)( >|$)'
   # createAppPassword

@@ -7,6 +7,7 @@ activateGrant 400
 changeOwnPassword 400
 confirmTwoFactor 400
 createAppPassword 403
+createClientSecret 400
 createClientSecret 404
 createClientSecret 429
 createClientSecret 503

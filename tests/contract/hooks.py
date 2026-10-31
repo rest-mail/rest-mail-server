@@ -144,6 +144,25 @@ def an_app_password_from_the_two_factor_admin(transaction):
         hooks.set_json(transaction, body)
 
 
+@hooks.before("activateGrant")
+@hooks.before("makeGrantEligible")
+def a_fresh_second_factor_for_a_missing_grant(transaction):
+    # A grant change checks a fresh second factor before it looks the grant
+    # up. The missing example (an id no grant holds), sent as the two-factor
+    # administrator (send_as_the_two_factor_admin runs first), gets an unused
+    # factor of that administrator's, so the lookup is what refuses it (404).
+    path = transaction["fullPath"].partition("?")[0]
+    if not path.endswith("/2147483647/activate") and not path.endswith("/2147483647/make-eligible"):
+        return
+    body = hooks.get_json(transaction)
+    if session_address(transaction) != mfa_admin.ADDRESS or not isinstance(body, dict):
+        return
+    body.pop("totp_code", None)
+    body.pop("recovery_code", None)
+    body.update(mfa_admin.factor())
+    hooks.set_json(transaction, body)
+
+
 @hooks.before("createAPIKey")
 def an_api_key_from_the_two_factor_admin(transaction):
     # Making a key also takes the maker's current password.
@@ -845,7 +864,9 @@ def a_sending_policy_for_the_send(transaction):
     # sender gets a hosted, signing domain and a mailbox; the request's bytes
     # and credentials stay as generated.
     body = hooks.get_json(transaction)
-    if isinstance(body, dict):
+    # foreign_sender sends from an address no mailbox holds, which the
+    # handler refuses (403): it gets none.
+    if isinstance(body, dict) and body.get("from") != "someone@other.test":
         a_signing_mailbox_at(transaction, body.get("from"))
 
 

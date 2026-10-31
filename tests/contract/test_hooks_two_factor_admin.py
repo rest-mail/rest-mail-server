@@ -165,6 +165,24 @@ class TwoFactorAdminHookTests(unittest.TestCase):
         self.module.an_api_key_from_the_two_factor_admin(t)
         self.assertEqual(t["request"]["body"], body)
 
+    def test_the_missing_grant_example_gets_a_fresh_second_factor(self):
+        self.assertIn("a_fresh_second_factor_for_a_missing_grant", self.registered["activateGrant"])
+        self.assertIn("a_fresh_second_factor_for_a_missing_grant", self.registered["makeGrantEligible"])
+        with patch.object(self.module.mfa_admin, "factor", return_value={"recovery_code": "AAAA-BBBB"}) as factor:
+            for action in ("activate", "make-eligible"):
+                body = {"reason": "r", "totp_code": "123456"}
+                t = transaction("/api/v1/admin/grants/2147483647/" + action, session(self.module.mfa_admin.ADDRESS),
+                                json.dumps(body))
+                self.module.a_fresh_second_factor_for_a_missing_grant(t)
+                self.assertEqual(json.loads(t["request"]["body"]), {"reason": "r", "recovery_code": "AAAA-BBBB"})
+            for path, who in (("/api/v1/admin/grants/5/activate", self.module.mfa_admin.ADDRESS),
+                              ("/api/v1/admin/grants/2147483647/activate", self.module.ADMIN)):
+                body = json.dumps({"totp_code": "123456"})
+                t = transaction(path, session(who), body)
+                self.module.a_fresh_second_factor_for_a_missing_grant(t)
+                self.assertEqual(t["request"]["body"], body)
+            self.assertEqual(factor.call_count, 2)
+
 
 class DeleteGrantHookTests(unittest.TestCase):
     def setUp(self):
