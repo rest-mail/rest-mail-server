@@ -246,6 +246,7 @@ def delete_a_grant_made_for_it(transaction):
 @hooks.before("recoverAccount")
 @hooks.before("acceptInvitation")
 @hooks.before("resetAdmin")
+@hooks.before("issueClientCredentialsToken")
 def pace_auth_requests(transaction):
     # These operations share the default 1 request/second auth bucket. Coverage
     # repeats valid requests as well as refusals, so even correct credentials
