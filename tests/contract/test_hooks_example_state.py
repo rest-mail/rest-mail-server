@@ -111,6 +111,11 @@ class FixtureAPI(BaseHTTPRequestHandler):
 class ExampleStateHookTest(unittest.TestCase):
     def setUp(self):
         self.hooks, self.stub = load_hooks()
+        # Setup that takes a second factor signs in as the two-factor
+        # administrator, which this fixture API answers as it does the admin.
+        two_factor = patch.object(self.hooks, "mfa_admin_token", return_value="setup")
+        two_factor.start()
+        self.addCleanup(two_factor.stop)
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureAPI)
         self.server.state = {
             "calls": [],

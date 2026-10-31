@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/restmail/restmail/internal/api/middleware"
-	"github.com/restmail/restmail/internal/auth"
+	"github.com/restmail/restmail/internal/bootstrap"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/pipeline/filters"
 	"gorm.io/gorm"
@@ -21,6 +21,9 @@ func quarantineReleaseFixture(t *testing.T) (*gorm.DB, models.Mailbox, models.Qu
 	t.Helper()
 	db := openCustomFilterCreateScratchDB(t)
 	if err := db.AutoMigrate(append(accountModels, &models.Message{}, &models.Quarantine{})...); err != nil {
+		t.Fatal(err)
+	}
+	if err := bootstrap.EnsureRBAC(db); err != nil {
 		t.Fatal(err)
 	}
 	ensureDefaultServerCeiling(t, db)
@@ -41,7 +44,7 @@ func quarantineReleaseFixture(t *testing.T) (*gorm.DB, models.Mailbox, models.Qu
 }
 
 func requestQuarantineRelease(db *gorm.DB, mailbox models.Mailbox, held models.Quarantine, ctx context.Context) *httptest.ResponseRecorder {
-	claims := &auth.Claims{AccountID: mailbox.ID, CredentialKind: "app_password"}
+	claims := freshTwoFactorClaims(mailbox.ID, mailbox.Address)
 	r := httptest.NewRequest(http.MethodPost, quarantinePathOf(mailbox.ID, held.ID, "/release"), nil)
 	r = r.WithContext(context.WithValue(ctx, middleware.ClaimsKey, claims))
 	rr := httptest.NewRecorder()

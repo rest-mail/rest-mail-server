@@ -139,7 +139,7 @@ func strayClaimsToken(t *testing.T) string {
 // tests keep in testGrants (see routes_seams_test.go).
 func adminToken(t *testing.T, jwtSvc *auth.JWTService, caps []string) string {
 	t.Helper()
-	pair, err := jwtSvc.GenerateSession(testAdminHolding(caps), "admin@example.test", 0, []string{auth.AMRPassword}, false)
+	pair, err := jwtSvc.GenerateSession(testAdminHolding(caps), "admin@example.test", 0, []string{auth.AMRPassword, auth.AMROTP}, false)
 	if err != nil {
 		t.Fatalf("failed to generate admin token: %v", err)
 	}

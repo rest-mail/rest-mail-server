@@ -48,6 +48,7 @@ func newCredentialRevocationScenarios(t *testing.T) mailRemovalScenarios {
 		f.scenarios[name] = f.scenarios["found"]
 	}
 	f.scenarios["no_two_factor"] = plain
+	f.scenarios["two_factor_required"] = plain
 	f.scenarios["domain_outside"] = f.scenarios["domain_manager"]
 	f.scenarios["primary_only"] = f.scenarios["no_grants"]
 	f.scenarios["invalid_token"] = accountReadScenario{plain.handler, "invalid-token"}

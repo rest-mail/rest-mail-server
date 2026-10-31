@@ -330,6 +330,16 @@ func TestFreshInstall_EndToEnd(t *testing.T) {
 	f.expect(f.do(http.MethodPost, "/api/v1/accounts", adminS.bearer(), `{"address":"carol@fresh.test","password":"carol's own password"}`),
 		http.StatusCreated, "create carol@", &carol)
 	bobS := f.signIn("bob@fresh.test", "bob's own password", "")
+	var bobEnrollment struct {
+		Secret string `json:"secret"`
+	}
+	f.expect(f.do(http.MethodPost, "/api/v1/auth/2fa/enroll", bobS.bearer(), ""), http.StatusOK, "enroll Bob", &bobEnrollment)
+	bobCode, err := auth.GenerateTOTPCode(bobEnrollment.Secret, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.expect(f.do(http.MethodPost, "/api/v1/auth/2fa/confirm", bobS.bearer(), fmt.Sprintf(`{"totp_code":%q}`, bobCode)), http.StatusNoContent, "confirm Bob", nil)
+	bobS = f.signIn("bob@fresh.test", "bob's own password", bobCode)
 	if got := addresses(f.accounts(bobS)); !slices.Equal(got, []string{"bob@fresh.test"}) {
 		t.Fatalf("bob@'s accounts before linking: %v", got)
 	}

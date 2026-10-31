@@ -223,7 +223,12 @@ func newAuthRequirement(t *testing.T, op, name string) (*authRequirementConnecti
 	jwt := auth.NewJWTService(routerTestSecret, 15*time.Minute, 7*24*time.Hour)
 	r := NewRouters(requirementDB(t, c), jwt, &config.Config{Environment: "test", MasterKey: accessMasterKey, TOTP2FAEnabled: true, JWTSecret: routerTestSecret}, nil)
 	t.Cleanup(r.Close)
-	session, err := jwt.GenerateSession(1, "admin@restmail.test", 0, []string{auth.AMRPassword}, false)
+	// Sensitive actions need a two-factor session; password_only keeps a password-only one.
+	amr := []string{auth.AMRPassword, auth.AMROTP}
+	if name == "password_only" {
+		amr = []string{auth.AMRPassword}
+	}
+	session, err := jwt.GenerateSession(1, "admin@restmail.test", 0, amr, false)
 	if err != nil {
 		t.Fatal(err)
 	}

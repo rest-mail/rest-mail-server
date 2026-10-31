@@ -299,6 +299,11 @@ func (h *DomainHandler) update(r *http.Request, in updateDomainRequest) (Domain,
 		updates["active"] = *req.Active
 	}
 	if req.DefaultQuotaBytes != nil {
+		if quotaRaised(domain.DefaultQuotaBytes, *req.DefaultQuotaBytes) {
+			if err := RequireTwoFactor(r); err != nil {
+				return Domain{}, err
+			}
+		}
 		updates["default_quota_bytes"] = *req.DefaultQuotaBytes
 	}
 	// An empty string clears the policy; it is a value here, not "unchanged",
@@ -311,8 +316,17 @@ func (h *DomainHandler) update(r *http.Request, in updateDomainRequest) (Domain,
 	}
 
 	if len(updates) > 0 {
-		if err := h.db.WithContext(r.Context()).Model(&domain).Updates(updates).Error; err != nil {
-			return Domain{}, fmt.Errorf("update domain: %w", err)
+		query := h.db.WithContext(r.Context()).Model(&domain)
+		quotaProof := RequireTwoFactor(r)
+		if req.DefaultQuotaBytes != nil && quotaProof != nil {
+			query = query.Where("default_quota_bytes <= 0 OR (? > 0 AND default_quota_bytes >= ?)", *req.DefaultQuotaBytes, *req.DefaultQuotaBytes)
+		}
+		result := query.Updates(updates)
+		if result.Error != nil {
+			return Domain{}, fmt.Errorf("update domain: %w", result.Error)
+		}
+		if req.DefaultQuotaBytes != nil && quotaProof != nil && result.RowsAffected == 0 {
+			return Domain{}, quotaProof
 		}
 	}
 

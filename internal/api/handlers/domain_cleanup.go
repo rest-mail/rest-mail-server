@@ -44,6 +44,11 @@ func (h *DomainHandler) deleteDomainData(r *http.Request, id uint32) error {
 		if err := tx.Preload("Role").Where("scope = ? OR scope LIKE ?", grants.Domain(domain.Name), "mailbox:%@"+domain.Name).Order("id").Find(&heldOn).Error; err != nil {
 			return err
 		}
+		if len(heldOn) > 0 {
+			if err := RequireTwoFactor(r); err != nil {
+				return err
+			}
+		}
 		for i := range heldOn {
 			if !grants.Covers(grants.Domain(domain.Name), heldOn[i].Scope) {
 				continue

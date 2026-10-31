@@ -908,8 +908,9 @@ func (h *PipelineHandler) RegisterQuarantine(rs endpoint.Routes) {
 		Errors: []int{http.StatusForbidden}, Security: handlerChecked(models.CapMailRead, schemes...)}, h.listQuarantine)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/quarantine/{mid}/release",
 		OperationID: "releaseQuarantine", Summary: "Release a quarantined message to inbox", Tags: tags,
-		Errors:   []int{http.StatusForbidden, http.StatusNotFound},
-		Security: handlerChecked(models.CapMailWrite, schemes...)}, h.releaseQuarantine)
+		Description: "Releasing held mail requires a human session signed in with two-factor authentication.",
+		Errors:      []int{http.StatusForbidden, http.StatusNotFound},
+		Security:    handlerChecked(models.CapMailWrite, schemes...)}, h.releaseQuarantine)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/accounts/{id}/quarantine/{mid}",
 		OperationID: "deleteQuarantine", Summary: "Permanently delete a quarantined message", Tags: tags,
 		Errors:   []int{http.StatusForbidden, http.StatusNotFound},
@@ -971,6 +972,9 @@ func (h *PipelineHandler) listQuarantine(r *http.Request, in quarantineListReque
 
 // releaseQuarantine releases a quarantined message to the inbox.
 func (h *PipelineHandler) releaseQuarantine(r *http.Request, in quarantinePath) (QuarantineReleased, error) {
+	if err := RequireTwoFactor(r); err != nil {
+		return QuarantineReleased{}, err
+	}
 	mailboxID, err := h.quarantineMailbox(r, in.ID)
 	if err != nil {
 		return QuarantineReleased{}, err

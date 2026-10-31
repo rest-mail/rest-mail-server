@@ -69,9 +69,9 @@ def origin_of(transaction):
     return "{}//{}:{}".format(transaction["protocol"], transaction["host"], transaction["port"])
 
 
-def fixture_admin_claims(transaction):
-    """The claims of the fixture admin's own session, when the request carries
-    it. The authorization phase's principals and an unauthenticated 401 do not."""
+def session_address(transaction):
+    """The address of the session the request carries, or None (a credential
+    other than a session's, or none)."""
     header = transaction["request"]["headers"].get("Authorization", "")
     if not header.startswith("Bearer "):
         return None
@@ -80,12 +80,13 @@ def fixture_admin_claims(transaction):
         claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
     except (IndexError, ValueError):
         return None
-    return claims if isinstance(claims, dict) and claims.get("address") == ADMIN else None
+    return claims.get("address") if isinstance(claims, dict) else None
 
 
 def with_the_fixture_admins_session(transaction):
-    """Whether the request carries the fixture admin's own session."""
-    return fixture_admin_claims(transaction) is not None
+    """Whether the request carries the fixture admin's own session. The
+    authorization phase's principals and an unauthenticated 401 do not."""
+    return session_address(transaction) == ADMIN
 
 
 def as_the_two_factor_admin(transaction):
@@ -105,13 +106,42 @@ def as_the_two_factor_admin(transaction):
 @hooks.before("activateGrant")
 @hooks.before("deactivateGrant")
 @hooks.before("makeGrantEligible")
+@hooks.before("createAccount")
+@hooks.before("linkAccount")
+@hooks.before("unlinkAccount")
+@hooks.before("revokeCredential")
+@hooks.before("updateMailbox")
+@hooks.before("deleteMailbox")
+@hooks.before("updateDomain")
+@hooks.before("deleteDomain")
+@hooks.before("inviteAccount")
+@hooks.before("listAuditEntries")
+@hooks.before("verifyAuditLog")
+@hooks.before("releaseQuarantine")
+@hooks.before("changeOwnPassword")
+@hooks.before("disableTwoFactor")
+@hooks.before("createAppPassword")
 def send_as_the_two_factor_admin(transaction):
-    # These take a session that signed in with a second factor, which the
-    # fixture admin has not. The run's requests are sent as the two-factor
-    # administrator, a superadmin as the fixture admin is, signed in for real.
+    # These take a session that signed in with a second factor, and some
+    # recent proof of one, which the fixture admin has not. The run's requests
+    # are sent as the two-factor administrator, a superadmin as the fixture
+    # admin is, signed in for real and again before the recent-proof window
+    # closes. Its own password is not the examples', so changeOwnPassword's and
+    # disableTwoFactor's refusals stay refusals.
     # Confirming its authenticator again is refused (409): it is already on,
     # and the fixture admin's sign-in requirements are left alone.
     as_the_two_factor_admin(transaction)
+
+
+@hooks.before("createClientSecret")
+def an_app_password_from_the_two_factor_admin(transaction):
+    # Making a credential also takes the maker's current password.
+    if not as_the_two_factor_admin(transaction):
+        return
+    body = hooks.get_json(transaction)
+    if isinstance(body, dict) and "password" in body:
+        body["password"] = mfa_admin.PASSWORD
+        hooks.set_json(transaction, body)
 
 
 @hooks.before("createAPIKey")
@@ -338,7 +368,12 @@ def confirm_with_the_admin_password(transaction):
     # The body_array refusal sends a JSON array, which has no password to set.
     if not isinstance(body, dict):
         return
-    body["password"] = ADMIN_PASSWORD
+    # The maker's own current password: the two-factor administrator's when
+    # the request is sent as it (send_as_the_two_factor_admin runs first).
+    if session_address(transaction) == mfa_admin.ADDRESS:
+        body["password"] = mfa_admin.PASSWORD
+    else:
+        body["password"] = ADMIN_PASSWORD
     body.pop("expires_at", None)
     hooks.set_json(transaction, body)
 
@@ -843,9 +878,10 @@ def a_mailbox_at_each_test_send_address(transaction):
         local, domain = address.split("@")
         if not local or "." not in domain or (origin + "\n" + address.lower()) in ready:
             continue  # Leave a malformed address to the actual probe.
+        # Making an account takes a second factor.
         headers = {
             "Content-Type": "application/json",
-            "Authorization": "Bearer " + admin_token(origin),
+            "Authorization": "Bearer " + mfa_admin_token(origin),
         }
         request = urllib.request.Request(
             origin + "/api/v1/admin/domains", headers=headers
@@ -1766,9 +1802,10 @@ def on_the_created_account(transaction):
         transaction["host"],
         transaction["port"],
     )
+    # Making the account again takes a second factor.
     headers = {
         "Content-Type": "application/json",
-        "Authorization": "Bearer " + admin_token(origin),
+        "Authorization": "Bearer " + mfa_admin_token(origin),
     }
     address = created["body"]["address"]
     request = urllib.request.Request(origin + "/api/v1/admin/domains", headers=headers)
@@ -1809,7 +1846,7 @@ def an_account_without_credentials(origin):
         data=json.dumps({"address": address, "display_name": "Invited"}).encode(),
         headers={
             "Content-Type": "application/json",
-            "Authorization": "Bearer " + admin_token(origin),
+            "Authorization": "Bearer " + mfa_admin_token(origin),
         },
         method="POST",
     )
@@ -1970,7 +2007,7 @@ def redeem_a_fresh_invitation(transaction):
     account_id = an_account_without_credentials(origin)
     request = urllib.request.Request(
         origin + f"/api/v1/admin/mailboxes/{account_id:d}/invitation",
-        headers={"Authorization": "Bearer " + admin_token(origin)},
+        headers={"Authorization": "Bearer " + mfa_admin_token(origin)},
         method="POST",
     )
     with urllib.request.urlopen(request, timeout=10) as response:

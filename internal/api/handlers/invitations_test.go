@@ -46,7 +46,7 @@ func TestInvitationRequestBoundaries(t *testing.T) {
 	} {
 		t.Run(tc.path+tc.detail+tc.body, func(t *testing.T) {
 			w := httptest.NewRecorder()
-			r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body)))
+			r.ServeHTTP(w, withClaims(httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body)), freshTwoFactorClaims(1, "admin@example.test")))
 			if w.Code != tc.status || !strings.Contains(w.Body.String(), tc.detail) {
 				t.Fatalf("got %d %s, want %d with %s", w.Code, w.Body, tc.status, tc.detail)
 			}

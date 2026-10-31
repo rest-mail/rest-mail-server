@@ -58,6 +58,9 @@ func TestAPIKeyLifecycle(t *testing.T) {
 	request := func(method, target, body string, mfa bool, params map[string]string) *http.Request {
 		r := authzRequest(method, target, fx.admin.ID, params, body)
 		middleware.GetClaims(r).TwoFactor = mfa
+		if !mfa {
+			middleware.GetClaims(r).AMR = []string{auth.AMRPassword}
+		}
 		return r
 	}
 	createBody := fmt.Sprintf(`{"name":"Provisioning test","password":%q,"permissions":[{"capability":"mailboxes:write","scope":%q}]}`, accountsPassword, grants.Domain(fx.domain.Name))
@@ -103,12 +106,13 @@ func TestAPIKeyLifecycle(t *testing.T) {
 		t.Fatal("a key must not impersonate an interactive MFA session")
 	}
 
-	// An explicitly delegated provisioning key can create only on its domain.
+	// A scoped key cannot create accounts without an explicit human-granted
+	// machine exception; those exceptions are a later part of #341.
 	accounts := NewAccountHandler(db, grants.NewCache(db, grants.CacheTTL), "")
 	for _, tc := range []struct {
 		address string
 		want    int
-	}{{"via-key@" + fx.domain.Name, http.StatusCreated}, {"via-key@unrelated.test", http.StatusForbidden}} {
+	}{{"via-key@" + fx.domain.Name, http.StatusForbidden}, {"via-key@unrelated.test", http.StatusForbidden}} {
 		r := authzRequest(http.MethodPost, "/api/v1/accounts", fx.admin.ID, nil, fmt.Sprintf(`{"address":%q}`, tc.address))
 		*middleware.GetClaims(r) = *claims
 		out := httptest.NewRecorder()

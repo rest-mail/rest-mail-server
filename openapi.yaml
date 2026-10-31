@@ -38,6 +38,18 @@ info:
       App passwords are credentials, not sessions: only a new password or a
       reset revokes them.
 
+    Human sessions that prove a second factor carry `auth_time`, the original
+    sign-in time, preserved across refresh. Refresh changes `iat` but never
+    reopens the sudo window. Machine credentials never carry this proof.
+    Sensitive actions require a human 2FA session; administrative/read/sending
+    grants, credential creation, password/2FA changes and audit access also
+    require proof within 15 minutes. `FRESH_TWO_FACTOR_WINDOW` may shorten it;
+    invalid, non-positive or longer values refuse startup. Missing or stale
+    proof returns `403 recent_two_factor_required`: prompt another sign-in.
+    Initial enrollment and forced password setup before any factor exists
+    remain available. Once enrolled, prove the factor at sign-in before
+    changing the password. Escalation still verifies a new code per action.
+
     * **HTTP Basic** (`BasicAuth`) — an account's address as the user name, and
       as the password one of its app passwords (`rm_<public id>_<secret>`) or
       one of its own passwords. It is how the IMAP, POP3 and SMTP gateways sign
@@ -1231,15 +1243,24 @@ paths:
           description: Two-factor authentication is not on
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "403":
-          description: >
-            The code is wrong (`invalid_totp`), the recovery code is wrong or
-            spent (`invalid_recovery_code`), or the account must keep
-            two-factor authentication (`two_factor_required`)
+        '403':
+          description: Requires a human 2FA sign-in (two_factor_required); sensitive changes require recent proof (recent_two_factor_required)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                two_factor_required:
+                  value:
+                    error:
+                      code: two_factor_required
+                      message: 'Changing grants needs a session signed in with two-factor authentication: sign in again
+                        with your code'
+                recent_two_factor_required:
+                  value:
+                    error:
+                      code: recent_two_factor_required
+                      message: 'Sign in again with two-factor authentication: a recent second factor is required'
         "422":
           description: Neither totp_code nor recovery_code sent
 
@@ -1279,12 +1300,24 @@ paths:
           description: Password changed; every session of the account is revoked
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "403":
-          description: The current password is wrong (`invalid_password`)
+        '403':
+          description: Requires a human 2FA sign-in (two_factor_required); sensitive changes require recent proof (recent_two_factor_required)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                two_factor_required:
+                  value:
+                    error:
+                      code: two_factor_required
+                      message: 'Changing grants needs a session signed in with two-factor authentication: sign in again
+                        with your code'
+                recent_two_factor_required:
+                  value:
+                    error:
+                      code: recent_two_factor_required
+                      message: 'Sign in again with two-factor authentication: a recent second factor is required'
         "422":
           description: New password missing, shorter than 12 characters, or unchanged
 
@@ -1589,8 +1622,19 @@ paths:
                 id: '$response.body#/data/id'
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "403":
-          description: No mailboxes:write covering the domain, or a session in setup
+        '403':
+          description: Requires a human 2FA sign-in (two_factor_required)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                two_factor_required:
+                  value:
+                    error:
+                      code: two_factor_required
+                      message: 'Changing grants needs a session signed in with two-factor authentication: sign in again
+                        with your code'
         "409":
           description: An account with this address exists, or the operator's owned-account limit has been reached (owned_account_limit).
         "422":
@@ -1681,16 +1725,24 @@ paths:
                 id: '$response.body#/data/id'
         "401":
           description: The session itself is missing or has ended; never a refused link
-        "403":
-          description: >
-            The link is refused: a wrong address or password
-            (`invalid_credentials`), its code is needed (`totp_required`), its
-            code is wrong (`invalid_totp`), or the account is still in setup
-            (`setup_required`)
+        '403':
+          description: Requires a human 2FA sign-in (two_factor_required); sensitive changes require recent proof (recent_two_factor_required)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                two_factor_required:
+                  value:
+                    error:
+                      code: two_factor_required
+                      message: 'Changing grants needs a session signed in with two-factor authentication: sign in again
+                        with your code'
+                recent_two_factor_required:
+                  value:
+                    error:
+                      code: recent_two_factor_required
+                      message: 'Sign in again with two-factor authentication: a recent second factor is required'
         "409":
           description: Already linked, or the session's own account
         "422":
@@ -1780,6 +1832,19 @@ paths:
   # ═══════════════════════════════════════════════════════════════
   # Credentials (app passwords)
   # ═══════════════════════════════════════════════════════════════
+        '403':
+          description: Requires a human 2FA sign-in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                two_factor_required:
+                  value:
+                    error:
+                      code: two_factor_required
+                      message: 'Changing grants needs a session signed in with two-factor
+                        authentication: sign in again with your code'
   /api/v1/accounts/{id}/credentials:
     parameters:
       - $ref: "#/components/parameters/AccountId"
@@ -1826,8 +1891,9 @@ paths:
         of its secret. Its scope is the account's mailbox, with mail:read,
         mail:write and mail:send. `{id}` is the session's own account or one it
         holds `mailbox:manage` on. Needs a session from signing in with a
-        password, and, when the session's account has 2FA, with its code too
-        (`403 two_factor_required` otherwise). It also needs the session's own
+        password and a second factor (`403 two_factor_required` otherwise).
+        That sign-in must be within the configured sudo window, at most 15
+        minutes (`403 recent_two_factor_required` otherwise). It also needs the session's own
         current password, entered again in `password`, as Gmail and GitHub ask
         for it:
         a session from before a change of password works until its access
@@ -1899,16 +1965,24 @@ paths:
                 credential_id: '$response.body#/data/id'
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "403":
-          description: >
-            The session's current password was not given (`reauth_required`)
-            or is wrong (`invalid_password`), never a 401: the session is
-            still good; or the account has 2FA and the session's sign-in did
-            not take it (`two_factor_required`)
+        '403':
+          description: Requires a human 2FA sign-in (two_factor_required); sensitive changes require recent proof (recent_two_factor_required)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                two_factor_required:
+                  value:
+                    error:
+                      code: two_factor_required
+                      message: 'Changing grants needs a session signed in with two-factor authentication: sign in again
+                        with your code'
+                recent_two_factor_required:
+                  value:
+                    error:
+                      code: recent_two_factor_required
+                      message: 'Sign in again with two-factor authentication: a recent second factor is required'
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
@@ -1959,6 +2033,19 @@ paths:
         "404":
           description: No such app password of this account, or already revoked
 
+        '403':
+          description: Requires a human 2FA sign-in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                two_factor_required:
+                  value:
+                    error:
+                      code: two_factor_required
+                      message: 'Changing grants needs a session signed in with two-factor
+                        authentication: sign in again with your code'
   "/api/v1/accounts/{id}/client-secrets":
     {
       "get": {
@@ -2592,17 +2679,24 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "403":
-          description: >
-            The session's sign-in did not take a second factor
-            (`two_factor_required`); the current password was not given
-            (`reauth_required`) or is wrong (`invalid_password`), never a 401;
-            or a permission is beyond the session's or the account's current
-            grants (`forbidden`)
+        '403':
+          description: Requires a human 2FA sign-in (two_factor_required); sensitive changes require recent proof (recent_two_factor_required)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                two_factor_required:
+                  value:
+                    error:
+                      code: two_factor_required
+                      message: 'Changing grants needs a session signed in with two-factor authentication: sign in again
+                        with your code'
+                recent_two_factor_required:
+                  value:
+                    error:
+                      code: recent_two_factor_required
+                      message: 'Sign in again with two-factor authentication: a recent second factor is required'
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
@@ -2653,12 +2747,19 @@ paths:
           description: Revoked
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "403":
-          description: The session's sign-in did not take a second factor (`two_factor_required`)
+        '403':
+          description: Requires a human 2FA sign-in (two_factor_required)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                two_factor_required:
+                  value:
+                    error:
+                      code: two_factor_required
+                      message: 'Changing grants needs a session signed in with two-factor authentication: sign in again
+                        with your code'
         "404":
           description: No such API key of this account, or already revoked
 
@@ -5663,7 +5764,20 @@ paths:
         - APIKeyAuth: [mail:write]
         - BasicAuth: [mail:write]
       summary: Release a quarantined message to inbox
+      description: Releasing held mail requires a human session signed in with two-factor authentication.
       responses:
+        "403":
+          description: A human second-factor sign-in is required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                two_factor_required:
+                  value:
+                    error:
+                      code: two_factor_required
+                      message: "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
         "200":
           description: Message released
           content:
@@ -6453,6 +6567,19 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        '403':
+          description: Requires a human 2FA sign-in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                two_factor_required:
+                  value:
+                    error:
+                      code: two_factor_required
+                      message: 'Changing grants needs a session signed in with two-factor
+                        authentication: sign in again with your code'
     delete:
       parameters:
         - name: id
@@ -6508,6 +6635,19 @@ paths:
   # ═══════════════════════════════════════════════════════════════
   # Admin: Mailboxes
   # ═══════════════════════════════════════════════════════════════
+        '403':
+          description: Requires a human 2FA sign-in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                two_factor_required:
+                  value:
+                    error:
+                      code: two_factor_required
+                      message: 'Changing grants needs a session signed in with two-factor
+                        authentication: sign in again with your code'
   /api/v1/admin/mailboxes:
     get:
       x-restmail-scope: filtered-list
@@ -6697,6 +6837,25 @@ paths:
                       details:
                         fields:
                           password: must be at least 12 characters
+        '403':
+          description: Requires a human 2FA sign-in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                two_factor_required:
+                  value:
+                    error:
+                      code: two_factor_required
+                      message: 'Changing grants needs a session signed in with two-factor
+                        authentication: sign in again with your code'
+                recent_two_factor_required:
+                  value:
+                    error:
+                      code: recent_two_factor_required
+                      message: 'Sign in again with two-factor authentication: a recent second
+                        factor is required'
     delete:
       parameters:
         - name: id
@@ -6733,8 +6892,19 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "403":
-          description: It holds grants and the session has no 2FA (`two_factor_required`), or holds less than they give (`grant_exceeds_held`)
+        '403':
+          description: Requires a human 2FA sign-in (two_factor_required)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                two_factor_required:
+                  value:
+                    error:
+                      code: two_factor_required
+                      message: 'Changing grants needs a session signed in with two-factor authentication: sign in again
+                        with your code'
         "404":
           description: Mailbox not found
           content:
@@ -10081,12 +10251,24 @@ paths:
                     $ref: "#/components/schemas/Pagination"
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "403":
-          description: Not an admin, or the session lacks audit:read
+        '403':
+          description: Requires a human 2FA sign-in (two_factor_required); sensitive changes require recent proof (recent_two_factor_required)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                two_factor_required:
+                  value:
+                    error:
+                      code: two_factor_required
+                      message: 'Changing grants needs a session signed in with two-factor authentication: sign in again
+                        with your code'
+                recent_two_factor_required:
+                  value:
+                    error:
+                      code: recent_two_factor_required
+                      message: 'Sign in again with two-factor authentication: a recent second factor is required'
         "422":
           $ref: "#/components/responses/ValidationError"
 
@@ -10129,12 +10311,24 @@ paths:
                     $ref: "#/components/schemas/AuditVerifyResult"
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "403":
-          description: Not an admin, or the session lacks audit:read
+        '403':
+          description: Requires a human 2FA sign-in (two_factor_required); sensitive changes require recent proof (recent_two_factor_required)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                two_factor_required:
+                  value:
+                    error:
+                      code: two_factor_required
+                      message: 'Changing grants needs a session signed in with two-factor authentication: sign in again
+                        with your code'
+                recent_two_factor_required:
+                  value:
+                    error:
+                      code: recent_two_factor_required
+                      message: 'Sign in again with two-factor authentication: a recent second factor is required'
         "422":
           $ref: "#/components/responses/ValidationError"
 
@@ -10849,15 +11043,24 @@ paths:
                     $ref: "#/components/schemas/Grant"
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "403":
-          description: >-
-            Not an admin holding users:write at `*`; a session without 2FA
-            (two_factor_required); or a role beyond what the caller holds
-            (grant_exceeds_held)
+        '403':
+          description: Requires a human 2FA sign-in (two_factor_required); sensitive changes require recent proof (recent_two_factor_required)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                two_factor_required:
+                  value:
+                    error:
+                      code: two_factor_required
+                      message: 'Changing grants needs a session signed in with two-factor authentication: sign in again
+                        with your code'
+                recent_two_factor_required:
+                  value:
+                    error:
+                      code: recent_two_factor_required
+                      message: 'Sign in again with two-factor authentication: a recent second factor is required'
         "409":
           $ref: "#/components/responses/Conflict"
         "422":
@@ -10894,12 +11097,19 @@ paths:
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "403":
-          description: Not allowed (see createGrant)
+        '403':
+          description: Requires a human 2FA sign-in (two_factor_required)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                two_factor_required:
+                  value:
+                    error:
+                      code: two_factor_required
+                      message: 'Changing grants needs a session signed in with two-factor authentication: sign in again
+                        with your code'
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -11124,12 +11334,19 @@ paths:
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "403":
-          description: Not an admin, or an account still in setup
+        '403':
+          description: Requires a human 2FA sign-in (two_factor_required)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                two_factor_required:
+                  value:
+                    error:
+                      code: two_factor_required
+                      message: 'Changing grants needs a session signed in with two-factor authentication: sign in again
+                        with your code'
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -12408,13 +12625,23 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
-          description: 'Refused before the handler runs: setup_required (the account
-            has not finished setup), csrf_failed (a cookie session''s unsafe request
-            without the CSRF header) or forbidden (the session lacks the capability)'
+          description: Requires a human 2FA sign-in (two_factor_required); sensitive changes require recent proof (recent_two_factor_required)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                two_factor_required:
+                  value:
+                    error:
+                      code: two_factor_required
+                      message: 'Changing grants needs a session signed in with two-factor authentication: sign in again
+                        with your code'
+                recent_two_factor_required:
+                  value:
+                    error:
+                      code: recent_two_factor_required
+                      message: 'Sign in again with two-factor authentication: a recent second factor is required'
         '404':
           description: Not Found
           content:
