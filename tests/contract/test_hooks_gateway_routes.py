@@ -33,6 +33,19 @@ class GatewayRoutes(unittest.TestCase):
                 module.look_up_a_hosted_mailbox(t)
                 self.assertEqual(t["fullPath"], expected)
 
+    def test_delivery_is_from_a_domain_without_a_dmarc_policy(self):
+        import json
+        module, hooks, registered = load_hooks()
+        self.assertIn("deliver_from_a_domain_without_a_dmarc_policy", registered["deliverMessage"])
+        for sender, expected in (("sender@example.net", "sender@contract-sender.test"),
+                                 ("other@example.org", "other@example.org")):
+            with self.subTest(sender=sender):
+                t = {"request": {"body": json.dumps({"address": "admin@restmail.test", "sender": sender})}}
+                module.deliver_from_a_domain_without_a_dmarc_policy(t)
+                self.assertEqual(json.loads(t["request"]["body"])["sender"], expected)
+        t = {"request": {"body": "[]"}}
+        module.deliver_from_a_domain_without_a_dmarc_policy(t)
+        self.assertEqual(t["request"]["body"], "[]")
 
 if __name__ == "__main__":
     unittest.main()

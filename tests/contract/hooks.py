@@ -1828,6 +1828,19 @@ def look_up_a_hosted_mailbox(transaction):
     transaction["fullPath"] = path + "?" + urllib.parse.urlencode({"address": ADMIN})
 
 
+@hooks.before("deliverMessage")
+def deliver_from_a_domain_without_a_dmarc_policy(transaction):
+    # The examples send from the in-process fixture's sender@example.net. On
+    # the topology the inbound pipeline checks DMARC, and example.net
+    # publishes p=reject, so a delivery the API is not told passed SPF or DKIM
+    # is rejected (550). The sender is one of a domain that publishes no
+    # policy, so delivery proceeds; the refusals and probes keep the rest.
+    body = hooks.get_json(transaction)
+    if isinstance(body, dict) and body.get("sender") == "sender@example.net":
+        body["sender"] = "sender@contract-sender.test"
+        hooks.set_json(transaction, body)
+
+
 @hooks.before("deleteQuarantine")
 def delete_the_fixture_quarantined_message(transaction):
     # found names message 41 of the in-process fixture's account 1. Mail is
