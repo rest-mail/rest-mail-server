@@ -2,6 +2,7 @@ package grants
 
 import (
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -215,13 +216,15 @@ func loadBounded(db *gorm.DB, accountID uint, now time.Time, visited map[uint]bo
 	var rows []struct {
 		Scope               string
 		Capability          string
+		Role                string
 		ExpiresAt           *time.Time
 		ActivationExpiresAt *time.Time
 	}
 	err := db.Table("grants AS g").
-		Select("g.scope, c.name AS capability, g.expires_at, a.expires_at AS activation_expires_at").
+		Select("g.scope, c.name AS capability, r.name AS role, g.expires_at, a.expires_at AS activation_expires_at").
 		Joins("JOIN role_capabilities rc ON rc.role_id = g.role_id").
 		Joins("JOIN capabilities c ON c.id = rc.capability_id").
+		Joins("JOIN roles r ON r.id = g.role_id").
 		Joins("LEFT JOIN grant_activations a ON a.grant_id = g.id AND a.ended_at IS NULL AND a.expires_at > ?", now).
 		Where("g.holder_kind = ? AND g.holder_id = ?", models.GrantHolderAccount, accountID).
 		Where("g.mode = ? OR (g.mode = ? AND a.id IS NOT NULL)", models.GrantActive, models.GrantEligible).
@@ -249,12 +252,29 @@ func loadBounded(db *gorm.DB, accountID uint, now time.Time, visited map[uint]bo
 		}
 	}
 	var expires time.Time
+	owned := map[string][]string{}
 	for _, r := range rows {
 		held.entries = append(held.entries, Entry{Scope: r.Scope, Capability: r.Capability})
 		for _, at := range []*time.Time{r.ExpiresAt, r.ActivationExpiresAt} {
 			if at != nil && (expires.IsZero() || at.Before(expires)) {
 				expires = *at
 			}
+		}
+		if r.Role == models.RoleOwner && strings.HasPrefix(r.Scope, mailboxPrefix) {
+			owned[r.Scope] = append(owned[r.Scope], r.Capability)
+		}
+	}
+	// Owning an account reaches the accounts it owns, and theirs (#341,
+	// owner 2026-10-31): each level keeps only what its own owner grant
+	// allows, so anyone in the chain narrows everything below them.
+	for scope, capabilities := range owned {
+		below, belowExpires, err := ownedBelow(db, strings.TrimPrefix(scope, mailboxPrefix), capabilities, now, 0, map[string]bool{})
+		if err != nil {
+			return Held{}, time.Time{}, err
+		}
+		held.entries = append(held.entries, below...)
+		if !belowExpires.IsZero() && (expires.IsZero() || belowExpires.Before(expires)) {
+			expires = belowExpires
 		}
 	}
 	if len(own) == 1 && own[0].OwnerID != nil {
@@ -277,6 +297,79 @@ func loadBounded(db *gorm.DB, accountID uint, now time.Time, visited map[uint]bo
 		}
 	}
 	return held, expires, nil
+}
+
+// ownedBelow is what an owner grant on the mailbox at address reaches further
+// down: on every active account that address owns, the capabilities both
+// granted from above and held by address's own owner grant on that account,
+// and below those accounts in turn. An inactive account, a loop (visited is
+// the path above) or a chain deeper than maxOwnerDepth reaches nothing further. It also returns the
+// earliest expiry among the owner grants it followed.
+func ownedBelow(db *gorm.DB, address string, capabilities []string, now time.Time, depth int, visited map[string]bool) ([]Entry, time.Time, error) {
+	if visited[address] || depth >= maxOwnerDepth || len(capabilities) == 0 {
+		return nil, time.Time{}, nil
+	}
+	visited[address] = true
+	defer delete(visited, address)
+	var owner []struct{ ID uint }
+	if err := db.Model(&models.Mailbox{}).Select("id").Where("address = ? AND active", address).Scan(&owner).Error; err != nil {
+		return nil, time.Time{}, err
+	}
+	if len(owner) != 1 {
+		return nil, time.Time{}, nil
+	}
+	var children []struct{ Address string }
+	if err := db.Model(&models.Mailbox{}).Select("address").Where("owner_id = ? AND active", owner[0].ID).Order("address").Scan(&children).Error; err != nil {
+		return nil, time.Time{}, err
+	}
+	var out []Entry
+	var expires time.Time
+	for _, child := range children {
+		scope := Mailbox(child.Address)
+		var rows []struct {
+			Capability          string
+			ExpiresAt           *time.Time
+			ActivationExpiresAt *time.Time
+		}
+		err := db.Table("grants AS g").
+			Select("c.name AS capability, g.expires_at, a.expires_at AS activation_expires_at").
+			Joins("JOIN role_capabilities rc ON rc.role_id = g.role_id").
+			Joins("JOIN capabilities c ON c.id = rc.capability_id").
+			Joins("JOIN roles r ON r.id = g.role_id").
+			Joins("LEFT JOIN grant_activations a ON a.grant_id = g.id AND a.ended_at IS NULL AND a.expires_at > ?", now).
+			Where("g.holder_kind = ? AND g.holder_id = ? AND g.scope = ? AND r.name = ?", models.GrantHolderAccount, owner[0].ID, scope, models.RoleOwner).
+			Where("g.mode = ? OR (g.mode = ? AND a.id IS NOT NULL)", models.GrantActive, models.GrantEligible).
+			Where("g.expires_at IS NULL OR g.expires_at > ?", now).
+			Scan(&rows).Error
+		if err != nil {
+			return nil, time.Time{}, err
+		}
+		granted := map[string]bool{}
+		for _, r := range rows {
+			granted[r.Capability] = true
+			for _, at := range []*time.Time{r.ExpiresAt, r.ActivationExpiresAt} {
+				if at != nil && (expires.IsZero() || at.Before(expires)) {
+					expires = *at
+				}
+			}
+		}
+		var kept []string
+		for _, c := range capabilities {
+			if granted[c] {
+				kept = append(kept, c)
+				out = append(out, Entry{Scope: scope, Capability: c})
+			}
+		}
+		below, belowExpires, err := ownedBelow(db, child.Address, kept, now, depth+1, visited)
+		if err != nil {
+			return nil, time.Time{}, err
+		}
+		out = append(out, below...)
+		if !belowExpires.IsZero() && (expires.IsZero() || belowExpires.Before(expires)) {
+			expires = belowExpires
+		}
+	}
+	return out, expires, nil
 }
 
 // RoleCapabilities lists the capabilities of the role with id roleID.

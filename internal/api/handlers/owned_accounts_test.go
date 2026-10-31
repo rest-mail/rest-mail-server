@@ -138,3 +138,80 @@ func TestOwnedAccountCeiling(t *testing.T) {
 		t.Errorf("the agent of an inactive owner still holds %v", held.ScopedCapabilities())
 	}
 }
+
+// TestOwnerChainIsTransitive (#341, owner 2026-10-31): owning an account
+// reaches the accounts it owns, all the way down. P owns C and C owns G: G
+// keeps its own mailbox and P reaches G. Anyone in the chain narrows what is
+// below them, an inactive owner cuts everything below off, and a loop ends.
+func TestOwnerChainIsTransitive(t *testing.T) {
+	db := openAccountsTestDB(t)
+	fx := seedAccountsFixture(t, db)
+	p := fx.user
+	child := func(local string, owner uint) models.Mailbox {
+		m := models.Mailbox{DomainID: fx.domain.ID, LocalPart: local, Address: local + "@" + fx.domain.Name, Active: true, OwnerID: &owner}
+		if err := db.Create(&m).Error; err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	var ownerRole models.Role
+	if err := db.Where("name = ?", models.RoleOwner).First(&ownerRole).Error; err != nil {
+		t.Fatal(err)
+	}
+	own := func(holder uint, m models.Mailbox) {
+		if err := db.Create(&models.Grant{HolderKind: models.GrantHolderAccount, HolderID: holder, RoleID: ownerRole.ID, Scope: grants.Mailbox(m.Address),
+			Mode: models.GrantActive, GrantedByKind: models.AuditActorSystem, GrantedAt: time.Now()}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	c := child("middle", p.ID)
+	own(p.ID, c)
+	g := child("grandchild", c.ID)
+	own(c.ID, g)
+
+	reads := func(holder uint, m models.Mailbox) bool {
+		t.Helper()
+		held, err := grants.Load(db, holder, time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return held.Allows(models.CapMailRead, grants.Mailbox(m.Address))
+	}
+	if !reads(g.ID, g) {
+		t.Fatal("the grandchild cannot read its own mailbox")
+	}
+	if !reads(c.ID, g) {
+		t.Fatal("the middle owner cannot read the account it owns")
+	}
+	if !reads(p.ID, g) {
+		t.Fatal("the owner of the owner cannot read the grandchild")
+	}
+	if reads(g.ID, c) || reads(c.ID, p) {
+		t.Fatal("ownership reached upwards")
+	}
+
+	// The middle owner gives up its grant on the grandchild: everything
+	// above loses it too.
+	db.Where("holder_id = ? AND scope = ?", c.ID, grants.Mailbox(g.Address)).Delete(&models.Grant{})
+	if reads(p.ID, g) {
+		t.Error("the owner of the owner still reads the grandchild after the middle owner gave it up")
+	}
+	own(c.ID, g)
+	if !reads(p.ID, g) {
+		t.Fatal("restoring the middle grant did not restore the chain")
+	}
+
+	// An inactive middle owner cuts off everything below it.
+	db.Model(&models.Mailbox{}).Where("id = ?", c.ID).Update("active", false)
+	if reads(p.ID, g) || reads(g.ID, g) {
+		t.Error("an inactive middle owner still passes access down the chain")
+	}
+	db.Model(&models.Mailbox{}).Where("id = ?", c.ID).Update("active", true)
+
+	// A loop (the grandchild owning the top) ends instead of recursing.
+	db.Model(&models.Mailbox{}).Where("id = ?", p.ID).Update("owner_id", g.ID)
+	own(g.ID, p)
+	if _, err := grants.Load(db, p.ID, time.Now()); err != nil {
+		t.Fatalf("a loop of owners: %v", err)
+	}
+}
