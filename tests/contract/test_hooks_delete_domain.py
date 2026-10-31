@@ -50,6 +50,23 @@ class ContractDeleteDomainHookTests(unittest.TestCase):
         self.module.delete_only_the_created_domain(transaction)
         self.assertTrue(transaction.get("skip"))
 
+    def test_the_missing_example_is_sent_for_its_404(self):
+        transaction = delete("/api/v1/admin/domains/2147483647")
+        self.module.delete_only_the_created_domain(transaction)
+        self.assertNotIn("skip", transaction)
+        self.assertEqual(transaction["fullPath"], "/api/v1/admin/domains/2147483647")
+
+    def test_has_accounts_names_the_fixture_domain_which_is_refused(self):
+        transaction = delete("/api/v1/admin/domains/6")
+        transaction.update({"protocol": "http:", "host": "api", "port": "8080",
+                            "name": "/api/v1/admin/domains/{id} > Delete a domain > 409 > application/json"})
+        with patch.object(self.module, "admin_token", return_value="t"), \
+                patch.object(self.module, "hosted_domain_id", return_value=3) as hosted:
+            self.module.delete_only_the_created_domain(transaction)
+        self.assertEqual(transaction["fullPath"], "/api/v1/admin/domains/3")
+        self.assertEqual(hosted.call_args.args[2], "restmail.test")
+        self.assertNotIn("skip", transaction)
+
     def test_malformed_ids_are_sent_for_their_400(self):
         for domain_id in ("0", "-1", "abc", "1.5"):
             with self.subTest(id=domain_id):

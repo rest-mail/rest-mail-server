@@ -638,6 +638,9 @@
   "addToAllowlist": {
     "already_exists": {
       "description": "The SQL driver returns PostgreSQL23505. GORM and the production repository conflict mapping produce409, without exposing database details.",
+      "requires": {
+        "state": "existing_policy"
+      },
       "request": {
         "path": {
           "id": 1
@@ -931,6 +934,9 @@
   "addToBlocklist": {
     "already_exists": {
       "description": "The SQL driver returns PostgreSQL23505. GORM and the production repository conflict mapping produce409, without exposing database details.",
+      "requires": {
+        "state": "existing_policy"
+      },
       "request": {
         "path": {
           "id": 1
@@ -4956,11 +4962,16 @@
         "invalid": true
       },
       "response": {
-        "status": 400,
+        "status": 422,
         "body": {
           "error": {
-            "code": "bad_request",
-            "message": "Invalid request body"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "body": "the body is not a JSON object"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -5110,6 +5121,9 @@
   },
   "createContact": {
     "duplicate": {
+      "requires": {
+        "state": "existing_contact"
+      },
       "request": {
         "path": {
           "id": 1
@@ -5686,6 +5700,9 @@
       }
     },
     "duplicate": {
+      "requires": {
+        "state": "existing_domain"
+      },
       "request": {
         "body": {
           "name": "duplicate.test",
@@ -5839,6 +5856,9 @@
   },
   "createFolder": {
     "destination_exists": {
+      "requires": {
+        "state": "existing_folder"
+      },
       "request": {
         "path": {
           "id": 1
@@ -8453,6 +8473,9 @@
       }
     },
     "last_superadmin": {
+      "requires": {
+        "state": "last_superadmin"
+      },
       "request": {
         "path": {
           "id": 9
@@ -8669,6 +8692,9 @@
       }
     },
     "last_superadmin": {
+      "requires": {
+        "state": "last_superadmin"
+      },
       "request": {
         "path": {
           "id": 9
@@ -11225,6 +11251,9 @@
       }
     },
     "mailbox_full": {
+      "requires": {
+        "state": "full_mailbox"
+      },
       "request": {
         "path": {
           "id": 7
@@ -14985,6 +15014,9 @@
     },
     "disappeared": {
       "summary": "An authorized mailbox disappears before the quota reload",
+      "requires": {
+        "state": "deleted_account"
+      },
       "request": {
         "path": {
           "id": 7
@@ -16522,6 +16554,9 @@
       }
     },
     "mailbox_full": {
+      "requires": {
+        "state": "full_mailbox"
+      },
       "request": {
         "path": {
           "id": 12
@@ -16551,6 +16586,9 @@
       }
     },
     "missing": {
+      "requires": {
+        "state": "deleted_account"
+      },
       "request": {
         "path": {
           "id": 12
@@ -17571,6 +17609,9 @@
       }
     },
     "primary_missing": {
+      "requires": {
+        "state": "deleted_account"
+      },
       "request": {},
       "response": {
         "status": 404,
@@ -23333,6 +23374,9 @@
     },
     "domain_not_found": {
       "summary": "The active-domain lookup has no matching row",
+      "requires": {
+        "state": "unhosted_domain"
+      },
       "request": {
         "query": {
           "emailaddress": ""
@@ -23464,6 +23508,9 @@
     "domain_not_found": {
       "summary": "The domain is not hosted",
       "description": "The active-domain lookup completes successfully without a matching row. The actual handler returns the plain-text unknown-domain response.",
+      "requires": {
+        "state": "unhosted_domain"
+      },
       "request": {
         "query": {
           "emailaddress": "user@example.com"
@@ -23557,6 +23604,9 @@
     "domain_not_found": {
       "summary": "The domain is not hosted",
       "description": "The active-domain lookup completes successfully without a matching row. The actual handler returns the plain-text unknown-domain response.",
+      "requires": {
+        "state": "unhosted_domain"
+      },
       "request": {
         "query": {
           "emailaddress": "user@example.com"
@@ -27040,6 +27090,9 @@
   },
   "renameFolder": {
     "concurrent": {
+      "requires": {
+        "state": "concurrent_change"
+      },
       "request": {
         "path": {
           "folder": "Race",
@@ -27061,6 +27114,9 @@
       }
     },
     "destination_exists": {
+      "requires": {
+        "state": "existing_folder"
+      },
       "request": {
         "path": {
           "folder": "Work",
@@ -30554,6 +30610,9 @@
       }
     },
     "recipient_missing": {
+      "requires": {
+        "state": "missing_recipient"
+      },
       "request": {
         "body": {
           "from": "postmaster@restmail.test",
@@ -31476,6 +31535,9 @@
     },
     "master_key_required": {
       "summary": "A new relay credential requires the server master key",
+      "requires": {
+        "state": "no_master_key"
+      },
       "request": {
         "path": {
           "id": 1
@@ -32955,6 +33017,9 @@
       }
     },
     "sidecar_timeout": {
+      "requires": {
+        "fault": "sidecar_response"
+      },
       "request": {
         "path": {
           "id": 6
@@ -34860,6 +34925,9 @@
       }
     },
     "certificate_missing": {
+      "requires": {
+        "state": "uncertified_domain"
+      },
       "request": {
         "path": {
           "id": 6

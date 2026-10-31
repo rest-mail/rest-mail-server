@@ -8,7 +8,6 @@ import os
 import re
 import tempfile
 import unittest
-from typing import ClassVar
 
 import gate
 import yaml
@@ -133,219 +132,73 @@ class Gate(unittest.TestCase):
         )
 
 
-class PairedRefusals(unittest.TestCase):
-    """vertrag.yml sends a documented 400 or 422 only where the spec pairs it
-    with a request that provokes it (#386), and every one of those."""
+class HeldBackStatuses(unittest.TestCase):
+    """vertrag.yml holds back a documented status only when no example proves
+    it, or surface.exclude gives the reason it cannot be sent (#1334): each
+    exclude-matching pattern names one operation, under a comment with its
+    operationId, and exactly that operation's statuses in
+    tests/contract/status-baseline.txt, none of which has an example, and in
+    surface.exclude. Every other status with an example is sent."""
 
-    # The operations whose documented 400s and 422s each have their named
-    # request example.
-    PAIRED: ClassVar[set[str]] = {
-        "login",
-        "updateAlias",
-        "setDomainRelay",
-        "setDKIMRotation",
-        "sendMessage",
-        "microsoftAutodiscover",
-        "createDomain",
-        "updateDomain",
-        "createAlias",
-        "createPipeline",
-        "updatePipeline",
-        "createBan",
-        "createCustomFilter",
-        "updateCustomFilter",
-        "validateCustomFilter",
-        "sendTestEmail",
-        "createAccount",
-        "importContacts",
-        "linkAccount",
-        "createAppPassword",
-        "createFolder",
-        "restmailDeliver",
-        "bulkDeleteQueue",
-        "bulkRetryQueue",
-        "bulkBounceQueue",
-        "addToAllowlist",
-        "addToBlocklist",
-        "testFilter",
-        "testPipeline",
-        "testCustomFilter",
-        "receiveTlsReport",
-        "createCertificate",
-        "protocolSignIn",
-        "probeServices",
-        "setMtaStsPolicy",
-        "setVacation",
-        "updateMailbox",
-        "putSieveScript",
-        "validateSieveScript",
-        "createContact",
-        "setDKIMKey",
-        "acceptInvitation",
-        "importMessage",
-        "getAccountSendLimits",
-        "setAccountSendLimits",
-        "listHeldMessages",
-        "releaseHeldMessage",
-        "createAPIKey",
-        "checkMailboxAddress",
-        "deliverMessage",
-    }
+    PATTERN = re.compile(r"^\^(.+) > (.+) > (\d{3}|\((?:\d{3}\|)+\d{3}\))\( >\|\$\)$")
 
-    PAIRED_400: ClassVar[set[str]] = {"microsoftAutodiscover"}
-    PAIRED_422: ClassVar[set[str]] = PAIRED - PAIRED_400
-
-    @staticmethod
-    def sendable():
-        """For each operation with examples, the statuses the run sends: those
-        with an example that does not say what proving it requires. Every
-        example is a named pair, so a status with none of its own is paired
-        with no request, and one whose every pair requires something is left
-        to the in-process suites."""
-        with open(os.path.join(ROOT, "openapi-example.json")) as source:
-            examples = json.load(source)
-        return {
-            op: {str(pair["response"]["status"]) for pair in named.values() if not pair.get("requires")}
-            for op, named in examples.items()
-        }
-
-    def test_exclude_matching_sends_exactly_the_paired_refusals(self):
-        spec = topology_spec()
+    def setUp(self):
         with open(os.path.join(ROOT, "vertrag.yml")) as source:
-            config = yaml.safe_load(source)
-        patterns = [re.compile(p) for p in config["exclude-matching"]]
-        never = set(config["exclude-operation-id"])
-        sendable = self.sendable()
-        sent, paired = set(), set()
-        for path, item in spec["paths"].items():
-            for method in gate.METHODS:
-                op = item.get(method)
-                if op is None or op["operationId"] in never:
-                    continue
-                for status in ("400", "422"):
-                    if status not in op["responses"] or status not in sendable.get(op["operationId"], {status}):
-                        continue
-                    if op["operationId"] in getattr(self, "PAIRED_" + status):
-                        paired.add((op["operationId"], status))
-                    name = f"{path} > {op['summary']} > {status} > application/json"
-                    if not any(p.search(name) for p in patterns):
-                        sent.add((op["operationId"], status))
-        self.assertEqual({op for op, _ in paired}, self.PAIRED)
-        self.assertEqual(sent, paired)
+            self.text = source.read()
+        self.config = yaml.safe_load(self.text)
+        with open(os.path.join(ROOT, "openapi-example.json")) as source:
+            self.examples = json.load(source)
+        self.baseline = {}
+        with open(os.path.join(ROOT, "tests/contract/status-baseline.txt")) as source:
+            for line in source:
+                line = line.split("#", 1)[0].strip()
+                if line:
+                    op, status = line.split()
+                    self.baseline.setdefault(op, set()).add(status)
 
-    def test_each_sent_refusal_has_a_named_request_pair(self):
-        with open(os.path.join(ROOT, "openapi.yaml")) as f:
-            spec = yaml.safe_load(f)
-        for item in spec["paths"].values():
-            for method in gate.METHODS:
-                op = item.get(method)
-                if op is None or op["operationId"] not in self.PAIRED:
-                    continue
-                if "requestBody" in op:
-                    request_content = op["requestBody"]["content"]
-                    self.assertEqual(len(request_content), 1)
-                    requests = next(iter(request_content.values()))
-                else:
-                    # A request with no body is named by its parameters' examples.
-                    parameters = item.get("parameters", []) + op.get("parameters", [])
-                    self.assertTrue(all("$ref" not in p and "example" not in p for p in parameters))
-                    requests = {"examples": {n: e for p in parameters for n, e in p.get("examples", {}).items()}}
-                for status in ("400", "422"):
-                    if status not in op["responses"] or op[
-                        "operationId"
-                    ] not in getattr(self, "PAIRED_" + status):
-                        continue
-                    with self.subTest(operation=op["operationId"], status=status):
-                        for response in op["responses"][status]["content"].values():
-                            # An unnamed side pairs with every example on the
-                            # other side, including requests meant to succeed.
-                            self.assertNotIn("example", requests)
-                            self.assertNotIn("example", response)
-                            examples = response.get("examples", {})
-                            self.assertTrue(examples)
-                            self.assertLessEqual(
-                                set(examples), set(requests.get("examples", {}))
-                            )
+    def held(self):
+        """operationId -> the statuses its pattern holds back."""
+        held = {}
+        lines = self.text.split("\n")
+        start = lines.index("exclude-matching:")
+        for previous, line in zip(lines[start:], lines[start + 1:]):
+            if not line.startswith("  - "):
+                if line and not line.startswith("  #"):
+                    break
+                continue
+            pattern = yaml.safe_load(line[4:])
+            match = self.PATTERN.match(pattern)
+            self.assertIsNotNone(match, pattern)
+            self.assertTrue(previous.startswith("  # ") and " " not in previous[4:].strip(), pattern)
+            op = previous[4:].strip()
+            self.assertNotIn(op, held, "one pattern an operation")
+            held[op] = set(re.findall(r"\d{3}", match.group(3)))
+        return held
 
+    def reasoned(self):
+        reasoned = {}
+        for entry in self.config["surface"]["exclude"]:
+            if "status" in entry:
+                reasoned.setdefault(entry["operation"], set()).add(str(entry["status"]))
+        return reasoned
 
-class PreviewFaultScope(unittest.TestCase):
-    def test_fault_exclusions_keep_normal_preview_transactions_counted(self):
-        with open(os.path.join(ROOT, "vertrag.yml")) as file:
-            config = yaml.safe_load(file)
-        patterns = [re.compile(pattern) for pattern in config["exclude-matching"]]
-        paths = {
-            "testPipeline": "/api/v1/admin/pipelines/test",
-            "testFilter": "/api/v1/admin/pipelines/test-filter",
-            "testCustomFilter": "/api/v1/admin/custom-filters/{id}/test",
-        }
-        # The 413s and 500s are not sent because their pairs say what they
-        # require; only the sidecar timeout has no such pair.
-        faults = {
-            "testPipeline": set(),
-            "testFilter": set(),
-            "testCustomFilter": {"408"},
-        }
-        for operation, path in paths.items():
-            for status in faults[operation] | {"200", "400", "413", "422", "500"}:
-                with self.subTest(operation=operation, status=status):
-                    name = f"{path} > Preview > {status} > application/json"
-                    # No 400 is documented for a preview, so none is held back.
-                    self.assertEqual(
-                        any(p.search(name) for p in patterns),
-                        status in faults[operation],
-                    )
-        name = "/api/v1/messages/send > Send > 500 > application/json"
-        self.assertFalse(any(p.search(name) for p in patterns))
+    def test_each_pattern_holds_back_its_operations_baseline_or_reasoned_statuses(self):
+        expected = {}
+        for source in (self.baseline, self.reasoned()):
+            for op, statuses in source.items():
+                expected.setdefault(op, set()).update(statuses)
+        self.assertEqual(self.held(), expected)
 
+    def test_no_baseline_status_has_an_example(self):
+        for op, statuses in self.baseline.items():
+            for status in statuses:
+                with self.subTest(operation=op, status=status):
+                    proven = [name for name, pair in self.examples.get(op, {}).items()
+                              if str(pair["response"]["status"]) == status]
+                    self.assertEqual(proven, [])
 
-class MissingResourceRefusals(unittest.TestCase):
-    def test_only_enabled_operations_send_their_documented_404(self):
-        spec = topology_spec()
-        with open(os.path.join(ROOT, "vertrag.yml")) as file:
-            config = yaml.safe_load(file)
-        patterns = [re.compile(pattern) for pattern in config["exclude-matching"]]
-        never = set(config["exclude-operation-id"])
-        sent = set()
-        for path, item in spec["paths"].items():
-            for method in gate.METHODS:
-                op = item.get(method)
-                if (
-                    op is None
-                    or op["operationId"] in never
-                    or "404" not in op["responses"]
-                ):
-                    continue
-                name = f"{path} > {op['summary']} > 404 > application/json"
-                if not any(pattern.search(name) for pattern in patterns):
-                    sent.add(op["operationId"])
-        self.assertEqual(
-            sent,
-            {
-                "getDomain",
-                "getCertificate",
-                "getAlias",
-                "getCustomFilter",
-                "getMailbox",
-                "getDKIMRotation",
-                "domainDNSCheck",
-                "getMtaStsPolicy",
-                "getDomainRelay",
-                "getQueueEntry",
-                "getMessageTrace",
-                "updateDomain",
-                "updateMailbox",
-                "updateAlias",
-                "updateCustomFilter",
-                "deleteDomain",
-                "deleteMailbox",
-                "deleteAlias",
-                "deleteCustomFilter",
-                "updatePipeline",
-                "deletePipeline",
-                "testPipeline",
-                "inviteAccount",
-            },
-        )
+    def test_every_pattern_is_in_the_run(self):
+        self.assertEqual(len(self.held()), len(self.config["exclude-matching"]))
 
 
 if __name__ == "__main__":

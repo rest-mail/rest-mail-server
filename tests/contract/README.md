@@ -517,15 +517,15 @@ on a scratch database and compare each example's status and full response
 body. The folder hook leaves the invalid bodies unchanged and only removes
 previously created valid probe folders.
 
-These operations' 400s and 422s are sent and judged: `vertrag.yml` excludes
-400 and 422 by path, naming every path but the paired operations' own,
-rather than everywhere. A transaction sent and refused other than as
-documented fails the examples phase like any other. `test_gate.py` checks
-that the documented 400s and 422s sent are exactly the paired operations'
-(its `PAIRED`), so an operation paired next comes off those patterns in the
-same change. It also checks that each sent refusal has named response examples
-with matching request examples. The statuses stay in `surface.exclude`: the
-surface gate cannot take an exclusion off one operation only.
+Every documented status with an example is sent and judged (#1334). A
+transaction sent and refused other than as documented fails the examples
+phase like any other. `exclude-matching` holds back only what no example
+proves: each pattern names one operation (under a comment with its
+operationId) and exactly its statuses in `status-baseline.txt`, or the ones
+`surface.exclude` gives a reason for (getAttachment's bodyless 304 and 412).
+`test_gate.py` (`HeldBackStatuses`) checks both, and that no baseline status
+has an example, so giving a status an example takes it off both lists in the
+same change.
 
 The coverage phase probes every transaction sent, and judges valid-mode probes
 whenever the transaction's own request gets the status it documents. For a

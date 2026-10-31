@@ -25,7 +25,7 @@ class AuthPacing(unittest.TestCase):
                  if function is module.pace_auth_requests}
         self.assertEqual(set(paced), {
             "login", "refreshToken", "linkAccount", "createAppPassword", "protocolSignIn", "enrollTwoFactor",
-            "confirmTwoFactor", "recoverAccount", "acceptInvitation", "resetAdmin",
+            "confirmTwoFactor", "recoverAccount", "acceptInvitation", "resetAdmin", "issueClientCredentialsToken",
         })
         owner = {pattern for pattern, function in registered if function is module.pace_owner_requests}
         self.assertEqual(owner, {"ownerChallenge", "ownerToken", "ownerStatus"})

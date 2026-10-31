@@ -144,6 +144,25 @@ def an_app_password_from_the_two_factor_admin(transaction):
         hooks.set_json(transaction, body)
 
 
+@hooks.before("activateGrant")
+@hooks.before("makeGrantEligible")
+def a_fresh_second_factor_for_a_missing_grant(transaction):
+    # A grant change checks a fresh second factor before it looks the grant
+    # up. The missing example (an id no grant holds), sent as the two-factor
+    # administrator (send_as_the_two_factor_admin runs first), gets an unused
+    # factor of that administrator's, so the lookup is what refuses it (404).
+    path = transaction["fullPath"].partition("?")[0]
+    if not path.endswith("/2147483647/activate") and not path.endswith("/2147483647/make-eligible"):
+        return
+    body = hooks.get_json(transaction)
+    if session_address(transaction) != mfa_admin.ADDRESS or not isinstance(body, dict):
+        return
+    body.pop("totp_code", None)
+    body.pop("recovery_code", None)
+    body.update(mfa_admin.factor())
+    hooks.set_json(transaction, body)
+
+
 @hooks.before("createAPIKey")
 def an_api_key_from_the_two_factor_admin(transaction):
     # Making a key also takes the maker's current password.
@@ -227,6 +246,7 @@ def delete_a_grant_made_for_it(transaction):
 @hooks.before("recoverAccount")
 @hooks.before("acceptInvitation")
 @hooks.before("resetAdmin")
+@hooks.before("issueClientCredentialsToken")
 def pace_auth_requests(transaction):
     # These operations share the default 1 request/second auth bucket. Coverage
     # repeats valid requests as well as refusals, so even correct credentials
@@ -506,6 +526,16 @@ def delete_only_the_created_domain(transaction):
         transaction["fullPath"] = f"{domains}/{domain['id']:d}" + (
             "?" + query if query else ""
         )
+        return
+    # missing names an id no domain holds: sent as it is, refused 404.
+    if domain_id == "2147483647":
+        return
+    # has_accounts names a domain with accounts: the fixture domain is one,
+    # which the server refuses to delete (409), so nothing is removed.
+    if domain_id == "6" and " > 409" in transaction.get("name", ""):
+        origin = origin_of(transaction)
+        fixture = hosted_domain_id(origin, {"Authorization": "Bearer " + admin_token(origin)}, FIXTURE_PLAN["domain"])
+        transaction["fullPath"] = f"{domains}/{fixture:d}" + ("?" + query if query else "")
         return
     if int(domain_id) != hooks.stash.get("domain_id"):
         transaction["skip"] = True
@@ -845,7 +875,9 @@ def a_sending_policy_for_the_send(transaction):
     # sender gets a hosted, signing domain and a mailbox; the request's bytes
     # and credentials stay as generated.
     body = hooks.get_json(transaction)
-    if isinstance(body, dict):
+    # foreign_sender sends from an address no mailbox holds, which the
+    # handler refuses (403): it gets none.
+    if isinstance(body, dict) and body.get("from") != "someone@other.test":
         a_signing_mailbox_at(transaction, body.get("from"))
 
 
@@ -992,11 +1024,11 @@ def list_has_a_message_to_show(transaction):
 @hooks.before("cancelScheduledMessage")
 def cancel_a_message_we_made(transaction):
     # A boundary probe (0, a word, a fraction) must reach the handler with its
-    # own id, so its refusal is the one being judged. Only the examples
-    # transaction, and the valid probe built from it, get a real message.
+    # own id, so its refusal is the one being judged, and so must the missing
+    # example's id that no message holds. Only the found example's message
+    # (52), and the valid probe built from it, get a real message.
     path = transaction.get("fullPath", "").split("?")[0]
-    last = path.rsplit("/", 1)[-1]
-    if not last.isdigit() or int(last) < 1:
+    if path.rsplit("/", 1)[-1] != "52":
         return
     scheduled_id = schedule_a_message(transaction)
     if isinstance(scheduled_id, int):
@@ -1534,6 +1566,9 @@ def remove_a_previous_alias_probe(transaction):
     local, domain = source.split("@")
     if not local or "." not in domain:
         return  # Leave a malformed address to the actual probe.
+    # domain_missing's domain is one no one hosts, so it stays unhosted.
+    if source.lower() == "sales@missing.test":
+        return
     origin = "{}//{}:{}".format(
         transaction["protocol"],
         transaction["host"],
@@ -1544,6 +1579,18 @@ def remove_a_previous_alias_probe(transaction):
     if domain_id is None:
         return
     alias = alias_on(origin, headers, domain_id, source)
+    # duplicate's source already has an alias: make it first, and keep it.
+    if source.lower() == "duplicate@restmail.test":
+        if alias is None:
+            request = urllib.request.Request(
+                origin + "/api/v1/admin/aliases",
+                data=json.dumps({"source_address": source, "destination_address": "new@destination.test"}).encode(),
+                headers=dict(headers, **{"Content-Type": "application/json"}),
+                method="POST",
+            )
+            with urllib.request.urlopen(request, timeout=10):
+                pass
+        return
     owned = hooks.stash.get("created_alias_probes", {})
     key = origin + "\n" + source.lower()
     if alias is None:
