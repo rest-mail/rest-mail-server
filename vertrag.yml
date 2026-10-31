@@ -82,10 +82,6 @@ exclude-operation-id:
   - disableTwoFactor
   - resetTestData
   - restoreTestSnapshot
-  - respondToCalendar
-  - releaseQuarantine
-  - deleteQuarantine
-  - clearSuppression
 
 # Documented responses the examples phase cannot provoke yet, by pattern. A
 # transaction is named "<title> > <path> > <summary> > <status>[ > <type>]".
@@ -296,14 +292,6 @@ surface:
       reason: "Wipe the data the rest of the run depends on."
     - operation: restoreTestSnapshot
       reason: "Wipe the data the rest of the run depends on."
-    - operation: respondToCalendar
-      reason: "Needs a message carrying a calendar invitation."
-    - operation: releaseQuarantine
-      reason: "Needs a quarantined message."
-    - operation: deleteQuarantine
-      reason: "Needs a quarantined message."
-    - operation: clearSuppression
-      reason: "Needs a suppressed recipient on the created domain; the contract chain does not send a message that hard-bounces from it."
     - operation: sendMessage
       status: "202"
       reason: "The contract's send example sends immediately; a scheduled request is not part of the examples phase. The scheduled branch is covered by the handler and DB tests, and the ordinary send is still counted."

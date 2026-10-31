@@ -63,6 +63,9 @@ func main() {
 			_, err = prepareLinkFixture(database, *domain)
 		} else {
 			err = prepareQueueFixtures(database, *domain)
+			if err == nil {
+				err = prepareHeldMail(database, *domain)
+			}
 		}
 	}
 	if err != nil {
@@ -339,4 +342,40 @@ func prepareQueueFixture(database *gorm.DB, domain, name string) (uint, error) {
 		return 0, err
 	}
 	return item.ID, nil
+}
+
+// The quarantined message deleteQuarantine's found example deletes, held for
+// the fixture admin, and the suppressed recipient clearSuppression's found
+// example clears, on the fixture domain (#1334). Mail reaches neither state in
+// a healthy run on its own. Fresh rows on every run; the hooks take the newest.
+func prepareHeldMail(database *gorm.DB, domain string) error {
+	if domain != "restmail.test" {
+		return errors.New("contract fixtures require restmail.test")
+	}
+	plan, err := fixtureplan.Default()
+	if err != nil {
+		return err
+	}
+	var admin models.Mailbox
+	if err := database.Where("address = ?", plan.Principals["admin"].Address).First(&admin).Error; err != nil {
+		return err
+	}
+	now := time.Now()
+	return database.Transaction(func(tx *gorm.DB) error {
+		held := models.Quarantine{
+			MailboxID: admin.ID, Sender: "sender@example.net", Subject: "Held for review",
+			BodyPreview: "Preview only", QuarantineReason: "spam",
+			RawMessage: "From: sender@example.net\r\nTo: " + admin.Address + "\r\nSubject: Held for review\r\n\r\nPreview only\r\n",
+			ReceivedAt: now, ExpiresAt: now.Add(7 * 24 * time.Hour),
+		}
+		if err := tx.Create(&held).Error; err != nil {
+			return err
+		}
+		suppressed := models.Suppression{
+			DomainID: admin.DomainID, Address: fmt.Sprintf("contract-suppressed-%d@nowhere.invalid", now.UnixNano()),
+			Reason: models.SuppressionHardBounce, FailureCategory: models.FailureBadMailbox,
+			LastError: "550 5.1.1 no such mailbox", ExpiresAt: now.Add(30 * 24 * time.Hour),
+		}
+		return tx.Create(&suppressed).Error
+	})
 }

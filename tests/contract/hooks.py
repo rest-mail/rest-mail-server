@@ -1794,6 +1794,52 @@ def an_account_without_credentials(origin):
         return json.load(response)["data"]["id"]
 
 
+@hooks.before("deleteQuarantine")
+def delete_the_fixture_quarantined_message(transaction):
+    # found names message 41 of the fixture admin (1). Mail is quarantined by
+    # filters a healthy run does not trip, so the contract fixtures hold a
+    # message for the admin (prepareHeldMail); the newest unreleased one is
+    # deleted. Other ids are the refusals' and the probes', sent as they are.
+    path, _, query = transaction["fullPath"].partition("?")
+    parent, _, message_id = path.rpartition("/")
+    if message_id != "41" or not with_the_fixture_admins_session(transaction):
+        return
+    request = urllib.request.Request(
+        origin_of(transaction) + parent + "?limit=100",
+        headers={"Authorization": transaction["request"]["headers"]["Authorization"]},
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        held = [m for m in json.load(response).get("data") or [] if not m.get("released")]
+    if not held:
+        raise RuntimeError("the contract fixtures hold no quarantined message for the admin")
+    newest = max(held, key=lambda m: m["id"])
+    transaction["fullPath"] = parent + "/" + str(newest["id"]) + ("?" + query if query else "")
+
+
+@hooks.before("clearSuppression")
+def clear_the_fixture_suppression(transaction):
+    # found names suppression 1 of domain 1. A recipient is suppressed only
+    # when mail to it hard-bounces, which the run does not send, so the
+    # contract fixtures suppress one on the fixture domain (prepareHeldMail);
+    # the newest is cleared. Other ids are sent as they are.
+    path, _, query = transaction["fullPath"].partition("?")
+    parent, _, suppression_id = path.rpartition("/")
+    if suppression_id != "1" or not with_the_fixture_admins_session(transaction):
+        return
+    origin = origin_of(transaction)
+    headers = {"Authorization": transaction["request"]["headers"]["Authorization"]}
+    domain_id = hosted_domain_id(origin, headers, FIXTURE_PLAN["domain"])
+    collection = "/api/v1/admin/domains/{}/suppressions".format(domain_id)
+    request = urllib.request.Request(origin + collection, headers=headers)
+    with urllib.request.urlopen(request, timeout=10) as response:
+        suppressed = [s for s in json.load(response).get("data") or []
+                      if s.get("address", "").startswith("contract-suppressed-")]
+    if not suppressed:
+        raise RuntimeError("the contract fixtures suppress no recipient on the fixture domain")
+    newest = max(suppressed, key=lambda s: s["id"])
+    transaction["fullPath"] = collection + "/" + str(newest["id"]) + ("?" + query if query else "")
+
+
 @hooks.before("inviteAccount")
 def invite_an_account_without_credentials(transaction):
     # created, existing_credentials and missing all name the placeholder id 12,
