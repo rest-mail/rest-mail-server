@@ -148,9 +148,9 @@ func (c *importConnection) QueryContext(ctx context.Context, q string, args []dr
 			scope = "*"
 		}
 		if c.mode == "read_source" {
-			return invitationRows(columns, []driver.Value{scope, "mailboxes:write", nil, nil}, []driver.Value{"*", "mail:read", nil, nil}), nil
+			return grantLookupRows(columns, []driver.Value{scope, "mailboxes:write", nil, nil}, []driver.Value{"*", "mail:read", nil, nil}), nil
 		}
-		return invitationRows(columns, []driver.Value{scope, "mailboxes:write", nil, nil}), nil
+		return grantLookupRows(columns, []driver.Value{scope, "mailboxes:write", nil, nil}), nil
 	}
 	if strings.Contains(q, `FROM "messages"`) {
 		if c.mode == "read_failure" {

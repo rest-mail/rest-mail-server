@@ -124,7 +124,7 @@ func (c *invitationConnection) QueryContext(ctx context.Context, q string, args 
 		if c.mode == "denied" {
 			return invitationRows(cols), nil
 		}
-		return invitationRows(cols, []driver.Value{"*", "mailboxes:write", nil, nil}), nil
+		return grantLookupRows(cols, []driver.Value{"*", "mailboxes:write", nil, nil}), nil
 	}
 	if strings.Contains(q, `FROM "credentials"`) {
 		if strings.HasPrefix(q, "SELECT count(*)") {

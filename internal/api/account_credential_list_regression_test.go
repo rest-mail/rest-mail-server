@@ -84,6 +84,7 @@ func (c accountCredentialListConnection) QueryContext(_ context.Context, query s
 				}
 			}
 		}
+		r.rows = withSessionRows(r.rows)
 		return r, nil
 	}
 	if len(args) == 0 {

@@ -48,7 +48,7 @@ func (c *delegatedSendConnection) QueryContext(ctx context.Context, q string, ar
 		for _, cap := range c.capabilities {
 			rows = append(rows, []driver.Value{c.scope, cap, nil, nil})
 		}
-		return invitationRows([]string{"scope", "capability", "expires_at", "activation_expires_at"}, rows...), nil
+		return grantLookupRows([]string{"scope", "capability", "expires_at", "activation_expires_at"}, rows...), nil
 	}
 	if strings.Contains(q, `FROM "mailboxes"`) && c.represented != "" {
 		for _, arg := range args {

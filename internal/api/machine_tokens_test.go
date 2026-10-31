@@ -51,6 +51,7 @@ func (c *machineRouteConnection) QueryContext(ctx context.Context, q string, arg
 				rows.rows = append(rows.rows, []driver.Value{"domain:example.com", capability, nil, nil})
 			}
 		}
+		rows.rows = withSessionRows(rows.rows)
 		return rows, nil
 	case strings.HasPrefix(q, `INSERT INTO "pipelines"`):
 		if len(args) == 0 || args[0].Value != int64(1) {

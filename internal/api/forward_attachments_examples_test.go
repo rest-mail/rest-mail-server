@@ -89,7 +89,7 @@ func (c *forwardConnection) QueryContext(ctx context.Context, q string, args []d
 			return invitationRows(cols), nil
 		}
 		// The unique actor forwards from the fixture's sender mailbox.
-		return invitationRows(cols, []driver.Value{"*", "mail:read", nil, nil}, []driver.Value{"*", "mail:send", nil, nil}, []driver.Value{"*", "mail:receive", nil, nil}, []driver.Value{"mailbox:sender@example.test", "mail:send_as", nil, nil}), nil
+		return grantLookupRows(cols, []driver.Value{"*", "mail:read", nil, nil}, []driver.Value{"*", "mail:send", nil, nil}, []driver.Value{"*", "mail:receive", nil, nil}, []driver.Value{"mailbox:sender@example.test", "mail:send_as", nil, nil}), nil
 	}
 	if strings.HasPrefix(q, "SELECT count(*)") {
 		n := int64(0)

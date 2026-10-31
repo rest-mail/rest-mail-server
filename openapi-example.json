@@ -22889,6 +22889,30 @@
         "mediaType": "application/json"
       }
     },
+    "sessions_restricted": {
+      "summary": "The server's capabilities leave the account no session",
+      "description": "Precondition: the server ceiling holds neither mailbox:session nor admin:session for this account. The password is right, but no session may be issued.",
+      "requires": {
+        "state": "sessions_restricted"
+      },
+      "request": {
+        "body": {
+          "email": "admin@restmail.test",
+          "password": "contract-admin-password",
+          "client": "native"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "access_restricted",
+            "message": "This server is not accepting sign-ins for this account right now"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "signed_in": {
       "request": {
         "body": {
@@ -24697,6 +24721,28 @@
           "error": {
             "code": "unavailable",
             "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "sessions_restricted": {
+      "summary": "The server's capabilities leave the mailbox no session",
+      "description": "Precondition: the server ceiling no longer holds mailbox:session. Being an administrator does not stand in for it.",
+      "requires": {
+        "state": "sessions_restricted"
+      },
+      "request": {
+        "body": {
+          "protocol": "imap"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "access_restricted",
+            "message": "This server is not accepting sign-ins for this account right now"
           }
         },
         "mediaType": "application/json"

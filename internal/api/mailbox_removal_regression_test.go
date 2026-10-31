@@ -169,7 +169,7 @@ func (c *mailboxRemovalConnection) QueryContext(ctx context.Context, q string, a
 		if c.target == 14 {
 			cap = "mailboxes:delete"
 		}
-		return &authReadSnapshotRows{columns: []string{"scope", "capability", "expires_at", "activation_expires_at"}, rows: [][]driver.Value{{"*", cap, nil, nil}}}, nil
+		return &authReadSnapshotRows{columns: []string{"scope", "capability", "expires_at", "activation_expires_at"}, rows: withSessionRows([][]driver.Value{{"*", cap, nil, nil}})}, nil
 	}
 	if strings.Contains(q, "FROM role_capabilities rc") {
 		c.record(q, args)
