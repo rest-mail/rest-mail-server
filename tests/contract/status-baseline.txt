@@ -5,15 +5,8 @@
 # rather than adding it here.
 createClientSecret 404
 createClientSecret 429
-getAccountSendLimits 403
-getRecoveryEmail 403
 getServerCapabilities 429
-listClientSecrets 403
-listClientSecrets 404
-listHeldMessages 403
 recoveryEmailLink 500
 registerRecoveryEmail 503
 requestRecoveryEmail 503
-revokeClientSecret 403
-searchMessages 403
 updateServerCapabilities 429
