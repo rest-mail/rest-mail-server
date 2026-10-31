@@ -6,7 +6,6 @@
 createClientSecret 404
 createClientSecret 429
 getServerCapabilities 429
-listClientSecrets 404
 recoveryEmailLink 500
 registerRecoveryEmail 503
 requestRecoveryEmail 503

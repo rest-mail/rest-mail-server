@@ -19716,6 +19716,23 @@
         "mediaType": "application/json"
       }
     },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "session_unavailable": {
       "summary": "The current-session lookup fails",
       "requires": {

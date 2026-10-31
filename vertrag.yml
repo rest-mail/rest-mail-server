@@ -89,8 +89,6 @@ exclude-matching:
   # surface.exclude entries give the reasons; #1166 tracks the rest.
   # getAttachment
   - '^/api/v1/attachments/\{id\} > .* > (304|412|500)( >|$)'
-  # listClientSecrets
-  - '^/api/v1/accounts/\{id\}/client-secrets > List an account''s client secrets > 404( >|$)'
   # createClientSecret
   - '^/api/v1/accounts/\{id\}/client-secrets > Make a scoped OAuth client secret > (404|429)( >|$)'
   # updateServerCapabilities
