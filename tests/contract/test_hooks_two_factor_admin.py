@@ -55,9 +55,57 @@ class TwoFactorAdminHookTests(unittest.TestCase):
 
     def test_every_two_factor_operation_is_hooked(self):
         for operation in ("listAPIKeys", "revokeAPIKey", "confirmTwoFactor", "createGrant", "deleteGrant",
-                          "activateGrant", "deactivateGrant", "makeGrantEligible"):
+                          "activateGrant", "deactivateGrant", "makeGrantEligible", "createAccount", "linkAccount",
+                          "unlinkAccount", "revokeCredential", "updateMailbox", "deleteMailbox", "updateDomain",
+                          "deleteDomain", "inviteAccount", "listAuditEntries", "verifyAuditLog",
+                          "releaseQuarantine", "changeOwnPassword", "disableTwoFactor"):
             self.assertIn("send_as_the_two_factor_admin", self.registered[operation])
         self.assertIn("an_api_key_from_the_two_factor_admin", self.registered["createAPIKey"])
+        self.assertIn("an_app_password_from_the_two_factor_admin", self.registered["createClientSecret"])
+        # The swap runs before the hook that confirms with the maker's password.
+        self.assertEqual(self.registered["createAppPassword"][:1], ["send_as_the_two_factor_admin"])
+        self.assertIn("confirm_with_the_admin_password", self.registered["createAppPassword"])
+
+    def test_every_operation_that_takes_a_second_factor_is_hooked(self):
+        # An operation whose refusal of a session without a second factor is
+        # proven in process (its pair requires a principal or state) is sent
+        # as the two-factor administrator; one whose refusal the live run
+        # proves itself, as the fixture admin, is not (#1332).
+        examples = json.loads((ROOT / "openapi-example.json").read_text())
+
+        def refusals(pairs):
+            def code(pair):
+                body = pair["response"].get("body")
+                error = body.get("error") if isinstance(body, dict) else None
+                return error.get("code") if isinstance(error, dict) else None
+            return [pair for pair in pairs.values()
+                    if code(pair) in ("two_factor_required", "recent_two_factor_required")]
+        guarded = {op for op, pairs in examples.items()
+                   if refusals(pairs) and all(pair.get("requires") for pair in refusals(pairs))}
+        live = {op for op, pairs in examples.items()
+                if any(not pair.get("requires") for pair in refusals(pairs))}
+        hooked = {op for op, names in self.registered.items()
+                  if {"send_as_the_two_factor_admin", "an_api_key_from_the_two_factor_admin",
+                      "an_app_password_from_the_two_factor_admin"} & set(names)}
+        self.assertLessEqual(guarded, hooked)
+        self.assertFalse(live & hooked)
+
+    def test_a_client_secret_is_made_with_the_two_factor_admins_password(self):
+        body = {"name": "Robot", "password": "current-password"}
+        t = transaction("/api/v1/accounts/1/client-secrets", session(self.module.ADMIN), json.dumps(body))
+        self.module.an_app_password_from_the_two_factor_admin(t)
+        self.assertEqual(json.loads(t["request"]["body"]),
+                         {"name": "Robot", "password": self.module.mfa_admin.PASSWORD})
+        self.assertEqual(t["request"]["headers"]["Authorization"], "Bearer two-factor-token")
+
+    def test_an_app_password_is_confirmed_with_its_makers_password(self):
+        for address, password in ((self.module.mfa_admin.ADDRESS, self.module.mfa_admin.PASSWORD),
+                                  (self.module.ADMIN, self.module.ADMIN_PASSWORD)):
+            with self.subTest(address=address):
+                body = {"name": "Thunderbird", "password": "current-password", "expires_at": "x"}
+                t = transaction("/api/v1/accounts/1/credentials", session(address), json.dumps(body))
+                self.module.confirm_with_the_admin_password(t)
+                self.assertEqual(json.loads(t["request"]["body"]), {"name": "Thunderbird", "password": password})
 
     def test_the_fixture_admins_session_is_replaced(self):
         t = transaction("/api/v1/admin/grants", session(self.module.ADMIN))

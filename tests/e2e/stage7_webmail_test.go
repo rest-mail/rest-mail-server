@@ -200,11 +200,14 @@ func testStage7WebmailFlows(t *testing.T) {
 	})
 
 	t.Run("WebmailAccountSwitching", func(t *testing.T) {
-		// Alice links bob's account by proving its password: it is listed
-		// after her own, and she reads its mail.
+		// An account links bob's by proving its password: it is listed after
+		// its own, and it reads bob's mail. Linking takes recent proof of a
+		// second factor, so the linking account is one of this test's own,
+		// enrolled in TOTP (the other stages sign alice in with a password).
 		createMailbox(t, adminClient, "bob@restmail.test", accountPassword, "Bob")
-		client := newAPIClient()
-		requireNoError(t, client.login("alice@restmail.test", accountPassword))
+		switcher := fmt.Sprintf("switcher-%d@restmail.test", time.Now().UnixNano())
+		createMailbox(t, adminClient, switcher, accountPassword, "Switcher")
+		client := withTwoFactor(t, switcher, accountPassword)
 
 		resp, err := client.post("/api/v1/accounts/link", map[string]string{
 			"address": "bob@restmail.test", "password": accountPassword,
@@ -229,8 +232,8 @@ func testStage7WebmailFlows(t *testing.T) {
 		if err := decodeJSON(resp, &result); err != nil {
 			t.Fatalf("decode accounts: %v", err)
 		}
-		if len(result.Data) < 2 || result.Data[0].Address != "alice@restmail.test" {
-			t.Fatalf("alice's accounts: %+v, want her own first, then bob's", result.Data)
+		if len(result.Data) < 2 || result.Data[0].Address != switcher {
+			t.Fatalf("%s's accounts: %+v, want its own first, then bob's", switcher, result.Data)
 		}
 		var bob uint
 		for _, a := range result.Data {
@@ -239,7 +242,7 @@ func testStage7WebmailFlows(t *testing.T) {
 			}
 		}
 		if bob == 0 {
-			t.Fatalf("alice's accounts: %+v, bob's is not among them", result.Data)
+			t.Fatalf("%s's accounts: %+v, bob's is not among them", switcher, result.Data)
 		}
 		resp, err = client.get(fmt.Sprintf("/api/v1/accounts/%d/folders", bob))
 		requireNoError(t, err)

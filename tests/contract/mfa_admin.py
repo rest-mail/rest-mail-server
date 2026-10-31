@@ -54,7 +54,10 @@ def _step():
 
 
 def enroll(base_url):
-    """Enroll the administrator in TOTP and keep what signing in needs."""
+    """Enroll the administrator in TOTP and keep what signing in needs. The
+    E2E suite and the contract run both prepare it; the first one enrolls."""
+    if STATE.exists():
+        return
     plain = _sign_in(base_url)["access_token"]
     enrolled = _post(base_url, "/api/v1/auth/2fa/enroll", {}, plain)
     _post(base_url, "/api/v1/auth/2fa/confirm", {"totp_code": totp(enrolled["secret"])}, plain)
@@ -68,18 +71,30 @@ def enroll(base_url):
 
 def session(base_url):
     """A fresh access token signed in with a second factor."""
+    return _sign_in(base_url, **factor())["access_token"]
+
+
+def sign_in_body():
+    """The body of a sign-in with an unused second factor, for a reader that
+    makes its own request (secret_scan.py)."""
+    return {"email": ADDRESS, "password": PASSWORD, "client": "native", **factor()}
+
+
+def factor():
+    """An unused second factor: a recovery code while one is left, then a TOTP
+    code for a step not used before. What it spends is kept."""
     if not STATE.exists():
         raise RuntimeError("the contract MFA administrator is not enrolled (chore test:contract-mfa-admin)")
     state = json.loads(STATE.read_text())
     if state["recovery_codes"]:
-        factor = {"recovery_code": state["recovery_codes"].pop(0)}
+        chosen = {"recovery_code": state["recovery_codes"].pop(0)}
     else:
         while _step() <= state["step"]:
             time.sleep(1)
         state["step"] = _step()
-        factor = {"totp_code": totp(state["secret"])}
+        chosen = {"totp_code": totp(state["secret"])}
     STATE.write_text(json.dumps(state))
-    return _sign_in(base_url, **factor)["access_token"]
+    return chosen
 
 
 if __name__ == "__main__":

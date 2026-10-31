@@ -7,6 +7,7 @@ import sys
 import threading
 import types
 import unittest
+import unittest.mock
 import urllib.parse
 
 
@@ -77,6 +78,11 @@ class FixtureAPI(BaseHTTPRequestHandler):
 class SendTestEmailProbes(unittest.TestCase):
     def setUp(self):
         hooks.hooks.stash.clear()
+        # Making a mailbox takes a second factor: the two-factor administrator,
+        # which this fixture API answers as it does the admin.
+        two_factor = unittest.mock.patch.object(hooks, "mfa_admin_token", return_value="setup")
+        two_factor.start()
+        self.addCleanup(two_factor.stop)
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureAPI)
         self.server.state = {
             "domains": [{"id": 1, "name": "restmail.test"}],

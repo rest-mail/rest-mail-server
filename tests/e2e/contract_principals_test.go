@@ -67,8 +67,8 @@ func TestContractPrincipals(t *testing.T) {
 	// An ordinary account: a password, no grants. The admin makes it, as
 	// only an account holding mailboxes:write can.
 	ordinary := createMailbox(t, admin, contractOrdinaryAddress, accountPassword, ordinaryPlan.DisplayName)
-	// An account with no password, reached only through its owner, the admin.
-	resp, err := admin.post("/api/v1/accounts", map[string]string{
+	// An account with no password, reached only through its owner.
+	resp, err := twoFactorAdmin(t).post("/api/v1/accounts", map[string]string{
 		"address":      contractOwnedAddress,
 		"display_name": ownedPlan.DisplayName,
 	})
@@ -92,7 +92,7 @@ func TestContractPrincipals(t *testing.T) {
 	// narrow, read, write and send on its own mailbox and nothing else.
 	user := newAPIClient()
 	requireNoError(t, loginRetrying(user, contractOrdinaryAddress, accountPassword))
-	appPassword := mintAppPassword(t, user, ordinary.ID, plan.Principals["app_password"].Name)
+	appPassword := mintAppPassword(t, ordinary.ID, plan.Principals["app_password"].Name)
 
 	// The second tenant: an account of its own, made like the ordinary one,
 	// with an app password of its own.
@@ -100,7 +100,7 @@ func TestContractPrincipals(t *testing.T) {
 	other := createMailbox(t, admin, otherPlan.Address, accountPassword, otherPlan.DisplayName)
 	otherUser := newAPIClient()
 	requireNoError(t, loginRetrying(otherUser, otherPlan.Address, accountPassword))
-	otherAppPassword := mintAppPassword(t, otherUser, other.ID, plan.Principals["other_app_password"].Name)
+	otherAppPassword := mintAppPassword(t, other.ID, plan.Principals["other_app_password"].Name)
 
 	principals := map[string]contractPrincipal{
 		"admin":              {Address: seedAdminAddress, Password: seedAdminPassword, ID: adminAccount.ID},
@@ -160,12 +160,14 @@ func TestContractPrincipals(t *testing.T) {
 	}
 }
 
-// mintAppPassword creates an app password for the account c is signed in to,
-// and returns its secret.
-func mintAppPassword(t *testing.T, c *apiClient, account uint, name string) string {
+// mintAppPassword creates an app password for an account, and returns its
+// secret. Making one takes recent proof of a second factor, which the
+// principals have none of, and the maker's own current password: the
+// two-factor administrator makes it.
+func mintAppPassword(t *testing.T, account uint, name string) string {
 	t.Helper()
-	resp, err := c.post(fmt.Sprintf("/api/v1/accounts/%d/credentials", account),
-		map[string]string{"name": name, "password": accountPassword})
+	resp, err := twoFactorAdmin(t).post(fmt.Sprintf("/api/v1/accounts/%d/credentials", account),
+		map[string]string{"name": name, "password": twoFactorAdminPassword})
 	requireNoError(t, err)
 	requireStatus(t, resp, http.StatusCreated)
 	var created struct {

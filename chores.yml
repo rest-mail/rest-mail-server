@@ -701,6 +701,9 @@ tasks:
   test:e2e:
     desc: 'Run e2e tests against an already-running topology (use `chore e2e` to also bring it up + tear down)'
     cmds:
+      # Making accounts and credentials takes a session signed in with a second
+      # factor: the suite does it as the two-factor administrator (once a run).
+      - task: test:contract-mfa-admin
       # The suite must run ON the simulated internet: the host can neither
       # route to mailnet IPs (Docker Desktop) nor resolve *.test. Run it in a
       # golang container attached to the mailnet with the testbed dnsmasq as

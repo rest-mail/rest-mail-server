@@ -35,7 +35,8 @@ func testStage2TraditionalMail(t *testing.T) {
 			skipOrFail(t, "no admin token")
 		}
 		d := createDomain(t, client, "e2e-stage2.test", "traditional")
-		resp, err := client.delete(fmt.Sprintf("/api/v1/admin/domains/%d", d.ID))
+		// Deleting a domain grants are held on takes a second factor.
+		resp, err := twoFactorAdmin(t).delete(fmt.Sprintf("/api/v1/admin/domains/%d", d.ID))
 		requireNoError(t, err)
 		resp.Body.Close()
 		t.Logf("throwaway domain %d created and deleted", d.ID)

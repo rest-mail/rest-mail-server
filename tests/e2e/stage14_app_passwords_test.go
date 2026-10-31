@@ -17,10 +17,13 @@ func testStage14AppPasswords(t *testing.T) {
 	if err := adminClient.loginAdmin(); err != nil {
 		skipOrFail(t, "Cannot get admin token: %v", err)
 	}
-	const user = "apppw-user@restmail.test"
+	// Making an app password takes recent proof of a second factor: the
+	// account is this test's own, enrolled in TOTP once its id is known.
+	user := fmt.Sprintf("apppw-%d@restmail.test", time.Now().UnixNano())
 	createDomain(t, adminClient, "restmail.test", "restmail")
 	createMailbox(t, adminClient, user, accountPassword, "App Password User")
-	client, accountID := restmailInbox(t, user, accountPassword)
+	_, accountID := restmailInbox(t, user, accountPassword)
+	client := withTwoFactor(t, user, accountPassword)
 
 	// Making one takes the mailbox's current password, entered again.
 	resp, err := client.post(fmt.Sprintf("/api/v1/accounts/%d/credentials", accountID), map[string]string{"name": "e2e Thunderbird"})

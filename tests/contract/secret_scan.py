@@ -21,7 +21,7 @@ that it is never answered back is the one thing the recording cannot show.
 Usage: secret_scan.py <run.har> [--audit-from vertrag.yml]
 
 With --audit-from, the audit log is read from the configuration's endpoint,
-signed in as its auth.login does (the fixture admin).
+signed in as the run's two-factor administrator (audit_reader_body).
 Exit 1 with one line per finding; 0 when the run is clean. Exit 2 if input or
 audit retrieval cannot be verified; an incomplete audit never reports clean.
 """
@@ -32,6 +32,7 @@ import json
 import sys
 import urllib.request
 from http.cookies import CookieError, SimpleCookie
+from pathlib import Path
 from urllib.parse import unquote, urlencode, urlsplit, urlunsplit
 
 # The fields that carry a secret the client sends: passwords (an account's, a
@@ -329,6 +330,16 @@ def _audit_json(response):
     return json.loads(raw)
 
 
+def audit_reader_body():
+    """Reading the audit log takes recent proof of a second factor: the reader
+    signs in as the run's two-factor administrator (mfa_admin.py), with a real
+    code, not as auth.login's fixture admin."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import mfa_admin
+
+    return mfa_admin.sign_in_body()
+
+
 def read_audit(config_path, known=None):
     """Read every audit page without redirects. Add this reader's freshly
     issued credentials to known too: its login is outside the recorded HAR.
@@ -343,7 +354,7 @@ def read_audit(config_path, known=None):
     opener = urllib.request.build_opener(_NoAuditRedirect())
     login = urllib.request.Request(
         endpoint + signin["path"],
-        data=json.dumps(signin["body"]).encode(),
+        data=json.dumps(audit_reader_body()).encode(),
         headers={"Content-Type": "application/json"},
         method="POST",
     )
