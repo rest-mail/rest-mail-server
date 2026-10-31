@@ -123,7 +123,13 @@ func TestPublicReadFailureExamplesMatchErrorAdapter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The recovery email link page is static too: its only 500 is the shared
+	// adapter's. It is not a public read of publicExamplePaths' kind.
+	ids := []string{"recoveryEmailLink"}
 	for id := range publicExamplePaths {
+		ids = append(ids, id)
+	}
+	for _, id := range ids {
 		t.Run(id, func(t *testing.T) {
 			pair, ok := pairs[id]["internal_error"]
 			examplepairs.Proven(t, id, "internal_error")

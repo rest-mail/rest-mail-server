@@ -263,6 +263,19 @@ func TestClientSecretExamples(t *testing.T) {
 		}
 	})
 
+	t.Run("createClientSecret/missing", func(t *testing.T) {
+		examplepairs.Proven(t, "createClientSecret", "missing")
+		pair := pairs["createClientSecret"]["missing"]
+		f := newCredentialFixture(t)
+		knownPassword(f, passwordOf(t, pair))
+		session := twoFactorSession(f) // two_factor_session
+		rr := sendClientSecretExample(f, routes["createClientSecret"], pair, session)
+		assertRequirementResponse(t, pair, rr)
+		if n := clientSecrets(f); n != 0 {
+			t.Fatalf("refused creation stored %d client secrets", n)
+		}
+	})
+
 	t.Run("createClientSecret/tier_refused", func(t *testing.T) {
 		examplepairs.Proven(t, "createClientSecret", "tier_refused")
 		pair := pairs["createClientSecret"]["tier_refused"]
