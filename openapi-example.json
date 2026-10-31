@@ -5168,6 +5168,37 @@
         "mediaType": "application/json"
       }
     },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Invoice robot",
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "pipelines:write",
+              "scope": "domain:example.test"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "tier_refused": {
       "summary": "Account creation is beyond the client-secret tier",
       "requires": {
@@ -15511,6 +15542,57 @@
     }
   },
   "getRecoveryEmail": {
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {},
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "unregistered": {
       "request": {},
       "response": {
@@ -15559,6 +15641,23 @@
         "mediaType": "application/json"
       }
     },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "not_superadmin": {
       "summary": "An administrator who is not superadmin is refused",
       "requires": {
@@ -15571,6 +15670,40 @@
           "error": {
             "code": "superadmin_required",
             "message": "only a superadmin can read or change the server capability ceiling"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {},
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
           }
         },
         "mediaType": "application/json"
@@ -19489,6 +19622,29 @@
     }
   },
   "listClientSecrets": {
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "listed": {
       "requires": {
         "state": "client_secret"
@@ -19518,6 +19674,27 @@
               ]
             }
           ]
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
         },
         "mediaType": "application/json"
       }
@@ -25828,6 +26005,23 @@
         "body": "\u003c!doctype html\u003e\u003chtml lang=\"en\"\u003e\u003cmeta charset=\"utf-8\"\u003e\u003cmeta name=\"viewport\" content=\"width=device-width,initial-scale=1\"\u003e\u003ctitle\u003eREST Mail account recovery\u003c/title\u003e\u003cmain\u003e\u003ch1\u003eAccount recovery\u003c/h1\u003e\u003cp id=\"message\" role=\"status\"\u003eConfirm the action below to use your private link.\u003c/p\u003e\u003cform id=\"recovery\"\u003e\u003clabel\u003eNew password \u003cinput id=\"password\" type=\"password\" autocomplete=\"new-password\" minlength=\"12\" maxlength=\"72\"\u003e\u003c/label\u003e\u003cbutton id=\"submit\" type=\"submit\"\u003eContinue\u003c/button\u003e\u003c/form\u003e\u003cp\u003eAfter changing your password, sign in through your usual mail app. Your existing second factor still applies.\u003c/p\u003e\u003c/main\u003e\u003cscript\u003e\nlet token = location.hash.slice(1);\nconst mode = new URLSearchParams(location.search).get('mode');\nhistory.replaceState(null, '', location.pathname);\nconst form = document.getElementById('recovery');\nconst message = document.getElementById('message');\nconst password = document.getElementById('password');\nconst button = document.getElementById('submit');\nif (!token || !['verify','recover'].includes(mode)) {\n message.textContent = 'Invalid link. Request another link.'; form.hidden = true;\n} else {\n password.parentElement.hidden = mode !== 'recover';\n password.required = mode === 'recover';\n button.textContent = mode === 'verify' ? 'Verify recovery email' : 'Change password';\n form.addEventListener('submit', async event =\u003e {\n  event.preventDefault(); button.disabled = true;\n  const body = { token };\n  if (mode === 'recover') body.new_password = password.value;\n  try {\n   const response = await fetch(mode === 'verify' ? '/api/v1/auth/recovery-email/verify' : '/api/v1/auth/recover/email/redeem', {\n    method: 'POST', credentials: 'omit', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)\n   });\n   const result = await response.json();\n   message.textContent = response.ok ? result.data.message : result.error.message;\n   if (response.ok) { form.hidden = true; password.value = ''; token = ''; } else { button.disabled = false; }\n  } catch (_) { message.textContent = 'Request failed. Please try again.'; button.disabled = false; }\n });\n}\n\u003c/script\u003e\u003c/html\u003e",
         "mediaType": "text/html"
       }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
     }
   },
   "redeemRecoveryEmail": {
@@ -29348,6 +29542,30 @@
     }
   },
   "revokeClientSecret": {
+    "invalid_id": {
+      "request": {
+        "path": {
+          "credential_id": 34,
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "missing": {
       "requires": {
         "state": "two_factor_session"
@@ -29381,6 +29599,28 @@
       },
       "response": {
         "status": 204
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "credential_id": 34,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },
@@ -36801,6 +37041,30 @@
               "mail:send"
             ],
             "source": "database"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "body": {
+          "capabilities": [
+            "mail:read",
+            "mail:send"
+          ]
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
           }
         },
         "mediaType": "application/json"
