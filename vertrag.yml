@@ -267,9 +267,9 @@ surface:
       status: "500"
       reason: "A healthy topology cannot provoke database/storage/seek faults. The required attachment example suite covers dependency refusals, and TestAttachmentConditionalResponsesDescribeTheWire covers seek errors; topology fault injection remains in #1166."
     - operation: checkMailboxAddress
-      reason: "Served only on the internal mTLS listener, which the E2E topology turns on; the public listener vertrag reaches does not have it."
+      reason: "Served only on the internal mTLS listener, which the public run does not reach: sent there by the internal pass (tests/contract/internal.py)."
     - operation: deliverMessage
-      reason: "Served only on the internal mTLS listener, which the E2E topology turns on; the public listener vertrag reaches does not have it."
+      reason: "Served only on the internal mTLS listener, which the public run does not reach: sent there by the internal pass (tests/contract/internal.py)."
     - operation: resetTestData
       reason: "Wipes the data the rest of the run depends on: sent last, by the teardown phase (tests/contract/teardown.py)."
     - operation: restoreTestSnapshot
