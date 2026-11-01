@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/dane"
+	"github.com/rest-mail/rest-mail-server/internal/dane"
 )
 
 // A handshake that fails DANE verification keeps dane.ErrNoMatch in its error chain,

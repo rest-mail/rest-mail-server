@@ -8,8 +8,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/restmail/restmail/internal/pipeline"
-	"github.com/restmail/restmail/internal/pipeline/filters"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline/filters"
 )
 
 const testFilterPath = "/api/v1/admin/pipelines/test-filter"

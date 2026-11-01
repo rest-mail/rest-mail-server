@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
 // Invalid filters must be refused before querying the database. A nil DB

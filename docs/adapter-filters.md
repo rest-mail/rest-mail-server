@@ -153,7 +153,7 @@ package filters
 
 import (
     "context"
-    "github.com/restmail/restmail/internal/pipeline"
+    "github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 type myScanner struct {

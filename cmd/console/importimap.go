@@ -11,9 +11,9 @@ import (
 	"net/url"
 	"strconv"
 
-	apitypes "github.com/restmail/restmail/internal/api/types"
-	"github.com/restmail/restmail/internal/mailimport"
-	rmime "github.com/restmail/restmail/internal/mime"
+	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	"github.com/rest-mail/rest-mail-server/internal/mailimport"
+	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 )
 
 const importIMAPUsage = `restmail import-imap — copy an IMAP account through the public import API

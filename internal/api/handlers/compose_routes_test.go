@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
 // The typed answers write what the model and the local types they replaced wrote.

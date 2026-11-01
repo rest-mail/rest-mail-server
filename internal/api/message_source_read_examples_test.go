@@ -2,7 +2,7 @@ package api
 
 import (
 	"encoding/json"
-	"github.com/restmail/restmail/internal/examplepairs"
+	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
-	"github.com/restmail/restmail"
+	"github.com/rest-mail/rest-mail-server"
 )
 
 var messageSourceReadPaths = map[string]string{"getMessage": "/api/v1/messages/{id}", "getRawMessage": "/api/v1/messages/{id}/raw"}

@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"database/sql/driver"
 	"encoding/json"
-	"github.com/restmail/restmail/internal/examplepairs"
+	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
-	"github.com/restmail/restmail"
+	"github.com/rest-mail/rest-mail-server"
 )
 
 var contactMutationPaths = map[string]string{"createContact": "/api/v1/accounts/{id}/contacts", "updateContact": "/api/v1/accounts/{id}/contacts/{cid}", "blockSender": "/api/v1/accounts/{id}/contacts/block"}

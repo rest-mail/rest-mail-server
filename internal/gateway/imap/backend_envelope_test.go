@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 )
 
 // ── FETCH literal helpers (extend the transcript harness) ──────────────────

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/restmail/restmail/internal/pipeline/filters"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline/filters"
 )
 
 const testJSSidecarToken = "test-token-0123456789abcdef"

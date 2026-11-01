@@ -3,7 +3,7 @@ package grants
 import (
 	"time"
 
-	"github.com/restmail/restmail/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )

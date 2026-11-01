@@ -1,6 +1,6 @@
 package smtp
 
-import "github.com/restmail/restmail/internal/gateway/apiclient"
+import "github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 
 // Backend is the exact set of REST API operations the SMTP gateway depends on.
 // It is deliberately narrow: only the methods this protocol actually calls.

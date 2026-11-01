@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 )
 
 // noTarpit disables the escalating sleep so brute-force tests run instantly; the

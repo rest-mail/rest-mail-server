@@ -3,8 +3,8 @@ package handlers
 import (
 	"time"
 
-	apitypes "github.com/restmail/restmail/internal/api/types"
-	"github.com/restmail/restmail/internal/db/models"
+	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
 // Ban is the API representation, independent of database persistence.

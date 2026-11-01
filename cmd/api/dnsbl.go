@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/restmail/restmail/internal/dnsbl"
+	"github.com/rest-mail/rest-mail-server/internal/dnsbl"
 	"gorm.io/gorm"
 )
 

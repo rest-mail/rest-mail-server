@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	apitypes "github.com/restmail/restmail/internal/api/types"
+	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 )
 
 // The typed owner answers write the bytes the maps and the local type they replaced wrote:

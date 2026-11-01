@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/restmail/restmail/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/auth"
 )
 
 // Credential kinds: everything an account signs in with (#341, Decided 4).

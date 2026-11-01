@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/auth"
-	"github.com/restmail/restmail/internal/config"
+	"github.com/rest-mail/rest-mail-server/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/config"
 )
 
 // apiKeyRefusalLimited answers a request the way a spent refusal budget does (#1269). Its

@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/restmail/restmail/internal/netallow"
+	"github.com/rest-mail/rest-mail-server/internal/netallow"
 )
 
 // metricsGate builds the gate used across these tests: /metrics restricted to

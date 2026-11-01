@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/restmail/restmail/internal/auth"
-	"github.com/restmail/restmail/internal/grants"
+	"github.com/rest-mail/rest-mail-server/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/grants"
 )
 
 const testAPIKey = "rmk_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec"

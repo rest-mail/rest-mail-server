@@ -4,8 +4,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/gateway/connlimiter"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	"gorm.io/gorm"
 )
 

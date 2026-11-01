@@ -8,7 +8,7 @@ import (
 
 	"gorm.io/gorm"
 
-	rmail "github.com/restmail/restmail/internal/mail"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 )
 
 // JSONB is a custom type for PostgreSQL JSONB columns.

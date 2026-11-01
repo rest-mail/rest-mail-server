@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/restmail/restmail/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/auth"
 )
 
 func TestNormalizeAPIKeyPermissions(t *testing.T) {

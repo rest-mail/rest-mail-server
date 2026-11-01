@@ -7,11 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/restmail/restmail/internal/attachmentstore"
-	"github.com/restmail/restmail/internal/attachmentstore/s3test"
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/pipeline"
-	"github.com/restmail/restmail/internal/pipeline/filters"
+	"github.com/rest-mail/rest-mail-server/internal/attachmentstore"
+	"github.com/rest-mail/rest-mail-server/internal/attachmentstore/s3test"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline/filters"
 )
 
 func TestOwnedQuotaIncludesAttachmentBytes(t *testing.T) {

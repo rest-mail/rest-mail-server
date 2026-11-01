@@ -3,9 +3,9 @@ package api
 import (
 	"log/slog"
 
-	"github.com/restmail/restmail/internal/api/handlers"
-	"github.com/restmail/restmail/internal/config"
-	"github.com/restmail/restmail/internal/push"
+	"github.com/rest-mail/rest-mail-server/internal/api/handlers"
+	"github.com/rest-mail/rest-mail-server/internal/config"
+	"github.com/rest-mail/rest-mail-server/internal/push"
 	"gorm.io/gorm"
 )
 

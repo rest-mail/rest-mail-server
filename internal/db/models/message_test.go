@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	rmail "github.com/restmail/restmail/internal/mail"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 )
 
 // TestMessage_JSONSerialization_RawSize pins the API wire form of a message:

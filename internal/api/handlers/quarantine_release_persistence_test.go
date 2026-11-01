@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/restmail/restmail/internal/api/middleware"
-	"github.com/restmail/restmail/internal/bootstrap"
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/pipeline/filters"
+	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
+	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline/filters"
 	"gorm.io/gorm"
 )
 

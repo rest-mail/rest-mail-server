@@ -8,7 +8,7 @@ package filters
 import (
 	"testing"
 
-	"github.com/restmail/restmail/internal/config"
+	"github.com/rest-mail/rest-mail-server/internal/config"
 )
 
 // TestSizeCheck_DefaultAlignsWithIngressLimit proves an unconfigured size_check

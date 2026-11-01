@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/restmail/restmail/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
 const importContactsPath = "/api/v1/accounts/{id}/contacts/import"

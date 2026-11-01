@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	dkim "github.com/rest-mail/go-dkim/pkg/dkim"
-	rmail "github.com/restmail/restmail/internal/mail"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 )
 
 // RestmailDeliverAuthConfig is the wiring surface for the OSI-3 server-to-server

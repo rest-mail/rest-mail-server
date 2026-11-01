@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/rest-mail/go-mtasts/pkg/mtasts"
-	"github.com/restmail/restmail/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
 // wireReply reads an SMTP reply as it comes off the wire, one line per

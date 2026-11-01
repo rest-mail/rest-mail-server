@@ -5,7 +5,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
-	"github.com/restmail/restmail/internal/metrics"
+	"github.com/rest-mail/rest-mail-server/internal/metrics"
 )
 
 // TestReceivedTLSFlag pins the Envelope.TLS derivation: a nil ReceivedTLS (non

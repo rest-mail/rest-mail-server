@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	rmime "github.com/restmail/restmail/internal/mime"
-	"github.com/restmail/restmail/internal/pipeline"
+	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 func init() {

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/gateway/connlimiter"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 )
 
 // TestLimitListener_PerIPLimitAndRelease proves the connection limiter still

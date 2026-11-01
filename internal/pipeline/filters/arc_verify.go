@@ -8,7 +8,7 @@ import (
 	"strconv"
 
 	"github.com/rest-mail/go-arc/pkg/arc"
-	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 // arcVerifyFilter verifies ARC (Authenticated Received Chain) headers on inbound

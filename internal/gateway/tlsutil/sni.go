@@ -9,8 +9,8 @@ import (
 	"sync"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/restmail/restmail/internal/metrics"
-	"github.com/restmail/restmail/internal/tlsfiles"
+	"github.com/rest-mail/rest-mail-server/internal/metrics"
+	"github.com/rest-mail/rest-mail-server/internal/tlsfiles"
 )
 
 // SNICertLoader provides SNI-based certificate selection by loading

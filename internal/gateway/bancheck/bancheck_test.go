@@ -3,7 +3,7 @@ package bancheck
 import (
 	"testing"
 
-	"github.com/restmail/restmail/internal/gateway/connlimiter"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 )
 
 func TestWire_NilDatabase_NoOp(t *testing.T) {

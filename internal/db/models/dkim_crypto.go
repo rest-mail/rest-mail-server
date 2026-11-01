@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	restcrypto "github.com/restmail/restmail/internal/crypto"
+	restcrypto "github.com/rest-mail/rest-mail-server/internal/crypto"
 )
 
 // DKIMKeyCipherPrefix marks a DKIM private key value that is encrypted at rest

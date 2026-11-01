@@ -9,8 +9,8 @@
 package observer
 
 import (
-	"github.com/restmail/restmail/internal/metrics"
-	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/metrics"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 	"time"
 )
 

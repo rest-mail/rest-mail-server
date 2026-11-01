@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	rmime "github.com/restmail/restmail/internal/mime"
+	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 )
 
 // TestBuildInboundEmail_PopulatesRawHeaders proves the RESTMAIL inbound path

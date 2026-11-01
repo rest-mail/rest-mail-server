@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/auth"
 )
 
 func refreshWith(t *testing.T, jwt *auth.JWTService, refreshToken string) *auth.Claims {

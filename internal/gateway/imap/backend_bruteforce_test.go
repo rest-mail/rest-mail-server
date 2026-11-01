@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/gateway/apiclient"
-	"github.com/restmail/restmail/internal/gateway/connlimiter"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 )
 
 // TestAuthenticate_PerAccountHardStop verifies the IMAP backend throttles

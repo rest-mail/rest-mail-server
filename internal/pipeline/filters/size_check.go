@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	rmconfig "github.com/restmail/restmail/internal/config"
-	rmime "github.com/restmail/restmail/internal/mime"
-	"github.com/restmail/restmail/internal/pipeline"
+	rmconfig "github.com/rest-mail/rest-mail-server/internal/config"
+	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 type sizeCheckConfig struct {
@@ -49,8 +49,8 @@ func NewSizeCheck(config []byte) (pipeline.Filter, error) {
 	return &sizeCheckFilter{maxSize: maxSize}, nil
 }
 
-func (f *sizeCheckFilter) Name() string               { return "size_check" }
-func (f *sizeCheckFilter) Type() pipeline.FilterType   { return pipeline.FilterTypeAction }
+func (f *sizeCheckFilter) Name() string              { return "size_check" }
+func (f *sizeCheckFilter) Type() pipeline.FilterType { return pipeline.FilterTypeAction }
 
 func (f *sizeCheckFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
 	size := rmime.EstimateSize(email)

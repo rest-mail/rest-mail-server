@@ -4,7 +4,7 @@
 // domain-agnostic and stays in cmd/seed.
 package seed
 
-import "github.com/restmail/restmail/internal/db/models"
+import "github.com/rest-mail/rest-mail-server/internal/db/models"
 
 // Fixture is the domain-scoped test data for one instance. DomainID on the
 // mailboxes/aliases is left zero — cmd/seed fills it after the domain row is

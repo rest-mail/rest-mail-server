@@ -2,13 +2,13 @@ package api
 
 import (
 	"encoding/json"
-	"github.com/restmail/restmail/internal/examplepairs"
+	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
 	"os"
 	"testing"
 	"time"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
-	rmime "github.com/restmail/restmail/internal/mime"
+	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 )
 
 type forwardScenario struct {

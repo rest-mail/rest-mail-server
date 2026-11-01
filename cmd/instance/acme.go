@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/restmail/restmail/internal/acme"
+	"github.com/rest-mail/rest-mail-server/internal/acme"
 )
 
 // acmeIssueCmd is the cert_provider: acme branch of `chore instance:certs:issue`:

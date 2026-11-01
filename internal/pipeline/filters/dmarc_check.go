@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/rest-mail/go-dmarc/pkg/dmarc"
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/mail"
-	"github.com/restmail/restmail/internal/nxdomain"
-	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/mail"
+	"github.com/rest-mail/rest-mail-server/internal/nxdomain"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 // dmarcEvaluation is what dmarc_check found for one message, the row its

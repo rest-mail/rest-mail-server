@@ -3,7 +3,7 @@ package handlers
 import (
 	"testing"
 
-	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 // TestExtractBodyParts_MediaTypeWithParams ensures body-part matching keys off

@@ -13,7 +13,7 @@ import (
 	"time"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
-	"github.com/restmail/restmail"
+	"github.com/rest-mail/rest-mail-server"
 )
 
 func TestDomainCleanupExamplesWithVertrag(t *testing.T) {

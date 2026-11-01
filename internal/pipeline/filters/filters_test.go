@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 // ── Helper ──────────────────────────────────────────────────────────
@@ -165,10 +165,10 @@ func TestHeaderCleanup_RemovesInternalHeaders(t *testing.T) {
 	email := validEmail()
 	email.Headers.Raw = map[string][]string{
 		"X-RestMail-Internal": {"debug-info"},
-		"X-Pipeline-ID":      {"pipe-123"},
-		"X-Queue-ID":         {"queue-456"},
-		"X-Mailer":           {"RestMail/1.0"},
-		"Bcc":                {"hidden@example.com"},
+		"X-Pipeline-ID":       {"pipe-123"},
+		"X-Queue-ID":          {"queue-456"},
+		"X-Mailer":            {"RestMail/1.0"},
+		"Bcc":                 {"hidden@example.com"},
 	}
 
 	result, err := f.Execute(context.Background(), email)

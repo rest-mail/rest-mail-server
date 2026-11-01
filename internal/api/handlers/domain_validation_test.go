@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/restmail/restmail/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
 // TestDomainCreate_NameValidation proves the domain create endpoint rejects

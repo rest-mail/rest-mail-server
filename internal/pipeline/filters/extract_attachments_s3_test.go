@@ -7,9 +7,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/restmail/restmail/internal/attachmentstore"
-	"github.com/restmail/restmail/internal/attachmentstore/s3test"
-	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/attachmentstore"
+	"github.com/rest-mail/rest-mail-server/internal/attachmentstore/s3test"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 func TestExtractAttachmentsS3UsesDeploymentStorage(t *testing.T) {

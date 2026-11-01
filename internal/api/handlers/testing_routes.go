@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/restmail/restmail/internal/api/endpoint"
-	"github.com/restmail/restmail/internal/grants"
+	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
+	"github.com/rest-mail/rest-mail-server/internal/grants"
 )
 
 // TestRouteChecks requires the wildcard capability itself at installation scope.

@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/restmail/restmail/internal/attachmentstore"
-	"github.com/restmail/restmail/internal/attachmentstore/s3test"
-	"github.com/restmail/restmail/internal/config"
+	"github.com/rest-mail/rest-mail-server/internal/attachmentstore"
+	"github.com/rest-mail/rest-mail-server/internal/attachmentstore/s3test"
+	"github.com/rest-mail/rest-mail-server/internal/config"
 )
 
 const attachmentDownloadBytes = "attachment café\r\n"

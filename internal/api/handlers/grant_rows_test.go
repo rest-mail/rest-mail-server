@@ -5,8 +5,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/grants"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/grants"
 )
 
 // accessReads is how many reads mayReach makes to let an account act on its

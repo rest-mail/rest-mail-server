@@ -2,7 +2,7 @@ package api
 
 import (
 	"bytes"
-	"github.com/restmail/restmail/internal/examplepairs"
+	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
 	"os"
 	"testing"
 

@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	rmail "github.com/restmail/restmail/internal/mail"
-	"github.com/restmail/restmail/internal/mtls"
-	"github.com/restmail/restmail/internal/netallow"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	"github.com/rest-mail/rest-mail-server/internal/mtls"
+	"github.com/rest-mail/rest-mail-server/internal/netallow"
 )
 
 // DefaultSMTPMaxMessageSize is the SMTP maximum message size applied when

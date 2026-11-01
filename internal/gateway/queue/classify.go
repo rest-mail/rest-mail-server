@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/rest-mail/go-mtasts/pkg/mtasts"
-	"github.com/restmail/restmail/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
 // ClassifyFailure says what kind of failure a delivery attempt's error was,

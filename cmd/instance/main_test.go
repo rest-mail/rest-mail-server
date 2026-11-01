@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/restmail/restmail/internal/instance"
+	"github.com/rest-mail/rest-mail-server/internal/instance"
 )
 
 // refMode returns the permission bits a plain os.WriteFile(mode) produces under

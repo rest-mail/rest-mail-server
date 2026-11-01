@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/dns"
+	"github.com/rest-mail/rest-mail-server/internal/dns"
 )
 
 func writeTLSACert(t *testing.T, seed byte) string {

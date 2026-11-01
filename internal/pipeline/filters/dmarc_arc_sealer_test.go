@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 // arcEmail builds an inbound message From the given domain, and a context

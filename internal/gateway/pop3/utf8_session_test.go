@@ -13,7 +13,7 @@ import (
 
 	pop3server "github.com/rest-mail/go-pop3/pkg/pop3/server"
 
-	"github.com/restmail/restmail/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 )
 
 const utf8Raw = "From: Jörg <joerg@bücher.example>\r\nSubject: Grüße\r\n\r\nHallo, Jörg.\r\n"

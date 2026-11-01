@@ -12,7 +12,7 @@ import (
 
 	yaml "go.yaml.in/yaml/v2"
 
-	"github.com/restmail/restmail"
+	"github.com/rest-mail/rest-mail-server"
 )
 
 // Every operation registered with endpoint.Register is described from its code, and that

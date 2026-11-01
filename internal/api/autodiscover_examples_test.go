@@ -2,7 +2,7 @@ package api
 
 import (
 	"encoding/json"
-	"github.com/restmail/restmail/internal/examplepairs"
+	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
 	"mime"
 	"net/http"
 	"net/http/httptest"
@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/restmail/restmail/internal/api/handlers"
+	"github.com/rest-mail/rest-mail-server/internal/api/handlers"
 )
 
 const autodiscoverExamplePath = "/autodiscover/autodiscover.xml"

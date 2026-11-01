@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 // TestHeaderCleanup_DoesNotMutateOriginal proves header_cleanup removes internal

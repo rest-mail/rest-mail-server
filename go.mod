@@ -1,4 +1,4 @@
-module github.com/restmail/restmail
+module github.com/rest-mail/rest-mail-server
 
 go 1.25.0
 

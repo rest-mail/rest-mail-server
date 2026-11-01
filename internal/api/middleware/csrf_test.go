@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/auth"
 )
 
 // mintAccessCookie returns a valid restmail_access cookie for a fresh mailbox

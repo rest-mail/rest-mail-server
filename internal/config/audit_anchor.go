@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	rmail "github.com/restmail/restmail/internal/mail"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 )
 
 func (cfg *Config) loadAuditAnchorEmail() error {

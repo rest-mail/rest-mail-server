@@ -19,7 +19,7 @@ import (
 	"net/textproto"
 	"strings"
 
-	"github.com/restmail/restmail/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 )
 
 // dateLayout is the RFC 5322 date-time form used in the Date header.

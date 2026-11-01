@@ -10,7 +10,7 @@ package filters
 import (
 	"testing"
 
-	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 // TestSieveRedirect_BareCancelsLocalKeep: a bare `redirect` forwards the message

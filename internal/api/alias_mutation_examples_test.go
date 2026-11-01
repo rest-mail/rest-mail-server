@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"database/sql/driver"
 	"encoding/json"
-	"github.com/restmail/restmail/internal/examplepairs"
+	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
-	"github.com/restmail/restmail"
+	"github.com/rest-mail/rest-mail-server"
 )
 
 var aliasMutationPaths = map[string]string{"createAlias": "/api/v1/admin/aliases", "updateAlias": "/api/v1/admin/aliases/{id}"}

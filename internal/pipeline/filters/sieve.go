@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/rest-mail/go-sieve/pkg/sieve"
-	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 // SieveRedirectPolicy governs where a Sieve `redirect` action may send mail

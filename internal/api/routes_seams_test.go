@@ -3,9 +3,9 @@ package api
 import (
 	"sync"
 
-	"github.com/restmail/restmail/internal/api/handlers"
-	"github.com/restmail/restmail/internal/api/middleware"
-	"github.com/restmail/restmail/internal/grants"
+	"github.com/rest-mail/rest-mail-server/internal/api/handlers"
+	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
+	"github.com/rest-mail/rest-mail-server/internal/grants"
 )
 
 // The routes here are tested on a database that fails every query, to test the

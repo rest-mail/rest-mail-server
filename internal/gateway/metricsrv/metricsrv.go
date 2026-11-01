@@ -22,12 +22,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/restmail/restmail/internal/netallow"
+	"github.com/rest-mail/rest-mail-server/internal/netallow"
 
 	// Blank import guarantees internal/metrics' init() runs so its collectors
 	// are registered in the default registry even if a gateway happens not to
 	// reference them directly — the handler is then always meaningful.
-	_ "github.com/restmail/restmail/internal/metrics"
+	_ "github.com/rest-mail/rest-mail-server/internal/metrics"
 )
 
 // Handler returns the HTTP handler that serves the process's default Prometheus

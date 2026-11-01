@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/restmail/restmail/internal/attachmentstore"
-	"github.com/restmail/restmail/internal/attachmentstore/s3test"
-	"github.com/restmail/restmail/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/attachmentstore"
+	"github.com/rest-mail/rest-mail-server/internal/attachmentstore/s3test"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
 func TestS3AttachmentMigrationPreservesFilesAndResumes(t *testing.T) {

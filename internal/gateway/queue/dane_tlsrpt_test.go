@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/restmail/restmail/internal/dane"
-	"github.com/restmail/restmail/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/dane"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
 // A DANE session is reported with policy type tlsa and its TLSA records as the policy

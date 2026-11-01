@@ -15,11 +15,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/restmail/restmail/internal/config"
-	"github.com/restmail/restmail/internal/crypto"
-	"github.com/restmail/restmail/internal/db"
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/outbound"
+	"github.com/rest-mail/rest-mail-server/internal/config"
+	"github.com/rest-mail/rest-mail-server/internal/crypto"
+	"github.com/rest-mail/rest-mail-server/internal/db"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/outbound"
 	"gorm.io/gorm"
 )
 

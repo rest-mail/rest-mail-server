@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/rest-mail/go-spf/pkg/spf"
-	"github.com/restmail/restmail/internal/mail"
-	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/mail"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 // spfCheckFilter checks the sending host against the SPF policy (RFC 7208) of

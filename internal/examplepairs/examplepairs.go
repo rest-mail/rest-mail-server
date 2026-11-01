@@ -10,7 +10,7 @@ import (
 	"fmt"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
-	"github.com/restmail/restmail"
+	"github.com/rest-mail/rest-mail-server"
 )
 
 //go:embed example-matrix.json

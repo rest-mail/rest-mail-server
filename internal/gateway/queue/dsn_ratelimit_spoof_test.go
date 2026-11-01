@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/config"
-	rmdb "github.com/restmail/restmail/internal/db"
-	"github.com/restmail/restmail/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/config"
+	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"gorm.io/gorm"
 )
 
@@ -94,7 +94,7 @@ func TestRecentDSNCount_IgnoresSpoofedInboundMail(t *testing.T) {
 		gdb.Exec("DELETE FROM messages WHERE mailbox_id = ?", mailboxID)
 	})
 
-	insert(true)          // one genuine, locally generated DSN
+	insert(true) // one genuine, locally generated DSN
 	for i := 0; i < 5; i++ {
 		insert(false) // five spoofed inbound messages claiming mailer-daemon@
 	}

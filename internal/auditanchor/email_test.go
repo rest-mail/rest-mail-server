@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/audit"
-	"github.com/restmail/restmail/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/audit"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
 var testNow = time.Date(2026, 10, 28, 9, 0, 0, 0, time.UTC)

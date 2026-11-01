@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/restmail/restmail/internal/instance"
+	"github.com/rest-mail/rest-mail-server/internal/instance"
 )
 
 // DefaultConfig is used when no config is named anywhere.

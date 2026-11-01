@@ -5,10 +5,10 @@ import (
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
 
-	"github.com/restmail/restmail"
-	"github.com/restmail/restmail/internal/api/endpoint"
-	"github.com/restmail/restmail/internal/api/middleware"
-	"github.com/restmail/restmail/internal/api/respond"
+	"github.com/rest-mail/rest-mail-server"
+	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
+	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
+	"github.com/rest-mail/rest-mail-server/internal/api/respond"
 )
 
 // What the API's middleware adds to every operation it wraps, for the operations registered

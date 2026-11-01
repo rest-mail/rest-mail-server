@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/restmail/restmail/internal/bootstrap"
+	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
 	"golang.org/x/crypto/ssh"
 )
 

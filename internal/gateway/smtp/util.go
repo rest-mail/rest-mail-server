@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"strings"
 
-	rmime "github.com/restmail/restmail/internal/mime"
-	"github.com/restmail/restmail/internal/pipeline"
+	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 // maskEmail redacts the local-part of an email address for logging (OSI-5):

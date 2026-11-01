@@ -7,7 +7,7 @@ import (
 
 	goimap "github.com/rest-mail/go-imap/pkg/imap"
 
-	"github.com/restmail/restmail/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 )
 
 // TestToMessage_ClampsOutOfRangeUID proves the seq/UID mapping uses the same

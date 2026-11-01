@@ -3,7 +3,7 @@ package queue
 import (
 	"testing"
 
-	"github.com/restmail/restmail/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
 // A queued message is sent as the domain its row names when the envelope

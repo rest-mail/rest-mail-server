@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 )
 
 // storedRawWithAttachment is a pristine multipart/mixed message carrying a file

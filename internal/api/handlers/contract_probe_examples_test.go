@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/restmail/restmail/internal/config"
+	"github.com/rest-mail/rest-mail-server/internal/config"
 )
 
 // sendProbe sends one of the spec's requests to h and recovers a nil

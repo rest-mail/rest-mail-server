@@ -1372,7 +1372,7 @@ jobs:
     steps:
       - name: Download InstantMailCheck
         run: |
-          curl -L -o instantmailcheck https://github.com/restmail/restmail/releases/latest/download/instantmailcheck-linux-amd64
+          curl -L -o instantmailcheck https://github.com/rest-mail/rest-mail-server/releases/latest/download/instantmailcheck-linux-amd64
           chmod +x instantmailcheck
       
       - name: Run Health Check (Tier 1)

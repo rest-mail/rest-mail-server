@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
-	"github.com/restmail/restmail"
+	"github.com/rest-mail/rest-mail-server"
 )
 
 // openapi-example.json is written as go-oapifly writes an example file, so a sync of it

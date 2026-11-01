@@ -1,8 +1,8 @@
 package pop3
 
 import (
-	"github.com/restmail/restmail/internal/gateway/apiclient"
-	"github.com/restmail/restmail/internal/gateway/rawmsg"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/rawmsg"
 )
 
 // buildRawMessage renders a stored message as RFC 5322 bytes for RETR and TOP.

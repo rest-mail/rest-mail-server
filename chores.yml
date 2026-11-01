@@ -34,7 +34,7 @@ env:
 # zone records from these values to simulate a real mail server zone.
 # ════════════════════════════════════════════════════════
 vars:
-  GO_MODULE: github.com/restmail/restmail
+  GO_MODULE: github.com/rest-mail/rest-mail-server
 
   # Which config to drive. A CONFIG is a runnable definition living at
   # config/<CONFIG>/ (manifest.yml, config.env, secrets.env); `chore config:render`

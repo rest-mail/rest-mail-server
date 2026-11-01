@@ -13,7 +13,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
-	"github.com/restmail/restmail/internal/mtls/mtlstest"
+	"github.com/rest-mail/rest-mail-server/internal/mtls/mtlstest"
 )
 
 func replace(t *testing.T, path string, data []byte) {

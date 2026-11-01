@@ -11,8 +11,8 @@ import (
 	"time"
 
 	mtasts "github.com/rest-mail/go-mtasts/pkg/mtasts"
-	"github.com/restmail/restmail/internal/db/models"
-	rmail "github.com/restmail/restmail/internal/mail"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 )
 
 // The TLS-RPT policy types and result types REST Mail reports (RFC 8460

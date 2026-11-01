@@ -21,9 +21,9 @@ ARG VERSION=dev
 ARG COMMIT=
 RUN COMMIT=${COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")} \
  && BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
- && LDFLAGS="-X github.com/restmail/restmail/internal/version.Version=${VERSION} \
-             -X github.com/restmail/restmail/internal/version.Commit=${COMMIT} \
-             -X github.com/restmail/restmail/internal/version.BuildDate=${BUILD_DATE}" \
+ && LDFLAGS="-X github.com/rest-mail/rest-mail-server/internal/version.Version=${VERSION} \
+             -X github.com/rest-mail/rest-mail-server/internal/version.Commit=${COMMIT} \
+             -X github.com/rest-mail/rest-mail-server/internal/version.BuildDate=${BUILD_DATE}" \
  && CGO_ENABLED=0 GOOS=linux go build -ldflags "${LDFLAGS}" -o /bin/restmail-api ./cmd/api
 # NOTE: cmd/seed is deliberately NOT built into any shipped image. It creates
 # fixture accounts with well-known passwords (mailbox `password123`, and an

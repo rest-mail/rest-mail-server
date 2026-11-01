@@ -13,7 +13,7 @@ import (
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
 
-	"github.com/restmail/restmail/internal/api/endpoint"
+	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 )
 
 func contractDocument(t *testing.T, generator *oapifly.Generator) map[string]interface{} {

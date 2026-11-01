@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/audit"
-	"github.com/restmail/restmail/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/audit"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
 // endpoint is a TLS anchor receiver answering every POST with status.

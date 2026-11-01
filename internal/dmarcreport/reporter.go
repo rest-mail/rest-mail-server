@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"github.com/rest-mail/go-dmarc/pkg/dmarc"
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/version"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/version"
 	"gorm.io/gorm"
 )
 

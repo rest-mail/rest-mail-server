@@ -10,14 +10,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/audit"
-	"github.com/restmail/restmail/internal/auth"
-	"github.com/restmail/restmail/internal/bootstrap"
-	"github.com/restmail/restmail/internal/config"
-	rmdb "github.com/restmail/restmail/internal/db"
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/gateway/apiclient"
-	imapgw "github.com/restmail/restmail/internal/gateway/imap"
+	"github.com/rest-mail/rest-mail-server/internal/audit"
+	"github.com/rest-mail/rest-mail-server/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
+	"github.com/rest-mail/rest-mail-server/internal/config"
+	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+	imapgw "github.com/rest-mail/rest-mail-server/internal/gateway/imap"
 	"gorm.io/gorm"
 )
 
