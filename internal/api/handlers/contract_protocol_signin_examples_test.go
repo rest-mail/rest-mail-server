@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/restmail/restmail/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/auth"
 )
 
 // The two refused bodies reach ProtocolSignIn with a valid Basic principal,

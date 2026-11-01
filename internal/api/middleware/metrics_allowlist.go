@@ -3,7 +3,7 @@ package middleware
 import (
 	"net/http"
 
-	"github.com/restmail/restmail/internal/netallow"
+	"github.com/rest-mail/rest-mail-server/internal/netallow"
 )
 
 // MetricsAllowlistConfig configures the /metrics network gate (OSI-12).

@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 // Recipient checks and both inbound delivery APIs must resolve the same hosted

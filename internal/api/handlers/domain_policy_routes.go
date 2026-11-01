@@ -4,8 +4,8 @@ import (
 	"net/http"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
-	"github.com/restmail/restmail/internal/api/endpoint"
-	"github.com/restmail/restmail/internal/api/middleware"
+	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
+	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 )
 
 // DomainPolicyRouteChecks preserves domain-scoped reads/writes and installation-wide checks.

@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/restmail/restmail/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
 // APNs hosts, by the environment a device's token comes from.

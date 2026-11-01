@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	rmconfig "github.com/restmail/restmail/internal/config"
-	"github.com/restmail/restmail/internal/pipeline"
+	rmconfig "github.com/rest-mail/rest-mail-server/internal/config"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 // JSSidecar is the JS filter sidecar the javascript filter runs its scripts on

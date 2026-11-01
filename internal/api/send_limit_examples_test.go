@@ -10,10 +10,10 @@ import (
 	"time"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
-	"github.com/restmail/restmail/internal/config"
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/examplepairs"
-	"github.com/restmail/restmail/internal/sendlimits"
+	"github.com/rest-mail/rest-mail-server/internal/config"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
+	"github.com/rest-mail/rest-mail-server/internal/sendlimits"
 )
 
 // The send limit pairs that need a two-factor session run the real router, with

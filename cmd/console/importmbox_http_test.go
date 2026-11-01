@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	apitypes "github.com/restmail/restmail/internal/api/types"
+	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 )
 
 func TestImportMboxPublicAPIPreservesSourceMetadata(t *testing.T) {

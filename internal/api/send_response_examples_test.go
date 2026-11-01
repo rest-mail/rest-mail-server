@@ -2,15 +2,15 @@ package api
 
 import (
 	"encoding/json"
-	"github.com/restmail/restmail/internal/examplepairs"
+	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
 	"net/http"
 	"os"
 	"testing"
 	"time"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/grants"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/grants"
 )
 
 // Response findings can be fixed independently of #625's undecided request

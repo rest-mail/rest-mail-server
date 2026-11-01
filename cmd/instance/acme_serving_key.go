@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/restmail/restmail/internal/acme"
+	"github.com/rest-mail/rest-mail-server/internal/acme"
 )
 
 // Both files absent means first issuance. Any incomplete or damaged existing

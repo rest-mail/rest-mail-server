@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 // adapterFilter wraps an ExternalAdapter as a pipeline Filter.
@@ -13,8 +13,8 @@ type adapterFilter struct {
 	fallbackAction pipeline.Action // what to do if service unavailable
 }
 
-func (f *adapterFilter) Name() string               { return f.adapter.Name() }
-func (f *adapterFilter) Type() pipeline.FilterType   { return pipeline.FilterTypeAction }
+func (f *adapterFilter) Name() string              { return f.adapter.Name() }
+func (f *adapterFilter) Type() pipeline.FilterType { return pipeline.FilterTypeAction }
 
 func (f *adapterFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
 	name := f.adapter.Name()

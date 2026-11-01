@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/rest-mail/go-dkim/pkg/dkim"
-	"github.com/restmail/restmail/internal/api/endpoint"
+	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	"gorm.io/gorm"
 )
 

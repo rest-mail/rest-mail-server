@@ -3,7 +3,7 @@ package api
 import (
 	"bytes"
 	"fmt"
-	"github.com/restmail/restmail/internal/examplepairs"
+	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -11,8 +11,8 @@ import (
 	"testing"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
-	"github.com/restmail/restmail"
-	"github.com/restmail/restmail/internal/grants"
+	"github.com/rest-mail/rest-mail-server"
+	"github.com/rest-mail/rest-mail-server/internal/grants"
 )
 
 const grantRemovalPath = "/api/v1/admin/grants/{id}"

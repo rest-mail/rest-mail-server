@@ -11,7 +11,7 @@ import (
 	"time"
 
 	smithyhttp "github.com/aws/smithy-go/transport/http"
-	"github.com/restmail/restmail/internal/config"
+	"github.com/rest-mail/rest-mail-server/internal/config"
 )
 
 // Run by scripts/garage-attachment-test.py against the actual Garage image.

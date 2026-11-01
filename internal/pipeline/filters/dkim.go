@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/rest-mail/go-dkim/pkg/dkim"
-	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 // dkimVerifyFilter verifies DKIM signatures on inbound messages. It records one

@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/rest-mail/go-mtasts/pkg/mtasts"
-	"github.com/restmail/restmail/internal/dane"
+	"github.com/rest-mail/rest-mail-server/internal/dane"
 )
 
 // eeRecordFor is a DANE-EE SPKI SHA-256 record (3 1 1) for a test peer's certificate.

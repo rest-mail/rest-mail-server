@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/restmail/restmail/internal/gateway/apiclient"
-	"github.com/restmail/restmail/internal/gateway/rawmsg"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/rawmsg"
 )
 
 // TestFetch_DowngradesUTF8Headers proves FETCH hands a client that has not

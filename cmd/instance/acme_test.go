@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/acme"
+	"github.com/rest-mail/rest-mail-server/internal/acme"
 )
 
 // TestWriteServingPair proves the ACME provider lands the pair where the manual

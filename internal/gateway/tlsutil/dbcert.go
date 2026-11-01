@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/restmail/restmail/internal/crypto"
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/mail"
-	"github.com/restmail/restmail/internal/metrics"
+	"github.com/rest-mail/rest-mail-server/internal/crypto"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/mail"
+	"github.com/rest-mail/rest-mail-server/internal/metrics"
 	"gorm.io/gorm"
 )
 

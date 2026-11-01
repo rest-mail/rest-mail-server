@@ -14,7 +14,7 @@ import (
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
 	"github.com/go-chi/chi/v5"
-	"github.com/restmail/restmail/internal/api/endpoint"
+	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 )
 
 // This exercises the real download registration and Served writer together.

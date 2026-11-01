@@ -13,13 +13,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/api/middleware"
-	"github.com/restmail/restmail/internal/auth"
-	"github.com/restmail/restmail/internal/config"
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/grants"
-	"github.com/restmail/restmail/internal/pipeline"
-	"github.com/restmail/restmail/internal/pipeline/filters"
+	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
+	"github.com/rest-mail/rest-mail-server/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/config"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/grants"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline/filters"
 )
 
 var pipelineTestingPaths = map[string]string{"testFilter": "/api/v1/admin/pipelines/test-filter", "testPipeline": "/api/v1/admin/pipelines/test"}

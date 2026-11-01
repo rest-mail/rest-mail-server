@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/rest-mail/go-dkim/pkg/dkim"
-	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 // stubDKIM makes dkim_verify see results as the verdicts on the message's

@@ -6,7 +6,7 @@ import (
 	"net"
 	"testing"
 
-	"github.com/restmail/restmail/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
 // fakeResolver answers MX and address lookups from maps; a name in neither is

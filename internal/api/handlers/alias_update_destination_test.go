@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	rmdb "github.com/restmail/restmail/internal/db"
-	"github.com/restmail/restmail/internal/db/models"
+	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"gorm.io/gorm"
 )
 

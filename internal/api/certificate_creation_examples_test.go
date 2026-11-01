@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/restmail/restmail/internal/examplepairs"
+	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,8 +16,8 @@ import (
 	"time"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
-	"github.com/restmail/restmail"
-	rmcrypto "github.com/restmail/restmail/internal/crypto"
+	"github.com/rest-mail/rest-mail-server"
+	rmcrypto "github.com/rest-mail/rest-mail-server/internal/crypto"
 )
 
 func certificateCreationRequestBody(t *testing.T, name string, body []byte) []byte {

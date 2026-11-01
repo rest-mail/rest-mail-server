@@ -2,7 +2,7 @@ package api
 
 import (
 	"fmt"
-	"github.com/restmail/restmail/internal/examplepairs"
+	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
-	"github.com/restmail/restmail"
+	"github.com/rest-mail/rest-mail-server"
 )
 
 var messageCollectionReadPaths = map[string]string{

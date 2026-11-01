@@ -1,7 +1,7 @@
 package api
 
 import (
-	"github.com/restmail/restmail/internal/examplepairs"
+	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,7 +11,7 @@ import (
 	"time"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
-	"github.com/restmail/restmail"
+	"github.com/rest-mail/rest-mail-server"
 )
 
 var personalRemovalPaths = map[string]string{"deleteContact": "/api/v1/accounts/{id}/contacts/{cid}", "deleteFolder": "/api/v1/accounts/{id}/folders/{folder}"}

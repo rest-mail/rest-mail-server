@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/pipeline"
-	"github.com/restmail/restmail/internal/pipeline/filters"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline/filters"
 )
 
 func sieveStep(script string) pipeline.FilterConfig {

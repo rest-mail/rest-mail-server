@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/restmail/restmail/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
 // Keep the server ceiling separate from each fixture's actor permissions.

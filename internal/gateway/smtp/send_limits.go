@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/db/repositories"
-	"github.com/restmail/restmail/internal/sendlimits"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
+	"github.com/rest-mail/rest-mail-server/internal/sendlimits"
 )
 
 // SubmissionBudget is implemented by the production DB store. A temporary

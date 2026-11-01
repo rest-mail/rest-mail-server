@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/restmail/restmail/internal/mailimport"
+	"github.com/rest-mail/rest-mail-server/internal/mailimport"
 )
 
 func TestImportIMAPStartTLSRouting(t *testing.T) {

@@ -23,14 +23,14 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/restmail/restmail/internal/api/endpoint"
-	"github.com/restmail/restmail/internal/api/middleware"
-	"github.com/restmail/restmail/internal/audit"
-	"github.com/restmail/restmail/internal/auth"
-	rmdb "github.com/restmail/restmail/internal/db"
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/db/repositories"
-	"github.com/restmail/restmail/internal/push"
+	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
+	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
+	"github.com/rest-mail/rest-mail-server/internal/audit"
+	"github.com/rest-mail/rest-mail-server/internal/auth"
+	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
+	"github.com/rest-mail/rest-mail-server/internal/push"
 	"gorm.io/gorm"
 )
 

@@ -1,6 +1,6 @@
 package rawmsg
 
-import rmail "github.com/restmail/restmail/internal/mail"
+import rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 
 // Downgrade rewrites the top-level header block of a stored message so it
 // carries only ASCII, for a POP3 or IMAP client that has not enabled UTF-8.

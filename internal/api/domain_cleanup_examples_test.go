@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/auth"
-	"github.com/restmail/restmail/internal/config"
+	"github.com/rest-mail/rest-mail-server/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/config"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"

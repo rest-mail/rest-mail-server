@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 // TestTransportLabel pins the tls|plaintext|"" derivation: a nil flag (non

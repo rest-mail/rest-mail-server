@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	apitypes "github.com/restmail/restmail/internal/api/types"
-	rmail "github.com/restmail/restmail/internal/mail"
+	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 )
 
 type Visit func(source string, message apitypes.ImportMessageBody) error

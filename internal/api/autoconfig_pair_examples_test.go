@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"errors"
-	"github.com/restmail/restmail/internal/examplepairs"
+	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
 	"mime"
 	"net/http"
 	"net/http/httptest"
@@ -22,8 +22,8 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	"github.com/restmail/restmail/internal/auth"
-	"github.com/restmail/restmail/internal/config"
+	"github.com/rest-mail/rest-mail-server/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/config"
 )
 
 type autoconfigExampleConnection struct {

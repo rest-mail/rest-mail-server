@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/mtls"
-	"github.com/restmail/restmail/internal/mtls/mtlstest"
+	"github.com/rest-mail/rest-mail-server/internal/mtls"
+	"github.com/rest-mail/rest-mail-server/internal/mtls/mtlstest"
 )
 
 func writeFile(t *testing.T, dir, name string, data []byte) string {

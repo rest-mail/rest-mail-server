@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 type duplicateConfig struct {
@@ -59,7 +59,7 @@ func NewDuplicate(config []byte) (pipeline.Filter, error) {
 	}, nil
 }
 
-func (f *duplicateFilter) Name() string             { return "duplicate" }
+func (f *duplicateFilter) Name() string              { return "duplicate" }
 func (f *duplicateFilter) Type() pipeline.FilterType { return pipeline.FilterTypeAction }
 
 func (f *duplicateFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {

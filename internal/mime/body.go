@@ -3,7 +3,7 @@ package mime
 import (
 	"strings"
 
-	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 // TextAndHTML walks a parsed body tree and returns the first text/plain and the

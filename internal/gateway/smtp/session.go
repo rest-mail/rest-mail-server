@@ -17,11 +17,11 @@ import (
 	gosmtp "github.com/rest-mail/go-smtp/pkg/smtp"
 	smtpserver "github.com/rest-mail/go-smtp/pkg/smtp/server"
 
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/gateway/apiclient"
-	"github.com/restmail/restmail/internal/gateway/connlimiter"
-	rmail "github.com/restmail/restmail/internal/mail"
-	"github.com/restmail/restmail/internal/ratelimit"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	"github.com/rest-mail/rest-mail-server/internal/ratelimit"
 )
 
 // defaultMaxMessageSize is the maximum accepted message size, in bytes, when

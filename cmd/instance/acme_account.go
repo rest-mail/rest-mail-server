@@ -12,7 +12,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/restmail/restmail/internal/acme"
+	"github.com/rest-mail/rest-mail-server/internal/acme"
 )
 
 // loadACMEAccountKey keeps the account identity across instance command runs.

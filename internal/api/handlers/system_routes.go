@@ -5,8 +5,8 @@ import (
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
 
-	"github.com/restmail/restmail/internal/api/endpoint"
-	"github.com/restmail/restmail/internal/version"
+	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
+	"github.com/rest-mail/rest-mail-server/internal/version"
 )
 
 // APIRoot is the body of GET /api: what this API is, and where a client starts. Its fields

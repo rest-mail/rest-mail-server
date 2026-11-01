@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 // simplePlainTextMessage is a minimal RFC 2822 text/plain email.

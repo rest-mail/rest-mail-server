@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	rmime "github.com/restmail/restmail/internal/mime"
-	"github.com/restmail/restmail/internal/pipeline"
+	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 func init() {
@@ -37,11 +37,11 @@ type rspamdAdapter struct {
 
 // rspamdResponse represents the relevant fields from rspamd's /checkv2 JSON response.
 type rspamdResponse struct {
-	Action        string                   `json:"action"`
-	Score         float64                  `json:"score"`
-	RequiredScore float64                  `json:"required_score"`
-	Symbols       map[string]rspamdSymbol  `json:"symbols"`
-	MessageID     string                   `json:"message-id"`
+	Action        string                  `json:"action"`
+	Score         float64                 `json:"score"`
+	RequiredScore float64                 `json:"required_score"`
+	Symbols       map[string]rspamdSymbol `json:"symbols"`
+	MessageID     string                  `json:"message-id"`
 }
 
 // rspamdSymbol represents a single symbol returned by rspamd.

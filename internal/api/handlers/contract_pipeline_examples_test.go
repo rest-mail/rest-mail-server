@@ -9,7 +9,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/restmail/restmail/internal/pipeline/filters"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline/filters"
 )
 
 // createPipeline's direction_missing and filters_missing requests (#386) are

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/restmail/restmail"
-	"github.com/restmail/restmail/internal/auth"
+	"github.com/rest-mail/rest-mail-server"
+	"github.com/rest-mail/rest-mail-server/internal/auth"
 	yaml "go.yaml.in/yaml/v2"
 )
 

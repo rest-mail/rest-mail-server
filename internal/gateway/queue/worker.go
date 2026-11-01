@@ -20,12 +20,12 @@ import (
 	"time"
 
 	"github.com/rest-mail/go-mtasts/pkg/mtasts"
-	"github.com/restmail/restmail/internal/dane"
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/db/repositories"
-	rmail "github.com/restmail/restmail/internal/mail"
-	"github.com/restmail/restmail/internal/metrics"
-	"github.com/restmail/restmail/internal/outbound"
+	"github.com/rest-mail/rest-mail-server/internal/dane"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	"github.com/rest-mail/rest-mail-server/internal/metrics"
+	"github.com/rest-mail/rest-mail-server/internal/outbound"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )

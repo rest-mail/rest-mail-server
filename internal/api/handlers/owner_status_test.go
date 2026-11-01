@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/bootstrap"
-	"github.com/restmail/restmail/internal/version"
+	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
+	"github.com/rest-mail/rest-mail-server/internal/version"
 	"golang.org/x/crypto/ssh"
 )
 

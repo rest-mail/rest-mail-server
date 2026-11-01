@@ -6,7 +6,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
-	"github.com/restmail/restmail/internal/examplepairs"
+	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -21,11 +21,11 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	"github.com/restmail/restmail"
-	"github.com/restmail/restmail/internal/api/middleware"
-	"github.com/restmail/restmail/internal/auth"
-	"github.com/restmail/restmail/internal/config"
-	"github.com/restmail/restmail/internal/grants"
+	"github.com/rest-mail/rest-mail-server"
+	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
+	"github.com/rest-mail/rest-mail-server/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/config"
+	"github.com/rest-mail/rest-mail-server/internal/grants"
 )
 
 var domainPolicyDeletePaths = map[string]string{

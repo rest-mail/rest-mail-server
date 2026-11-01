@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/gateway/apiclient"
-	"github.com/restmail/restmail/internal/gateway/connlimiter"
-	rmail "github.com/restmail/restmail/internal/mail"
-	"github.com/restmail/restmail/internal/mtls/mtlstest"
-	"github.com/restmail/restmail/internal/outbound"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	"github.com/rest-mail/rest-mail-server/internal/mtls/mtlstest"
+	"github.com/rest-mail/rest-mail-server/internal/outbound"
 )
 
 // mockBackend is an in-memory Backend: it decides recipient locality and

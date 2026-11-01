@@ -3,7 +3,7 @@ package handlers
 import (
 	"testing"
 
-	"github.com/restmail/restmail/internal/config"
+	"github.com/rest-mail/rest-mail-server/internal/config"
 )
 
 // The test endpoints must fail closed for any production-like ENVIRONMENT,

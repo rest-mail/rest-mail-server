@@ -9,8 +9,8 @@ import (
 
 	"github.com/antimatter-studios/go-oapifly"
 
-	"github.com/restmail/restmail/internal/grants"
-	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/grants"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 type loginRequest struct {

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	proxyproto "github.com/pires/go-proxyproto"
-	smtpgw "github.com/restmail/restmail/internal/gateway/smtp"
+	smtpgw "github.com/rest-mail/rest-mail-server/internal/gateway/smtp"
 )
 
 // --- PROXY protocol v1 header parsing tests ---

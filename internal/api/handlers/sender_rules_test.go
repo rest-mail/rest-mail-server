@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/restmail/restmail/internal/api/respond"
-	"github.com/restmail/restmail/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/api/respond"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
 // Adding a sender that is already on a domain's allow or block list is a

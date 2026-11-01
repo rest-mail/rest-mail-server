@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/restmail/restmail/internal/mail"
+	"github.com/rest-mail/rest-mail-server/internal/mail"
 )
 
 // MTASTSPolicy stores an MTA-STS (RFC 8461) policy for a domain.

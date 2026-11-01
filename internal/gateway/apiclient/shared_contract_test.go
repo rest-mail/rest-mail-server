@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/restmail/restmail/internal/api/endpoint"
-	apitypes "github.com/restmail/restmail/internal/api/types"
+	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
+	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 )
 
 func TestProtocolSignInKeepsTransportCredentialOutOfJSON(t *testing.T) {

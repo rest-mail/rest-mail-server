@@ -9,8 +9,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/restmail/restmail/internal/auth"
-	"github.com/restmail/restmail/internal/config"
+	"github.com/rest-mail/rest-mail-server/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/config"
 )
 
 // Every route the router serves is registered with endpoint.Register, which describes it by

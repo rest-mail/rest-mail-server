@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/restmail/restmail/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
 // Forwarding built the note and the "Forwarded message" header into the text

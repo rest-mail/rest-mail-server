@@ -5,12 +5,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/db/repositories"
-	"github.com/restmail/restmail/internal/grants"
-	rmail "github.com/restmail/restmail/internal/mail"
-	"github.com/restmail/restmail/internal/outbound"
-	"github.com/restmail/restmail/internal/sendlimits"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
+	"github.com/rest-mail/rest-mail-server/internal/grants"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	"github.com/rest-mail/rest-mail-server/internal/outbound"
+	"github.com/rest-mail/rest-mail-server/internal/sendlimits"
 	"gorm.io/gorm"
 )
 

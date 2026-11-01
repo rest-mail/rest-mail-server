@@ -9,7 +9,7 @@ import (
 
 	arc "github.com/rest-mail/go-arc/pkg/arc"
 	dkim "github.com/rest-mail/go-dkim/pkg/dkim"
-	"github.com/restmail/restmail/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
 // A message a Sieve redirect forwards leaves DKIM-signed and then ARC-sealed by the

@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/restmail/restmail/internal/acme"
+	"github.com/rest-mail/rest-mail-server/internal/acme"
 )
 
 // renewACME allows periodic callers to avoid unnecessary CA orders. A zero

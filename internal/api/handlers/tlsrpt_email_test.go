@@ -18,8 +18,8 @@ import (
 	"time"
 
 	"github.com/rest-mail/go-dkim/pkg/dkim"
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 func tlsReportEmail(t *testing.T, payload []byte, compressed bool) string {

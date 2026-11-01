@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 type headerValidateConfig struct {
@@ -35,7 +35,7 @@ func NewHeaderValidate(config []byte) (pipeline.Filter, error) {
 	return &headerValidateFilter{cfg: cfg}, nil
 }
 
-func (f *headerValidateFilter) Name() string             { return "header_validate" }
+func (f *headerValidateFilter) Name() string              { return "header_validate" }
 func (f *headerValidateFilter) Type() pipeline.FilterType { return pipeline.FilterTypeAction }
 
 func (f *headerValidateFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {

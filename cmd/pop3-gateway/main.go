@@ -11,15 +11,15 @@ import (
 
 	pop3server "github.com/rest-mail/go-pop3/pkg/pop3/server"
 
-	"github.com/restmail/restmail/internal/config"
-	"github.com/restmail/restmail/internal/db"
-	"github.com/restmail/restmail/internal/gateway/apiclient"
-	"github.com/restmail/restmail/internal/gateway/bancheck"
-	"github.com/restmail/restmail/internal/gateway/connlimiter"
-	"github.com/restmail/restmail/internal/gateway/metricsrv"
-	"github.com/restmail/restmail/internal/gateway/pop3"
-	"github.com/restmail/restmail/internal/gateway/tlsutil"
-	"github.com/restmail/restmail/internal/grants"
+	"github.com/rest-mail/rest-mail-server/internal/config"
+	"github.com/rest-mail/rest-mail-server/internal/db"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/bancheck"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/metricsrv"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/pop3"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/tlsutil"
+	"github.com/rest-mail/rest-mail-server/internal/grants"
 )
 
 func main() {

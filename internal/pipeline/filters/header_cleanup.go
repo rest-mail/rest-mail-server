@@ -3,7 +3,7 @@ package filters
 import (
 	"context"
 
-	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 // headerCleanupFilter removes internal headers and adds standard outbound headers.
@@ -17,7 +17,7 @@ func NewHeaderCleanup(_ []byte) (pipeline.Filter, error) {
 	return &headerCleanupFilter{}, nil
 }
 
-func (f *headerCleanupFilter) Name() string             { return "header_cleanup" }
+func (f *headerCleanupFilter) Name() string              { return "header_cleanup" }
 func (f *headerCleanupFilter) Type() pipeline.FilterType { return pipeline.FilterTypeTransform }
 
 func (f *headerCleanupFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {

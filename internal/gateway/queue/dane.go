@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/restmail/restmail/internal/dane"
-	"github.com/restmail/restmail/internal/db/models"
-	rmail "github.com/restmail/restmail/internal/mail"
+	"github.com/rest-mail/rest-mail-server/internal/dane"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 )
 
 // daneLookup is what DANE for SMTP (RFC 7672) asks of DNS: whether a domain's MX RRset

@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/restmail/restmail/internal/acme"
+	"github.com/rest-mail/rest-mail-server/internal/acme"
 )
 
 func TestACMEAccountKey_PersistsAndSeparatesDirectories(t *testing.T) {

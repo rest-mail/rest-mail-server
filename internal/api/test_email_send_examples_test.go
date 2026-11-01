@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"database/sql/driver"
 	"encoding/json"
-	"github.com/restmail/restmail/internal/examplepairs"
+	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -16,7 +16,7 @@ import (
 	"time"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
-	"github.com/restmail/restmail"
+	"github.com/rest-mail/rest-mail-server"
 )
 
 const testEmailCanonicalID = "<0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d@restmail.test>"

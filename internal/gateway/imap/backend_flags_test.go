@@ -8,7 +8,7 @@ import (
 
 	goimap "github.com/rest-mail/go-imap/pkg/imap"
 
-	"github.com/restmail/restmail/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 )
 
 func boolp(b bool) *bool { return &b }

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
 // TestCapabilityApplies_MXBinding verifies OSI-20: a cached RESTMAIL capability

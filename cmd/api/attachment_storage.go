@@ -9,8 +9,8 @@ import (
 	"io"
 	"time"
 
-	"github.com/restmail/restmail/internal/attachmentstore"
-	"github.com/restmail/restmail/internal/config"
+	"github.com/rest-mail/rest-mail-server/internal/attachmentstore"
+	"github.com/rest-mail/rest-mail-server/internal/config"
 )
 
 func migrateAttachments(args []string, stdout, stderr io.Writer) int {

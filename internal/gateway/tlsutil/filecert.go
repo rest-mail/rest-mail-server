@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/restmail/restmail/internal/tlsfiles"
+	"github.com/rest-mail/rest-mail-server/internal/tlsfiles"
 )
 
 // FileCertLoader reloads the primary serving pair when either file is replaced.

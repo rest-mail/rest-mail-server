@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/restmail/restmail/internal/pipeline/filters"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline/filters"
 )
 
 func TestCustomFilterCreate_DocumentedRefusals(t *testing.T) {

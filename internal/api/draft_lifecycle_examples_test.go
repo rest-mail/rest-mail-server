@@ -2,7 +2,7 @@ package api
 
 import (
 	"encoding/json"
-	"github.com/restmail/restmail/internal/examplepairs"
+	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,10 +11,10 @@ import (
 	"time"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
-	"github.com/restmail/restmail"
-	"github.com/restmail/restmail/internal/config"
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/grants"
+	"github.com/rest-mail/rest-mail-server"
+	"github.com/rest-mail/rest-mail-server/internal/config"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/grants"
 )
 
 var draftExampleNames = map[string][]string{

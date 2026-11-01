@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/restmail/restmail"
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/pipeline/filters"
+	"github.com/rest-mail/rest-mail-server"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline/filters"
 	yaml "go.yaml.in/yaml/v2"
 )
 

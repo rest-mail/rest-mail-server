@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/auth"
-	"github.com/restmail/restmail/internal/bootstrap"
-	"github.com/restmail/restmail/internal/config"
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/grants"
+	"github.com/rest-mail/rest-mail-server/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
+	"github.com/rest-mail/rest-mail-server/internal/config"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/grants"
 )
 
 // Every token an account was issued stops working the moment its sessions end

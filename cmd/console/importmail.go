@@ -13,10 +13,10 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/restmail/restmail/internal/api/endpoint"
-	apitypes "github.com/restmail/restmail/internal/api/types"
-	"github.com/restmail/restmail/internal/mailimport"
-	rmime "github.com/restmail/restmail/internal/mime"
+	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
+	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	"github.com/rest-mail/rest-mail-server/internal/mailimport"
+	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 )
 
 const importMailUsage = `restmail import-maildir / import-mbox — import historical mail through the public API

@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/restmail/restmail/internal/pipeline/filters"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline/filters"
 )
 
 const testCustomFilterPath = "/api/v1/admin/custom-filters/{id}/test"

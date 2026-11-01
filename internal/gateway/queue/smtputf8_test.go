@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/restmail/restmail/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
 // Exercise both production SMTP paths over a real EHLO/STARTTLS/MAIL/RCPT/DATA

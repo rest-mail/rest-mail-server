@@ -11,8 +11,8 @@ import (
 
 	smtpserver "github.com/rest-mail/go-smtp/pkg/smtp/server"
 
-	"github.com/restmail/restmail/internal/gateway/connlimiter"
-	"github.com/restmail/restmail/internal/ratelimit"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
+	"github.com/rest-mail/rest-mail-server/internal/ratelimit"
 )
 
 // Server listens for SMTP connections and serves them with go-smtp, one

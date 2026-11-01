@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
 // Public message fields retain their values. The raw source and an unloaded

@@ -2,8 +2,8 @@ package handlers
 
 import (
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/restmail/restmail/internal/api/endpoint"
-	"github.com/restmail/restmail/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
+	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"net/http"
 	"net/http/httptest"
 	"testing"

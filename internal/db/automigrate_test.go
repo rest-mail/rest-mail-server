@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/config"
-	rmdb "github.com/restmail/restmail/internal/db"
+	"github.com/rest-mail/rest-mail-server/internal/config"
+	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 )
 
 // Processes sharing a database (replicas, parallel test packages) migrate it at

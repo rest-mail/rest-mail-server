@@ -21,8 +21,8 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/pipeline/filters"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline/filters"
 	"gorm.io/gorm"
 )
 

@@ -24,11 +24,11 @@ import (
 	"time"
 
 	"github.com/rest-mail/go-dkim/pkg/dkim"
-	"github.com/restmail/restmail/internal/api/endpoint"
-	apitypes "github.com/restmail/restmail/internal/api/types"
-	"github.com/restmail/restmail/internal/fleet"
-	"github.com/restmail/restmail/internal/instance"
-	"github.com/restmail/restmail/internal/outbound"
+	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
+	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	"github.com/rest-mail/rest-mail-server/internal/fleet"
+	"github.com/rest-mail/rest-mail-server/internal/instance"
+	"github.com/rest-mail/rest-mail-server/internal/outbound"
 )
 
 func main() {

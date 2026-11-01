@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/auth"
-	"github.com/restmail/restmail/internal/config"
-	"github.com/restmail/restmail/internal/crypto"
-	"github.com/restmail/restmail/internal/examplepairs"
+	"github.com/rest-mail/rest-mail-server/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/config"
+	"github.com/rest-mail/rest-mail-server/internal/crypto"
+	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
 )
 
 // Grant and activation rows are controlled; production authorization, fresh

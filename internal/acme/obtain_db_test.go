@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/crypto"
-	"github.com/restmail/restmail/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/crypto"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
 // ObtainCertificate answers HTTP-01 through ChallengeHandler, the handler the

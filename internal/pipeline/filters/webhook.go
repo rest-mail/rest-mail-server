@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 type webhookFilter struct {
@@ -39,7 +39,7 @@ func NewWebhook(config []byte) (pipeline.Filter, error) {
 	return &webhookFilter{cfg: cfg}, nil
 }
 
-func (f *webhookFilter) Name() string             { return "webhook" }
+func (f *webhookFilter) Name() string              { return "webhook" }
 func (f *webhookFilter) Type() pipeline.FilterType { return pipeline.FilterTypeAction }
 
 func (f *webhookFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {

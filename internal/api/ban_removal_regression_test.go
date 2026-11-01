@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/restmail/restmail/internal/api/middleware"
-	"github.com/restmail/restmail/internal/config"
-	"github.com/restmail/restmail/internal/grants"
+	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
+	"github.com/rest-mail/rest-mail-server/internal/config"
+	"github.com/rest-mail/rest-mail-server/internal/grants"
 )
 
 var banRemovalPaths = map[string]string{"deleteBan": "/api/v1/admin/bans/{id}", "unbanIP": "/api/v1/admin/bans/ip/{ip}"}

@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/restmail/restmail/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/auth"
 )
 
 // BasicVerify checks an address and a password sent with HTTP Basic (an app

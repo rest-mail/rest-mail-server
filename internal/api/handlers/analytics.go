@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/restmail/restmail/internal/api/endpoint"
+	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 )
 
 // Pipeline-observability analytics (PR5). This endpoint turns the durable

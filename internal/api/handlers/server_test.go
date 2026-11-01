@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/restmail/restmail/internal/version"
+	"github.com/rest-mail/rest-mail-server/internal/version"
 )
 
 // A server says it is rest-mail, and which version, to anyone who asks — and

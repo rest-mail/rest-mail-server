@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/restmail/restmail/internal/pipeline/filters"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline/filters"
 	"gorm.io/gorm"
 )
 

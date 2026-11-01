@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/restmail/restmail/internal/api/endpoint"
-	"github.com/restmail/restmail/internal/api/respond"
-	"github.com/restmail/restmail/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
+	"github.com/rest-mail/rest-mail-server/internal/api/respond"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"gorm.io/gorm"
 )
 

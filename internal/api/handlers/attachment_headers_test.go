@@ -11,7 +11,7 @@ import (
 	oapifly "github.com/antimatter-studios/go-oapifly"
 	"github.com/go-chi/chi/v5"
 
-	"github.com/restmail/restmail/internal/api/endpoint"
+	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 )
 
 // Describe the actual attachment registration, then exercise the same Served

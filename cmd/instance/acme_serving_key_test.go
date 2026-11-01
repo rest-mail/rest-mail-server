@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/acme"
+	"github.com/rest-mail/rest-mail-server/internal/acme"
 )
 
 func TestExistingACMEServingKey(t *testing.T) {

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/restmail/restmail/internal/attachmentstore/s3test"
+	"github.com/rest-mail/rest-mail-server/internal/attachmentstore/s3test"
 )
 
 func TestS3PrivateObjectRoundTripAndRanges(t *testing.T) {

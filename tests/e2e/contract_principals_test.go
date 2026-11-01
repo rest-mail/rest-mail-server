@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/tests/contract/fixtureplan"
+	"github.com/rest-mail/rest-mail-server/tests/contract/fixtureplan"
 )
 
 // The principals of the contract tests (#376): one of each kind of caller the

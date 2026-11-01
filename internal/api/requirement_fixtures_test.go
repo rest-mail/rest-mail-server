@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/restmail/restmail/internal/auth"
-	"github.com/restmail/restmail/internal/config"
+	"github.com/rest-mail/rest-mail-server/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/config"
 	"golang.org/x/crypto/ssh"
 	"gorm.io/gorm"
 )

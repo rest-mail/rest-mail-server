@@ -8,8 +8,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	dto "github.com/prometheus/client_model/go"
 
-	"github.com/restmail/restmail/internal/metrics"
-	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/metrics"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 // ── helper unit tests ────────────────────────────────────────────────

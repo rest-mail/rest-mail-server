@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	apitypes "github.com/restmail/restmail/internal/api/types"
-	"github.com/restmail/restmail/internal/mailimport"
+	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	"github.com/rest-mail/rest-mail-server/internal/mailimport"
 )
 
 func imapImportMessages() []apitypes.ImportMessageBody {

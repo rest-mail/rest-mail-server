@@ -12,8 +12,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
-	"github.com/restmail/restmail/internal/auth"
-	"github.com/restmail/restmail/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
 // auditSink collects the entries an Auditor writes, and the lookups it makes.

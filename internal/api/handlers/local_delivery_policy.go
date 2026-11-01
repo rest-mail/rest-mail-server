@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 	"gorm.io/gorm"
 )
 

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	goimap "github.com/rest-mail/go-imap/pkg/imap"
-	"github.com/restmail/restmail/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 )
 
 // Exercise the adapter's HTTP boundary: an Answered-only STORE must reach

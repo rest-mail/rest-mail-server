@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	dkim "github.com/rest-mail/go-dkim/pkg/dkim"
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/dns"
-	"github.com/restmail/restmail/internal/outbound"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/dns"
+	"github.com/rest-mail/rest-mail-server/internal/outbound"
 )
 
 // An internationalized domain's records are published and checked under its

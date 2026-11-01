@@ -14,7 +14,7 @@ import (
 	"time"
 
 	dkim "github.com/rest-mail/go-dkim/pkg/dkim"
-	rmail "github.com/restmail/restmail/internal/mail"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 )
 
 // SelectorPrefix starts every selector a rotation creates: restmail-1,

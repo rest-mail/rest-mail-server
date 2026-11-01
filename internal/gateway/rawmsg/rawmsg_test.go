@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 )
 
 func testTime() time.Time {

@@ -3,8 +3,8 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/restmail/restmail/internal/api/endpoint"
-	"github.com/restmail/restmail/internal/api/middleware"
+	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
+	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 )
 
 // DKIMRouteChecks retain global list access and domain-scoped key management.

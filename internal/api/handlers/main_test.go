@@ -5,10 +5,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/restmail/restmail/internal/auth"
-	"github.com/restmail/restmail/internal/config"
-	rmdb "github.com/restmail/restmail/internal/db"
-	"github.com/restmail/restmail/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/config"
+	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )

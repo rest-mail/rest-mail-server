@@ -16,10 +16,10 @@ import (
 	"time"
 
 	dkim "github.com/rest-mail/go-dkim/pkg/dkim"
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/gateway/apiclient"
-	"github.com/restmail/restmail/internal/gateway/connlimiter"
-	smtpgw "github.com/restmail/restmail/internal/gateway/smtp"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
+	smtpgw "github.com/rest-mail/rest-mail-server/internal/gateway/smtp"
 	"golang.org/x/net/dns/dnsmessage"
 	"gorm.io/gorm"
 )

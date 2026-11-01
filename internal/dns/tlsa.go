@@ -9,7 +9,7 @@ import (
 	"net"
 	"strings"
 
-	"github.com/restmail/restmail/internal/mail"
+	"github.com/rest-mail/rest-mail-server/internal/mail"
 )
 
 // SMTPTLSARecords produces DANE-EE(3), SPKI(1), SHA-256(1) records for the

@@ -13,12 +13,12 @@ import (
 
 	jwtv5 "github.com/golang-jwt/jwt/v5"
 
-	"github.com/restmail/restmail/internal/api/middleware"
-	"github.com/restmail/restmail/internal/audit"
-	"github.com/restmail/restmail/internal/auth"
-	"github.com/restmail/restmail/internal/config"
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/grants"
+	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
+	"github.com/rest-mail/rest-mail-server/internal/audit"
+	"github.com/rest-mail/rest-mail-server/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/config"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/grants"
 )
 
 var adminVerificationPaths = map[string]string{"verifyAuditLog": "/api/v1/admin/audit/verify", "verifyDelivery": "/api/v1/admin/test/verify"}

@@ -11,8 +11,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/restmail/restmail/internal/auth"
-	rmail "github.com/restmail/restmail/internal/mail"
+	"github.com/rest-mail/rest-mail-server/internal/auth"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 )
 
 const importPasswdFileUsage = `restmail import-passwd-file — create the accounts of a Dovecot passwd-file, keeping their passwords

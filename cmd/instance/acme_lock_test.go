@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/acme"
+	"github.com/rest-mail/rest-mail-server/internal/acme"
 )
 
 // A second invocation must refuse even a reusable pair: the first issuer may

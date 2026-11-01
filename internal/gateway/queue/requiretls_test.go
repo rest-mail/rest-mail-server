@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/rest-mail/go-mtasts/pkg/mtasts"
-	"github.com/restmail/restmail/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
 // requireTLSWorker is a worker whose recipient domain example.test publishes policy, or none

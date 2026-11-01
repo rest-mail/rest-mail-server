@@ -11,8 +11,8 @@ import (
 	"time"
 
 	dkim "github.com/rest-mail/go-dkim/pkg/dkim"
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/outbound"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/outbound"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )

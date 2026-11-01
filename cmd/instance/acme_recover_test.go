@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/acme"
+	"github.com/rest-mail/rest-mail-server/internal/acme"
 )
 
 // Reproduce the persistent files left if a process exits between the two

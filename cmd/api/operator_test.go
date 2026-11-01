@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/bootstrap"
-	"github.com/restmail/restmail/internal/config"
-	rmdb "github.com/restmail/restmail/internal/db"
+	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
+	"github.com/rest-mail/rest-mail-server/internal/config"
+	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"gorm.io/gorm"
 )
 

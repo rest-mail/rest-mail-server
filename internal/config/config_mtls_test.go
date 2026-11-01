@@ -4,7 +4,7 @@ import (
 	"crypto/tls"
 	"testing"
 
-	"github.com/restmail/restmail/internal/mtls/mtlstest"
+	"github.com/rest-mail/rest-mail-server/internal/mtls/mtlstest"
 )
 
 func TestLoad_InternalMTLSDefaults(t *testing.T) {

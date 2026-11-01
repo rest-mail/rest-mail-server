@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/config"
-	rmdb "github.com/restmail/restmail/internal/db"
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/config"
+	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 // A Sieve vacation reply carries the RFC 3834 headers, a subject encoded for its header, and

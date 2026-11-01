@@ -12,9 +12,9 @@ import (
 
 	goimap "github.com/rest-mail/go-imap/pkg/imap"
 
-	"github.com/restmail/restmail/internal/gateway/apiclient"
-	"github.com/restmail/restmail/internal/gateway/connlimiter"
-	"github.com/restmail/restmail/internal/gateway/rawmsg"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
+	"github.com/rest-mail/rest-mail-server/internal/gateway/rawmsg"
 )
 
 // errAccountLocked is returned when an account is temporarily banned for too

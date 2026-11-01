@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/restmail/restmail/internal/config"
+	"github.com/rest-mail/rest-mail-server/internal/config"
 )
 
 // sendTestEmail's from_missing request (#386) is refused by the real handler,

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/restmail/restmail/internal/mime"
-	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/mime"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 // deliverInbound runs a raw inbound message through what the delivery handlers

@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/restmail/restmail/internal/api/respond"
-	"github.com/restmail/restmail/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/api/respond"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/restmail/restmail/internal/api/endpoint"
+	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 )
 
 // queueRoutes exercises the production registration with capability checks that pass.

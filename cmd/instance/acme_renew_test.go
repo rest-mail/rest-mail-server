@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/acme"
+	"github.com/rest-mail/rest-mail-server/internal/acme"
 )
 
 func renewalTestPair(t *testing.T, notBefore, notAfter time.Time, names ...string) (string, string) {

@@ -7,8 +7,8 @@ import (
 	"time"
 
 	dkim "github.com/rest-mail/go-dkim/pkg/dkim"
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/dkimrotate"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/dkimrotate"
 )
 
 // fakeDNS answers TXT lookups from what a test has "published".

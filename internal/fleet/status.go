@@ -9,7 +9,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/restmail/restmail/internal/instance"
+	"github.com/rest-mail/rest-mail-server/internal/instance"
 )
 
 // componentMeta is the per-component presentation knowledge: whether the

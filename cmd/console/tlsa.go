@@ -7,7 +7,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/restmail/restmail/internal/dns"
+	"github.com/rest-mail/rest-mail-server/internal/dns"
 )
 
 const tlsaUsage = `restmail tlsa-records — prepare SMTP TLSA records from public certificates

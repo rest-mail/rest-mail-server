@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/mdp/qrterminal/v4"
-	"github.com/restmail/restmail/internal/setuplink"
+	"github.com/rest-mail/rest-mail-server/internal/setuplink"
 	"golang.org/x/term"
 	"rsc.io/qr"
 )

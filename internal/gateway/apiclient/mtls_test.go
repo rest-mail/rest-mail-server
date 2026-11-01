@@ -8,8 +8,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/restmail/restmail/internal/mtls"
-	"github.com/restmail/restmail/internal/mtls/mtlstest"
+	"github.com/rest-mail/rest-mail-server/internal/mtls"
+	"github.com/rest-mail/rest-mail-server/internal/mtls/mtlstest"
 )
 
 // newInternalMTLSServer starts an httptest server that requires a verified

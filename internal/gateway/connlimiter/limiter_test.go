@@ -6,7 +6,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
-	"github.com/restmail/restmail/internal/metrics"
+	"github.com/rest-mail/rest-mail-server/internal/metrics"
 )
 
 // TestMetricsWiring verifies that, once a protocol is tagged, Accept/Release

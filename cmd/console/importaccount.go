@@ -11,10 +11,10 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/restmail/restmail/internal/api/endpoint"
-	apitypes "github.com/restmail/restmail/internal/api/types"
-	"github.com/restmail/restmail/internal/auth"
-	rmail "github.com/restmail/restmail/internal/mail"
+	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
+	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	"github.com/rest-mail/rest-mail-server/internal/auth"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 )
 
 const importAccountUsage = `restmail import-account — create an account with its existing password hash

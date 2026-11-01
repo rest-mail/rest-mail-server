@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/restmail/restmail"
+	"github.com/rest-mail/rest-mail-server"
 	yaml "go.yaml.in/yaml/v2"
 )
 

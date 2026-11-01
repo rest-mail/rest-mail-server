@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/auth"
 )
 
 // cookieByName returns the named cookie set on a response, or nil.

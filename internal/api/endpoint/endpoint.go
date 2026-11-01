@@ -33,7 +33,7 @@ import (
 	oapifly "github.com/antimatter-studios/go-oapifly"
 	"github.com/go-chi/chi/v5"
 
-	"github.com/restmail/restmail/internal/api/respond"
+	"github.com/rest-mail/rest-mail-server/internal/api/respond"
 )
 
 // Operation is how a route is registered: where it is, what it is called, and what it can

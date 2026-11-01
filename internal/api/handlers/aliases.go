@@ -7,12 +7,12 @@ import (
 	"net/mail"
 	"strings"
 
-	"github.com/restmail/restmail/internal/api/endpoint"
-	"github.com/restmail/restmail/internal/api/middleware"
-	"github.com/restmail/restmail/internal/api/respond"
-	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/db/repositories"
-	rmail "github.com/restmail/restmail/internal/mail"
+	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
+	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
+	"github.com/rest-mail/rest-mail-server/internal/api/respond"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"golang.org/x/text/unicode/norm"
 	"gorm.io/gorm"
 )

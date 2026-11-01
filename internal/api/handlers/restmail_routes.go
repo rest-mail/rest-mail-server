@@ -5,7 +5,7 @@ import (
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
 
-	"github.com/restmail/restmail/internal/api/endpoint"
+	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 )
 
 // Register mounts the RESTMAIL server-to-server protocol. Like SMTP, any server may connect,

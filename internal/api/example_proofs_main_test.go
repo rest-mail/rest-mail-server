@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/restmail/restmail/internal/examplepairs"
+	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
 )
 
 // TestMain writes the example pairs this package's tests proved, when CI asks for

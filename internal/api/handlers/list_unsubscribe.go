@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"strings"
 
-	apitypes "github.com/restmail/restmail/internal/api/types"
+	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 )
 
 // The header fields an unsubscribe target is published in (RFC 2369 §3.2,

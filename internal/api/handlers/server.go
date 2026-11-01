@@ -3,8 +3,8 @@ package handlers
 import (
 	"net/http"
 
-	apitypes "github.com/restmail/restmail/internal/api/types"
-	"github.com/restmail/restmail/internal/version"
+	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	"github.com/rest-mail/rest-mail-server/internal/version"
 )
 
 // describeServer answers GET /api/v1/server: what this server is, for anyone

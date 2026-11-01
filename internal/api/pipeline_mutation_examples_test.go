@@ -2,7 +2,7 @@ package api
 
 import (
 	"bytes"
-	"github.com/restmail/restmail/internal/examplepairs"
+	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
-	"github.com/restmail/restmail"
+	"github.com/rest-mail/rest-mail-server"
 )
 
 var pipelineMutationPaths = map[string]string{"createPipeline": "/api/v1/admin/pipelines", "updatePipeline": "/api/v1/admin/pipelines/{id}"}

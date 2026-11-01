@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/restmail/restmail/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"

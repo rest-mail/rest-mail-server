@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	restcrypto "github.com/restmail/restmail/internal/crypto"
+	restcrypto "github.com/rest-mail/rest-mail-server/internal/crypto"
 )
 
 // Outbound transports for a sending domain (#143). Direct resolves the

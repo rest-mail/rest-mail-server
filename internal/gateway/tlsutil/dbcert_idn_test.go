@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
 // SNI only carries A-labels (RFC 6066), but a hosted domain is kept as the name

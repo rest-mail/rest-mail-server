@@ -14,8 +14,8 @@ import (
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
 
-	apitypes "github.com/restmail/restmail/internal/api/types"
-	rmail "github.com/restmail/restmail/internal/mail"
+	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 )
 
 // IMAPOptions identifies a source account. Credentials are used only on the

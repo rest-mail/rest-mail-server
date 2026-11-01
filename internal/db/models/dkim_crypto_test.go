@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	dkim "github.com/rest-mail/go-dkim/pkg/dkim"
-	restcrypto "github.com/restmail/restmail/internal/crypto"
+	restcrypto "github.com/rest-mail/rest-mail-server/internal/crypto"
 )
 
 const testMasterKey = "unit-test-master-key"

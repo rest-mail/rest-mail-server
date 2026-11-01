@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/rest-mail/go-dmarc/pkg/dmarc"
-	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 // senderAuthenticated reports whether the message carries a locally-verified,

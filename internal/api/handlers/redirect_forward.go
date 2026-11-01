@@ -5,9 +5,9 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/restmail/restmail/internal/db/models"
-	rmail "github.com/restmail/restmail/internal/mail"
-	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 // The inbound Sieve filter records `redirect` targets in the redirect_to metadata

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	apitypes "github.com/restmail/restmail/internal/api/types"
+	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 )
 
 const metadataMboxSeparator = "From sender@example.test Mon Jan  2 15:04:05 2006\n"

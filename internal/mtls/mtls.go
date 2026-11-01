@@ -23,7 +23,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/restmail/restmail/internal/tlsfiles"
+	"github.com/rest-mail/rest-mail-server/internal/tlsfiles"
 )
 
 // ServerTLSConfig builds the *tls.Config for the API's internal mTLS listener.

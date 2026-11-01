@@ -2,8 +2,8 @@ package filters
 
 import (
 	"context"
-	"github.com/restmail/restmail/internal/pipeline"
-	"github.com/restmail/restmail/internal/sendlimits"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/sendlimits"
 	"testing"
 )
 

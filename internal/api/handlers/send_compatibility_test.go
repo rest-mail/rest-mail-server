@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/restmail/restmail/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/auth"
 )
 
 func TestOwnMailboxLegacySendRequests(t *testing.T) {

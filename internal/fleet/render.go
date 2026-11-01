@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/restmail/restmail/internal/instance"
+	"github.com/rest-mail/rest-mail-server/internal/instance"
 )
 
 // Render regenerates a selection's config.env from its manifest. With check

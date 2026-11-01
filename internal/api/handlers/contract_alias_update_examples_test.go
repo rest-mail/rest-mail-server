@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/restmail/restmail/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
 const aliasUpdatePath = aliasesPath + "/{id}"

@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/restmail/restmail/internal/api/endpoint"
-	apitypes "github.com/restmail/restmail/internal/api/types"
+	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
+	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 )
 
 const (

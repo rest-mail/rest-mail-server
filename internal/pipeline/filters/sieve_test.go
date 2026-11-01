@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/rest-mail/go-sieve/pkg/sieve"
-	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 // ── Helpers ──────────────────────────────────────────────────────────
