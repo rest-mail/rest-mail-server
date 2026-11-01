@@ -15261,6 +15261,7 @@ components:
       properties:
         pipeline_id:
           type: integer
+          minimum: 1
         email:
           type: object
           description: Sample email JSON for testing
