@@ -90,3 +90,39 @@ func TestAuthenticate_TransientErrorNotBanned(t *testing.T) {
 		t.Fatalf("post-recovery auth failed: %v", err)
 	}
 }
+
+// A locked-down server refuses a correct password with access_restricted (#324).
+// That is not a failed guess: however often a mail client retries, the account
+// is not banned, and it signs in as soon as the server allows it again.
+func TestAuthenticate_LockdownIsNotAFailedGuess(t *testing.T) {
+	var locked atomic.Bool
+	locked.Store(true)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if locked.Load() {
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"error":{"code":"access_restricted","message":"This server is not accepting sign-ins for this account"}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"data":{"access_token":"t","user":{"id":1,"email":"victim@example.com"}}}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	lim := connlimiter.New(connlimiter.Config{
+		AuthMaxFails:    3,
+		AuthBanWindow:   time.Minute,
+		AuthBanDuration: time.Minute,
+	})
+	b := NewBackend(apiclient.New(srv.URL), lim)
+
+	const user = "victim@example.com"
+	for i := 0; i < 5; i++ {
+		if _, err := b.Authenticate(user, "right"); err == nil {
+			t.Fatalf("attempt %d: a locked-down server must refuse the sign-in", i+1)
+		}
+	}
+	locked.Store(false)
+	if _, err := b.Authenticate(user, "right"); err != nil {
+		t.Fatalf("after the lockdown: %v", err)
+	}
+}
