@@ -853,7 +853,7 @@ commit, apart from the substrate differences under "First run".
 
 The example-pair test list lives in the `contract:pairs` task in `chores.yml`.
 A new `*WithVertrag` test in `internal/api` must be added there, or no run sends
-it. Without `RESTMAIL_VERTRAG_BINARY` those tests skip, so `go test` alone does
+it; `test_run.py` fails until it is. Without `RESTMAIL_VERTRAG_BINARY` those tests skip, so `go test` alone does
 not run them.
 
 A narrowed run (`--tag`, `--operation-id`, `--only-matching`)
@@ -1004,8 +1004,9 @@ missing-resource operations in the required examples gate.
 1. Find the step that failed. The command's output names it, and the summary
    table at the end shows which phases ran. A run that stops at the example
    pairs or the setup prints an empty table.
-2. For the example pairs, the output prints each shard as `== shard N: ok` or
-   `== shard N: FAILED`, followed by that shard's `go test` log. Look for the
+2. For the example pairs, the output prints each shard as `== shard N: ok`,
+   followed by each test's verdict, or `== shard N: FAILED`, followed by that
+   shard's whole `go test` log. Look for the
    `--- FAIL:` line, then run that test alone:
    `tests/contract/example_pairs.sh -run '^(TestDomainCleanupExamplesWithVertrag)$' 1`
    with `RESTMAIL_VERTRAG_BINARY` set (`python3 -B scripts/vertrag_pin.py ensure .cache/bin`

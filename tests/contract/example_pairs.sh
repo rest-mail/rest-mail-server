@@ -32,7 +32,7 @@ for ((s = 0; s < shards; s++)); do
 	[ ${#pick[@]} -gt 0 ] || continue
 	run="^($(IFS='|'; echo "${pick[*]}"))\$"
 	# The tests read the spec and fixtures relative to their package directory.
-	(cd internal/api && exec "$work/api.test" -test.timeout 25m -test.run "$run") >"$work/shard$s.log" 2>&1 &
+	(cd internal/api && exec "$work/api.test" -test.v -test.timeout 25m -test.run "$run") >"$work/shard$s.log" 2>&1 &
 	pids+=("$s:$!")
 done
 
@@ -41,6 +41,8 @@ for entry in "${pids[@]}"; do
 	s=${entry%%:*}
 	if wait "${entry#*:}"; then result=ok; else result=FAILED; status=1; fi
 	echo "== shard $s: $result"
-	cat "$work/shard$s.log"
+	# A passing shard names each test's verdict, so a skip shows; a failing one
+	# prints everything.
+	if [ "$result" = ok ]; then grep -E '^--- ' "$work/shard$s.log" || true; else cat "$work/shard$s.log"; fi
 done
 exit "$status"

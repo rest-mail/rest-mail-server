@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -183,8 +184,20 @@ class Summary(unittest.TestCase):
         self.assertIn("chore contract:pairs\n", tasks["contract"]["cmds"][0])
         pairs = tasks["contract:pairs"]["cmds"][0]
         self.assertIn("tests/contract/example_pairs.sh -run '^(", pairs)
-        self.assertIn("TestDomainCleanupExamplesWithVertrag)$'\n", pairs)
         self.assertTrue(os.access(ROOT / "tests/contract/example_pairs.sh", os.X_OK))
+
+    def test_the_example_pairs_name_every_vertrag_test(self):
+        # A *WithVertrag test skips without the binary, so one this list misses
+        # looks fine everywhere and proves nothing.
+        tasks = yaml.safe_load((ROOT / "chores.yml").read_text())["tasks"]
+        named = set(re.findall(r"Test\w+WithVertrag", tasks["contract:pairs"]["cmds"][0]))
+        written = set()
+        for path in (ROOT / "internal/api").rglob("*_test.go"):
+            written.update(
+                re.findall(r"^func (Test\w+WithVertrag)\(", path.read_text(), re.MULTILINE)
+            )
+        self.assertEqual(sorted(written - named), [], "no run sends these")
+        self.assertEqual(sorted(named - written), [], "these no longer exist")
 
 
 class ContractCommand(unittest.TestCase):
