@@ -599,6 +599,7 @@ tasks:
         chore test:contract-fixtures
         chore test:contract-api-keys
         chore test:contract-mfa-admin
+        chore api:coverage:reset || echo "the API's coverage counters could not be reset; its coverage report is not this run's alone"
         code=0
         tests/contract/run.sh gate {{.CLI_ARGS}} || code=$?
         scan=0
@@ -607,6 +608,7 @@ tasks:
         tests/contract/run.sh authorization {{.CLI_ARGS}} || echo "the authorization phase is a report, not a gate"
         chore test:contract-domain-tenants || echo "the domain tenants could not be prepared; the ownership run of domains is not sent"
         tests/contract/run.sh ownership {{.CLI_ARGS}} || echo "the ownership phase is a report, not a gate"
+        chore api:coverage:report || echo "the API's coverage is a report, not a gate"
         if [ "$code" -ne 0 ]; then exit "$code"; fi
         exit "$scan"
 

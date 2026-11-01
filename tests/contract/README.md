@@ -1035,6 +1035,15 @@ missing-resource operations in the required examples gate.
 6. In CI, download the `e2e-container-logs` artifact. It holds the same report
    files plus each container's log.
 
+### API code coverage of the contract run
+
+With `API_COVER=true`, `chore e2e:up` builds the API with `go build -cover`.
+`chore contract` then clears its counters before the gate and, after the
+ownership phase, writes `.cache/contract/api-coverage/summary.md` and
+`api-coverage.out`. E2E runs in CI do this and show the summary on the run page.
+It is a report: nothing fails on the percentage, and without a cover build both
+steps do nothing.
+
 ### Browser session gate (#659)
 
 Before examples, `chore contract` runs `tests/contract/browser_sessions` against

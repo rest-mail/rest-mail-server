@@ -147,6 +147,10 @@ jobs:
           grep -nF 'alpine:3.20 chmod 644' "$f"
 
       - name: Bring up e2e topology
+        env:
+          # The gate reports the API code its contract phases ran (#655); see
+          # the cover build in tasks/api.yml. Nothing fails on the report.
+          API_COVER: ${{ inputs.contract-phases == 'gate' && 'true' || 'false' }}
         run: chore e2e:up
 
       - name: Run e2e stages
@@ -208,6 +212,14 @@ jobs:
           CONTRACT_DESCRIPTION_MODE: ${{ inputs.description-mode }}
         run: chore contract
 
+      - name: API code coverage of the contract run (report)
+        if: always() && inputs.contract-phases == 'gate'
+        continue-on-error: true
+        run: |
+          if [ -f .cache/contract/api-coverage/summary.md ]; then
+            cat .cache/contract/api-coverage/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Limits suite (report)
         # Every limit the API declares, spent on a restarted API so its buckets
         # are the suite's own (#660). A report until a run has shown every
@@ -248,6 +260,7 @@ jobs:
           cp "$RUNNER_TEMP"/contract*.log "$out/" 2>/dev/null || true
           cp .cache/contract/openapi.json .cache/contract/examples.json .cache/contract/coverage.json .cache/contract/authorization.json .cache/contract/ownership.json .cache/contract/ownership-domains.json .cache/contract/ownership-mailboxes.json .cache/contract/fuzz.json "$out/" 2>/dev/null || true
           cp .cache/contract/*.xml .cache/contract/*.html .cache/contract/*.md "$out/" 2>/dev/null || true
+          cp -R .cache/contract/api-coverage "$out/" 2>/dev/null || true
           docker ps -a > "$out/docker-ps.txt" 2>&1 || true
           docker network inspect testbed_mailnet > "$out/network.txt" 2>&1 || true
           for c in $(docker ps -aq); do
