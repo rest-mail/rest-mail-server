@@ -44,7 +44,7 @@ components:
     port: 8080
   - name: imap-gateway
     ip: 10.99.0.62
-    ports: { plain: 143, tls: 993 }
+    ports: { tls: 993 }
   - { name: webmail, ip: 10.99.0.63 }
 `
 
@@ -164,8 +164,8 @@ func TestBuildStatusReportsPerComponentState(t *testing.T) {
 				t.Errorf("api proxy = %q", r.ProxyURL)
 			}
 		case "imap-gateway":
-			if r.Notes != ":143 :993" {
-				t.Errorf("imap notes = %q, want :143 :993", r.Notes)
+			if r.Notes != ":993" {
+				t.Errorf("imap notes = %q, want :993", r.Notes)
 			}
 		case "postgres":
 			if r.Notes != "internal :5432" {
@@ -186,7 +186,7 @@ func TestBuildStatusClassifiesOrphans(t *testing.T) {
 	d := fakeDocker{
 		states: map[string]State{"rest-mail-mail4-api": StateUp},
 		list: []Container{
-			{Name: "rest-mail-mail4-api", State: StateUp},   // claimed by the config
+			{Name: "rest-mail-mail4-api", State: StateUp},    // claimed by the config
 			{Name: "rest-mail-api", State: StateUp},          // no config claims this prefix
 			{Name: "mailref-mail1-postgres", State: StateUp}, // peer stack, never an orphan
 			{Name: "testbed-dnsmasq", State: StateUp},        // substrate
@@ -271,8 +271,8 @@ func TestRenderWidensForLongServiceNames(t *testing.T) {
 		Name: "restmail.test", Project: "rest-mail",
 		Rows: []ServiceRow{
 			{Service: "api", State: StateUp, ProxyURL: "http://x/api", Notes: ":8080"},
-			{Service: "smtp-gateway", State: StateAbsent, Notes: ":25 :587 :465"},
-			{Service: "pop3-gateway", State: StateUp, Notes: ":110 :995"},
+			{Service: "smtp-gateway", State: StateAbsent, Notes: ":25 :465"},
+			{Service: "pop3-gateway", State: StateUp, Notes: ":995"},
 		},
 	}}}
 	var sb strings.Builder

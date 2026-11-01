@@ -304,7 +304,7 @@ func TestRenderMapsPortsAndIPs(t *testing.T) {
 	m := &Manifest{
 		Project: "p",
 		Components: []Component{
-			{Name: "smtp-gateway", IP: "10.0.0.9", Ports: map[string]int{"inbound": 25, "submission": 587, "submission_tls": 465}},
+			{Name: "smtp-gateway", IP: "10.0.0.9", Ports: map[string]int{"inbound": 25, "submission_tls": 465}},
 		},
 	}
 	out, err := Render(m)
@@ -314,11 +314,54 @@ func TestRenderMapsPortsAndIPs(t *testing.T) {
 	for _, want := range []string{
 		"RESTMAIL_SMTP_IP=10.0.0.9\n",
 		"RESTMAIL_SMTP_PORT_INBOUND=25\n",
-		"RESTMAIL_SMTP_PORT_SUBMISSION=587\n",
 		"RESTMAIL_SMTP_PORT_SUBMISSION_TLS=465\n",
 	} {
 		if !bytes.Contains(out, []byte(want)) {
 			t.Errorf("rendered output missing %q\ngot:\n%s", want, out)
+		}
+	}
+}
+
+// TestRenderIgnoresRemovedCleartextPorts: manifests scaffolded before client
+// access went implicit-TLS-only carry `submission: 587` and `plain: 143`/`110`.
+// They must still load, and the cleartext ports must not be rendered: nothing
+// listens on them, and a production gateway refuses to start with
+// SMTP_PORT_SUBMISSION, IMAP_PORT or POP3_PORT set.
+func TestRenderIgnoresRemovedCleartextPorts(t *testing.T) {
+	m, err := Parse([]byte(`components:
+  - name: smtp-gateway
+    ip: 10.0.0.9
+    ports: { inbound: 25, submission: 587, submission_tls: 465 }
+  - name: imap-gateway
+    ip: 10.0.0.10
+    ports: { plain: 143, tls: 993 }
+  - name: pop3-gateway
+    ip: 10.0.0.11
+    ports: { plain: 110, tls: 995 }
+`))
+	if err != nil {
+		t.Fatalf("an older manifest with cleartext ports must still parse: %v", err)
+	}
+	out, err := Render(m)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	for _, want := range []string{
+		"RESTMAIL_SMTP_PORT_SUBMISSION_TLS=465\n",
+		"RESTMAIL_IMAP_TLS_PORT=993\n",
+		"RESTMAIL_POP3_TLS_PORT=995\n",
+	} {
+		if !bytes.Contains(out, []byte(want)) {
+			t.Errorf("rendered output missing %q\ngot:\n%s", want, out)
+		}
+	}
+	for _, gone := range []string{
+		"RESTMAIL_SMTP_PORT_SUBMISSION=",
+		"RESTMAIL_IMAP_PORT=",
+		"RESTMAIL_POP3_PORT=",
+	} {
+		if bytes.Contains(out, []byte(gone)) {
+			t.Errorf("rendered output still sets %q\ngot:\n%s", gone, out)
 		}
 	}
 }

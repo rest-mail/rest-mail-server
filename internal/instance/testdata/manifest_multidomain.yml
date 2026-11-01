@@ -51,13 +51,13 @@ components:
     port: 8080
   - name: smtp-gateway
     ip: 10.99.0.13
-    ports: { inbound: 25, submission: 587, submission_tls: 465 }
+    ports: { inbound: 25, submission_tls: 465 }
   - name: imap-gateway
     ip: 10.99.0.15
-    ports: { plain: 143, tls: 993 }
+    ports: { tls: 993 }
   - name: pop3-gateway
     ip: 10.99.0.16
-    ports: { plain: 110, tls: 995 }
+    ports: { tls: 995 }
   - { name: js-filter, ip: 10.99.0.22 }
   - { name: webmail,   ip: 10.99.0.21 }
   - { name: admin,     ip: 10.99.0.27 }

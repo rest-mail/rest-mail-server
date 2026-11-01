@@ -27,7 +27,7 @@ RUN go install github.com/air-verse/air@v1.67.2
 # a tmpfs that user owns.
 RUN addgroup -S -g 10001 restmail && adduser -S -u 10001 -G restmail restmail
 USER 10001:10001
-EXPOSE 110 995
+EXPOSE 995
 CMD ["air", "-c", "projects/pop3-gateway/.air.toml"]
 
 # ── Stage 4: prod (minimal Alpine runtime, non-root) ─────────────────
@@ -45,8 +45,8 @@ COPY projects/pop3-gateway/entrypoint.sh /entrypoint.sh
 RUN chmod 0755 /entrypoint.sh
 # Numeric, so Kubernetes can tell it is not root without being told the uid.
 USER 10001:10001
-EXPOSE 110 995
+EXPOSE 995
 HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
-    CMD nc -z localhost 110 || exit 1
+    CMD nc -z localhost 995 || exit 1
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["pop3-gateway"]
