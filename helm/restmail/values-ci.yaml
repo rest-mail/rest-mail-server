@@ -1,0 +1,89 @@
+# Overrides for the cluster install check (.github/workflows/cluster-e2e.yml).
+#
+# The check installs the chart into a throwaway kind cluster on a CI runner,
+# from images built from the same commit. Everything else stays production
+# shaped: ENVIRONMENT=production, Postgres over TLS, internal mTLS on, the
+# NetworkPolicies on (kind's default CNI enforces them), and the credentials
+# the chart makes itself. This file changes only what a kind cluster on a
+# runner cannot provide:
+#
+#   * no registry: the images are built locally and loaded with
+#     `kind load docker-image`, so they are tagged "ci" and never pulled;
+#   * no cert-manager: the workflow creates the TLS Secret named below from a
+#     self-signed certificate;
+#   * no load balancer: the gateways get ClusterIP Services;
+#   * a small disk.
+#
+# The bootstrap admin password is not here. The workflow generates one per run
+# and passes it with --set api.bootstrapAdminPassword.
+#
+# By hand, against a kind cluster that already has the "ci" images loaded and
+# the restmail-ci-tls Secret in the namespace:
+#   helm install restmail helm/restmail -f helm/restmail/values-ci.yaml \
+#     --set api.bootstrapAdminPassword="$(openssl rand -base64 24)"
+
+# ── Mail server identity (nothing outside the cluster resolves it) ────────
+mailserver:
+  hostname: mail.restmail-ci.test
+  domain: restmail-ci.test
+
+# ── TLS — the self-signed Secret the workflow creates ────────────────────
+# It holds tls.crt and tls.key only. Its certificate names the mail host and the
+# Postgres Service, which serves TLS from the same Secret.
+tls:
+  secretName: restmail-ci-tls
+
+# ── PostgreSQL — a small volume on kind's local-path storage ──────────────
+postgres:
+  persistence:
+    size: 1Gi
+
+# ── Images — built from the commit and loaded into kind, never pulled ─────
+# pullPolicy Never makes a missing `kind load` fail as ErrImageNeverPull,
+# instead of quietly running a released image from ghcr.io.
+api:
+  image:
+    tag: ci
+    pullPolicy: Never
+  attachments:
+    persistence:
+      size: 1Gi
+
+jsFilter:
+  image:
+    tag: ci
+    pullPolicy: Never
+
+# ── Gateways — ClusterIP, as kind has no load balancer to hand out ────────
+smtpGateway:
+  image:
+    tag: ci
+    pullPolicy: Never
+  service:
+    type: ClusterIP
+
+imapGateway:
+  image:
+    tag: ci
+    pullPolicy: Never
+  service:
+    type: ClusterIP
+
+pop3Gateway:
+  image:
+    tag: ci
+    pullPolicy: Never
+  service:
+    type: ClusterIP
+
+# ── Web apps — no ingress controller in the cluster; the Ingress objects
+# are still made, they just route nowhere ───────────────────────────────────
+webmail:
+  image:
+    tag: ci
+    pullPolicy: Never
+
+admin:
+  image:
+    tag: ci
+    pullPolicy: Never

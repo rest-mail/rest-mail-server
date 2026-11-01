@@ -432,6 +432,54 @@ helm template restmail helm/restmail \
 helm template restmail helm/restmail -f helm/restmail/values-dev.yaml
 ```
 
+## Cluster install check
+
+Lint and template show that the chart renders, not that it runs. The workflow
+`.github/workflows/cluster-e2e.yml` installs it into a kind cluster on a CI
+runner. It runs daily and by hand, never on a pull request, and gates nothing.
+It:
+
+1. creates a kind cluster, with kind and the node image pinned by version;
+2. builds the seven images from the commit, with the Dockerfiles `docker.yml`
+   uses, and loads them with `kind load docker-image`;
+3. creates a self-signed TLS Secret, `restmail-ci-tls`, in place of
+   cert-manager;
+4. installs the chart with `values-ci.yaml` and a generated admin password;
+5. waits for every workload to roll out and every pod to be Ready, and fails
+   if any container restarted;
+6. requests `/api/health` and `/api/docs/openapi.json` through a port-forward
+   to the API Service, and expects 200 from both;
+7. always uploads a `cluster-report` artifact: every container's log (and its
+   previous log after a restart), `kubectl describe` of the workloads, Services
+   and volume claims, the cluster's events, and `helm status`.
+
+`values-ci.yaml` keeps the production shape: `ENVIRONMENT=production`,
+Postgres over TLS, internal mTLS and the NetworkPolicies all on. It changes
+only what kind cannot provide: images tagged `ci` and never pulled, the TLS
+Secret's name, ClusterIP Services for the gateways, and small volumes.
+
+Run it from GitHub with Actions → Cluster Install Check → Run workflow, or
+`gh workflow run cluster-e2e.yml --ref <branch>`. To run the same steps on
+your own machine, with kind, kubectl and helm installed:
+
+```sh
+kind create cluster --name restmail-ci
+for image in api smtp-gateway imap-gateway pop3-gateway js-filter webmail admin; do
+  # build ghcr.io/rest-mail/$image:ci as docker.yml does, then:
+  kind load docker-image ghcr.io/rest-mail/$image:ci --name restmail-ci
+done
+kubectl create namespace restmail
+openssl req -x509 -nodes -newkey rsa:2048 -days 2 -subj /CN=mail.restmail-ci.test \
+  -addext subjectAltName=DNS:mail.restmail-ci.test,DNS:restmail-postgres,DNS:restmail-postgres.restmail.svc \
+  -keyout tls.key -out tls.crt
+kubectl -n restmail create secret tls restmail-ci-tls --cert=tls.crt --key=tls.key
+helm install restmail helm/restmail -n restmail -f helm/restmail/values-ci.yaml \
+  --set api.bootstrapAdminPassword="$(openssl rand -base64 24)"
+kubectl -n restmail wait --for=condition=Ready pods --all --timeout=600s
+kubectl -n restmail port-forward svc/restmail-api 18080:8080 &
+curl -fsS http://127.0.0.1:18080/api/health
+```
+
 ## Configuration reference
 
 See [values.yaml](values.yaml) for the full set of knobs and inline docs.

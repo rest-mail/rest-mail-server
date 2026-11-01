@@ -1,0 +1,178 @@
+name: Cluster Install Check
+
+# Installs helm/restmail into a kind cluster on the runner, from images built
+# from this commit, and checks that every pod becomes ready and that the API
+# answers. The render check in ci.yml (helm lint + helm template) runs on every
+# PR; this one finds what only an install shows: wrong Secret or env names,
+# ports, NetworkPolicies, mTLS wiring, migrations at start-up, files missing
+# from the production images.
+#
+# Daily and by hand only, never on a pull request: it builds seven images and
+# takes several minutes. It gates nothing.
+#
+# Run by hand: Actions → Cluster Install Check → Run workflow, or
+#   gh workflow run cluster-e2e.yml --ref <branch>
+
+on:
+  schedule:
+    # Daily at 05:00 UTC, an hour before scheduled.yml.
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cluster-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # kind and the node image are pinned by version and digest, from the kind
+  # release notes (https://github.com/kubernetes-sigs/kind/releases).
+  KIND_VERSION: v0.33.0
+  KIND_SHA256: aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d
+  KIND_NODE_IMAGE: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
+  CLUSTER: restmail-ci
+  NAMESPACE: restmail
+  RELEASE: restmail
+  # The repositories the chart pulls (helm/restmail/values.yaml), tagged with
+  # the tag values-ci.yaml asks for.
+  IMAGE_PREFIX: ghcr.io/rest-mail
+  IMAGE_TAG: ci
+  REPORT_DIR: ${{ github.workspace }}/cluster-report
+
+jobs:
+  install:
+    name: Install in kind
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.16.2
+
+      - name: Install kind
+        run: |
+          curl -fsSLo kind "https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-linux-amd64"
+          echo "${KIND_SHA256}  kind" | sha256sum -c -
+          sudo install -m 0755 kind /usr/local/bin/kind
+          rm kind
+          kind version
+          kubectl version --client
+
+      - name: Create the cluster
+        run: kind create cluster --name "$CLUSTER" --image "$KIND_NODE_IMAGE" --wait 180s
+
+      # The same images, Dockerfiles and build contexts as docker.yml, built
+      # for the runner's platform only and loaded into the cluster instead of
+      # pushed.
+      - name: Build the images and load them into kind
+        run: |
+          build_and_load() { # build_and_load <image> <dockerfile> <context>
+            local ref="$IMAGE_PREFIX/$1:$IMAGE_TAG"
+            echo "::group::$ref"
+            docker build -t "$ref" -f "$2" \
+              --build-arg VERSION="$IMAGE_TAG" --build-arg COMMIT="$GITHUB_SHA" "$3"
+            kind load docker-image "$ref" --name "$CLUSTER"
+            echo "::endgroup::"
+          }
+          build_and_load api          Dockerfile                           .
+          build_and_load smtp-gateway projects/smtp-gateway/Dockerfile     .
+          build_and_load imap-gateway projects/imap-gateway/Dockerfile     .
+          build_and_load pop3-gateway projects/pop3-gateway/Dockerfile     .
+          build_and_load js-filter    projects/js-filter-sidecar/Dockerfile projects/js-filter-sidecar
+          build_and_load webmail      webmail/Dockerfile                   webmail
+          build_and_load admin        admin/Dockerfile                     admin
+
+      # Stands in for cert-manager. The gateways serve the mail host's
+      # certificate from it, and Postgres serves TLS from it too, so it names
+      # the Postgres Service as well. Nothing verifies it against a CA here.
+      - name: Create the self-signed TLS Secret
+        run: |
+          kubectl create namespace "$NAMESPACE"
+          openssl req -x509 -nodes -newkey rsa:2048 -days 2 \
+            -subj "/CN=mail.restmail-ci.test" \
+            -addext "subjectAltName=DNS:mail.restmail-ci.test,DNS:$RELEASE-postgres,DNS:$RELEASE-postgres.$NAMESPACE.svc" \
+            -keyout "$RUNNER_TEMP/tls.key" -out "$RUNNER_TEMP/tls.crt"
+          kubectl -n "$NAMESPACE" create secret tls restmail-ci-tls \
+            --cert="$RUNNER_TEMP/tls.crt" --key="$RUNNER_TEMP/tls.key"
+
+      - name: Install the chart
+        run: |
+          password="$(openssl rand -base64 24)"
+          echo "::add-mask::$password"
+          helm install "$RELEASE" helm/restmail --namespace "$NAMESPACE" \
+            -f helm/restmail/values-ci.yaml \
+            --set "api.bootstrapAdminPassword=$password"
+
+      # Every Deployment and StatefulSet must finish rolling out, then every pod
+      # must be Ready, and no container may have restarted on the way: a pod
+      # that crashed once and came back is a start-up bug, not a pass.
+      - name: Wait for every pod to be ready
+        run: |
+          for workload in $(kubectl -n "$NAMESPACE" get deployment,statefulset -o name); do
+            kubectl -n "$NAMESPACE" rollout status "$workload" --timeout=600s
+          done
+          kubectl -n "$NAMESPACE" wait --for=condition=Ready pods --all --timeout=120s
+          kubectl -n "$NAMESPACE" get pods -o wide
+          restarts="$(kubectl -n "$NAMESPACE" get pods -o json \
+            | jq '[.items[].status.containerStatuses[]?.restartCount] | add // 0')"
+          if [ "$restarts" -ne 0 ]; then
+            echo "::error::containers restarted $restarts time(s) before every pod was ready"
+            exit 1
+          fi
+
+      - name: Request the API through a port-forward
+        run: |
+          mkdir -p "$REPORT_DIR"
+          kubectl -n "$NAMESPACE" port-forward "svc/$RELEASE-api" 18080:8080 \
+            > "$REPORT_DIR/port-forward.log" 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -fsS -o /dev/null http://127.0.0.1:18080/api/health && break
+            sleep 2
+          done
+          for path in /api/health /api/docs/openapi.json; do
+            out="$REPORT_DIR/$(basename "$path")"
+            status="$(curl -sS -o "$out" -w '%{http_code}' "http://127.0.0.1:18080$path")"
+            echo "$path -> $status"
+            if [ "$status" != "200" ]; then
+              echo "::error::GET $path answered $status, not 200"
+              cat "$out"
+              exit 1
+            fi
+          done
+          jq -e '.openapi' "$REPORT_DIR/openapi.json"
+
+      # Always, and most of all on a failure: everything needed to see why a
+      # pod did not come up, without re-running the job.
+      - name: Collect pod logs, descriptions and events
+        if: always()
+        run: |
+          mkdir -p "$REPORT_DIR/logs"
+          cd "$REPORT_DIR"
+          kubectl get nodes -o wide > nodes.txt 2>&1 || true
+          kubectl -n "$NAMESPACE" get all,pvc,secret,configmap,networkpolicy,ingress -o wide > resources.txt 2>&1 || true
+          kubectl -n "$NAMESPACE" describe pods,deployments,statefulsets,services,pvc > describe.txt 2>&1 || true
+          kubectl get events -A --sort-by=.lastTimestamp > events.txt 2>&1 || true
+          helm -n "$NAMESPACE" status "$RELEASE" > helm-status.txt 2>&1 || true
+          for pod in $(kubectl -n "$NAMESPACE" get pods -o name 2>/dev/null); do
+            name="${pod#pod/}"
+            for c in $(kubectl -n "$NAMESPACE" get "$pod" -o jsonpath='{.spec.initContainers[*].name} {.spec.containers[*].name}'); do
+              kubectl -n "$NAMESPACE" logs "$pod" -c "$c" > "logs/$name.$c.log" 2>&1 || true
+              kubectl -n "$NAMESPACE" logs "$pod" -c "$c" --previous > "logs/$name.$c.previous.log" 2>/dev/null \
+                || rm -f "logs/$name.$c.previous.log"
+            done
+          done
+
+      - name: Upload the cluster report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cluster-report
+          path: cluster-report/
+          retention-days: 14
+          if-no-files-found: warn
