@@ -1039,3 +1039,19 @@ requests, reuse per origin and unmodified refusals/failures.
 PostgreSQL, the registered route, unchanged domains and policy state. Both
 API descriptions carry the same request/response pair; the existing lookup
 404 selection requires it in the examples gate.
+
+### Probes of the run's own account
+
+`deleteMailbox`, `endMailboxSessions` and `inviteAccount` act on the account
+their path names, and a generated id can name the account the run signs in as
+(the fuzz phase once sent `DELETE /api/v1/admin/mailboxes/4` as
+admin@restmail.test). Deleting it is refused with 403 `two_factor_required`,
+ending its sessions would turn the rest of the run into 401s, and inviting it
+is refused with 409, so none of those answers says anything about the
+description. `own_account_hooks.py` looks up the session's own account
+(`listAccounts`, first entry) once per origin and skips a request to these
+operations that names it, expects a 2xx and is sent as the run's principal.
+It skips rather than redirects: vertrag reports the id it drew, not a path a
+hook rewrote. Documented refusals, other ids and other principals are sent
+unchanged. `test_own_account_hooks.py` covers it through the configured
+entrypoint.
