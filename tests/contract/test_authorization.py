@@ -166,6 +166,25 @@ class AuthorizationConfig(unittest.TestCase):
         self.assertEqual(config["output"], ["", str(self.report)])
         self.assertEqual(yaml.safe_load(self.config.read_text()), self.settings)
 
+    def test_own_account_operations_are_left_out_with_a_reason(self):
+        self.settings["skip"] = [{"name": "/kept > Kept > 200", "reason": "kept"}]
+        self.config.write_text(yaml.safe_dump(self.settings))
+        config = self.generate()
+        self.assertEqual(
+            config["skip"], self.settings["skip"] + authorization.OWN_ACCOUNT
+        )
+        names = [entry["name"] for entry in authorization.OWN_ACCOUNT]
+        self.assertEqual(
+            names,
+            [
+                "/api/v1/messages/draft > Save a new draft > 201 > application/json",
+                "/api/v1/messages/scheduled > List the messages waiting to be sent"
+                " > 200 > application/json",
+            ],
+        )
+        for entry in authorization.OWN_ACCOUNT:
+            self.assertTrue(entry["reason"])
+
     def test_generated_credentials_are_private_even_if_output_existed(self):
         for existing in (False, True):
             with self.subTest(existing=existing):

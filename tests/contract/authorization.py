@@ -29,6 +29,14 @@ Keep this run report-only until these fixture and scope mismatches are resolved.
 The account with no password cannot sign in, so it has no separate credential
 from `none`; there is no agent principal until the model has agents (#341).
 
+The same flat roles make two operations report a bypass that is not one, so
+the matrix does not send them (OWN_ACCOUNT). Saving a draft without a from
+and listing scheduled sends name no mailbox: both act on the caller's own
+account, where ordinary and app-password hold mail:write and mail:send, so
+their success is the right answer, and roles listed once for every operation
+cannot say so.
+
+
 Usage: authorization.py <openapi.yaml> <vertrag.yml> <principals.json> <out.yml> <report.xml>
 """
 
@@ -43,6 +51,23 @@ from reports import spec_location
 METHODS = ("get", "put", "post", "delete", "patch", "head", "options", "trace")
 LOGIN = "/api/v1/auth/login"
 BEARER = "Authorization: Bearer {$response.body#/data/access_token}"
+# Operations whose request names no mailbox: they act on the caller's own
+# account, where every signed-in principal holds the capability they declare.
+OWN_ACCOUNT = [
+    {
+        "name": "/api/v1/messages/draft > Save a new draft > 201 > application/json",
+        "reason": "Without a from, the draft goes to the caller's own mailbox, where "
+        "ordinary and app-password hold mail:write; a credential without it is "
+        "refused (#1278), which the flat roles here cannot express.",
+    },
+    {
+        "name": "/api/v1/messages/scheduled > List the messages waiting to be sent "
+        "> 200 > application/json",
+        "reason": "Lists the caller's own account's waiting sends, leaving out those "
+        "it may not send as (#743); it never answers 403, and ordinary and "
+        "app-password hold mail:send on their own mailbox.",
+    },
+]
 
 
 def roles(spec_path):
@@ -90,6 +115,7 @@ def main(spec_path, config_path, principals_path, out_path, report_path, run_spe
     config["spec"] = spec_location(run_spec or spec_path, here)
     config["hookfiles"] = os.path.join(here, config["hookfiles"])
     config.pop("surface", None)
+    config["skip"] = list(config.get("skip") or []) + OWN_ACCOUNT
     config["reporter"] = ["cli", "junit"]
     config["output"] = ["", os.path.abspath(report_path)]
     config["principals"] = [
