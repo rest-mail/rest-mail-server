@@ -756,6 +756,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		invitationH.RegisterAdmin(admin, handlers.MailboxRouteChecks{
 			OnMailbox: describedMailboxCapability(needsOnMailbox),
 		})
+		credentialH.RegisterAdmin(admin, describedCapability(needsOnList))
 		aliasH.Register(admin, handlers.AliasRouteChecks{
 			OnList: describedCapability(needsOnList), OnAlias: describedAliasCapability(needsOnAlias),
 		})
