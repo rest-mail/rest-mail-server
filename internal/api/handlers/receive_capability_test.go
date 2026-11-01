@@ -177,7 +177,7 @@ func TestReceiveCapabilityInbound(t *testing.T) {
 		}
 	}
 	discard := &receiveDiscardFilter{}
-	registry := pipeline.NewRegistry()
+	registry := withQuietVacation(pipeline.NewRegistry())
 	registry.Register(discard.Name(), func([]byte) (pipeline.Filter, error) { return discard, nil })
 	engine := pipeline.NewEngine(registry, nil)
 	if err := db.Create(&models.Pipeline{DomainID: fx.domain.ID, Direction: "inbound", Active: true, Filters: json.RawMessage(`[{"name":"receive_discard","type":"action","enabled":true}]`)}).Error; err != nil {

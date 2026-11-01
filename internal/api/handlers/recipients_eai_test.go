@@ -192,7 +192,7 @@ func TestRecipientsEAIInboundPipeline(t *testing.T) {
 	if err := tx.Create(&models.Pipeline{DomainID: domain.ID, Direction: "inbound", Filters: filters, Active: true}).Error; err != nil {
 		t.Fatal(err)
 	}
-	engine := pipeline.NewEngine(pipeline.NewRegistry(), nil)
+	engine := pipeline.NewEngine(withQuietVacation(pipeline.NewRegistry()), nil)
 	h := NewRestmailHandler(tx, engine, nil, RestmailTarpitConfig{}, RestmailDeliverAuthConfig{})
 	for _, domainName := range []string{domain.Name, "städte." + suffix, "STA\u0308DTE." + suffix, "städte." + suffix + " "} {
 		body, _ := json.Marshal(map[string]interface{}{"from": "sender@remote.test", "to": []string{"münchen@" + domainName}})

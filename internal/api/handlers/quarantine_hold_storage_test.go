@@ -36,7 +36,7 @@ func (holdAll) Execute(context.Context, *pipeline.EmailJSON) (*pipeline.FilterRe
 }
 
 func holdAllEngine() *pipeline.Engine {
-	registry := pipeline.NewRegistry()
+	registry := withQuietVacation(pipeline.NewRegistry())
 	registry.Register("hold_all", func([]byte) (pipeline.Filter, error) { return holdAll{}, nil })
 	return pipeline.NewEngine(registry, slog.New(slog.NewTextHandler(io.Discard, nil)))
 }

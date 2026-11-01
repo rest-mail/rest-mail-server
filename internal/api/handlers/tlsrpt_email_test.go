@@ -212,7 +212,7 @@ func TestTLSReportEmailDeliveryRoutes(t *testing.T) {
 	receiver := NewTLSReportEmailReceiver(tx, fixture.mailbox.Address)
 	messageHandler := NewMessageHandler(tx, nil, nil, "", nil)
 	messageHandler.SetTLSReportEmailReceiver(receiver)
-	restmailHandler := NewRestmailHandler(tx, pipeline.NewEngine(pipeline.DefaultRegistry, slog.Default()), nil, RestmailTarpitConfig{}, RestmailDeliverAuthConfig{})
+	restmailHandler := NewRestmailHandler(tx, pipeline.NewEngine(withQuietVacation(pipeline.DefaultRegistry), slog.Default()), nil, RestmailTarpitConfig{}, RestmailDeliverAuthConfig{})
 	restmailHandler.SetTLSReportEmailReceiver(receiver)
 	for _, signed := range []bool{false, true} {
 		for _, transport := range []string{"SMTP", "RESTMAIL"} {

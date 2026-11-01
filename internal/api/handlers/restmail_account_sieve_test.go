@@ -32,7 +32,7 @@ func TestRESTMAILDeliver_RunsEachRecipientsSieveScript(t *testing.T) {
 	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_vacation_responses_handle ON vacation_responses(mailbox_id, sender, handle)`).Error; err != nil {
 		t.Fatal(err)
 	}
-	engine := pipeline.NewEngine(pipeline.DefaultRegistry, slog.Default())
+	engine := pipeline.NewEngine(withQuietVacation(pipeline.DefaultRegistry), slog.Default())
 	const files = `require ["fileinto", "imap4flags"]; fileinto "Work"; addflag "\\Flagged";`
 	const refuses = `require ["reject"]; reject "not for me";`
 
