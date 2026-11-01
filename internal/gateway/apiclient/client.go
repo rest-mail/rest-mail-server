@@ -733,8 +733,23 @@ func (e *APIError) Error() string {
 // rejection.
 func IsAuthRejection(err error) bool {
 	var apiErr *APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden
+	if !errors.As(err, &apiErr) {
+		return false
 	}
-	return false
+	// access_restricted answers a correct password while the server is locked
+	// down (#324). It says nothing against the credential, and a mail client
+	// retrying through a lockdown must not leave its account banned afterwards.
+	if isAccessRestricted(apiErr.Body) {
+		return false
+	}
+	return apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden
+}
+
+func isAccessRestricted(body string) bool {
+	var refusal struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	return json.Unmarshal([]byte(body), &refusal) == nil && refusal.Error.Code == "access_restricted"
 }
