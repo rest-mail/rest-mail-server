@@ -118,10 +118,10 @@ func TestGrantStateRequirementExamples(t *testing.T) {
 	}
 	routes := requirementRoutes(t)
 	for _, tc := range []struct{ op, name string }{
-		{"createGrant", "granted"}, {"createGrant", "exists"}, {"createGrant", "no_holder"}, {"createGrant", "exceeds_held"},
-		{"activateGrant", "activated"}, {"activateGrant", "already_active"}, {"activateGrant", "invalid_code"},
+		{"createGrant", "granted"}, {"createGrant", "exists"}, {"createGrant", "no_holder"}, {"createGrant", "exceeds_held"}, {"createGrant", "malformed_json"},
+		{"activateGrant", "activated"}, {"activateGrant", "already_active"}, {"activateGrant", "invalid_code"}, {"activateGrant", "malformed_json"},
 		{"deactivateGrant", "not_active"}, {"deactivateGrant", "switched_off"},
-		{"makeGrantEligible", "already_eligible"}, {"makeGrantEligible", "invalid_code"}, {"makeGrantEligible", "now_eligible"},
+		{"makeGrantEligible", "already_eligible"}, {"makeGrantEligible", "invalid_code"}, {"makeGrantEligible", "now_eligible"}, {"makeGrantEligible", "malformed_json"},
 	} {
 		t.Run(tc.op+"/"+tc.name, func(t *testing.T) {
 			examplepairs.Proven(t, tc.op, tc.name)
@@ -170,8 +170,11 @@ func TestGrantStateRequirementExamples(t *testing.T) {
 				}
 			}
 			pair := pairs[tc.op][tc.name]
+			if tc.name == "malformed_json" {
+				pair.Request.Body = json.RawMessage("{") // The raw bytes the pair describes, not the JSON string holding them.
+			}
 			var body map[string]any
-			if len(pair.Request.Body) > 0 {
+			if len(pair.Request.Body) > 0 && tc.name != "malformed_json" {
 				if err := json.Unmarshal(pair.Request.Body, &body); err != nil {
 					t.Fatal(err)
 				}
