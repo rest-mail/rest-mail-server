@@ -26,7 +26,7 @@ func TestMessageImportExamplesWithVertrag(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	full := contractDocument(t, describedRouters(t).generator("import examples"))
+	full := contractDocument(t, describedRouters(t).pairGenerator(t, "import examples"))
 	snapshot, err := json.Marshal(full)
 	if err != nil {
 		t.Fatal(err)
@@ -67,7 +67,7 @@ func TestMessageImportExamplesWithVertrag(t *testing.T) {
 				parameter["example"] = 12
 			}
 			dir := t.TempDir()
-			data, err := json.Marshal(doc)
+			data, err := marshalPairDescription(doc)
 			if err != nil {
 				t.Fatal(err)
 			}

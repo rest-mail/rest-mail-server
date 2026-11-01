@@ -50,7 +50,7 @@ func TestInvitationExamplesWithVertrag(t *testing.T) {
 						uri = strings.ReplaceAll(path, "{id}", "0")
 					}
 				}
-				doc := contractDocument(t, describedRouters(t).generator("invitation examples"))
+				doc := contractDocument(t, describedRouters(t).pairGenerator(t, "invitation examples"))
 				op := doc["paths"].(map[string]any)[path].(map[string]any)["post"].(map[string]any)
 				doc["paths"] = map[string]any{path: map[string]any{"post": op}}
 				status := strconv.Itoa(pair.Response.Status)
@@ -82,7 +82,7 @@ func TestInvitationExamplesWithVertrag(t *testing.T) {
 					}
 				}
 				dir := t.TempDir()
-				data, _ := json.Marshal(doc)
+				data, _ := marshalPairDescription(doc)
 				if err := os.WriteFile(filepath.Join(dir, "openapi.json"), data, 0600); err != nil {
 					t.Fatal(err)
 				}

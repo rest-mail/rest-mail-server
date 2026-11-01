@@ -34,7 +34,7 @@ func TestPublicJSONExamplesWithVertrag(t *testing.T) {
 		selected[path] = paths[path]
 	}
 	doc["paths"] = selected
-	document, err := json.Marshal(doc)
+	document, err := marshalPairDescription(doc)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -25,7 +25,7 @@ import (
 // supplies genuinely omitted query parameters and oversized transport bodies.
 func checkMailboxLookupWithVertrag(t *testing.T, binary string, handler http.Handler, token, path, name string, pair oapifly.ExamplePair) {
 	t.Helper()
-	doc := contractDocument(t, describedRouters(t).generator("mailbox lookup boundary"))
+	doc := contractDocument(t, describedRouters(t).pairGenerator(t, "mailbox lookup boundary"))
 	op := doc["paths"].(map[string]interface{})[path].(map[string]interface{})["get"].(map[string]interface{})
 	doc["paths"] = map[string]interface{}{path: map[string]interface{}{"get": op}}
 	status := strconv.Itoa(pair.Response.Status)
@@ -94,7 +94,7 @@ func checkMailboxLookupWithVertrag(t *testing.T, binary string, handler http.Han
 		}
 	}
 	dir := t.TempDir()
-	data, err := json.Marshal(doc)
+	data, err := marshalPairDescription(doc)
 	if err != nil {
 		t.Fatal(err)
 	}

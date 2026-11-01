@@ -421,7 +421,7 @@ func TestTLSIngestionExamplesWithVertrag(t *testing.T) {
 	}
 	for name, pair := range pairs["receiveTlsReport"] {
 		t.Run(name, func(t *testing.T) {
-			doc := contractDocument(t, describedRouters(t).generator("TLS ingestion examples"))
+			doc := contractDocument(t, describedRouters(t).pairGenerator(t, "TLS ingestion examples"))
 			op := doc["paths"].(map[string]interface{})[tlsIngestionPath].(map[string]interface{})["post"].(map[string]interface{})
 			doc["paths"] = map[string]interface{}{tlsIngestionPath: map[string]interface{}{"post": op}}
 			content := op["requestBody"].(map[string]interface{})["content"].(map[string]interface{})
@@ -451,7 +451,7 @@ func TestTLSIngestionExamplesWithVertrag(t *testing.T) {
 				m["examples"] = map[string]interface{}{name: chosen}
 			}
 			dir := t.TempDir()
-			data, err := json.Marshal(doc)
+			data, err := marshalPairDescription(doc)
 			if err != nil {
 				t.Fatal(err)
 			}

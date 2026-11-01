@@ -64,7 +64,7 @@ func checkAuthReadWithVertrag(t *testing.T, binary string, handler http.Handler,
 
 func checkRegisteredExamplesWithVertrag(t *testing.T, binary string, handler http.Handler, token, method, status string, paths []string, want int, transportBody bool, rawPair ...string) {
 	t.Helper()
-	doc := contractDocument(t, describedRouters(t).generator("authenticated example boundary"))
+	doc := contractDocument(t, describedRouters(t).pairGenerator(t, "authenticated example boundary"))
 	all := doc["paths"].(map[string]interface{})
 	selected := map[string]interface{}{}
 	for _, path := range paths {
@@ -109,7 +109,7 @@ func checkRegisteredExamplesWithVertrag(t *testing.T, binary string, handler htt
 		}
 	}
 	doc["paths"] = selected
-	data, err := json.Marshal(doc)
+	data, err := marshalPairDescription(doc)
 	if err != nil {
 		t.Fatal(err)
 	}

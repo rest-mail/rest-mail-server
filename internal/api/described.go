@@ -1,6 +1,7 @@
 package api
 
 import (
+	"io/fs"
 	"net/http"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
@@ -169,13 +170,18 @@ func (rt *Routers) generator(version string) *oapifly.Generator {
 // describe is the generator of the description of the routes registry holds, with the
 // example pairs in openapi-example.json, as /api/docs/openapi.json serves it.
 func describe(registry *endpoint.Registry, version string) *oapifly.Generator {
+	return describeWith(registry, version, restmail.Examples)
+}
+
+// describeWith is describe with its example pairs read from examples.
+func describeWith(registry *endpoint.Registry, version string, examples fs.FS) *oapifly.Generator {
 	g := oapifly.New(oapifly.Config{
 		Title:           "REST Mail API",
 		Description:     "Human sessions that prove a second factor carry auth_time: the original sign-in time, preserved across refresh. Refresh changes iat but never reopens the sudo window. Machine credentials never carry this proof. Sensitive actions require 2FA; administrative/read/sending grants, credential creation, password/2FA changes and audit access additionally require proof within 15 minutes. FRESH_TWO_FACTOR_WINDOW may shorten that window; invalid, non-positive or longer values refuse startup. Missing or stale proof returns 403 recent_two_factor_required so clients can sign in again. Initial authenticator enrollment and forced password setup before any factor exists remain available; once a factor is enrolled, sign in with it before changing the password.",
 		Version:         version,
 		SecuritySchemes: securitySchemes,
 		Security:        defaultSecurity,
-		Examples:        restmail.Examples,
+		Examples:        examples,
 		ExamplesFile:    "openapi-example.json",
 		Strict:          strictAreaScope(),
 
