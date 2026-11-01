@@ -5187,6 +5187,7 @@ paths:
                 email:
                   type: string
                   format: email
+                  maxLength: 255
             example:
               email: spam@example.org
       responses:
@@ -14628,8 +14629,10 @@ components:
         email:
           type: string
           format: email
+          maxLength: 255
         name:
           type: string
+          maxLength: 255
         trust_level:
           type: string
           enum: [auto, trusted, blocked]
@@ -14639,6 +14642,7 @@ components:
       properties:
         name:
           type: string
+          maxLength: 255
         trust_level:
           type: string
           enum: [auto, trusted, blocked]
@@ -14657,8 +14661,10 @@ components:
               email:
                 type: string
                 format: email
+                maxLength: 255
               name:
                 type: string
+                maxLength: 255
 
     # ─────────────────────────────────────────────────────────────
     # Vacation
