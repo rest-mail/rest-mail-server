@@ -385,6 +385,10 @@ func (l *limitsRun) authThrottle(t *testing.T) {
 // address, and known and unknown addresses are charged alike, so another address
 // can still ask.
 func (l *limitsRun) recoveryEmailRequests(t *testing.T) {
+	// The sign-in bucket refills first: each request spends from it too, and a
+	// spent bucket would look like this address's limit. Five, the 429 and the
+	// other address need seven, and the last subtest left only a few.
+	time.Sleep(10 * time.Second)
 	ask := func(address string) *http.Response {
 		return l.call(t, nil, limitsOperation{"POST", "/api/v1/auth/recover/email"}, map[string]any{"email": address})
 	}
