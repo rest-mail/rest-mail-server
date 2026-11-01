@@ -41,7 +41,7 @@ class Teardown(unittest.TestCase):
         self.assertEqual(teardown_step["if"], "inputs.contract-phases == 'gate'")
         self.assertLess(names.index("Contract tests (example pairs, examples, coverage, secret scan and authorization report)"),
                         names.index(teardown_step["name"]))
-        self.assertLess(names.index("Limits suite (report)"), names.index(teardown_step["name"]))
+        self.assertLess(names.index("Limits suite"), names.index(teardown_step["name"]))
         chores = (ROOT / "chores.yml").read_text()
         self.assertIn("tests/contract/run.sh teardown", chores)
 
