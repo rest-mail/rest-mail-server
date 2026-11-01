@@ -171,6 +171,22 @@ class ContractDiff(unittest.TestCase):
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertEqual(report["missing_labels"], ["contract-change"])
 
+    def test_error_status_removal_needs_contract_label(self):
+        base = description()
+        base["paths"]["/widgets"]["post"]["responses"]["404"] = {
+            "description": "No such widget"
+        }
+        result, report, _ = self.run_diff(description(), base=base)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(report["missing_labels"], ["contract-change"])
+        self.assertIn(
+            ("response-non-success-status-removed", "breaking"),
+            [(c["id"], c["classification"]) for c in report["changes"]],
+        )
+        self.assertEqual(
+            self.run_diff(description(), ["contract-change"], base)[0].returncode, 0
+        )
+
     def test_credential_location_change_needs_permission_label(self):
         revision = description()
         revision["components"]["securitySchemes"]["CookieAuth"]["in"] = "header"
