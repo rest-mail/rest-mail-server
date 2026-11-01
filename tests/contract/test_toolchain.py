@@ -118,10 +118,7 @@ class Toolchain(unittest.TestCase):
         runner = (ROOT / "tests/contract/run.sh").read_text()
         for entry in (workflow, chores, runner):
             self.assertIn("scripts/vertrag_pin.py ensure .cache/bin", entry)
-        self.assertIn(
-            "RESTMAIL_VERTRAG_BINARY: ${{ github.workspace }}/.cache/bin/vertrag",
-            workflow,
-        )
+        self.assertIn('export RESTMAIL_VERTRAG_BINARY="$CONTRACT_VERTRAG"', chores)
         self.assertNotIn("/usr/local/bin/vertrag", workflow)
 
 
