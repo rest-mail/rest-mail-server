@@ -84,6 +84,16 @@ class Reports(unittest.TestCase):
             "CONTRACT_RUN_SPEC", (ROOT / "tests/contract/authorization.py").read_text()
         )
 
+    def test_the_contract_command_reports_the_api_coverage_of_its_phases(self):
+        chores = (ROOT / "chores.yml").read_text()
+        reset = chores.index("chore api:coverage:reset")
+        gate = chores.index("tests/contract/run.sh gate {{.CLI_ARGS}}")
+        ownership = chores.index("tests/contract/run.sh ownership {{.CLI_ARGS}}")
+        report = chores.index("chore api:coverage:report")
+        self.assertLess(reset, gate)
+        self.assertLess(ownership, report)
+        self.assertIn("API_COVER:", (ROOT / ".github/workflows/e2e-suite.yml").read_text())
+
 
 class Summary(unittest.TestCase):
     def test_operation_counts_and_reasons_come_from_vertrags_surface(self):

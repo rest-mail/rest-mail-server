@@ -61,6 +61,15 @@ vars:
   # Go build tags for the dev image's build, empty for a normal one. Only the
   # contract fault run sets them (faultinject,fault_<name>: tests/contract/faults.yml).
   API_BUILD_TAGS: '{{.API_BUILD_TAGS | default ""}}'
+  # Go coverage of the running API (#655), for the test topology only. When
+  # "true" (dev mode only), the container builds ./cmd/api with `go build
+  # -cover` and runs it directly instead of through air, so `docker stop` is a
+  # SIGTERM to the API itself and its counters reach API_COVER_VOLUME, mounted
+  # as GOCOVERDIR. It is a command override on the dev image: the Dockerfile and
+  # the release images are untouched. `coverage:reset` and `coverage:report`
+  # below collect it; `chore contract` calls both.
+  API_COVER: '{{.API_COVER | default "false"}}'
+  API_COVER_VOLUME: '{{.API_CONTAINER_NAME}}-gocover'
 
 tasks:
 
@@ -91,7 +100,7 @@ tasks:
           docker volume create {{.API_ATTACHMENTS_VOLUME}} >$OUTPUT 2>&1
         fi
       - |
-        echo "  starting api ({{.API_CONTAINER_NAME}} @ {{.API_IP}}, mode={{.API_MODE}})"
+        echo "  starting api ({{.API_CONTAINER_NAME}} @ {{.API_IP}}, mode={{.API_MODE}}, cover={{.API_COVER}})"
         # Air executes /app/tmp binaries; Go needs executable build/temp space.
         # Keep GOPATH (including sumdb state) and caches in bounded /tmp. Use
         # the image's preloaded modules as a read-only proxy before the network.
@@ -113,6 +122,22 @@ tasks:
             echo "ERROR: API_BUILD_TAGS needs mode=dev; the prod image is built without them" >&2
             exit 1
           fi
+        fi
+        # A cover build starts with an empty counter volume, so a report holds
+        # only what this container ran. "$@" is the command after the image:
+        # empty keeps the image's own (air), set replaces it.
+        COVER_FLAGS=""
+        set --
+        if [ "{{.API_COVER}}" = "true" ]; then
+          if [ "{{.API_MODE}}" != "dev" ]; then
+            echo "ERROR: API_COVER=true needs API_MODE=dev: it builds the API from the mounted source" >&2
+            exit 1
+          fi
+          docker volume create {{.API_COVER_VOLUME}} >$OUTPUT 2>&1 || exit 1
+          docker run --rm -v {{.API_COVER_VOLUME}}:/gocover alpine:3.20 \
+            find /gocover -mindepth 1 -delete >$OUTPUT 2>&1 || exit 1
+          COVER_FLAGS="-v {{.API_COVER_VOLUME}}:/gocover -e GOCOVERDIR=/gocover"
+          set -- sh -c 'go build -cover -o /app/tmp/api ./cmd/api && exec /app/tmp/api'
         fi
         docker rm -f {{.API_CONTAINER_NAME}} >$OUTPUT 2>&1 || true
         # The testbed dnsmasq must be the ONLY resolver (mounted resolv.conf, not
@@ -181,6 +206,7 @@ tasks:
           -v {{.API_OWN_CERTS_VOLUME}}:/certs:ro \
           -v {{.API_ATTACHMENTS_VOLUME}}:/attachments \
           $DEV_FLAGS \
+          $COVER_FLAGS \
           -l docker-proxy.api.host={{.API_PROXY_HOST}} \
           -l docker-proxy.api.port={{.API_PORT}} \
           -l docker-proxy.api.path=/api \
@@ -201,7 +227,7 @@ tasks:
           -e INTERNAL_MTLS_CA_CERT=/certs/internal-ca.crt \
           -e INTERNAL_MTLS_SERVER_CERT=/certs/internal-server.crt \
           -e INTERNAL_MTLS_SERVER_KEY=/certs/internal-server.key \
-          {{.API_IMAGE}} >$OUTPUT 2>&1 || exit 1
+          {{.API_IMAGE}} "$@" >$OUTPUT 2>&1 || exit 1
         docker network connect "{{.API_PROJECT}}-js-filter-net" {{.API_CONTAINER_NAME}} >$OUTPUT 2>&1 || exit 1
         docker start {{.API_CONTAINER_NAME}} >$OUTPUT 2>&1
 
@@ -221,6 +247,103 @@ tasks:
     cmds:
       - task: down
       - task: up
+
+  # ════════════════════════════════════════════════════════
+  # Coverage of a cover-built API (API_COVER, #655)
+  # ════════════════════════════════════════════════════════
+  # Both detect a cover build from the container's GOCOVERDIR and do nothing
+  # without one, so `chore contract` can call them against any topology. A Go
+  # program writes its counters only when it exits cleanly, so both stop the API
+  # with a SIGTERM (`docker stop`) and start it again.
+
+  coverage:reset:
+    desc: 'Restart a cover-built API with empty coverage counters, so a report holds only what runs after it'
+    cmds:
+      - |
+        if ! docker inspect -f '{{`{{range .Config.Env}}{{println .}}{{end}}`}}' {{.API_CONTAINER_NAME}} 2>/dev/null | grep -q '^GOCOVERDIR='; then
+          echo "  {{.API_CONTAINER_NAME}} is not a cover build; no coverage to reset"
+          exit 0
+        fi
+        echo "  restarting {{.API_CONTAINER_NAME}} with empty coverage counters"
+        docker stop -t 60 {{.API_CONTAINER_NAME}} >$OUTPUT 2>&1 || exit 1
+        docker run --rm -v {{.API_COVER_VOLUME}}:/gocover alpine:3.20 \
+          find /gocover -mindepth 1 -delete >$OUTPUT 2>&1 || exit 1
+        docker start {{.API_CONTAINER_NAME}} >$OUTPUT 2>&1 || exit 1
+        # It rebuilds before it listens: its build cache is on a tmpfs.
+        i=0
+        until docker exec {{.API_CONTAINER_NAME}} wget -q -O /dev/null "http://localhost:{{.API_PORT}}/api/health" >/dev/null 2>&1; do
+          i=$((i+1))
+          if [ $i -ge 180 ]; then
+            echo "ERROR: {{.API_CONTAINER_NAME}} did not become healthy within 180s" >&2
+            exit 1
+          fi
+          sleep 1
+        done
+        echo "  api healthy"
+
+  coverage:report:
+    desc: 'Stop a cover-built API so it writes its counters, merge them into .cache/contract/api-coverage, and start it again'
+    cmds:
+      - |
+        if ! docker inspect -f '{{`{{range .Config.Env}}{{println .}}{{end}}`}}' {{.API_CONTAINER_NAME}} 2>/dev/null | grep -q '^GOCOVERDIR='; then
+          echo "  {{.API_CONTAINER_NAME}} is not a cover build; no coverage to report"
+          exit 0
+        fi
+        out="{{.ROOT_DIR}}/.cache/contract/api-coverage"
+        rm -rf "$out"
+        mkdir -p "$out"
+        image=$(docker inspect -f '{{`{{.Image}}`}}' {{.API_CONTAINER_NAME}}) || exit 1
+        echo "  stopping {{.API_CONTAINER_NAME}} so it writes its coverage counters"
+        docker stop -t 60 {{.API_CONTAINER_NAME}} >$OUTPUT 2>&1 || exit 1
+        # The Go that wrote the counters reads them: the container's own image,
+        # as the invoking user so the files it writes are theirs.
+        merged=0
+        docker run --rm --network none --user "$(id -u):$(id -g)" \
+          -e HOME=/tmp -e GOCACHE=/tmp/go-build-cache -w /tmp \
+          -v {{.API_COVER_VOLUME}}:/gocover:ro -v "$out":/out \
+          "$image" \
+          sh -c 'go tool covdata textfmt -i=/gocover -o=/out/api-coverage.out && go tool covdata percent -i=/gocover > /out/packages.txt' \
+          || merged=$?
+        echo "  starting {{.API_CONTAINER_NAME}} again"
+        docker start {{.API_CONTAINER_NAME}} >$OUTPUT 2>&1 || exit 1
+        i=0
+        until docker exec {{.API_CONTAINER_NAME}} wget -q -O /dev/null "http://localhost:{{.API_PORT}}/api/health" >/dev/null 2>&1; do
+          i=$((i+1))
+          if [ $i -ge 180 ]; then
+            echo "ERROR: {{.API_CONTAINER_NAME}} did not become healthy within 180s" >&2
+            exit 1
+          fi
+          sleep 1
+        done
+        echo "  api healthy"
+        if [ "$merged" -ne 0 ]; then
+          echo "ERROR: the coverage counters could not be merged; with no counter files, the API did not exit cleanly" >&2
+          exit 1
+        fi
+        # The total counts each block of the merged profile once: its statements,
+        # and whether any run reached it.
+        total=$(awk 'NR > 1 { n[$1] = $2; if ($3 > 0) hit[$1] = 1 }
+          END {
+            for (b in n) { all += n[b]; if (b in hit) run += n[b] }
+            if (all > 0) printf "%.1f%% (%d of %d statements)", 100 * run / all, run, all
+            else printf "no statements"
+          }' "$out/api-coverage.out")
+        module=$(awk '$1 == "module" { print $2 }' "{{.ROOT_DIR}}/go.mod")
+        {
+          echo "## API code coverage of the contract run"
+          echo
+          echo "The API's statements that ran while the contract phases sent their requests: **$total**."
+          echo "Measured by a \`go build -cover\` API in the E2E topology. A report: nothing fails on it."
+          echo
+          echo "| Package | Statements run |"
+          echo "| --- | ---: |"
+          awk -v prefix="$module/" '$2 == "coverage:" {
+              pkg = $1; sub("^" prefix, "", pkg)
+              pct = ($3 ~ /%$/) ? $3 : "no statements"
+              printf "| `%s` | %s |\n", pkg, pct
+            }' "$out/packages.txt" | sort
+        } > "$out/summary.md"
+        cat "$out/summary.md"
 
   # ════════════════════════════════════════════════════════
   # Diagnostics
