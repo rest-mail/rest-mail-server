@@ -95,7 +95,11 @@ class ImapsyncCutover(unittest.TestCase):
         sender = source()
         sender.create(folder)
         for subject, flags in want.items():
-            message = "From: alice@mail1.test\r\nTo: alice@mail1.test\r\nSubject: %s\r\n\r\nBody of %s\r\n" % (subject, subject)
+            # imapsync identifies a message by its Message-Id and Received headers, and
+            # silently leaves one with neither behind, as real mail never is.
+            message = ("From: alice@mail1.test\r\nTo: alice@mail1.test\r\nSubject: %s\r\n"
+                       "Message-ID: <%s.%s@mail1.test>\r\n\r\nBody of %s\r\n"
+                       % (subject, subject.replace(" ", "-"), folder, subject))
             status, _ = sender.append(folder, "(%s)" % " ".join(flags), None, message.encode())
             self.assertEqual(status, "OK")
         self.addCleanup(sender.logout)
