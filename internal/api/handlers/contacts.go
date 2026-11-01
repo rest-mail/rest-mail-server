@@ -178,8 +178,8 @@ type createContactRequest struct {
 }
 
 type createContactBody struct {
-	Email      string  `json:"email" format:"email" formatMessage:"must be an email address"`
-	Name       string  `json:"name,omitempty"`
+	Email      string  `json:"email" format:"email" maxLength:"255" formatMessage:"must be an email address"`
+	Name       string  `json:"name,omitempty" maxLength:"255"`
 	TrustLevel *string `json:"trust_level,omitempty" enums:"auto,trusted,blocked" message:"must be auto, trusted, or blocked"`
 }
 
@@ -238,7 +238,7 @@ type updateContactRequest struct {
 }
 
 type updateContactBody struct {
-	Name       *string `json:"name,omitempty"`
+	Name       *string `json:"name,omitempty" maxLength:"255"`
 	TrustLevel *string `json:"trust_level,omitempty" enums:"auto,trusted,blocked" message:"must be auto, trusted, or blocked"`
 }
 
@@ -327,7 +327,7 @@ type blockSenderRequest struct {
 }
 
 type blockSenderBody struct {
-	Email string `json:"email" format:"email" formatMessage:"must be an email address"`
+	Email string `json:"email" format:"email" maxLength:"255" formatMessage:"must be an email address"`
 }
 
 // block creates or updates a contact with trust_level="blocked".
@@ -424,8 +424,8 @@ type importContactsBody struct {
 }
 
 type importContactEntry struct {
-	Email string `json:"email" format:"email" formatMessage:"must be an email address" missing:"required"`
-	Name  string `json:"name,omitempty"`
+	Email string `json:"email" format:"email" maxLength:"255" formatMessage:"must be an email address" missing:"required"`
+	Name  string `json:"name,omitempty" maxLength:"255"`
 }
 
 // importContacts bulk-imports contacts for a mailbox.

@@ -21,6 +21,12 @@ func contactRoutes(h *ContactHandler) http.Handler {
 	return r
 }
 
+// A valid address and a name, each one character past the 255 the contacts table stores.
+var (
+	overlongContactEmail = strings.Repeat("a", 64) + "@" + strings.Repeat("b", 186) + ".test"
+	overlongContactName  = strings.Repeat("n", 256)
+)
+
 // contactsPathOf is the account's contacts, followed by suffix.
 func contactsPathOf(account uint, suffix string) string {
 	return fmt.Sprintf("/api/v1/accounts/%d/contacts%s", account, suffix)
@@ -70,6 +76,13 @@ func TestContactBindingBeforeDatabase(t *testing.T) {
 		{http.MethodDelete, "/api/v1/accounts/1/contacts/0", "", "cid"},
 		{http.MethodPost, "/api/v1/accounts/1/contacts/block", `{"email":5}`, "email"},
 		{http.MethodPost, "/api/v1/accounts/1/contacts/import", `{"contacts":[{"name":"No address"}]}`, "contacts[0].email"},
+		// The columns hold 255 characters: one more is the caller's to correct, not a 500 (#1326).
+		{http.MethodPost, "/api/v1/accounts/1/contacts", `{"email":"` + overlongContactEmail + `"}`, "email"},
+		{http.MethodPost, "/api/v1/accounts/1/contacts", `{"email":"a@example.test","name":"` + overlongContactName + `"}`, "name"},
+		{http.MethodPatch, "/api/v1/accounts/1/contacts/1", `{"name":"` + overlongContactName + `"}`, "name"},
+		{http.MethodPost, "/api/v1/accounts/1/contacts/block", `{"email":"` + overlongContactEmail + `"}`, "email"},
+		{http.MethodPost, "/api/v1/accounts/1/contacts/import", `{"contacts":[{"email":"` + overlongContactEmail + `"}]}`, "contacts[0].email"},
+		{http.MethodPost, "/api/v1/accounts/1/contacts/import", `{"contacts":[{"email":"a@example.test","name":"` + overlongContactName + `"}]}`, "contacts[0].name"},
 	} {
 		t.Run(tc.method+tc.path+tc.body, func(t *testing.T) {
 			rr := httptest.NewRecorder()
