@@ -333,7 +333,17 @@ def keep_the_refresh_token(transaction):
 def refresh_the_sign_in(transaction):
     body = hooks.get_json(transaction)
     if isinstance(body, dict) and body.get("refresh_token") == "fixture-refresh-token":
-        body["refresh_token"] = hooks.stash.get("refresh_token", "")
+        token = hooks.stash.get("refresh_token", "")
+        # The authorization run replays the examples, then sends this request
+        # once per principal without after hooks, so the rotated token is not
+        # kept and a second send would reuse a spent one. Spend each token once.
+        spent = hooks.stash.setdefault("spent_refresh_tokens", [])
+        if token and token in spent:
+            token = fresh_native_refresh_token(origin_of(transaction))
+            hooks.stash["refresh_token"] = token
+        if token:
+            spent.append(token)
+        body["refresh_token"] = token
         hooks.set_json(transaction, body)
     # A schema-valid body without a native token is the browser channel.
     # Supply its cookie only for success probes; named missing/invalid-token
@@ -351,14 +361,37 @@ def refresh_the_sign_in(transaction):
     headers = transaction["request"].get("headers", {})
     if any(key.lower() == "cookie" for key in headers):
         return  # Keep an explicitly supplied caller credential intact.
-    origin = "{}//{}:{}".format(
+    cookie = fresh_browser_refresh_cookie(origin_of(transaction))
+    headers["Cookie"] = cookie
+    transaction["request"]["headers"] = headers
+
+
+def origin_of(transaction):
+    return "{}//{}:{}".format(
         transaction["protocol"],
         transaction["host"],
         transaction["port"],
     )
-    cookie = fresh_browser_refresh_cookie(origin)
-    headers["Cookie"] = cookie
-    transaction["request"]["headers"] = headers
+
+
+def fresh_native_refresh_token(origin):
+    """Sign the fixture admin in again for an unspent native refresh token."""
+    pace_auth_requests(None)
+    request = urllib.request.Request(
+        origin + "/api/v1/auth/login",
+        data=json.dumps(
+            {"email": ADMIN, "password": ADMIN_PASSWORD, "client": "native"}
+        ).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        token = (json.load(response).get("data") or {}).get("refresh_token")
+    if not isinstance(token, str) or not token:
+        raise RuntimeError("fixture admin sign-in returned no refresh token")
+    # The setup login and the actual refresh share the auth rate bucket.
+    pace_auth_requests(None)
+    return token
 
 
 def fresh_browser_refresh_cookie(origin):
@@ -607,8 +640,35 @@ def test_the_created_pipeline(transaction):
         or body["pipeline_id"] != 1
     ):
         return
+    # The kept pipeline was deleted (forget_a_deleted_pipeline): make another,
+    # inactive, on the run's domain. Before the run has a domain, send as before.
+    if hooks.stash.get("pipeline_id") is None and hooks.stash.get("domain_id") is not None:
+        created = fixture_call(
+            transaction,
+            "POST",
+            "/api/v1/admin/pipelines",
+            {
+                "domain_id": hooks.stash["domain_id"],
+                "direction": "inbound",
+                "filters": [{"name": "header_validate", "config": {}}],
+                "active": False,
+            },
+        )
+        hooks.stash["pipeline_id"] = created["id"]
     body["pipeline_id"] = hooks.stash.get("pipeline_id")
     hooks.set_json(transaction, body)
+
+
+@hooks.before("deletePipeline")
+def forget_a_deleted_pipeline(transaction):
+    # The authorization run replays the examples, whose delete removes the
+    # kept pipeline, and then sends each principal's preview without after
+    # hooks. A delete aimed at the kept pipeline makes the next preview test
+    # one of its own rather than a deleted id.
+    path = transaction.get("fullPath", "").partition("?")[0]
+    pipeline_id = path.rstrip("/").rsplit("/", 1)[-1]
+    if pipeline_id.isdecimal() and int(pipeline_id) == hooks.stash.get("pipeline_id"):
+        hooks.stash.pop("pipeline_id")
 
 
 @hooks.before("createCustomFilter")
@@ -618,6 +678,60 @@ def a_custom_filter_on_the_created_domain(transaction):
 
 def openssl(*args):
     subprocess.run(["openssl"] + list(args), check=True, capture_output=True)
+
+
+def the_admin_domain_id(transaction):
+    """restmail.test's id, through the admin API once per run, or None."""
+    if hooks.stash.get("admin_domain_id") is None:
+        hooks.stash["admin_domain_id"] = next(
+            (
+                d["id"]
+                for d in fixture_call(transaction, "GET", "/api/v1/admin/domains") or []
+                if d.get("name") == ADMIN.split("@")[1]
+            ),
+            None,
+        )
+    return hooks.stash["admin_domain_id"]
+
+
+@hooks.before("setDKIMKey")
+@hooks.before("deleteDKIMKey")
+@hooks.before("setDKIMRotation")
+def off_the_admin_domain(transaction):
+    # Coverage probes keep the documented example's id, 1: restmail.test, the
+    # fixture admin's domain. Their key deletes and replacements left it
+    # signing with selector `contract`, a key DNS does not publish, and their
+    # updates left it at dmarc_policy reject (and rewrote active and
+    # sending_policy), so the authorization run's self-addressed draft send
+    # met its own DMARC reject (503 deferred). A probe aimed at restmail.test
+    # goes to a disposable
+    # domain instead, made once per run; malformed and other ids reach the
+    # handler as generated. Only coverage probes move: the ownership run sends
+    # restmail.test's id to the other tenant on purpose, and the examples
+    # follow links to the run's own domain. updateDomain's hook calls this
+    # before it certifies the domain the request names.
+    if not transaction.get("name", "").startswith("coverage:"):
+        return
+    path, _, query = transaction["fullPath"].partition("?")
+    parts = path.split("/")
+    # /api/v1/admin/dkim/{id}[/rotation] and /api/v1/admin/domains/{id}
+    if len(parts) < 6 or not positive_id(parts[5]):
+        return
+    if int(parts[5]) != the_admin_domain_id(transaction):
+        return
+    if hooks.stash.get("probe_domain_id") is None:
+        domain = fixture_call(
+            transaction,
+            "POST",
+            "/api/v1/admin/domains",
+            {
+                "name": f"contract-probe-{time.time_ns()}.test",
+                "server_type": "traditional",
+            },
+        )
+        hooks.stash["probe_domain_id"] = domain["id"]
+    parts[5] = str(hooks.stash["probe_domain_id"])
+    transaction["fullPath"] = "/".join(parts) + ("?" + query if query else "")
 
 
 @hooks.before("setDKIMKey")
@@ -689,7 +803,9 @@ def a_certificate_before_going_live(transaction):
     # Setting active to true is refused with 409 certificate_required for a
     # domain with no valid certificate, which every created domain is when
     # the probes reach it. The domain gets a self-signed one through the
-    # admin API, once per run; the request is never rewritten.
+    # admin API, once per run; the request is never rewritten, except that a
+    # coverage probe aimed at restmail.test moves first (off_the_admin_domain).
+    off_the_admin_domain(transaction)
     body = hooks.get_json(transaction)
     if not isinstance(body, dict) or body.get("active") is not True:
         return

@@ -93,16 +93,20 @@ func TestPipelineTestErrorContract_NotJSONIs400(t *testing.T) {
 // A JSON body with no email, or a null one, is the documented 422 naming the
 // email field.
 func TestPipelineTestErrorContract_NoEmailIs422(t *testing.T) {
-	const want = `{"error":{"code":"validation_failed","message":"Request body failed validation",` +
-		`"details":{"fields":{"email":"required"}}}}`
-	for name, body := range map[string]string{
-		"empty object":        `{}`,
-		"missing":             `{"pipeline_id":1}`,
-		"null":                `{"pipeline_id":1,"email":null}`,
-		"null no pipeline_id": `{"email":null}`,
+	refusal := func(fields string) string {
+		return `{"error":{"code":"validation_failed","message":"Request body failed validation",` +
+			`"details":{"fields":{` + fields + `}}}}`
+	}
+	for name, tc := range map[string]struct{ body, want string }{
+		"empty object":        {`{}`, refusal(`"email":"required","pipeline_id":"required"`)},
+		"missing":             {`{"pipeline_id":1}`, refusal(`"email":"required"`)},
+		"null":                {`{"pipeline_id":1,"email":null}`, refusal(`"email":"required"`)},
+		"null no pipeline_id": {`{"email":null}`, refusal(`"pipeline_id":"required"`)},
+		"no pipeline_id":      {`{"email":{}}`, refusal(`"pipeline_id":"required"`)},
+		"zero pipeline_id":    {`{"pipeline_id":0,"email":{}}`, refusal(`"pipeline_id":"required"`)},
 	} {
 		t.Run(name, func(t *testing.T) {
-			checkTestPipelineRefusal(t, body, http.StatusUnprocessableEntity, want)
+			checkTestPipelineRefusal(t, tc.body, http.StatusUnprocessableEntity, tc.want)
 		})
 	}
 }

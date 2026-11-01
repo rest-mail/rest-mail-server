@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -176,6 +177,28 @@ class Summary(unittest.TestCase):
         self.assertIn("--audit-from .cache/contract/vertrag-run.yml", chores)
         self.assertTrue(os.access(ROOT / "tests/contract/run.sh", os.X_OK))
 
+    def test_ci_reaches_the_example_pairs_only_through_the_chore(self):
+        workflow = (ROOT / ".github/workflows/e2e-suite.yml").read_text()
+        tasks = yaml.safe_load((ROOT / "chores.yml").read_text())["tasks"]
+        self.assertNotIn("example_pairs.sh", workflow)
+        self.assertIn("chore contract:pairs\n", tasks["contract"]["cmds"][0])
+        pairs = tasks["contract:pairs"]["cmds"][0]
+        self.assertIn("tests/contract/example_pairs.sh -run '^(", pairs)
+        self.assertTrue(os.access(ROOT / "tests/contract/example_pairs.sh", os.X_OK))
+
+    def test_the_example_pairs_name_every_vertrag_test(self):
+        # A *WithVertrag test skips without the binary, so one this list misses
+        # looks fine everywhere and proves nothing.
+        tasks = yaml.safe_load((ROOT / "chores.yml").read_text())["tasks"]
+        named = set(re.findall(r"Test\w+WithVertrag", tasks["contract:pairs"]["cmds"][0]))
+        written = set()
+        for path in (ROOT / "internal/api").rglob("*_test.go"):
+            written.update(
+                re.findall(r"^func (Test\w+WithVertrag)\(", path.read_text(), re.MULTILINE)
+            )
+        self.assertEqual(sorted(written - named), [], "no run sends these")
+        self.assertEqual(sorted(named - written), [], "these no longer exist")
+
 
 class ContractCommand(unittest.TestCase):
     def run_command(
@@ -215,6 +238,9 @@ class ContractCommand(unittest.TestCase):
                 "chore": 'echo "chore:$*" >> "$CALLS"\n'
                 'if [ "$1" = test:e2e ]; then '
                 '[ "$API_BASE_URL" = "${CONTRACT_ENDPOINT:-http://10.99.0.20:8080}" ] || exit 98; fi\n'
+                'if [ "$1" = contract:pairs ]; then '
+                '[ "$RESTMAIL_VERTRAG_BINARY" = "$PWD/.cache/bin/vertrag" ] || exit 97; '
+                'exit "${PAIRS_EXIT:-0}"; fi\n'
                 'exit "${FIXTURE_EXIT:-0}"\n',
                 "python3": 'if [ "${1:-}" = -B ]; then shift; fi\n'
                 'case "$1" in *vertrag_pin.py) echo pin >> "$CALLS"; '
@@ -297,11 +323,15 @@ class ContractCommand(unittest.TestCase):
             calls,
             [
                 "pin",
+                "chore:contract:pairs",
                 "chore:test:contract-fixtures",
                 "chore:test:contract-api-keys",
                 "chore:test:contract-mfa-admin",
                 "run:gate --tag Domains",
                 "scan",
+                # The gate's examples and coverage processes have consumed
+                # the held queue entries the authorization run's links need.
+                "chore:test:contract-fixtures",
                 "run:authorization --tag Domains",
                 "chore:test:contract-domain-tenants",
                 "run:ownership --tag Domains",
@@ -324,24 +354,44 @@ class ContractCommand(unittest.TestCase):
             calls,
             [
                 "pin",
+                "chore:contract:pairs",
                 "chore:test:contract-fixtures",
                 "summary:tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes",
             ],
         )
 
+    def test_example_pair_failure_stops_before_topology_and_fixtures(self):
+        # In CI the pair checks failed the job before any contract phase ran.
+        for endpoint in ("http://fixture.test:8080", ""):
+            with self.subTest(endpoint=endpoint):
+                result, calls = self.run_command(
+                    principals=False, CONTRACT_ENDPOINT=endpoint, PAIRS_EXIT="1"
+                )
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertEqual(
+                    calls,
+                    [
+                        "pin",
+                        "chore:contract:pairs",
+                        "summary:tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes",
+                    ],
+                )
+
     def test_a_fresh_topology_prepares_only_the_principal_fixture_first(self):
         result, calls = self.run_command(principals=False)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(calls[0], "pin")
-        self.assertEqual(calls[1], "chore:test:e2e -- -run ^TestContractPrincipals$")
-        self.assertEqual(calls[2], "chore:test:contract-fixtures")
+        self.assertEqual(calls[1], "chore:contract:pairs")
+        self.assertEqual(calls[2], "chore:test:e2e -- -run ^TestContractPrincipals$")
+        self.assertEqual(calls[3], "chore:test:contract-fixtures")
 
     def test_default_endpoint_starts_the_topology_before_principal_setup(self):
         result, calls = self.run_command(principals=False, CONTRACT_ENDPOINT="")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(calls[0], "pin")
-        self.assertEqual(calls[1], "chore:e2e:up")
-        self.assertEqual(calls[2], "chore:test:e2e -- -run ^TestContractPrincipals$")
+        self.assertEqual(calls[1], "chore:contract:pairs")
+        self.assertEqual(calls[2], "chore:e2e:up")
+        self.assertEqual(calls[3], "chore:test:e2e -- -run ^TestContractPrincipals$")
         self.assertEqual(sum(call.startswith("summary:") for call in calls), 1)
 
     def test_tool_failure_precedes_topology_and_fixture_changes(self):
@@ -415,6 +465,40 @@ class PhaseCommand(unittest.TestCase):
                     self.assertEqual(
                         (reports_dir / "summary.md").exists(), not deferred
                     )
+
+
+class ExamplePairsCommand(unittest.TestCase):
+    def test_stray_arguments_are_refused_before_building(self):
+        # CI once passed `-count=1 -v` after the pattern: the shard count became
+        # "-count=1", no shard ran, and the step still passed.
+        for extra in (["-count=1", "-v"], ["-count=1"], ["0"], ["two"]):
+            with (
+                self.subTest(extra=extra),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                work = Path(directory)
+                go = work / "go"
+                go.write_text('#!/bin/sh\necho built >> "$CALLS"\n')
+                go.chmod(0o755)
+                calls = work / "calls"
+                result = subprocess.run(
+                    ["bash", str(ROOT / "tests/contract/example_pairs.sh"), "-run"]
+                    + ["^(TestAWithVertrag|TestBWithVertrag)$"]
+                    + extra,
+                    cwd=work,
+                    env=dict(
+                        os.environ,
+                        PATH=str(work) + os.pathsep + os.environ["PATH"],
+                        CALLS=str(calls),
+                    ),
+                    text=True,
+                    capture_output=True,
+                    timeout=10,
+                    check=False,
+                )
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertIn("usage:", result.stderr)
+                self.assertFalse(calls.exists())
 
 
 if __name__ == "__main__":

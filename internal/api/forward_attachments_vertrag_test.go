@@ -12,8 +12,7 @@ import (
 	"testing"
 	"time"
 
-	oapifly "github.com/antimatter-studios/go-oapifly"
-	"github.com/rest-mail/rest-mail-server"
+	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
 )
 
 func TestForwardAttachmentsExamplesWithVertrag(t *testing.T) {
@@ -22,11 +21,11 @@ func TestForwardAttachmentsExamplesWithVertrag(t *testing.T) {
 		t.Skip("set RESTMAIL_VERTRAG_BINARY to replay forward examples")
 	}
 	useRealGrants(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}
-	full := contractDocument(t, describedRouters(t).generator("forward attachments examples"))
+	full := contractDocument(t, describedRouters(t).pairGenerator(t, "forward attachments examples"))
 	snapshot, err := json.Marshal(full)
 	if err != nil {
 		t.Fatal(err)
@@ -69,7 +68,7 @@ func TestForwardAttachmentsExamplesWithVertrag(t *testing.T) {
 				parameter["example"] = 7
 			}
 			dir := t.TempDir()
-			data, err := json.Marshal(doc)
+			data, err := marshalPairDescription(doc)
 			if err != nil {
 				t.Fatal(err)
 			}

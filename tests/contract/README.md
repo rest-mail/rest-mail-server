@@ -22,6 +22,7 @@ In the `E2E (full topology)` job (`.github/workflows/e2e-suite.yml`), after the
 
 | Phase | What it checks | In CI |
 | --- | --- | --- |
+| example pairs | Each registered `*WithVertrag` test in `internal/api` sends its documented example pairs and their boundary cases through Vertrag to the API in the test process (`chore contract:pairs`). It needs no topology. | Gate, first |
 | `examples` | Each documented request gets its documented answer. Ordered by the spec's links (`--sequence`), so a read, an update or a delete addresses what its create made. | Gate |
 | `coverage` | Every boundary each schema implies (the maximum, one past it, a required property missing) gets a 4xx, never a 2xx or a 5xx. | Gate, as a ratchet (below) |
 | `ignored-auth` check | Every authenticated request, sent again with no credential, is refused. | Gate |
@@ -775,16 +776,43 @@ is not treated as schema.
 
 ## Running it
 
-One command does what CI does (#627), on any machine with Docker, `chore` and
-Python 3. The command installs and selects the CI-pinned Vertrag automatically:
+One command does what CI does (#627), on any machine with Docker, `chore`, Go
+(the version in `go.mod`, for the example-pair test binary) and Python 3. The
+command installs and selects the CI-pinned Vertrag automatically.
+
+### First run
+
+A fresh checkout needs the test substrate before `chore contract` can bring up
+the topology:
 
 ```sh
-chore contract                      # bring up the E2E topology, then every phase
+chore testbed:init       # clone rest-mail/testbed, seed config/restmail.test
+chore mailserver:init    # clone rest-mail/reference-mailserver into .workspace/
+```
+
+Both clone over `git@github.com:`, so they need GitHub SSH access. The first
+contract run also needs the internet: it downloads the pinned Vertrag release,
+runs `pip install pyyaml` when PyYAML is missing, and pulls the topology's
+container images. After that, the check talks only to the local
+`restmail.test` topology.
+
+Two differences from CI remain. CI checks out `testbed` and
+`reference-mailserver` at fixed commits (`TESTBED_REF` and
+`REFERENCE_MAILSERVER_REF` in `e2e-suite.yml`), while the init tasks clone each
+default branch. CI also patches the reference server's `dkim:provision` for
+native-Linux Docker, which Docker Desktop does not need. When a local result
+differs from CI's, check those commits first.
+
+### Running the check
+
+```sh
+chore contract                      # example pairs, the E2E topology, then every phase
 CONTRACT_ENDPOINT=http://10.99.0.20:8080 chore contract   # a topology already up
 chore contract:run -- --tag Domains # the gates for one area, against a running topology
 chore contract:run -- --operation-id getDomain
 chore contract:fuzz -- --seed 42    # the fuzz phase; replay a finding by its seed
 chore contract:diff                 # the generated description against openapi.yaml, no server
+chore contract:pairs                # only the registered example-pair checks, no server
 ```
 
 The complete command and each live phase first run
@@ -799,12 +827,36 @@ must start successfully before topology or fixture setup. Its absolute path is
 exported to API-key probes and phase child commands. CI uses the same installer
 and cache; `chore vertrag:install` remains available for an explicit reinstall.
 
-`chore contract` then prepares the fixtures, proves the API key lifecycle, fetches
-`/api/docs/openapi.json` into `.cache/contract/openapi.json`, then runs
-`tests/contract/run.sh gate` (the examples phase, then the coverage phase held to
-`coverage-baseline.txt`) and `tests/contract/run.sh authorization` (a report).
-CI's E2E job calls `chore contract`, so a run here gives the verdict CI gives for
-the same commit. A narrowed run (`--tag`, `--operation-id`, `--only-matching`)
+`chore contract` then runs these steps in order:
+
+1. `chore contract:pairs`, the registered example-pair checks
+   (`tests/contract/example_pairs.sh`). It builds the `internal/api` test binary
+   once and runs the named tests in three parallel shards, each limited to 25
+   minutes. A failure stops the run here, as it fails the CI job.
+2. `chore e2e:up`, unless `CONTRACT_ENDPOINT` names a running topology.
+3. The principal fixture, when it is absent (below).
+4. `chore test:contract-fixtures` and `chore test:contract-api-keys`: the
+   fixtures and the API key lifecycle proof. A failure stops the run.
+5. `tests/contract/run.sh gate`: fetches `/api/docs/openapi.json` into
+   `.cache/contract/openapi.json`, then runs the examples phase and the coverage
+   phase held to `coverage-baseline.txt`.
+6. The secret scan of `.cache/contract/examples.har`, a gate.
+7. `chore test:contract-fixtures` again, because the gate consumed the held
+   queue entries, then `tests/contract/run.sh authorization` (a report).
+8. `chore test:contract-domain-tenants`, then `tests/contract/run.sh ownership`
+   (a report of the account, domain and mailbox ownership runs).
+
+The command fails when the example pairs, the setup, the gate or the secret
+scan fail. The authorization and ownership reports never fail it. CI's E2E job
+calls `chore contract`, so a run here gives the verdict CI gives for the same
+commit, apart from the substrate differences under "First run".
+
+The example-pair test list lives in the `contract:pairs` task in `chores.yml`.
+A new `*WithVertrag` test in `internal/api` must be added there, or no run sends
+it; `test_run.py` fails until it is. Without `RESTMAIL_VERTRAG_BINARY` those tests skip, so `go test` alone does
+not run them.
+
+A narrowed run (`--tag`, `--operation-id`, `--only-matching`)
 reports without the surface gate and the baseline, which are about the whole API.
 Its coverage verdict comes directly from Vertrag: exit 0 for passing selected
 probes, exit 2 for findings. A narrowed finding is not excused by the whole-API
@@ -946,6 +998,30 @@ intact. The create link continues to supply successful update and delete IDs.
 and unchanged stored pipeline state for all three registered routes. The
 configured-entrypoint hook regressions and `test_gate.py` keep all twenty-two
 missing-resource operations in the required examples gate.
+
+### How to read a failure
+
+1. Find the step that failed. The command's output names it, and the summary
+   table at the end shows which phases ran. A run that stops at the example
+   pairs or the setup prints an empty table.
+2. For the example pairs, the output prints each shard as `== shard N: ok`,
+   followed by each test's verdict, or `== shard N: FAILED`, followed by that
+   shard's whole `go test` log. Look for the
+   `--- FAIL:` line, then run that test alone:
+   `tests/contract/example_pairs.sh -run '^(TestDomainCleanupExamplesWithVertrag)$' 1`
+   with `RESTMAIL_VERTRAG_BINARY` set (`python3 -B scripts/vertrag_pin.py ensure .cache/bin`
+   prints the path).
+3. For a gate phase, open `.cache/contract/examples.html` or
+   `.cache/contract/coverage.html` (or the `.md` files) and find the failed
+   transactions. The "Not passed" table in `summary.md` lists their operations.
+4. Rerun one operation against the running topology:
+   `chore contract:run -- --operation-id getDomain`. A narrowed run checks
+   only that operation, without the whole-API surface gate and baseline.
+5. A secret scan failure prints one `secret echoed:` line per finding in
+   `.cache/contract/examples.har`. `secret scan failed: input or audit log could
+   not be verified` means the scan itself could not finish, which also fails.
+6. In CI, download the `e2e-container-logs` artifact. It holds the same report
+   files plus each container's log.
 
 ### Browser session gate (#659)
 

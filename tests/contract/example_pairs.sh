@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# The registered Vertrag example-pair tests (internal/api *WithVertrag), as the
-# E2E job's "Registered example-pair boundary checks" step runs them:
+# The registered Vertrag example-pair tests (internal/api *WithVertrag), as
+# `chore contract:pairs` runs them (and `chore contract`, locally and in CI):
 #
 #   tests/contract/example_pairs.sh -run '^(TestA|TestB|...)$' [shards]
 #
@@ -8,11 +8,15 @@
 # vertrag. The test binary is built once and the named tests run in shards side
 # by side (three by default); each shard has the 25-minute limit, and the step
 # fails when any shard does. RESTMAIL_VERTRAG_BINARY must name vertrag.
+# Anything else after the pattern is refused: go test flags such as -count=1
+# were once read as the shard count, which ran no shard and still exited 0.
 set -euo pipefail
 
-[ "${1:-}" = "-run" ] && [ -n "${2:-}" ] || { echo "usage: $0 -run '^(TestA|TestB)\$' [shards]" >&2; exit 2; }
+usage() { echo "usage: $0 -run '^(TestA|TestB)\$' [shards]" >&2; exit 2; }
+[ "${1:-}" = "-run" ] && [ -n "${2:-}" ] && [ $# -le 3 ] || usage
 pattern=$2
 shards=${3:-3}
+[[ $shards =~ ^[1-9][0-9]*$ ]] || usage
 list=${pattern#^(}
 list=${list%)\$}
 IFS='|' read -r -a names <<<"$list"
@@ -28,7 +32,7 @@ for ((s = 0; s < shards; s++)); do
 	[ ${#pick[@]} -gt 0 ] || continue
 	run="^($(IFS='|'; echo "${pick[*]}"))\$"
 	# The tests read the spec and fixtures relative to their package directory.
-	(cd internal/api && exec "$work/api.test" -test.timeout 25m -test.run "$run") >"$work/shard$s.log" 2>&1 &
+	(cd internal/api && exec "$work/api.test" -test.v -test.timeout 25m -test.run "$run") >"$work/shard$s.log" 2>&1 &
 	pids+=("$s:$!")
 done
 
@@ -37,6 +41,8 @@ for entry in "${pids[@]}"; do
 	s=${entry%%:*}
 	if wait "${entry#*:}"; then result=ok; else result=FAILED; status=1; fi
 	echo "== shard $s: $result"
-	cat "$work/shard$s.log"
+	# A passing shard names each test's verdict, so a skip shows; a failing one
+	# prints everything.
+	if [ "$result" = ok ]; then grep -E '^--- ' "$work/shard$s.log" || true; else cat "$work/shard$s.log"; fi
 done
 exit "$status"

@@ -32,6 +32,10 @@ func TestInvitationExamplesWithVertrag(t *testing.T) {
 			continue
 		}
 		for name, pair := range examples {
+			switch name {
+			case "malformed_json", "rate_limited", "recent_two_factor_required", "two_factor_required":
+				continue // Refused before the handler, out of this fixture's reach; proven in process.
+			}
 			t.Run(operation+"/"+name, func(t *testing.T) {
 				mode := map[string]string{"insufficient_permissions": "denied", "missing": "missing_account", "existing_credentials": "established_account", "invalid_token": "expired", "wrong_purpose": "wrong_purpose", "unavailable": "unavailable"}[name]
 				if name == "internal_error" {
@@ -50,7 +54,7 @@ func TestInvitationExamplesWithVertrag(t *testing.T) {
 						uri = strings.ReplaceAll(path, "{id}", "0")
 					}
 				}
-				doc := contractDocument(t, describedRouters(t).generator("invitation examples"))
+				doc := contractDocument(t, describedRouters(t).pairGenerator(t, "invitation examples"))
 				op := doc["paths"].(map[string]any)[path].(map[string]any)["post"].(map[string]any)
 				doc["paths"] = map[string]any{path: map[string]any{"post": op}}
 				status := strconv.Itoa(pair.Response.Status)
@@ -82,7 +86,7 @@ func TestInvitationExamplesWithVertrag(t *testing.T) {
 					}
 				}
 				dir := t.TempDir()
-				data, _ := json.Marshal(doc)
+				data, _ := marshalPairDescription(doc)
 				if err := os.WriteFile(filepath.Join(dir, "openapi.json"), data, 0600); err != nil {
 					t.Fatal(err)
 				}

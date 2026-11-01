@@ -4686,7 +4686,7 @@ export interface components {
         };
         testPipelineRequestBody: {
             email: components["schemas"]["sampleEmail"] | null;
-            pipeline_id?: number;
+            pipeline_id: number;
         };
         tlsReportStored: {
             stored: number;

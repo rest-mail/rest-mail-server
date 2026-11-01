@@ -148,7 +148,7 @@ func TestCertificateCreationExamplesWithVertrag(t *testing.T) {
 
 func checkCertificateCreationPairWithVertrag(t *testing.T, binary string, s bulkQueueExampleScenario, method, path, name string, pair oapifly.ExamplePair, oversizedBytes ...int) {
 	t.Helper()
-	doc := contractDocument(t, describedRouters(t).generator("bulk queue boundary"))
+	doc := contractDocument(t, describedRouters(t).pairGenerator(t, "bulk queue boundary"))
 	verb := strings.ToLower(method)
 	op := doc["paths"].(map[string]interface{})[path].(map[string]interface{})[verb].(map[string]interface{})
 	doc["paths"] = map[string]interface{}{path: map[string]interface{}{verb: op}}
@@ -187,7 +187,7 @@ func checkCertificateCreationPairWithVertrag(t *testing.T, binary string, s bulk
 		m["examples"] = map[string]interface{}{name: chosen}
 	}
 	dir := t.TempDir()
-	data, err := json.Marshal(doc)
+	data, err := marshalPairDescription(doc)
 	if err != nil {
 		t.Fatal(err)
 	}

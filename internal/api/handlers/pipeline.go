@@ -796,7 +796,7 @@ type updatePipelineRequest struct {
 	Body updatePipelineRequestBody `body:""`
 }
 type testPipelineRequestBody struct {
-	PipelineID uint         `json:"pipeline_id,omitempty"`
+	PipelineID uint         `json:"pipeline_id" minimum:"1" message:"required" missing:"required"`
 	Email      *sampleEmail `json:"email"`
 }
 type testFilterRequestBody struct {

@@ -40,3 +40,31 @@ func Read() (oapifly.ExampleFile, error) {
 	}
 	return pairs, nil
 }
+
+// Merged is openapi-example.json with the matrix's pairs beside them, as one file
+// of the same shape, for a generator that should describe every pair.
+func Merged() ([]byte, error) {
+	if _, err := Read(); err != nil {
+		return nil, err
+	}
+	published, err := restmail.Examples.ReadFile("openapi-example.json")
+	if err != nil {
+		return nil, err
+	}
+	var merged, variants map[string]map[string]json.RawMessage
+	if err := json.Unmarshal(published, &merged); err != nil {
+		return nil, fmt.Errorf("openapi-example.json: %w", err)
+	}
+	if err := json.Unmarshal(matrix, &variants); err != nil {
+		return nil, fmt.Errorf("example-matrix.json: %w", err)
+	}
+	for op, named := range variants {
+		if merged[op] == nil {
+			merged[op] = map[string]json.RawMessage{}
+		}
+		for name, pair := range named {
+			merged[op][name] = pair
+		}
+	}
+	return json.Marshal(merged)
+}

@@ -60,6 +60,44 @@ class ContractAuthHookTests(unittest.TestCase):
                     expected["refresh_token"] = "live-fixture-token"
                 self.assertEqual(self.apply(self.module.refresh_the_sign_in, example["value"]), expected)
 
+    def test_a_spent_native_token_is_replaced_by_a_fresh_sign_in(self):
+        # The authorization run sends the refreshed example once per principal
+        # without after hooks, so the rotated token is never kept.
+        def native_login(token):
+            response = io.BytesIO(json.dumps({"data": {"refresh_token": token}}).encode())
+            response.status = 200
+            return response
+
+        def send():
+            transaction = {
+                "name": "/api/v1/auth/refresh > Refresh > 200 > application/json",
+                "protocol": "http:", "host": "api", "port": "8080",
+                "request": {"body": json.dumps({"refresh_token": "fixture-refresh-token"}),
+                            "headers": {}},
+            }
+            self.module.refresh_the_sign_in(transaction)
+            return json.loads(transaction["request"]["body"])["refresh_token"]
+
+        responses = [native_login("second-token"), native_login("third-token")]
+        with patch.object(self.module.urllib.request, "urlopen", side_effect=responses) as network, \
+                patch.object(self.module, "pace_auth_requests") as pace:
+            self.assertEqual([send(), send(), send()],
+                             ["live-fixture-token", "second-token", "third-token"])
+        self.assertEqual(network.call_count, 2)
+        self.assertEqual(pace.call_count, 4)
+        for call in network.call_args_list:
+            request = call.args[0]
+            self.assertEqual(request.full_url, "http://api:8080/api/v1/auth/login")
+            self.assertEqual(json.loads(request.data), {
+                "email": self.module.ADMIN, "password": self.module.ADMIN_PASSWORD, "client": "native",
+            })
+        # A rotated token an after hook kept is unspent and used as is.
+        self.module.keep_the_refreshed_token(
+            {"real": {"body": json.dumps({"data": {"refresh_token": "rotated-token"}})}})
+        with patch.object(self.module.urllib.request, "urlopen") as network:
+            self.assertEqual(send(), "rotated-token")
+        network.assert_not_called()
+
     def test_hooks_preserve_coverage_mutations(self):
         for hook in (self.module.sign_in_as_the_fixture_admin, self.module.refresh_the_sign_in):
             for body in ([], None, {}, {"email": "bad"}, {"password": None},

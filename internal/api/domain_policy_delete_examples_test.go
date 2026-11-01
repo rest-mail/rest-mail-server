@@ -234,16 +234,12 @@ func TestDomainPolicyDeleteExamplesWithVertrag(t *testing.T) {
 			t.Run(operation+"/"+status, func(t *testing.T) {
 				routers, jwt, _ := domainPolicyDeleteRouters(t, operation)
 				token := mailboxToken(t, jwt)
-				precondition := map[string]string{"204": "found", "401": "unauthenticated", "403": "outside_domain", "503": "session_unavailable"}[status]
+				precondition := map[string]string{"429": "rate_limited", "204": "found", "401": "unauthenticated", "403": "outside_domain", "503": "session_unavailable"}[status]
 				if precondition == "" {
 					precondition = "normal"
 				}
 				if status == "401" {
 					token = ""
-				}
-				// Bodyless204 also pairs with the path type's unnamed id/eid/sid=1 illustration.
-				if status == "204" {
-					count++
 				}
 				checkRegisteredExamplesWithVertrag(t, binary, routers[precondition], token, http.MethodDelete, status, []string{path}, count, status == "413")
 			})

@@ -377,10 +377,13 @@ func TestDomainPolicyWriteExamplesWithVertrag(t *testing.T) {
 			counts[fmt.Sprint(pair.Response.Status)]++
 		}
 		for status, count := range counts {
+			if status == "400" {
+				continue // A malformed body needs a raw request this check does not send. TestDomainPolicyWriteExamples proves it in process.
+			}
 			t.Run(operation+"/"+status, func(t *testing.T) {
 				routers, jwt, _ := domainPolicyWriteRouters(t)
 				token := mailboxToken(t, jwt)
-				precondition := map[string]string{"401": "unauthenticated", "403": "outside_domain", "409": "master_key_required", "413": "request_too_large", "503": "session_unavailable"}[status]
+				precondition := map[string]string{"429": "rate_limited", "401": "unauthenticated", "403": "outside_domain", "409": "master_key_required", "413": "request_too_large", "503": "session_unavailable"}[status]
 				if precondition == "" {
 					precondition = "normal"
 				}

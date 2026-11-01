@@ -290,12 +290,10 @@ func TestDomainPolicyGetExamplesWithVertrag(t *testing.T) {
 		count        int
 		method       string
 	}{
-		{"found", "200", []string{domainPolicyGetPaths["getDomainRelay"], domainPolicyGetPaths["getMtaStsPolicy"]}, 3, http.MethodGet},
-		{"missing", "404", []string{domainPolicyGetPaths["getDomainRelay"], domainPolicyGetPaths["getMtaStsPolicy"]}, 3, http.MethodGet},
-		{"internal_error", "500", []string{domainPolicyGetPaths["getDomainRelay"], domainPolicyGetPaths["getMtaStsPolicy"]}, 4, http.MethodGet},
-		// The path type also declares id=1 as its unnamed illustration. It
-		// pairs with the bodyless 204 alongside the named found exchange.
-		{"found", "204", []string{domainPolicyGetPaths["deleteMtaStsPolicy"]}, 2, http.MethodDelete},
+		{"found", "200", []string{domainPolicyGetPaths["getDomainRelay"], domainPolicyGetPaths["getMtaStsPolicy"]}, 2, http.MethodGet},
+		{"missing", "404", []string{domainPolicyGetPaths["getDomainRelay"], domainPolicyGetPaths["getMtaStsPolicy"]}, 2, http.MethodGet},
+		{"internal_error", "500", []string{domainPolicyGetPaths["getDomainRelay"], domainPolicyGetPaths["getMtaStsPolicy"]}, 2, http.MethodGet},
+		{"found", "204", []string{domainPolicyGetPaths["deleteMtaStsPolicy"]}, 1, http.MethodDelete},
 		{"missing", "404", []string{domainPolicyGetPaths["deleteMtaStsPolicy"]}, 1, http.MethodDelete},
 		{"internal_error", "500", []string{domainPolicyGetPaths["deleteMtaStsPolicy"]}, 1, http.MethodDelete},
 	} {
