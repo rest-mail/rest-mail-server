@@ -84,6 +84,32 @@ func LoadRelayPassword(stored, masterKey string) (string, error) {
 	return pw, nil
 }
 
+// The pieces of RelayHostPattern: a DNS label, an IPv6 group, an IPv4 octet as
+// net.ParseIP reads one (no leading zero), and the last 32 bits of an IPv6
+// address, two groups or an embedded IPv4 address.
+const (
+	relayHostLabel = `[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?`
+	relayHostGroup = `[0-9A-Fa-f]{1,4}`
+	relayHostOctet = `(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])`
+	relayHostLow32 = `(` + relayHostGroup + `:` + relayHostGroup + `|` + relayHostOctet + `(\.` + relayHostOctet + `){3})`
+)
+
+// RelayHostPattern is ValidRelayHost as the API describes it: a DNS name, or
+// an IPv6 address in the RFC 3986 grammar net.ParseIP reads. An IPv4 address
+// is a DNS name to it. With a maxLength of 253, which only a name can reach,
+// it holds of exactly the hosts ValidRelayHost accepts.
+const RelayHostPattern = `^(` + relayHostLabel + `(\.` + relayHostLabel + `)*` +
+	`|(` + relayHostGroup + `:){6}` + relayHostLow32 +
+	`|::(` + relayHostGroup + `:){5}` + relayHostLow32 +
+	`|(` + relayHostGroup + `)?::(` + relayHostGroup + `:){4}` + relayHostLow32 +
+	`|((` + relayHostGroup + `:){0,1}` + relayHostGroup + `)?::(` + relayHostGroup + `:){3}` + relayHostLow32 +
+	`|((` + relayHostGroup + `:){0,2}` + relayHostGroup + `)?::(` + relayHostGroup + `:){2}` + relayHostLow32 +
+	`|((` + relayHostGroup + `:){0,3}` + relayHostGroup + `)?::` + relayHostGroup + `:` + relayHostLow32 +
+	`|((` + relayHostGroup + `:){0,4}` + relayHostGroup + `)?::` + relayHostLow32 +
+	`|((` + relayHostGroup + `:){0,5}` + relayHostGroup + `)?::` + relayHostGroup +
+	`|((` + relayHostGroup + `:){0,6}` + relayHostGroup + `)?::` +
+	`)$`
+
 // ValidRelayHost reports whether host is a bare DNS name or IP literal: no
 // scheme, port, path or brackets, so it can only ever name one host.
 func ValidRelayHost(host string) bool {

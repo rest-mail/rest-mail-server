@@ -110,6 +110,9 @@ func TestMicrosoftAutodiscover_RefusesBeforeLookup(t *testing.T) {
 			want := map[string]interface{}{"error": map[string]interface{}{"code": "bad_request", "message": tc.message}}
 			if tc.status == 422 {
 				want = parseShapeJSON(t, pipelineValidation(map[string]string{tc.field: tc.message})).(map[string]interface{})
+				if tc.query != "" {
+					want["error"].(map[string]interface{})["message"] = "Query parameters failed validation"
+				}
 			}
 			if !reflect.DeepEqual(decodeShapeBody(t, rr), want) {
 				t.Fatalf("got %s, want %s", rr.Body, mustJSON(want))
