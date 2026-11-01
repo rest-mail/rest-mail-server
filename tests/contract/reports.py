@@ -32,6 +32,10 @@ def configure(config, source_dir, base, narrowed=False, endpoint="", spec=""):
         config["hookfiles"] = str((Path(source_dir) / config["hookfiles"]).resolve())
     if spec:
         config["spec"] = spec_location(spec, Path.cwd())
+    if endpoint and endpoint != config.get("endpoint"):
+        # Another server: its machine routes are wherever it serves them, not on
+        # this topology's internal listener.
+        config.pop("endpoints", None)
     if endpoint:
         config["endpoint"] = endpoint
     if narrowed:
