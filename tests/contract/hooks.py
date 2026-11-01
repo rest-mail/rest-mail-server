@@ -169,10 +169,16 @@ def an_api_key_from_the_two_factor_admin(transaction):
     if not as_the_two_factor_admin(transaction):
         return
     body = hooks.get_json(transaction)
-    # The body_array refusal sends a JSON array, which has no password to set.
-    if not isinstance(body, dict) or "password" not in body:
+    # The body_array refusal sends a JSON array, which has no password to set,
+    # and a probe of a refused password keeps it.
+    if not isinstance(body, dict) or not isinstance(body.get("password"), str) or not body["password"]:
         return
     body["password"] = mfa_admin.PASSWORD
+    # The schema cannot say a key must expire in the future, so the generated
+    # date goes forward a century; a probe that is not a date keeps it.
+    expires = body.get("expires_at")
+    if isinstance(expires, str) and expires.startswith("20") and expires < time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()):
+        body["expires_at"] = "2" + str(int(expires[1:4]) + 100).zfill(3) + expires[4:]
     # A key holds only what its maker and the account it is for both hold
     # (apiKeyWithinGrants). The example's account holds nothing at the
     # example's robot@example.com, but an account may read its own mailbox:
@@ -181,7 +187,13 @@ def an_api_key_from_the_two_factor_admin(transaction):
     address = mailbox_address(origin_of(transaction), path.rstrip("/").split("/")[-2])
     if address and isinstance(body.get("permissions"), list):
         for permission in body["permissions"]:
-            if isinstance(permission, dict) and "scope" in permission:
+            if not isinstance(permission, dict):
+                continue
+            # The generator's stand-in is no capability; a probe of a refused
+            # value keeps it, and so does a probe of a refused scope.
+            if permission.get("capability") == "x":
+                permission["capability"] = "mail:read"
+            if isinstance(permission.get("scope"), str) and permission["scope"]:
                 permission["scope"] = "mailbox:" + address
     hooks.set_json(transaction, body)
 
@@ -1086,6 +1098,20 @@ def pace_the_tls_reports(transaction):
     time.sleep(1)
 
 
+@hooks.before("testFilter")
+def test_a_filter_that_exists(transaction):
+    # The generator's stand-ins name no filter and no configuration. A probe of
+    # a refused value keeps it.
+    body = hooks.get_json(transaction)
+    if not isinstance(body, dict) or " > 200 > " not in transaction["name"]:
+        return
+    if body.get("filter_name") == "x":
+        body["filter_name"] = "header_validate"
+    if body.get("config") == "x":
+        body["config"] = {}
+    hooks.set_json(transaction, body)
+
+
 @hooks.before("receiveTlsReport")
 def host_the_reported_policy_domains(transaction):
     # Generated reports name domains other than restmail.test. Host them so
@@ -1097,6 +1123,16 @@ def host_the_reported_policy_domains(transaction):
     policies = body.get("policies") if isinstance(body, dict) else None
     if not isinstance(policies, list):
         return
+    # A probe's policy entries name no domain at all, and a report naming none
+    # hosted is the 422: its first entry names the fixtures' domain.
+    named = [
+        entry["policy"].get("policy-domain")
+        for entry in policies
+        if isinstance(entry, dict) and isinstance(entry.get("policy"), dict)
+    ]
+    if policies and isinstance(policies[0], dict) and not any(named):
+        policies[0]["policy"] = {"policy-domain": "restmail.test"}
+        hooks.set_json(transaction, body)
     origin = "{}//{}:{}".format(
         transaction["protocol"],
         transaction["host"],

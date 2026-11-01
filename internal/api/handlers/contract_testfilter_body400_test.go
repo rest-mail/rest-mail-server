@@ -253,7 +253,7 @@ func TestTestFilterBody400_UndecodableBodiesRefused(t *testing.T) {
 			fieldTypes := map[string]map[string]string{
 				"filter_name number":         {"filter_name": "must be a string"},
 				"filter_name object":         {"filter_name": "must be a string"},
-				"filter_name bool, no email": {"filter_name": "must be a string"},
+				"filter_name bool, no email": {"filter_name": "must be a string", "email": "required", "config": "must be an object"},
 				"email string":               {"email": "must be an object"},
 				"email array":                {"email": "must be an object"},
 				"rcpt_to string":             {"email.envelope.rcpt_to": "must be an array"},
@@ -269,34 +269,41 @@ func TestTestFilterBody400_UndecodableBodiesRefused(t *testing.T) {
 	}
 }
 
-// Controls: a body that decodes, without its filter name or its email, is not
-// refused as undecodable; it gets the 422 naming both fields, never the 400.
-// A config of the wrong JSON type also decodes; when the name or email is
-// missing, those required fields are reported before config is validated.
+// Controls: a body that decodes, without a field it needs, is not refused as
+// undecodable; it gets the 422 naming each field it lacks, never the 400. A
+// config of the wrong JSON type also decodes; when the name or email is missing,
+// those required fields are reported before config is validated.
 func TestTestFilterBody400_DecodableBodiesGet422(t *testing.T) {
-	want := parseShapeJSON(t, testFilterFieldsMissing)
 	const email = `"email":{"envelope":{"mail_from":"someone@example.com","rcpt_to":["eve@restmail.test"]}}`
-	for name, body := range map[string]string{
-		"empty object":       `{}`,
-		"null":               `null`,
-		"no email":           `{"filter_name":"header_validate","config":{}}`,
-		"email null":         `{"filter_name":"header_validate","config":{},"email":null}`,
-		"no filter_name":     `{"config":{},` + email + `}`,
-		"filter_name empty":  `{"filter_name":"","config":{},` + email + `}`,
-		"config a number":    `{"config":1}`,
-		"config an array":    `{"config":[],"email":null}`,
-		"unknown field only": `{"filter":"header_validate"}`,
+	const noName, noEmail, noConfig = "filter_name", "email", "config"
+	required := map[string]string{noName: "required", noEmail: "required", noConfig: "must be an object"}
+	lacking := func(fields ...string) map[string]string {
+		out := map[string]string{}
+		for _, field := range fields {
+			out[field] = required[field]
+		}
+		return out
+	}
+	unknown := lacking(noName, noEmail, noConfig)
+	unknown["filter"] = "not allowed"
+	for name, test := range map[string]struct {
+		body   string
+		fields map[string]string
+	}{
+		"empty object":       {`{}`, lacking(noName, noEmail, noConfig)},
+		"null":               {`null`, map[string]string{"body": "the body is null"}},
+		"no email":           {`{"filter_name":"header_validate","config":{}}`, lacking(noEmail)},
+		"email null":         {`{"filter_name":"header_validate","config":{},"email":null}`, lacking(noEmail)},
+		"no filter_name":     {`{"config":{},` + email + `}`, lacking(noName)},
+		"filter_name empty":  {`{"filter_name":"","config":{},` + email + `}`, lacking(noName)},
+		"config a number":    {`{"config":1}`, lacking(noName, noEmail)},
+		"config an array":    {`{"config":[],"email":null}`, lacking(noName)},
+		"unknown field only": {`{"filter":"header_validate"}`, unknown},
 	} {
 		t.Run(name, func(t *testing.T) {
+			body := test.body
 			rr, reached := testFilterNoEngine(t, body)
-			status, expected := http.StatusUnprocessableEntity, want
-			if name == "null" {
-				status = http.StatusUnprocessableEntity
-				expected = parseShapeJSON(t, pipelineValidation(map[string]string{"body": "the body is null"}))
-			}
-			if name == "unknown field only" {
-				expected = parseShapeJSON(t, pipelineValidation(map[string]string{"filter": "not allowed"}))
-			}
+			status, expected := http.StatusUnprocessableEntity, parseShapeJSON(t, pipelineValidation(test.fields))
 			for _, problem := range testFilterAnswerProblems(rr, reached, status, expected) {
 				t.Errorf("%s: %s", body, problem)
 			}

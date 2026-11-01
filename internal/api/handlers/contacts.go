@@ -420,11 +420,11 @@ type importContactsRequest struct {
 }
 
 type importContactsBody struct {
-	Contacts []importContactEntry `json:"contacts"`
+	Contacts []importContactEntry `json:"contacts" minItems:"1" message:"required" missing:"required"`
 }
 
 type importContactEntry struct {
-	Email string `json:"email"`
+	Email string `json:"email" format:"email" formatMessage:"must be an email address" missing:"required"`
 	Name  string `json:"name,omitempty"`
 }
 

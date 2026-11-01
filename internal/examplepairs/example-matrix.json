@@ -40647,8 +40647,7 @@
             "message": "Request body failed validation",
             "details": {
               "fields": {
-                "filter_name": "required",
-                "email": "required"
+                "filter_name": "required"
               }
             }
           }

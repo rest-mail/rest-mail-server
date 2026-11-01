@@ -452,11 +452,9 @@ func (h *PipelineHandler) testFilter(r *http.Request, in testFilterRequestBody) 
 	var zero pipeline.FilterResult
 	req := in
 
-	if req.FilterName == "" || req.Email == nil {
-		return zero, endpoint.Invalid(map[string]string{
-			"filter_name": "required",
-			"email":       "required",
-		})
+	// The binder refuses an absent email; a null one binds and is refused here.
+	if req.Email == nil {
+		return zero, endpoint.Invalid(map[string]string{"email": "required"})
 	}
 
 	// Enforce the request schema before a factory can ignore malformed config.
@@ -802,9 +800,9 @@ type testPipelineRequestBody struct {
 	Email      *sampleEmail `json:"email"`
 }
 type testFilterRequestBody struct {
-	FilterName string          `json:"filter_name,omitempty"`
-	Config     json.RawMessage `json:"config,omitempty"`
-	Email      *sampleEmail    `json:"email,omitempty"`
+	FilterName string          `json:"filter_name" minLength:"1" message:"required" missing:"required"`
+	Config     json.RawMessage `json:"config" missing:"must be an object"`
+	Email      *sampleEmail    `json:"email" missing:"required"`
 }
 type createCustomFilterRequestBody struct {
 	DomainID    uint            `json:"domain_id,omitempty"`

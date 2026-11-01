@@ -2627,10 +2627,13 @@ paths:
               properties:
                 name:
                   type: string
+                  minLength: 1
+                  pattern: '\S'
                   maxLength: 100
                   example: Invoice robot
                 password:
                   type: string
+                  minLength: 1
                   format: password
                   writeOnly: true
                   description: The session's own current password, entered again.
@@ -2639,7 +2642,7 @@ paths:
                   minItems: 1
                   maxItems: 64
                   items:
-                    $ref: "#/components/schemas/ScopedPermission"
+                    $ref: "#/components/schemas/ClientSecretRequestedPermission"
                 expires_at:
                   type: string
                   format: date-time
@@ -7890,7 +7893,6 @@ paths:
                       details:
                         fields:
                           filter_name: required
-                          email: required
                 filter_name_wrong_type:
                   value:
                     error:
@@ -13209,20 +13211,27 @@ components:
             ]
           },
           "name": {
+            "minLength": 1,
+            "pattern": "\\S",
             "type": "string"
           },
           "password": {
+            "minLength": 1,
             "type": "string"
           },
           "permissions": {
             "items": {
               "$ref": "#/components/schemas/ClientSecretRequestedPermission"
             },
+            "maxItems": 64,
+            "minItems": 1,
             "type": "array"
           }
         },
         "required": [
-          "name"
+          "name",
+          "password",
+          "permissions"
         ],
         "type": "object"
       }
@@ -13232,12 +13241,18 @@ components:
         "additionalProperties": false,
         "properties": {
           "capability": {
+            "minLength": 1,
             "type": "string"
           },
           "scope": {
+            "minLength": 1,
             "type": "string"
           }
         },
+        "required": [
+          "capability",
+          "scope"
+        ],
         "type": "object"
       }
 

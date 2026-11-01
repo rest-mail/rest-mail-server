@@ -58,17 +58,17 @@ func (h *CredentialHandler) listAPIKeys(r *http.Request, in accountPath) (endpoi
 // a refusal names each field at fault at once: a missing password is the 403
 // reauth_required, and missing permissions are refused with the rule they break.
 type createAPIKeyBody struct {
-	Name        string             `json:"name"`
-	Password    string             `json:"password,omitempty"`
-	Permissions []apiKeyPermission `json:"permissions,omitempty"`
+	Name        string             `json:"name" minLength:"1" pattern:"\\S" message:"required" missing:"required"`
+	Password    string             `json:"password" minLength:"1" message:"required" missing:"required"`
+	Permissions []apiKeyPermission `json:"permissions" minItems:"1" maxItems:"64" message:"must contain between 1 and 64 scoped permissions" missing:"must contain between 1 and 64 scoped permissions"`
 	ExpiresAt   *time.Time         `json:"expires_at,omitempty"`
 }
 
-// apiKeyPermission is one permission asked for. A blank capability or scope is refused by the
-// handler with the permissions rule, as before.
+// apiKeyPermission is one permission asked for: a named capability at a scope. The handler
+// reads what those names may be.
 type apiKeyPermission struct {
-	Capability string `json:"capability,omitempty"`
-	Scope      string `json:"scope,omitempty"`
+	Capability string `json:"capability" minLength:"1" message:"each permission needs a named capability and a valid scope" missing:"each permission needs a named capability and a valid scope"`
+	Scope      string `json:"scope" minLength:"1" message:"each permission needs a named capability and a valid scope" missing:"each permission needs a named capability and a valid scope"`
 }
 
 type createAPIKeyRequest struct {
