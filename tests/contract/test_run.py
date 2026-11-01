@@ -337,6 +337,7 @@ class ContractCommand(unittest.TestCase):
                 "chore:test:contract-fixtures",
                 "chore:test:contract-api-keys",
                 "chore:test:contract-mfa-admin",
+                "chore:api:coverage:reset",
                 "run:gate --tag Domains",
                 "scan",
                 # The gate's examples and coverage processes have consumed
@@ -345,6 +346,7 @@ class ContractCommand(unittest.TestCase):
                 "run:authorization --tag Domains",
                 "chore:test:contract-domain-tenants",
                 "run:ownership --tag Domains",
+                "chore:api:coverage:report",
                 "summary:tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes",
             ],
         )
