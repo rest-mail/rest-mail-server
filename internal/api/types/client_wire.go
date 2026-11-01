@@ -139,11 +139,12 @@ type listUnsubscribe struct {
 }
 
 type createDomainRequest struct {
-	Name string `json:"name" minLength:"1" message:"required"`
+	// Name is a fully-qualified domain name; the handler normalizes it to its ASCII form.
+	Name string `json:"name" minLength:"1" format:"idn-hostname" pattern:"\\." message:"must be a fully-qualified domain name" missing:"required"`
 	// ServerType is restmail (the server keeps the mail) or traditional, the default when it
 	// is left out, empty or null.
 	ServerType        *string `json:"server_type,omitempty" enums:",traditional,restmail" message:"must be 'traditional' or 'restmail'"`
-	DefaultQuotaBytes *int64  `json:"default_quota_bytes,omitempty"`
+	DefaultQuotaBytes *int64  `json:"default_quota_bytes,omitempty" minimum:"0" message:"must not be negative"`
 	SendingPolicy     string  `json:"sending_policy,omitempty" enums:",transactional,bulk" message:"must be 'transactional', 'bulk' or empty"`
 	DMARCPolicy       *string `json:"dmarc_policy,omitempty" enums:"none,quarantine,reject" message:"must be 'none', 'quarantine' or 'reject'"`
 }

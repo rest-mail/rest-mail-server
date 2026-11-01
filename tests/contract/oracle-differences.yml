@@ -311,14 +311,6 @@
   reason: >-
     The optional sample email retains its previous null/omission semantics. The sidecar endpoints accept arbitrary sample JSON and forward it unchanged; engine previews bind a partial canonical email.
 - operation: testFilter
-  difference: "request body application/json.properties.filter_name.minLength: openapi.yaml 1, generated absent"
-  reason: >-
-    The handler keeps the required-name check and its pinned error message/precedence, including testFilter naming both filter_name and email when either is absent. Binding still checks field types and unknown properties.
-- operation: testFilter
-  difference: "request body application/json.required: openapi.yaml [\"config\",\"email\",\"filter_name\"], generated absent"
-  reason: >-
-    Required-field checks remain in the typed handler to retain the existing documented messages and validation order (notably combined missing fields). Other omitted fields keep the old decoder defaults; binding closes the body and checks supplied field types.
-- operation: testFilter
   difference: "response 200 application/json.properties.data.properties.action.enum: openapi.yaml [\"continue\",\"discard\",\"quarantine\",\"reject\"], generated absent"
   reason: >-
     The runtime pipeline result uses string-backed Action/AuthResult fields; defer and filter-provided authentication values are not limited to the oracle's narrower enum.
@@ -1308,22 +1300,6 @@
   reason: >-
     A missing current password is the documented 403 reauth_required, a refusal of the request
     rather than a malformed body, which the mobile app shows as such.
-- operation: createAPIKey
-  difference: "request body application/json.required: openapi.yaml [\"name\",\"password\",\"permissions\"], generated [\"name\"]"
-  reason: >-
-    A missing current password is the documented 403 reauth_required, and missing permissions
-    the 422 on permissions with the rule they break, as the handler answered them.
-- operation: createAPIKey
-  difference: "request body application/json.properties.permissions.minItems: openapi.yaml 1, generated absent"
-  reason: The handler answers the 422 on permissions with the 1-to-64 rule, together with the other fields at fault.
-- operation: createAPIKey
-  difference: "request body application/json.properties.permissions.maxItems: openapi.yaml 64, generated absent"
-  reason: The handler answers the 422 on permissions with the 1-to-64 rule, together with the other fields at fault.
-- operation: createAPIKey
-  difference: "request body application/json.properties.permissions.items.required: openapi.yaml [\"capability\",\"scope\"], generated absent"
-  reason: >-
-    A permission without a capability or scope is the 422 on permissions ("each permission
-    needs a named capability and a valid scope"), as the handler answered it.
 - operation: "*"
   difference: "response 201 application/json.properties.data.allOf: openapi.yaml *, generated absent"
   reason: >-
@@ -1414,12 +1390,6 @@
   difference: "response 409: generated only"
   reason: >-
     An address that is already one of the account's contacts is 409 already_exists.
-- operation: importContacts
-  difference: "request body application/json.properties.contacts.items.properties.email.format: openapi.yaml \"email\", generated absent"
-  reason: >-
-    Each address is checked in the handler, which keeps its documented "required" for an empty
-    one and "must be an email address" for one that is not; a format on the field would answer
-    an empty one with the format's wording instead.
 - operation: listContacts
   difference: "response 200 application/json.properties.data.items.properties.email.format: openapi.yaml \"email\", generated absent"
   reason: >-
@@ -1470,11 +1440,6 @@
   reason: >-
     The enum lists null, which leaves the trust level unchanged. Before binding, any string
     was stored; now one outside the enum is 422.
-- operation: importContacts
-  difference: "request body application/json.properties.contacts.minItems: openapi.yaml 1, generated absent"
-  reason: >-
-    An empty or missing list is refused in the handler with its documented 422 "required" for
-    contacts.
 - operation: listContacts
   difference: "parameter query limit: generated only"
   reason: >-

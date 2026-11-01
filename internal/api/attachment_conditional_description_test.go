@@ -42,7 +42,7 @@ func TestAttachmentConditionalDescriptionIsServed(t *testing.T) {
 	for status, media := range map[string][]string{
 		"206": {"application/octet-stream", "multipart/byteranges"},
 		"304": {}, "412": {},
-		"416": {"text/plain"}, "500": {"application/json", "text/plain"},
+		"416": {"text/plain"}, "500": {"application/json"},
 	} {
 		response, exists := responses[status]
 		if !exists || len(response.Content) != len(media) {

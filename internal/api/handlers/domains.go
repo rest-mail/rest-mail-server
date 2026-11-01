@@ -265,7 +265,7 @@ type updateDomainRequest struct {
 // updateDomainBody changes what it names and leaves the rest. An empty sending policy clears it.
 type updateDomainBody struct {
 	Active            *bool   `json:"active,omitempty"`
-	DefaultQuotaBytes *int64  `json:"default_quota_bytes,omitempty"`
+	DefaultQuotaBytes *int64  `json:"default_quota_bytes,omitempty" minimum:"0" message:"must not be negative"`
 	SendingPolicy     *string `json:"sending_policy,omitempty" enums:",transactional,bulk" message:"must be 'transactional', 'bulk' or empty"`
 	DMARCPolicy       *string `json:"dmarc_policy,omitempty" enums:"none,quarantine,reject" message:"must be 'none', 'quarantine' or 'reject'"`
 }

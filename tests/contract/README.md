@@ -38,17 +38,12 @@ topology's seeded attachment; the selected media types and required headers
 remain checked. Vertrag 0.31.3 and later keep optional response headers optional and
 does not send invented empty conditional headers.
 
-Bodyless 304/412 cannot hold named media-type examples. Their topology
-transactions, multipart 206, and storage/writer 500s remain explicitly excluded
-with reasons in `vertrag.yml`. They are not full-topology acceptance evidence.
-The 500's pair says it requires a database fault, but the run still builds the
-500's media-type transactions from the conditional request headers' examples,
-which a healthy server answers 304 or 412, so the exclusion stays.
-The required `TestAttachmentDownloadExamplesWithVertrag` suite exercises the
-named conditional requests and dependency refusals through the real handler
-and storage client. `TestAttachmentConditionalResponsesDescribeTheWire` also
-checks multipart ranges and seek failures. The remaining topology conditional
-and fault matrix stays open under #1166; no coverage baseline entry is added.
+The bodyless 304 and 412 are told apart by name too: each carries `x-example`
+on its Response Object, so `If-None-Match` is sent only with the 304 and
+`If-Match` only with the 412. Their requests go to the seeded attachment like
+the rest. The 500 is a dependency failure, proven in process
+(`TestAttachmentDownloadExamplesWithVertrag`) because a healthy topology cannot
+provoke it.
 
 ### Own-account authenticator contract
 
@@ -124,14 +119,10 @@ Two gates judge the primary run:
   hook skipped it or the link it follows did not resolve), none answered 5xx,
   and requires every operation it does not exclude. A shortfall exits 3, a
   failed transaction 1, and the contract step fails on either. Each exclusion
-  is printed with its reason: the operations `exclude-operation-id` never
-  sends, and the documented statuses `exclude-matching` keeps back, which
-  `surface.exclude` mirrors. No status is excluded on every operation: the
-  ones no example proves yet are listed by operation in
+  is printed with its reason: the two operations that wipe the run's data, which
+  `exclude-operation-id` leaves to the teardown phase. No status is excluded:
   `status-baseline.txt`, which `run.sh` adds to the run's `surface.exclude`
-  and `status_baseline.py` holds to only shrink. One the examples phase proves,
-  or the description no longer documents, fails the gate until it is taken
-  out (#1334).
+  and `status_baseline.py` holds to only shrink, is empty (#1334).
 - **coverage, a ratchet, in `gate.py`:** `coverage-baseline.txt` lists the
   operations whose boundary probes still fail (#388). A failing probe on any
   other operation fails the job, and so does an operation in the baseline
@@ -519,13 +510,9 @@ previously created valid probe folders.
 
 Every documented status with an example is sent and judged (#1334). A
 transaction sent and refused other than as documented fails the examples
-phase like any other. `exclude-matching` holds back only what no example
-proves: each pattern names one operation (under a comment with its
-operationId) and exactly its statuses in `status-baseline.txt`, or the ones
-`surface.exclude` gives a reason for (getAttachment's bodyless 304 and 412).
-`test_gate.py` (`HeldBackStatuses`) checks both, and that no baseline status
-has an example, so giving a status an example takes it off both lists in the
-same change.
+phase like any other. `vertrag.yml` holds no status back: `test_gate.py`
+(`NothingHeldBack`) fails on an `exclude-matching` pattern, a status in
+`surface.exclude`, or a line in `status-baseline.txt`.
 
 The coverage phase probes every transaction sent, and judges valid-mode probes
 whenever the transaction's own request gets the status it documents. For a

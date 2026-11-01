@@ -2627,10 +2627,13 @@ paths:
               properties:
                 name:
                   type: string
+                  minLength: 1
+                  pattern: '\S'
                   maxLength: 100
                   example: Invoice robot
                 password:
                   type: string
+                  minLength: 1
                   format: password
                   writeOnly: true
                   description: The session's own current password, entered again.
@@ -2639,7 +2642,7 @@ paths:
                   minItems: 1
                   maxItems: 64
                   items:
-                    $ref: "#/components/schemas/ScopedPermission"
+                    $ref: "#/components/schemas/ClientSecretRequestedPermission"
                 expires_at:
                   type: string
                   format: date-time
@@ -4907,7 +4910,7 @@ paths:
                 range_not_satisfiable:
                   value: "invalid range: failed to overlap\n"
         '500':
-          description: Handler dependency or streaming failure.
+          description: A handler dependency failed.
           headers:
             Content-Disposition:
               description: Safe attachment filename if the failure occurs in the content writer.
@@ -4930,9 +4933,6 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/ErrorResponse"
-            text/plain:
-              schema:
-                type: string
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -7893,7 +7893,6 @@ paths:
                       details:
                         fields:
                           filter_name: required
-                          email: required
                 filter_name_wrong_type:
                   value:
                     error:
@@ -13212,20 +13211,27 @@ components:
             ]
           },
           "name": {
+            "minLength": 1,
+            "pattern": "\\S",
             "type": "string"
           },
           "password": {
+            "minLength": 1,
             "type": "string"
           },
           "permissions": {
             "items": {
               "$ref": "#/components/schemas/ClientSecretRequestedPermission"
             },
+            "maxItems": 64,
+            "minItems": 1,
             "type": "array"
           }
         },
         "required": [
-          "name"
+          "name",
+          "password",
+          "permissions"
         ],
         "type": "object"
       }
@@ -13235,12 +13241,18 @@ components:
         "additionalProperties": false,
         "properties": {
           "capability": {
+            "minLength": 1,
             "type": "string"
           },
           "scope": {
+            "minLength": 1,
             "type": "string"
           }
         },
+        "required": [
+          "capability",
+          "scope"
+        ],
         "type": "object"
       }
 
@@ -14977,6 +14989,8 @@ components:
         name:
           type: string
           minLength: 1
+          format: idn-hostname
+          pattern: '\.'
         server_type:
           type: [string, "null"]
           enum: [traditional, restmail, "", null]
@@ -14985,6 +14999,7 @@ components:
         default_quota_bytes:
           type: integer
           format: int64
+          minimum: 0
         sending_policy:
           # vertrag 0.29 drops body probes when a property contains a $ref.
           # Keep this enum in step with DomainSendingPolicy.
@@ -15006,6 +15021,7 @@ components:
         default_quota_bytes:
           type: integer
           format: int64
+          minimum: 0
         # Inline rather than a $ref to DomainSendingPolicy: vertrag 0.29
         # validates each boundary probe against the body schema without
         # resolving a nested $ref, and drops every probe of a body that has
