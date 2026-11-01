@@ -12,8 +12,7 @@ import (
 	"testing"
 	"time"
 
-	oapifly "github.com/antimatter-studios/go-oapifly"
-	"github.com/rest-mail/rest-mail-server"
+	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
 )
 
 func TestMessageImportExamplesWithVertrag(t *testing.T) {
@@ -22,7 +21,7 @@ func TestMessageImportExamplesWithVertrag(t *testing.T) {
 		t.Skip("set RESTMAIL_VERTRAG_BINARY to replay import examples")
 	}
 	useRealGrants(t)
-	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
 	}

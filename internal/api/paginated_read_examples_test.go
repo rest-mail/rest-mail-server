@@ -180,6 +180,12 @@ func TestPaginatedReadExamplesWithVertrag(t *testing.T) {
 		{"failed stores", "500", token, failed},
 		{"failed session lookup", "503", token, unavailable},
 	} {
-		t.Run(tc.name, func(t *testing.T) { checkAuthReadWithVertrag(t, binary, tc.router, tc.token, tc.status, paths) })
+		t.Run(tc.name, func(t *testing.T) {
+			want := len(paths)
+			if tc.status == "403" {
+				want += 2 // The audit list also publishes its two second-factor refusals.
+			}
+			checkRegisteredExamplesWithVertrag(t, binary, tc.router, tc.token, http.MethodGet, tc.status, paths, want, tc.status == "413")
+		})
 	}
 }

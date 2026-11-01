@@ -32,6 +32,10 @@ func TestInvitationExamplesWithVertrag(t *testing.T) {
 			continue
 		}
 		for name, pair := range examples {
+			switch name {
+			case "malformed_json", "rate_limited", "recent_two_factor_required", "two_factor_required":
+				continue // Refused before the handler, out of this fixture's reach; proven in process.
+			}
 			t.Run(operation+"/"+name, func(t *testing.T) {
 				mode := map[string]string{"insufficient_permissions": "denied", "missing": "missing_account", "existing_credentials": "established_account", "invalid_token": "expired", "wrong_purpose": "wrong_purpose", "unavailable": "unavailable"}[name]
 				if name == "internal_error" {

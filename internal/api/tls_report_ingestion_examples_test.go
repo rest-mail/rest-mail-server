@@ -428,9 +428,9 @@ func TestTLSIngestionExamplesWithVertrag(t *testing.T) {
 			media := content["application/json"].(map[string]interface{})
 			examples := media["examples"].(map[string]interface{})
 			selected, ok := examples[name]
-			if name == "unsupported_media" {
-				// Unsupported media cannot be an accepted request-body schema. Use
-				// a compiler carrier, then send the pair's actual empty text/plain body.
+			if pair.Request.MediaType != "" {
+				// The pair's own media type (text/plain, or a TLS report's gzip) has no
+				// JSON example. Use a compiler carrier, then send the pair's actual body.
 				selected, ok = examples["stored"]
 			}
 			if !ok {
@@ -459,6 +459,9 @@ func TestTLSIngestionExamplesWithVertrag(t *testing.T) {
 				t.Fatal(err)
 			}
 			body, wireMedia := tlsIngestionWire(name, pair)
+			if wireMedia == "application/tlsrpt+gzip" {
+				t.Skip("a Vertrag hook carries a body as text, which corrupts gzip bytes; TestTLSIngestionExamples sends this pair in process")
+			}
 			hook := "import vertrag_hooks as hooks\n@hooks.before_each\ndef published_request(transaction):\n    transaction['fullPath'] = " + strconv.Quote(tlsIngestionPath) + "\n    transaction['request']['body'] = " + strconv.Quote(string(body)) + "\n    transaction['request'].setdefault('headers', {})['Content-Type'] = " + strconv.Quote(wireMedia) + "\n"
 			if err := os.WriteFile(filepath.Join(dir, "pair.py"), []byte(hook), 0600); err != nil {
 				t.Fatal(err)

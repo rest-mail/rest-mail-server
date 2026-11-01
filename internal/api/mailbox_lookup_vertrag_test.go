@@ -30,7 +30,7 @@ func checkMailboxLookupWithVertrag(t *testing.T, binary string, handler http.Han
 	doc["paths"] = map[string]interface{}{path: map[string]interface{}{"get": op}}
 	status := strconv.Itoa(pair.Response.Status)
 	response := op["responses"].(map[string]interface{})[status].(map[string]interface{})
-	content := response["content"].(map[string]interface{})
+	content, _ := response["content"].(map[string]interface{}) // A 304 has none.
 	// A status documented under several media types (a 206 as one range or as
 	// multipart/byteranges) is published with the pair's own media type only.
 	if media := pair.Response.MediaType; media != "" {
@@ -71,8 +71,17 @@ func checkMailboxLookupWithVertrag(t *testing.T, binary string, handler http.Han
 		uri += "?" + query.Encode()
 	}
 	if parameters, ok := op["parameters"].([]interface{}); ok {
+		kept := parameters[:0]
 		for _, item := range parameters {
 			parameter := item.(map[string]interface{})
+			// An optional header the pair does not send stays out: a placeholder
+			// If-Match would turn a plain read into a 412.
+			if name, _ := parameter["name"].(string); parameter["in"] == "header" && parameter["required"] != true {
+				if _, sent := headerOf(pair.Request.Header, name); !sent {
+					continue
+				}
+			}
+			kept = append(kept, item)
 			delete(parameter, "examples")
 			if parameter["in"] == "query" || parameter["in"] == "path" {
 				var illustration interface{} = "compiler@example.com"
@@ -90,8 +99,14 @@ func checkMailboxLookupWithVertrag(t *testing.T, binary string, handler http.Han
 				parameter["example"] = illustration
 			} else {
 				parameter["example"] = 1
+				if name, _ := parameter["name"].(string); name != "" {
+					if value, sent := headerOf(pair.Request.Header, name); sent {
+						parameter["example"] = value
+					}
+				}
 			}
 		}
+		op["parameters"] = kept
 	}
 	dir := t.TempDir()
 	data, err := marshalPairDescription(doc)
@@ -157,4 +172,13 @@ func checkMailboxLookupWithVertrag(t *testing.T, binary string, handler http.Han
 	if report.Summary.Total != 1 || report.Summary.Passing != 1 || report.Summary.Failing != 0 || report.Summary.Errors != 0 || report.Summary.Skipped != 0 {
 		t.Fatalf("exchange did not run and pass: %s", data)
 	}
+}
+
+func headerOf(headers map[string]interface{}, name string) (interface{}, bool) {
+	for key, value := range headers {
+		if strings.EqualFold(key, name) {
+			return value, true
+		}
+	}
+	return nil, false
 }

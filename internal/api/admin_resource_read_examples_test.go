@@ -266,7 +266,11 @@ func TestAdminResourceReadExamplesWithVertrag(t *testing.T) {
 				if name == "unauthenticated" {
 					token = ""
 				}
-				checkMailboxLookupWithVertrag(t, binary, routers[name], token, path, name, pair)
+				router, ok := routers[operation+"/"+name]
+				if !ok {
+					router = routers[name]
+				}
+				checkMailboxLookupWithVertrag(t, binary, router, token, path, name, pair)
 			})
 		}
 	}

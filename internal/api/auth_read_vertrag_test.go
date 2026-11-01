@@ -64,7 +64,13 @@ func checkAuthReadWithVertrag(t *testing.T, binary string, handler http.Handler,
 
 func checkRegisteredExamplesWithVertrag(t *testing.T, binary string, handler http.Handler, token, method, status string, paths []string, want int, transportBody bool, rawPair ...string) {
 	t.Helper()
-	doc := contractDocument(t, describedRouters(t).pairGenerator(t, "authenticated example boundary"))
+	// One exchange per status is what the served description publishes, and what
+	// want counts. Only a raw pair is selected by name, and it may be a variant.
+	generator := describedRouters(t).generator("authenticated example boundary")
+	if len(rawPair) > 0 {
+		generator = describedRouters(t).pairGenerator(t, "authenticated example boundary")
+	}
+	doc := contractDocument(t, generator)
 	all := doc["paths"].(map[string]interface{})
 	selected := map[string]interface{}{}
 	for _, path := range paths {
