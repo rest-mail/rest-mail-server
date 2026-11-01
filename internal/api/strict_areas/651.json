@@ -1,0 +1,12 @@
+{
+  "651": [
+    "createBan",
+    "deleteBan",
+    "getDashboardStats",
+    "getDeliveryLogs",
+    "listAuditEntries",
+    "listBans",
+    "unbanIP",
+    "verifyAuditLog"
+  ]
+}
