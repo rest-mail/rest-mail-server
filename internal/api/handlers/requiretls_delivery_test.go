@@ -20,7 +20,7 @@ import (
 // tagged in the same manner" (RFC 8689 §4.1, #724). Without it neither is tagged.
 func TestDelivery_KeepsTheREQUIRETLSTag(t *testing.T) {
 	db := openRedirectTestDB(t)
-	engine := pipeline.NewEngine(pipeline.DefaultRegistry, slog.Default())
+	engine := pipeline.NewEngine(withQuietVacation(pipeline.DefaultRegistry), slog.Default())
 	for _, tagged := range []bool{true, false} {
 		t.Run(fmt.Sprintf("require_tls=%t", tagged), func(t *testing.T) {
 			suffix := time.Now().UnixNano()

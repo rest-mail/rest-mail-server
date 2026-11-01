@@ -199,7 +199,7 @@ func openRedirectTestDB(t *testing.T) *gorm.DB {
 // `redirect :copy` forwards AND stores the local copy.
 func TestRESTMAILDeliver_SieveRedirect(t *testing.T) {
 	db := openRedirectTestDB(t)
-	engine := pipeline.NewEngine(pipeline.DefaultRegistry, slog.Default())
+	engine := pipeline.NewEngine(withQuietVacation(pipeline.DefaultRegistry), slog.Default())
 
 	// setup provisions a fresh domain + mailbox + inbound pipeline whose sieve
 	// script is built from the concrete generated domain via scriptFn.

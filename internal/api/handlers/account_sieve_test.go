@@ -105,7 +105,7 @@ func TestDelivery_RunsTheAccountsSieveScript(t *testing.T) {
 	if err := db.AutoMigrate(&models.SieveScript{}); err != nil {
 		t.Skipf("account sieve DB test skipped: migrate failed (%v)", err)
 	}
-	engine := pipeline.NewEngine(pipeline.DefaultRegistry, slog.Default())
+	engine := pipeline.NewEngine(withQuietVacation(pipeline.DefaultRegistry), slog.Default())
 	const script = `require ["fileinto", "imap4flags"]; fileinto "Work"; addflag "\\Flagged";`
 
 	setup := func(t *testing.T, local string, filters []pipeline.FilterConfig, hash string) (*MessageHandler, models.Mailbox) {

@@ -31,7 +31,7 @@ func TestOwnedQuotaIncludesAttachmentBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 	fake := s3test.New(t)
-	registry := pipeline.NewRegistry()
+	registry := withQuietVacation(pipeline.NewRegistry())
 	registry.Register("extract_attachments", filters.NewExtractAttachmentsWithS3(attachmentstore.NewS3(fake.Config)))
 	h := NewMessageHandler(tx, nil, pipeline.NewEngine(registry, nil), "", nil)
 	raw := "From: sender@remote.test\r\nSubject: x\r\nMIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=part\r\n\r\n--part\r\nContent-Type: text/plain\r\n\r\nx\r\n--part\r\nContent-Type: application/octet-stream\r\nContent-Disposition: attachment; filename=test.bin\r\nContent-Transfer-Encoding: base64\r\n\r\ncGF5bG9hZA==\r\n--part--\r\n"

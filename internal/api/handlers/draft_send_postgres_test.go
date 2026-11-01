@@ -92,7 +92,7 @@ func TestSendDraftPostgresRollbackNotificationsAndConcurrentSend(t *testing.T) {
 	for _, direction := range []string{"outbound", "inbound"} {
 		must(t, db.Create(&models.Pipeline{DomainID: domain.ID, Direction: direction, Active: true, Filters: []byte(`[]`)}).Error)
 	}
-	engine := pipeline.NewEngine(pipeline.NewRegistry(), nil)
+	engine := pipeline.NewEngine(withQuietVacation(pipeline.NewRegistry()), nil)
 	seed := func(t *testing.T, subject string) models.Message {
 		draft := models.Message{MailboxID: sender.ID, Folder: "Drafts", Sender: sender.Address, Subject: subject, BodyText: "hello", IsDraft: true, RecipientsTo: models.JSONB(`["far@remote.example","` + recipient.Address + `"]`), RecipientsCc: models.JSONB(`[]`)}
 		must(t, db.Create(&draft).Error)

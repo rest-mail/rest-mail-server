@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -471,4 +472,41 @@ func TestDefaultPipelineJSON(t *testing.T) {
 			t.Errorf("expected '[]' for unknown direction, got %q", string(raw))
 		}
 	})
+}
+
+func TestWithVacationStep(t *testing.T) {
+	names := func(steps []FilterConfig) string {
+		out := make([]string, 0, len(steps))
+		for _, step := range steps {
+			if !step.Enabled {
+				out = append(out, "off:"+step.Name)
+				continue
+			}
+			out = append(out, step.Name)
+		}
+		return strings.Join(out, " ")
+	}
+	step := func(name string, enabled bool) FilterConfig { return FilterConfig{Name: name, Enabled: enabled} }
+	for _, tc := range []struct {
+		name string
+		in   []FilterConfig
+		want string
+	}{
+		{"missing goes after sieve", []FilterConfig{step("spf_check", true), step("sieve", true), step("extra", true)}, "spf_check sieve vacation extra"},
+		{"no sieve goes last", []FilterConfig{step("spf_check", true)}, "spf_check vacation"},
+		{"turned off comes back on", []FilterConfig{step("sieve", true), step("vacation", false)}, "sieve vacation"},
+		{"before sieve moves after it", []FilterConfig{step("vacation", true), step("sieve", true)}, "sieve vacation"},
+		{"never two", []FilterConfig{step("vacation", true), step("sieve", true), step("vacation", true)}, "sieve vacation"},
+		{"empty", nil, "vacation"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := names(WithVacationStep(tc.in)); got != tc.want {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+	stored := []FilterConfig{{Name: "vacation", Enabled: true, Config: json.RawMessage(`{"days":3}`)}}
+	if got := WithVacationStep(stored); string(got[0].Config) != `{"days":3}` {
+		t.Fatalf("a stored step's settings were lost: %s", got[0].Config)
+	}
 }

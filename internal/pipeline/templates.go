@@ -153,6 +153,33 @@ func defaultInboundFilters() []FilterConfig {
 	}
 }
 
+// WithVacationStep returns an inbound pipeline's steps with the account's
+// vacation reply on, after Sieve, so a reply set in the apps is always sent
+// whatever the domain's stored pipeline says (#772), and a message the script
+// rejects or discards is not answered. It is one step, so one reply: a stored
+// step's own settings are kept.
+func WithVacationStep(steps []FilterConfig) []FilterConfig {
+	vacation := FilterConfig{Name: "vacation", Type: FilterTypeAction, Enabled: true, Config: json.RawMessage(`{"days": 7}`)}
+	out := make([]FilterConfig, 0, len(steps)+1)
+	at := -1
+	for _, step := range steps {
+		if step.Name == "vacation" {
+			if len(step.Config) > 0 {
+				vacation.Config = step.Config
+			}
+			continue
+		}
+		out = append(out, step)
+		if step.Name == "sieve" {
+			at = len(out)
+		}
+	}
+	if at < 0 {
+		return append(out, vacation)
+	}
+	return append(out[:at:at], append([]FilterConfig{vacation}, out[at:]...)...)
+}
+
 func defaultOutboundFilters() []FilterConfig {
 	return []FilterConfig{
 		{

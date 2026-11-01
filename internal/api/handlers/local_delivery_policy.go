@@ -29,7 +29,7 @@ func (h *MessageHandler) localInboundPolicy(ctx context.Context, mailbox models.
 		if err := json.Unmarshal(stored.Filters, &filters); err != nil {
 			return nil, fmt.Errorf("deferred: decode inbound policy: %w", err)
 		}
-		cfg = &pipeline.PipelineConfig{ID: stored.ID, DomainID: stored.DomainID, Direction: stored.Direction, Filters: filters, Active: stored.Active}
+		cfg = &pipeline.PipelineConfig{ID: stored.ID, DomainID: stored.DomainID, Direction: stored.Direction, Filters: pipeline.WithVacationStep(filters), Active: stored.Active}
 	}
 	cfg, err = withAccountSieve(db, cfg, mailbox.ID)
 	if err != nil {

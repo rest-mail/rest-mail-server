@@ -20,7 +20,7 @@ func missingGatewayScript() deliveryReadStep {
 
 func gatewayPolicyRoutes(t *testing.T, d *deliveryReadDB, filter pipeline.Filter) http.Handler {
 	t.Helper()
-	registry := pipeline.NewRegistry()
+	registry := withQuietVacation(pipeline.NewRegistry())
 	if filter != nil {
 		registry.Register(filter.Name(), func([]byte) (pipeline.Filter, error) { return filter, nil })
 		for _, step := range pipeline.DefaultInboundPipeline(1).Filters {
@@ -116,7 +116,7 @@ func TestGatewayInboundPolicyDefaultsRequireAbsence(t *testing.T) {
 				if !reflect.DeepEqual(got, want) {
 					t.Fatalf("default policy changed: %+v", got)
 				}
-			} else if got.ID != 3 || got.DomainID != 1 || got.Direction != "inbound" || !got.Active || len(got.Filters) != 0 {
+			} else if got.ID != 3 || got.DomainID != 1 || got.Direction != "inbound" || !got.Active || len(got.Filters) != 1 || got.Filters[0].Name != "vacation" {
 				t.Fatalf("stored policy changed: %+v", got)
 			}
 			if d.reads != 2 || d.writes != 0 || d.lostContext != 0 {

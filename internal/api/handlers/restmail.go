@@ -838,7 +838,7 @@ func (h *RestmailHandler) inboundPipeline(ctx context.Context, domainName string
 		return nil, fmt.Errorf("decode inbound pipeline: %w", err)
 	}
 	return &pipeline.PipelineConfig{ID: stored.ID, DomainID: stored.DomainID,
-		Direction: stored.Direction, Filters: filters, Active: stored.Active}, nil
+		Direction: stored.Direction, Filters: pipeline.WithVacationStep(filters), Active: stored.Active}, nil
 }
 
 func restmailReadRefusal(stage string) error {
