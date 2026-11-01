@@ -22,7 +22,8 @@ import (
 // The client secret pairs that need a second-factor session, a stored client
 // secret or a revoked one run the real router on a scratch database holding
 // exactly that state, and check what the request changed as well as the answer
-// (#1237). They skip, and prove nothing, when no database is reachable.
+// (#1237). So do the 400 pairs the contract run holds back (#386). They skip,
+// and prove nothing, when no database is reachable.
 
 // The pairs' client secret: its id, secret and row, as the examples show them.
 const (
@@ -298,6 +299,19 @@ func TestClientSecretExamples(t *testing.T) {
 		}
 	})
 
+	t.Run("createClientSecret/body_array", func(t *testing.T) {
+		examplepairs.Proven(t, "createClientSecret", "body_array")
+		pair := pairs["createClientSecret"]["body_array"]
+		f := newCredentialFixture(t)
+		administerExampleDomain(f)
+		session := twoFactorSession(f) // a session that could create one, had the body been an object
+		rr := sendClientSecretExample(f, routes["createClientSecret"], pair, session)
+		assertRequirementResponse(t, pair, rr)
+		if n := clientSecrets(f); n != 0 {
+			t.Fatalf("refused creation stored %d client secrets", n)
+		}
+	})
+
 	t.Run("listClientSecrets/listed", func(t *testing.T) {
 		examplepairs.Proven(t, "listClientSecrets", "listed")
 		pair := pairs["listClientSecrets"]["listed"]
@@ -401,4 +415,20 @@ func TestClientSecretExamples(t *testing.T) {
 			t.Fatal("refused exchange recorded a use")
 		}
 	})
+
+	// The malformed exchanges carry the pairs' usable client secret, so the
+	// refusal is the request's shape and not a missing or wrong credential.
+	for _, name := range []string{"duplicate_parameter", "unsupported_grant", "scope_refused"} {
+		t.Run("issueClientCredentialsToken/"+name, func(t *testing.T) {
+			examplepairs.Proven(t, "issueClientCredentialsToken", name)
+			pair := pairs["issueClientCredentialsToken"][name]
+			f := newCredentialFixture(t)
+			cred := usableClientSecret(f, false)
+			rr := sendClientSecretExample(f, routes["issueClientCredentialsToken"], pair, "")
+			assertRequirementResponse(t, pair, rr)
+			if after := reloadCredential(f, cred.ID); after.LastUsedAt != nil {
+				t.Fatal("refused exchange recorded a use")
+			}
+		})
+	}
 }
