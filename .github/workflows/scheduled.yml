@@ -48,6 +48,10 @@ jobs:
           cache: true
 
       - name: Install govulncheck
+        # The newest release may need a newer Go than this module uses, so let it
+        # fetch its own: without this the install fails and nothing is scanned.
+        env:
+          GOTOOLCHAIN: auto
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
 
       - name: Run govulncheck
@@ -65,18 +69,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # What the images and CI install is pnpm-lock.yaml, so that is what is audited.
+      - name: Enable pnpm
+        run: corepack enable pnpm
+
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "18"
-          cache: "npm"
-          cache-dependency-path: ${{ matrix.app }}/package-lock.json
+          node-version-file: ${{ matrix.app }}/package.json
 
-      - name: Audit ${{ matrix.app }} npm dependencies
+      - name: Audit ${{ matrix.app }} dependencies
         working-directory: ${{ matrix.app }}
         # Fail the scheduled run on a high/critical advisory so dependency CVEs
         # surface instead of going unnoticed.
-        run: npm audit --audit-level=high
+        run: pnpm audit --audit-level=high
 
   dependency-review:
     name: Dependency Review
