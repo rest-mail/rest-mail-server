@@ -263,7 +263,7 @@ func (h *EventHandler) Register(rs endpoint.Routes) {
 			"stream ends without sending anything more. Access lookup failures return 500 before a stream opens; " +
 			"missing or inaccessible accounts retain 403.",
 		MediaType: "text/event-stream",
-		Errors:    []int{http.StatusForbidden, http.StatusServiceUnavailable},
+		Errors:    []int{http.StatusForbidden, http.StatusNotFound, http.StatusServiceUnavailable},
 		Security:  handlerChecked(models.CapMailRead, "CookieAuth", "BearerAuth")}, h.events)
 }
 
@@ -277,7 +277,10 @@ func (h *EventHandler) events(r *http.Request, in accountPath) (endpoint.Stream,
 	// The mailbox: one the caller may read.
 	mailboxID, err := resolveAccountMailbox(h.db.WithContext(r.Context()), uint(in.ID), claims, models.CapMailRead)
 	if errors.Is(err, errNoAccess) {
-		return endpoint.Stream{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "Access denied")
+		return endpoint.Stream{}, errAccountNotFound
+	}
+	if errors.Is(err, errNotAllowed) {
+		return endpoint.Stream{}, errNotAllowed
 	}
 	if err != nil {
 		return endpoint.Stream{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to check account access")

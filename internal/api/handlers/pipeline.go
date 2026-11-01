@@ -903,7 +903,7 @@ func (h *PipelineHandler) RegisterQuarantine(rs endpoint.Routes) {
 	tags := []string{"Quarantine"}
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/quarantine",
 		OperationID: "listQuarantine", Summary: "List quarantined messages", Tags: tags,
-		Errors: []int{http.StatusForbidden}, Security: handlerChecked(models.CapMailRead, schemes...)}, h.listQuarantine)
+		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: handlerChecked(models.CapMailRead, schemes...)}, h.listQuarantine)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/quarantine/{mid}/release",
 		OperationID: "releaseQuarantine", Summary: "Release a quarantined message to inbox", Tags: tags,
 		Description: "Releasing held mail requires a human session signed in with two-factor authentication.",
@@ -916,7 +916,7 @@ func (h *PipelineHandler) RegisterQuarantine(rs endpoint.Routes) {
 }
 
 var (
-	errQuarantineAccess   = endpoint.Refuse(http.StatusForbidden, "forbidden", "Access denied")
+	errQuarantineAccess   = errAccountNotFound
 	errQuarantineNotFound = endpoint.Refuse(http.StatusNotFound, "not_found", "Quarantined message not found")
 )
 

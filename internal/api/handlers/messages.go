@@ -171,7 +171,8 @@ type threadRequest struct {
 
 var (
 	errMessageNotFound = endpoint.Refuse(http.StatusNotFound, "message_not_found", "Message not found")
-	errMessageAccess   = endpoint.Refuse(http.StatusForbidden, "forbidden", "Access denied")
+	// Someone else's message reads as one that does not exist (#1327).
+	errMessageAccess = errMessageNotFound
 )
 
 // RegisterMessages mounts reading, changing and deleting an account's messages, and its
@@ -182,7 +183,7 @@ func (h *MessageHandler) RegisterMessages(rs endpoint.Routes) {
 	tags := []string{"Messages"}
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/folders/{folder}/messages",
 		OperationID: "listMessages", Summary: "List messages in a folder", Tags: tags,
-		Errors: []int{http.StatusForbidden}, Security: reads}, h.listMessages)
+		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.listMessages)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/messages/{id}",
 		OperationID: "getMessage", Summary: "Get a message by ID", Tags: tags,
 		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.getMessage)
@@ -194,7 +195,7 @@ func (h *MessageHandler) RegisterMessages(rs endpoint.Routes) {
 		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.deleteMessage)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/threads/{threadID}",
 		OperationID: "getThread", Summary: "Get all messages in a thread", Tags: tags,
-		Errors: []int{http.StatusForbidden}, Security: reads}, h.getThread)
+		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.getThread)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/messages/{id}/raw",
 		OperationID: "getRawMessage", Summary: "Get the raw RFC 2822 message source", Tags: tags,
 		Description: "The message as it arrived, headers and all. 404 not_found when no source was kept.",
@@ -574,7 +575,7 @@ func (h *MessageHandler) sendMessageWithParts(r *http.Request, req sendMessageRe
 	// Own sending and the two delegated identities require distinct capabilities.
 	sender, err := maySendFrom(h.db.WithContext(r.Context()), claims, req.From, req.OnBehalf)
 	if err != nil {
-		if errors.Is(err, errNoAccess) {
+		if refusedAccount(err) {
 			return zero, endpoint.Refuse(http.StatusForbidden, "forbidden", "You are not authorized to send from this address")
 		}
 		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to check the sender")
@@ -1231,7 +1232,7 @@ type renameFolderRequest struct {
 var folderSchemes = []string{"CookieAuth", "BearerAuth", "APIKeyAuth", "BasicAuth"}
 
 var (
-	errMailboxAccess = endpoint.Refuse(http.StatusForbidden, "forbidden", "Access denied")
+	errMailboxAccess = errAccountNotFound
 	errNotSignedIn   = endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Authentication required")
 	errFolderExists  = endpoint.Refuse(http.StatusConflict, "already_exists", "Folder already exists")
 )
@@ -1276,12 +1277,12 @@ func (h *MessageHandler) RegisterFolders(rs endpoint.Routes) {
 	tags := []string{"Folders"}
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/folders",
 		OperationID: "listFolders", Summary: "List folders for an account", Tags: tags,
-		Errors: []int{http.StatusForbidden}, Security: reads}, h.listFolders)
+		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.listFolders)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/folders",
 		OperationID: "createFolder", Summary: "Create a new folder", Tags: tags, Status: http.StatusCreated,
 		Description: folderNameRule + " A folder that already exists is 409 already_exists, INBOX in any case, Sent, " +
 			"Drafts and Trash among them: they are listed empty or not.",
-		Errors: []int{http.StatusForbidden, http.StatusConflict}, Security: writes}, h.createFolder)
+		Errors: []int{http.StatusForbidden, http.StatusNotFound, http.StatusConflict}, Security: writes}, h.createFolder)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPatch, Path: "/api/v1/accounts/{id}/folders/{folder}",
 		OperationID: "renameFolder", Summary: "Rename a folder", Tags: tags,
 		Description: "A standard folder (INBOX, Sent, Drafts, Trash, Spam, Archive) is not renamed, and no folder is renamed " +
@@ -1544,7 +1545,7 @@ func (h *MessageHandler) saveDraft(r *http.Request, req saveDraftBody) (Message,
 	} else {
 		mb, err = mayReach(h.db.WithContext(r.Context()), claims, claims.AccountID, models.CapMailWrite)
 	}
-	if errors.Is(err, errNoAccess) {
+	if refusedAccount(err) {
 		if req.From == "" {
 			return Message{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "You are not authorized to write drafts to this mailbox")
 		}
@@ -1624,7 +1625,7 @@ func (h *MessageHandler) updateDraft(r *http.Request, in updateDraftRequest) (Me
 	// address could be turned into one from anyone's (#610).
 	if req.From != nil && *req.From != "" {
 		if _, err := mayActAs(h.db.WithContext(r.Context()), claims, *req.From, models.CapMailWrite); err != nil {
-			if errors.Is(err, errNoAccess) {
+			if refusedAccount(err) {
 				return Message{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "You are not authorized to send from this address")
 			}
 			return Message{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to check the sender")
@@ -1786,6 +1787,9 @@ func (h *MessageHandler) draftAccess(r *http.Request, draft *models.Message) err
 	_, err := mayReach(h.db.WithContext(r.Context()), middleware.GetClaims(r), draft.MailboxID, models.CapMailWrite)
 	if errors.Is(err, errNoAccess) {
 		return errMessageAccess
+	}
+	if errors.Is(err, errNotAllowed) {
+		return errNotAllowed
 	}
 	if err != nil {
 		return endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to check draft access")

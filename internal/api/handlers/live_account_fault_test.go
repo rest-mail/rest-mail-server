@@ -200,7 +200,7 @@ func TestLiveAccountMissingResponsesKeepTheirPolicy(t *testing.T) {
 			h, broker := liveAccountRouter(liveAccountGorm(t, d))
 			rr := httptest.NewRecorder()
 			h.ServeHTTP(rr, liveAccountRequest(t, index))
-			want := []int{403, 404, 200}[index]
+			want := []int{404, 404, 200}[index]
 			if rr.Code != want || d.queries.Load() != 1 || d.lost.Load() != 0 || d.begins.Load() != 0 || len(broker.active) != 0 {
 				t.Fatalf("status=%d body=%s queries=%d lost=%d", rr.Code, rr.Body, d.queries.Load(), d.lost.Load())
 			}

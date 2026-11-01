@@ -207,5 +207,5 @@ func (h *MessageHandler) RegisterCompose(rs endpoint.Routes, audit ...func(strin
 		Errors: append([]int{http.StatusNotFound}, sendRefusals...), Security: delegatedSendSecurity(models.CapMailRead), Middleware: sendAudit("mail.forward")}, h.forwardMessage)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/calendar-events",
 		OperationID: "listCalendarEvents", Summary: "List the calendar invitations an account has received", Tags: []string{"Calendar"},
-		Errors: []int{http.StatusUnauthorized, http.StatusForbidden}, Security: reads}, h.listCalendarEvents)
+		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.listCalendarEvents)
 }

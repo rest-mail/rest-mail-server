@@ -80,10 +80,10 @@ func (h *ContactHandler) RegisterContacts(rs endpoint.Routes) {
 	tags := []string{"Contacts"}
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/contacts",
 		OperationID: "listContacts", Summary: "List contacts for an account", Tags: tags,
-		Errors: []int{http.StatusForbidden}, Security: reads}, h.list)
+		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.list)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/contacts",
 		OperationID: "createContact", Summary: "Create a new contact", Tags: tags, Status: http.StatusCreated,
-		Errors: []int{http.StatusForbidden, http.StatusConflict}, Security: writes}, h.create)
+		Errors: []int{http.StatusForbidden, http.StatusNotFound, http.StatusConflict}, Security: writes}, h.create)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPatch, Path: "/api/v1/accounts/{id}/contacts/{cid}",
 		OperationID: "updateContact", Summary: "Update a contact", Tags: tags,
 		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.update)
@@ -94,18 +94,18 @@ func (h *ContactHandler) RegisterContacts(rs endpoint.Routes) {
 		OperationID: "blockSender", Summary: "Block a sender", Tags: tags,
 		Description: "201 when the sender was not a contact (a new contact, blocked), 200 when an existing contact was changed to blocked.",
 		Status:      http.StatusCreated, SuccessStatuses: []int{http.StatusOK},
-		Errors: []int{http.StatusForbidden}, Security: writes}, h.block)
+		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.block)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/contacts/import",
 		OperationID: "importContacts", Summary: "Bulk import contacts", Tags: tags,
-		Errors: []int{http.StatusForbidden}, Security: writes}, h.importContacts)
+		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.importContacts)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/contacts/suggest",
 		OperationID: "suggestContacts", Summary: "Autocomplete contacts by query", Tags: tags,
 		Description: "At most 10 contacts whose address or name contains q, blocked ones left out; an empty q answers none.",
-		Errors:      []int{http.StatusForbidden}, Security: reads}, h.suggest)
+		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.suggest)
 }
 
 var (
-	errContactAccess   = endpoint.Refuse(http.StatusForbidden, "forbidden", "Access denied")
+	errContactAccess   = errAccountNotFound
 	errContactNotFound = endpoint.Refuse(http.StatusNotFound, "not_found", "Contact not found")
 )
 

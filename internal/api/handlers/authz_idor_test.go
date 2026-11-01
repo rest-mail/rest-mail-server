@@ -126,18 +126,18 @@ func TestSieveIDOR_OwnershipEnforced(t *testing.T) {
 		t.Fatalf("owner GET: expected 200, got %d (%s)", rr.Code, rr.Body.String())
 	}
 
-	// Attacker GET on the owner's account → 403.
+	// Attacker GET on the owner's account → 404.
 	rr = httptest.NewRecorder()
 	serveSieve(h, rr, authzRequest(http.MethodGet, "/sieve", fx.attackerMailbox.ID, acctParam, ""))
-	if rr.Code != http.StatusForbidden {
-		t.Fatalf("attacker GET: expected 403, got %d", rr.Code)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("attacker GET: expected 404, got %d", rr.Code)
 	}
 
-	// Attacker PUT (overwrite) → 403, and the owner's script is unchanged.
+	// Attacker PUT (overwrite) → 404, and the owner's script is unchanged.
 	rr = httptest.NewRecorder()
 	serveSieve(h, rr, authzRequest(http.MethodPut, "/sieve", fx.attackerMailbox.ID, acctParam, `{"script":"# pwned","active":true}`))
-	if rr.Code != http.StatusForbidden {
-		t.Fatalf("attacker PUT: expected 403, got %d", rr.Code)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("attacker PUT: expected 404, got %d", rr.Code)
 	}
 	var script models.SieveScript
 	if err := tx.Where("mailbox_id = ?", fx.ownerMailbox.ID).First(&script).Error; err != nil {
@@ -147,11 +147,11 @@ func TestSieveIDOR_OwnershipEnforced(t *testing.T) {
 		t.Fatalf("owner script was mutated by attacker: %q", script.Script)
 	}
 
-	// Attacker DELETE → 403, and the owner's script is still present.
+	// Attacker DELETE → 404, and the owner's script is still present.
 	rr = httptest.NewRecorder()
 	serveSieve(h, rr, authzRequest(http.MethodDelete, "/sieve", fx.attackerMailbox.ID, acctParam, ""))
-	if rr.Code != http.StatusForbidden {
-		t.Fatalf("attacker DELETE: expected 403, got %d", rr.Code)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("attacker DELETE: expected 404, got %d", rr.Code)
 	}
 	var count int64
 	tx.Model(&models.SieveScript{}).Where("mailbox_id = ?", fx.ownerMailbox.ID).Count(&count)
@@ -200,18 +200,18 @@ func TestQuarantineIDOR_OwnershipEnforced(t *testing.T) {
 		t.Fatalf("owner LIST should include the owner's quarantined message, got %s", rr.Body.String())
 	}
 
-	// Attacker LIST on the owner's account id → 403 (account not owned).
+	// Attacker LIST on the owner's account id → 404 (account not owned).
 	rr = httptest.NewRecorder()
 	routes.ServeHTTP(rr, quarantineRequest(http.MethodGet, fx.attackerMailbox.ID, quarantinePathOf(fx.ownerMailbox.ID, 0, "")))
-	if rr.Code != http.StatusForbidden {
-		t.Fatalf("attacker LIST (foreign account): expected 403, got %d", rr.Code)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("attacker LIST (foreign account): expected 404, got %d", rr.Code)
 	}
 
-	// Attacker RELEASE targeting the owner's account id → 403.
+	// Attacker RELEASE targeting the owner's account id → 404.
 	rr = httptest.NewRecorder()
 	routes.ServeHTTP(rr, quarantineRequest(http.MethodPost, fx.attackerMailbox.ID, quarantinePathOf(fx.ownerMailbox.ID, q.ID, "/release")))
-	if rr.Code != http.StatusForbidden {
-		t.Fatalf("attacker RELEASE (foreign account): expected 403, got %d", rr.Code)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("attacker RELEASE (foreign account): expected 404, got %d", rr.Code)
 	}
 
 	// Attacker RELEASE using their OWN valid account but the owner's row id → 404,

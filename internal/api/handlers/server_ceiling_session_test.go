@@ -61,7 +61,7 @@ func TestMayReachBoundsAppPasswordByServerCeiling(t *testing.T) {
 			}
 			for _, capability := range mail {
 				_, err := mayReach(db, claims, 7, capability)
-				if err != nil && !errors.Is(err, errNoAccess) {
+				if err != nil && !refusedAccount(err) {
 					t.Fatalf("%s %s: %v", kind, capability, err)
 				}
 				if allowed, want := err == nil, capability != removed; allowed != want {
@@ -143,7 +143,7 @@ func TestMayReachAppliesServerCeilingToOpenSessions(t *testing.T) {
 	reaches := func(t *testing.T, claims *auth.Claims, target models.Mailbox) bool {
 		t.Helper()
 		_, err := mayReach(db, claims, target.ID, models.CapMailRead)
-		if err != nil && !errors.Is(err, errNoAccess) {
+		if err != nil && !refusedAccount(err) {
 			t.Fatalf("mayReach: %v", err)
 		}
 		return err == nil

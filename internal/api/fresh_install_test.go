@@ -343,7 +343,7 @@ func TestFreshInstall_EndToEnd(t *testing.T) {
 	if got := addresses(f.accounts(bobS)); !slices.Equal(got, []string{"bob@fresh.test"}) {
 		t.Fatalf("bob@'s accounts before linking: %v", got)
 	}
-	f.expect(f.do(http.MethodGet, fmt.Sprintf("/api/v1/accounts/%d/folders", carol.ID), bobS.bearer(), ""), http.StatusForbidden, "carol@'s folders before linking", nil)
+	f.expect(f.do(http.MethodGet, fmt.Sprintf("/api/v1/accounts/%d/folders", carol.ID), bobS.bearer(), ""), http.StatusNotFound, "carol@'s folders before linking", nil)
 	refused := func(body, want, what string) {
 		t.Helper()
 		rr := f.do(http.MethodPost, "/api/v1/accounts/link", bobS.bearer(), body)

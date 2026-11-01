@@ -57,7 +57,7 @@ func TestPersonalRemovalExamples(t *testing.T) {
 				}
 				calls := fixture.store.snapshot()[before:]
 				if op == "deleteContact" {
-					wantRead := rr.Code == 204 || rr.Code == 404 || name == "lookup_unavailable" || name == "write_unavailable"
+					wantRead := rr.Code == 204 || (rr.Code == 404 && !strings.Contains(rr.Body.String(), "Account not found")) || name == "lookup_unavailable" || name == "write_unavailable"
 					wantWrite := rr.Code == 204 || name == "write_unavailable"
 					read, writes := 0, 0
 					for _, m := range calls {
@@ -78,7 +78,7 @@ func TestPersonalRemovalExamples(t *testing.T) {
 						t.Fatalf("contact read/write attempts %d/%d want %t/%t", read, writes, wantRead, wantWrite)
 					}
 				} else {
-					wantWork := rr.Code == 204 || rr.Code == 404 || name == "sum_unavailable" || name == "delete_unavailable" || name == "quota_unavailable"
+					wantWork := rr.Code == 204 || (rr.Code == 404 && !strings.Contains(rr.Body.String(), "Account not found")) || name == "sum_unavailable" || name == "delete_unavailable" || name == "quota_unavailable"
 					if !wantWork {
 						if len(calls) != 0 {
 							t.Fatalf("refusal touched folder: %v", calls)

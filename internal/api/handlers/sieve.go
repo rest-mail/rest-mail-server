@@ -100,19 +100,19 @@ func (h *SieveHandler) Register(rs endpoint.Routes) {
 	writes := handlerChecked(models.CapMailWrite, mailRulesSchemes...)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/sieve",
 		OperationID: "getSieveScript", Summary: "Get the Sieve filter script", Tags: tags,
-		Errors: []int{http.StatusForbidden}, Security: reads}, h.get)
+		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.get)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPut, Path: "/api/v1/accounts/{id}/sieve",
 		OperationID: "putSieveScript", Summary: "Create or replace the Sieve filter script", Tags: tags,
 		Description: "201 when it creates the script, 200 when it replaces it. A script that does not parse, or " +
 			"fails its dry run, is 422 validation_failed with the parser's message in fields.script, and is not stored.",
 		Status: http.StatusOK, SuccessStatuses: []int{http.StatusCreated},
-		Errors: []int{http.StatusForbidden}, Security: writes}, h.put)
+		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.put)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/accounts/{id}/sieve",
 		OperationID: "deleteSieveScript", Summary: "Delete the Sieve filter script", Tags: tags,
-		Errors: []int{http.StatusForbidden}, Security: writes}, h.delete)
+		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.delete)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/sieve/validate",
 		OperationID: "validateSieveScript", Summary: "Validate a Sieve script without saving", Tags: tags,
-		Errors: []int{http.StatusForbidden}, Security: writes}, h.validate)
+		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.validate)
 }
 
 // get returns the Sieve script for a mailbox, or the empty script when it has none.

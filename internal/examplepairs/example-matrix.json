@@ -194,11 +194,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -397,11 +397,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -428,26 +428,6 @@
                 "id": "must be a non-negative integer"
               }
             }
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "key_read": {
-      "request": {
-        "path": {
-          "id": 1
-        },
-        "body": {
-          "email": "existing@example.com"
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -489,11 +469,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -535,11 +515,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -4352,11 +4332,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -4567,11 +4547,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -4598,26 +4578,6 @@
                 "id": "must be a non-negative integer"
               }
             }
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "key_read": {
-      "request": {
-        "path": {
-          "id": 1
-        },
-        "body": {
-          "email": "new@example.com"
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -4659,11 +4619,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -4705,11 +4665,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -7173,11 +7133,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -7330,11 +7290,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -7361,26 +7321,6 @@
                 "id": "must be a non-negative integer"
               }
             }
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "key_read": {
-      "request": {
-        "path": {
-          "id": 1
-        },
-        "body": {
-          "name": "New folder"
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -7415,11 +7355,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -7454,11 +7394,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -9267,11 +9207,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -9361,11 +9301,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -9443,24 +9383,6 @@
         "mediaType": "application/json"
       }
     },
-    "key_read": {
-      "request": {
-        "path": {
-          "cid": 41,
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Access denied"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
     "key_send": {
       "request": {
         "path": {
@@ -9509,11 +9431,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -9527,11 +9449,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -9545,11 +9467,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -10334,11 +10256,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -10457,11 +10379,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -10486,24 +10408,6 @@
                 "id": "must be a non-negative integer"
               }
             }
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "key_read": {
-      "request": {
-        "path": {
-          "folder": "Work",
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -10557,11 +10461,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -10575,11 +10479,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -10604,11 +10508,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -11514,6 +11418,10 @@
       }
     },
     "key_domain": {
+      "summary": "A machine credential cannot remove account access without an explicit exception",
+      "requires": {
+        "principal": "without_capability"
+      },
       "request": {
         "path": {
           "id": 1
@@ -11528,11 +11436,7 @@
           }
         },
         "mediaType": "application/json"
-      },
-      "requires": {
-        "principal": "without_capability"
-      },
-      "summary": "A machine credential cannot remove account access without an explicit exception"
+      }
     },
     "key_holder_missing": {
       "request": {
@@ -11552,6 +11456,10 @@
       }
     },
     "key_mailbox": {
+      "summary": "A machine credential cannot remove account access without an explicit exception",
+      "requires": {
+        "principal": "without_capability"
+      },
       "request": {
         "path": {
           "id": 1
@@ -11566,11 +11474,7 @@
           }
         },
         "mediaType": "application/json"
-      },
-      "requires": {
-        "principal": "without_capability"
-      },
-      "summary": "A machine credential cannot remove account access without an explicit exception"
+      }
     },
     "key_read": {
       "request": {
@@ -11590,6 +11494,10 @@
       }
     },
     "key_write": {
+      "summary": "A machine credential cannot remove account access without an explicit exception",
+      "requires": {
+        "principal": "without_capability"
+      },
       "request": {
         "path": {
           "id": 1
@@ -11604,11 +11512,7 @@
           }
         },
         "mediaType": "application/json"
-      },
-      "requires": {
-        "principal": "without_capability"
-      },
-      "summary": "A machine credential cannot remove account access without an explicit exception"
+      }
     },
     "key_wrong_domain": {
       "request": {
@@ -11795,11 +11699,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "message_not_found",
+            "message": "Message not found"
           }
         },
         "mediaType": "application/json"
@@ -11966,11 +11870,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "message_not_found",
+            "message": "Message not found"
           }
         },
         "mediaType": "application/json"
@@ -11993,23 +11897,6 @@
                 "id": "must be a non-negative integer"
               }
             }
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "key_read": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -12042,11 +11929,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "message_not_found",
+            "message": "Message not found"
           }
         },
         "mediaType": "application/json"
@@ -12418,11 +12305,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -12524,11 +12411,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -12606,24 +12493,6 @@
         "mediaType": "application/json"
       }
     },
-    "key_read": {
-      "request": {
-        "path": {
-          "id": 1,
-          "mid": 41
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Access denied"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
     "key_send": {
       "request": {
         "path": {
@@ -12684,11 +12553,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -12702,11 +12571,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -12720,11 +12589,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -12940,11 +12809,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -13006,11 +12875,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -13073,23 +12942,6 @@
         "mediaType": "application/json"
       }
     },
-    "key_read": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Access denied"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
     "key_write_domain": {
       "request": {
         "path": {
@@ -13113,11 +12965,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -13146,11 +12998,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -13273,11 +13125,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -13361,11 +13213,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -13394,23 +13246,6 @@
         "mediaType": "application/json"
       }
     },
-    "key_read": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Access denied"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
     "key_write_domain": {
       "request": {
         "path": {
@@ -13428,11 +13263,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -13455,11 +13290,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -14841,11 +14676,11 @@
         }
       },
       "response": {
-        "status": 404,
+        "status": 403,
         "body": {
           "error": {
-            "code": "not_found",
-            "message": "Account not found"
+            "code": "forbidden",
+            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -15415,11 +15250,11 @@
         }
       },
       "response": {
-        "status": 404,
+        "status": 403,
         "body": {
           "error": {
-            "code": "not_found",
-            "message": "Attachment not found"
+            "code": "forbidden",
+            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -16386,11 +16221,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "message_not_found",
+            "message": "Message not found"
           }
         },
         "mediaType": "application/json"
@@ -16580,11 +16415,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "message_not_found",
+            "message": "Message not found"
           }
         },
         "mediaType": "application/json"
@@ -16673,11 +16508,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "message_not_found",
+            "message": "Message not found"
           }
         },
         "mediaType": "application/json"
@@ -16743,11 +16578,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "message_not_found",
+            "message": "Message not found"
           }
         },
         "mediaType": "application/json"
@@ -16959,23 +16794,6 @@
             "date_header": null,
             "created_at": "2026-10-20T00:00:00Z",
             "updated_at": "2026-10-20T00:00:00Z"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "write_only": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -17553,11 +17371,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -17593,11 +17411,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -17630,11 +17448,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -17716,25 +17534,6 @@
         },
         "mediaType": "application/json"
       }
-    },
-    "write_only": {
-      "summary": "A mail-write grant alone does not permit a read",
-      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller.",
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Access denied"
-          }
-        },
-        "mediaType": "application/json"
-      }
     }
   },
   "getRawMessage": {
@@ -17757,11 +17556,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "message_not_found",
+            "message": "Message not found"
           }
         },
         "mediaType": "application/json"
@@ -17828,11 +17627,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "message_not_found",
+            "message": "Message not found"
           }
         },
         "mediaType": "application/json"
@@ -17880,11 +17679,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "message_not_found",
+            "message": "Message not found"
           }
         },
         "mediaType": "application/json"
@@ -17909,11 +17708,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "message_not_found",
+            "message": "Message not found"
           }
         },
         "mediaType": "application/json"
@@ -18007,23 +17806,6 @@
           "error": {
             "code": "not_found",
             "message": "Raw message not available"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "write_only": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -18143,11 +17925,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -18187,11 +17969,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -18206,11 +17988,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -18271,25 +18053,6 @@
           "error": {
             "code": "setup_required",
             "message": "Finish setting up this account first: a new password and two-factor authentication"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "write_only": {
-      "summary": "A mail-write grant alone does not permit a read",
-      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller.",
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -18429,11 +18192,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -18746,11 +18509,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -18912,11 +18675,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -19054,11 +18817,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -19072,11 +18835,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -19257,24 +19020,6 @@
         },
         "mediaType": "application/json"
       }
-    },
-    "write_only": {
-      "request": {
-        "path": {
-          "id": 1,
-          "threadID": "thread/2026@example.net"
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Access denied"
-          }
-        },
-        "mediaType": "application/json"
-      }
     }
   },
   "getVacation": {
@@ -19387,11 +19132,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -19428,11 +19173,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -19447,11 +19192,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -19509,25 +19254,6 @@
           "error": {
             "code": "setup_required",
             "message": "Finish setting up this account first: a new password and two-factor authentication"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "write_only": {
-      "summary": "A mail-write grant alone does not permit a read",
-      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller.",
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -19597,11 +19323,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -19955,11 +19681,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -19991,31 +19717,6 @@
                 "id": "must be a non-negative integer"
               }
             }
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "key_read": {
-      "request": {
-        "path": {
-          "id": 1
-        },
-        "body": {
-          "contacts": [
-            {
-              "email": "new@example.com",
-              "name": "New"
-            }
-          ]
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -20060,11 +19761,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -20109,11 +19810,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -21303,11 +21004,11 @@
         }
       },
       "response": {
-        "status": 404,
+        "status": 403,
         "body": {
           "error": {
-            "code": "not_found",
-            "message": "Account not found"
+            "code": "forbidden",
+            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -21902,11 +21603,11 @@
         }
       },
       "response": {
-        "status": 404,
+        "status": 403,
         "body": {
           "error": {
-            "code": "not_found",
-            "message": "Message not found"
+            "code": "forbidden",
+            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -21968,11 +21669,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -22127,11 +21828,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -22214,11 +21915,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -22278,11 +21979,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -22297,11 +21998,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -22386,25 +22087,6 @@
         },
         "mediaType": "application/json"
       }
-    },
-    "write_only": {
-      "summary": "A mail-write grant alone does not permit a read",
-      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller.",
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Access denied"
-          }
-        },
-        "mediaType": "application/json"
-      }
     }
   },
   "listContacts": {
@@ -22457,11 +22139,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -22763,11 +22445,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -22897,11 +22579,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -22956,11 +22638,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -22975,11 +22657,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -23107,25 +22789,6 @@
           "error": {
             "code": "internal_error",
             "message": "Internal server error"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "write_only": {
-      "summary": "A mail-write grant alone does not permit a read",
-      "description": "Unknown and inaccessible accounts remain indistinguishable to the caller.",
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -23387,11 +23050,11 @@
         }
       },
       "response": {
-        "status": 404,
+        "status": 403,
         "body": {
           "error": {
-            "code": "not_found",
-            "message": "Account not found"
+            "code": "forbidden",
+            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -23451,11 +23114,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -23628,11 +23291,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -23713,11 +23376,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -23775,11 +23438,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -23792,11 +23455,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -23876,23 +23539,6 @@
           "error": {
             "code": "setup_required",
             "message": "Finish setting up this account first: a new password and two-factor authentication"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "write_only": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -24036,11 +23682,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -24831,11 +24477,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -25159,11 +24805,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -25305,11 +24951,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -25508,11 +25154,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -25901,24 +25547,6 @@
         },
         "mediaType": "application/json"
       }
-    },
-    "write_only": {
-      "request": {
-        "path": {
-          "folder": "INBOX",
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Access denied"
-          }
-        },
-        "mediaType": "application/json"
-      }
     }
   },
   "listQuarantine": {
@@ -25971,11 +25599,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -26204,11 +25832,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -26312,11 +25940,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -26371,11 +25999,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -26388,11 +26016,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -26520,23 +26148,6 @@
           "error": {
             "code": "internal_error",
             "message": "Internal server error"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "write_only": {
-      "request": {
-        "path": {
-          "id": 1
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -27685,11 +27296,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -27823,11 +27434,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -27884,26 +27495,6 @@
         "mediaType": "application/json"
       }
     },
-    "key_read": {
-      "request": {
-        "path": {
-          "id": 1
-        },
-        "body": {
-          "script": "keep;"
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Access denied"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
     "key_write_domain": {
       "request": {
         "path": {
@@ -27940,11 +27531,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -27971,26 +27562,6 @@
             "active": true,
             "created_at": "2026-01-01T00:00:00Z",
             "updated_at": "2026-01-01T00:00:00Z"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "key_wrong_scope": {
-      "request": {
-        "path": {
-          "id": 1
-        },
-        "body": {
-          "script": "keep;"
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -29627,11 +29198,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -29819,11 +29390,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -29851,27 +29422,6 @@
                 "id": "must be a non-negative integer"
               }
             }
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "key_read": {
-      "request": {
-        "path": {
-          "folder": "Work",
-          "id": 1
-        },
-        "body": {
-          "name": "New folder"
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -29908,11 +29458,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -29949,11 +29499,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -33715,6 +33265,10 @@
       }
     },
     "no_two_factor": {
+      "requires": {
+        "principal": "without_capability",
+        "state": "password_only_session"
+      },
       "request": {
         "path": {
           "credential_id": 1,
@@ -33730,10 +33284,6 @@
           }
         },
         "mediaType": "application/json"
-      },
-      "requires": {
-        "principal": "without_capability",
-        "state": "password_only_session"
       }
     },
     "ownership_unavailable": {
@@ -33820,11 +33370,11 @@
         }
       },
       "response": {
-        "status": 404,
+        "status": 403,
         "body": {
           "error": {
-            "code": "not_found",
-            "message": "Account not found"
+            "code": "forbidden",
+            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -34202,6 +33752,10 @@
       }
     },
     "no_two_factor": {
+      "requires": {
+        "principal": "without_capability",
+        "state": "password_only_session"
+      },
       "request": {
         "path": {
           "credential_id": 1,
@@ -34217,10 +33771,6 @@
           }
         },
         "mediaType": "application/json"
-      },
-      "requires": {
-        "principal": "without_capability",
-        "state": "password_only_session"
       }
     },
     "ownership_unavailable": {
@@ -34307,11 +33857,11 @@
         }
       },
       "response": {
-        "status": 404,
+        "status": 403,
         "body": {
           "error": {
-            "code": "not_found",
-            "message": "Account not found"
+            "code": "forbidden",
+            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -37024,6 +36574,34 @@
         }
       }
     },
+    "relay_incomplete": {
+      "description": "A relay without its host, port and TLS mode meets neither alternative of the request type's AnyOf; each missing field is named with its own wording.",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "transport": "relay"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "details": {
+              "fields": {
+                "host": "Must be a bare host name or IP address, with no scheme, port or path",
+                "port": "Must be between 1 and 65535",
+                "tls_mode": "Must be one of: starttls, implicit"
+              }
+            },
+            "message": "Request body failed validation"
+          }
+        }
+      }
+    },
     "save_unavailable": {
       "request": {
         "path": {
@@ -37135,34 +36713,6 @@
             "details": {
               "fields": {
                 "transport": "Must be one of: direct, relay"
-              }
-            },
-            "message": "Request body failed validation"
-          }
-        }
-      }
-    },
-    "relay_incomplete": {
-      "description": "A relay without its host, port and TLS mode meets neither alternative of the request type's AnyOf; each missing field is named with its own wording.",
-      "request": {
-        "path": {
-          "id": 1
-        },
-        "body": {
-          "transport": "relay"
-        },
-        "invalid": true
-      },
-      "response": {
-        "status": 422,
-        "body": {
-          "error": {
-            "code": "validation_failed",
-            "details": {
-              "fields": {
-                "host": "Must be a bare host name or IP address, with no scheme, port or path",
-                "port": "Must be between 1 and 65535",
-                "tls_mode": "Must be one of: starttls, implicit"
               }
             },
             "message": "Request body failed validation"
@@ -37314,11 +36864,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -37796,11 +37346,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -37829,28 +37379,6 @@
                 "id": "must be a non-negative integer"
               }
             }
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "key_read": {
-      "request": {
-        "path": {
-          "id": 1
-        },
-        "body": {
-          "enabled": true,
-          "subject": "Away",
-          "body": "Back soon."
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -37891,11 +37419,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -37936,11 +37464,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -39053,11 +38581,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -39186,11 +38714,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -39290,11 +38818,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -39330,11 +38858,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -39601,26 +39129,6 @@
               "updated_at": "2026-01-01T00:00:00Z"
             }
           ]
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "write_only": {
-      "request": {
-        "path": {
-          "id": 1
-        },
-        "query": {
-          "q": "example"
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Access denied"
-          }
         },
         "mediaType": "application/json"
       }
@@ -42758,11 +42266,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -42923,11 +42431,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -43012,27 +42520,6 @@
         "mediaType": "application/json"
       }
     },
-    "key_read": {
-      "request": {
-        "path": {
-          "cid": 1,
-          "id": 1
-        },
-        "body": {
-          "name": "Changed"
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Access denied"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
     "key_write_domain": {
       "request": {
         "path": {
@@ -43071,11 +42558,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -43119,11 +42606,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -47288,11 +46775,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -47388,11 +46875,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -47464,26 +46951,6 @@
         "mediaType": "application/json"
       }
     },
-    "key_read": {
-      "request": {
-        "path": {
-          "id": 1
-        },
-        "body": {
-          "script": "keep;"
-        }
-      },
-      "response": {
-        "status": 403,
-        "body": {
-          "error": {
-            "code": "forbidden",
-            "message": "Access denied"
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
     "key_write_domain": {
       "request": {
         "path": {
@@ -47514,11 +46981,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -47554,11 +47021,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"

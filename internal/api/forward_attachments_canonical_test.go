@@ -17,7 +17,7 @@ type forwardScenario struct {
 }
 
 var forwardScenarios = []forwardScenario{
-	{"with_attachments", "", 201}, {"unauthenticated", "anonymous", 401}, {"not_authorized", "denied", 403},
+	{"with_attachments", "", 201}, {"unauthenticated", "anonymous", 401}, {"not_authorized", "denied", 404},
 	{"mime_too_large", "size", 413}, {"mailbox_full", "full", 422},
 	{"source_unavailable", "source_failure", 500}, {"missing_object", "missing_object", 500}, {"checksum_mismatch", "checksum", 500},
 	{"attachment_write_failed", "attachment_failure", 500}, {"queue_write_failed", "queue_failure", 500}, {"quota_write_failed", "quota_failure", 500},

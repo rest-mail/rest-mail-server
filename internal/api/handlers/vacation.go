@@ -79,20 +79,20 @@ func (setVacationBody) AnyOf() oapifly.AnyOfRule {
 // reachable with mail:read to read its rules and mail:write to change them.
 var mailRulesSchemes = []string{"CookieAuth", "BearerAuth", "APIKeyAuth", "BasicAuth"}
 
-var errMailRulesAccess = endpoint.Refuse(http.StatusForbidden, "forbidden", "Access denied")
+var errMailRulesAccess = errAccountNotFound
 
 // Register mounts the account's vacation reply.
 func (h *VacationHandler) Register(rs endpoint.Routes) {
 	tags := []string{"Vacation"}
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/vacation",
 		OperationID: "getVacation", Summary: "Get vacation auto-reply settings", Tags: tags,
-		Errors: []int{http.StatusForbidden}, Security: handlerChecked(models.CapMailRead, mailRulesSchemes...)}, h.get)
+		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: handlerChecked(models.CapMailRead, mailRulesSchemes...)}, h.get)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPut, Path: "/api/v1/accounts/{id}/vacation",
 		OperationID: "setVacation", Summary: "Set vacation auto-reply settings", Tags: tags,
-		Errors: []int{http.StatusForbidden}, Security: handlerChecked(models.CapMailWrite, mailRulesSchemes...)}, h.set)
+		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: handlerChecked(models.CapMailWrite, mailRulesSchemes...)}, h.set)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/accounts/{id}/vacation",
 		OperationID: "disableVacation", Summary: "Disable vacation auto-reply", Tags: tags, Status: http.StatusNoContent,
-		Errors: []int{http.StatusForbidden}, Security: handlerChecked(models.CapMailWrite, mailRulesSchemes...)}, h.disable)
+		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: handlerChecked(models.CapMailWrite, mailRulesSchemes...)}, h.disable)
 }
 
 // mailRulesMailbox resolves the account the path names to its mailbox, verifying that the

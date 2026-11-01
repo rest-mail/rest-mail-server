@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
@@ -16,10 +17,15 @@ import (
 	"gorm.io/gorm"
 )
 
-// errNoAccess is the answer for an account a request may not act on, the
-// same as for one that does not exist, so nobody learns which addresses are
-// hosted by asking for them.
-var errNoAccess = errors.New("account not found or access denied")
+// A refusal says only what the caller may already know (#1327). If the caller
+// may not know the account exists, the answer is the same as for one that does
+// not, so nobody learns which accounts are hosted by asking for them: errNoAccess,
+// a 404. If the caller can see the account and this action is what it lacks, it
+// is told so: errNotAllowed, a 403.
+var (
+	errNoAccess   = errors.New("account not found or access denied")
+	errNotAllowed = endpoint.Refuse(http.StatusForbidden, "forbidden", "Access denied")
+)
 
 // mayReach finds the account (mailbox) id names, if the request may act on it
 // with capability: a mail capability (models.CapMail*) or mailbox:manage. An
@@ -31,8 +37,8 @@ var errNoAccess = errors.New("account not found or access denied")
 // call, so the server's capability ceiling applies to sessions already open.
 //
 // This is the single source of truth for /accounts/{id}/… and every other
-// route that acts on a mailbox. It answers errNoAccess, never another
-// account's mailbox, when the request may not.
+// route that acts on a mailbox. It answers errNoAccess or errNotAllowed, never
+// another account's mailbox, when the request may not.
 func mayReach(db *gorm.DB, claims *auth.Claims, id uint, capability string) (*models.Mailbox, error) {
 	var mailbox models.Mailbox
 	if err := db.First(&mailbox, id).Error; err != nil {
@@ -41,8 +47,11 @@ func mayReach(db *gorm.DB, claims *auth.Claims, id uint, capability string) (*mo
 		}
 		return nil, err
 	}
-	if claims.MailboxOnly() && (mailbox.ID != claims.AccountID || !appPasswordHolds(capability)) {
+	if claims.MailboxOnly() && mailbox.ID != claims.AccountID {
 		return nil, errNoAccess
+	}
+	if claims.MailboxOnly() && !appPasswordHolds(capability) {
+		return nil, errNotAllowed
 	}
 	// An app password's scope is read live too: it holds only what its account
 	// holds now, within the server's capability ceiling, so a protocol gateway
@@ -56,13 +65,39 @@ func mayReach(db *gorm.DB, claims *auth.Claims, id uint, capability string) (*mo
 		if held.Allows(capability, grants.Mailbox(mailbox.Address)) {
 			return &mailbox, nil
 		}
-		return nil, errNoAccess
+		return nil, errNotAllowed
 	}
 	if held.Allows(capability, grants.Mailbox(mailbox.Address)) &&
 		middleware.CredentialAllows(claims, capability, grants.Mailbox(mailbox.Address)) {
 		return &mailbox, nil
 	}
+	if mayKnowOf(held, claims, &mailbox) {
+		return nil, errNotAllowed
+	}
 	return nil, errNoAccess
+}
+
+// mayKnowOf reports whether the caller already knows this account exists: it is
+// its own, or this credential holds any capability on it, such as write without
+// read. A key scoped to some other account does not know of this one, whatever
+// the account holding the key may do.
+func mayKnowOf(held grants.Held, claims *auth.Claims, mailbox *models.Mailbox) bool {
+	if mailbox.ID == claims.AccountID {
+		return true
+	}
+	scope := grants.Mailbox(mailbox.Address)
+	for _, capability := range []string{models.CapMailRead, models.CapMailWrite, models.CapMailSend,
+		models.CapMailSendAs, models.CapMailSendOnBehalf, models.CapMailboxManage} {
+		if held.Allows(capability, scope) && middleware.CredentialAllows(claims, capability, scope) {
+			return true
+		}
+	}
+	return false
+}
+
+// refusedAccount reports whether err is either refusal of an account.
+func refusedAccount(err error) bool {
+	return errors.Is(err, errNoAccess) || errors.Is(err, errNotAllowed)
 }
 
 // appPasswordHolds reports whether an app password's scope holds capability:

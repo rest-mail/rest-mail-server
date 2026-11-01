@@ -218,7 +218,7 @@ var errNoScheduledSend = endpoint.Refuse(http.StatusNotFound, "not_found", "No s
 func (h *MessageHandler) mayCallBack(ctx context.Context, claims *auth.Claims, address string, onBehalf ...bool) (bool, error) {
 	behalf := len(onBehalf) > 0 && onBehalf[0]
 	_, err := maySendFrom(h.db.WithContext(ctx), claims, address, behalf)
-	if errors.Is(err, errNoAccess) {
+	if refusedAccount(err) {
 		return false, nil
 	}
 	return err == nil, err
