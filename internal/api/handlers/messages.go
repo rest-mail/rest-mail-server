@@ -1623,18 +1623,25 @@ func (h *MessageHandler) updateDraft(r *http.Request, in updateDraftRequest) (Me
 	// A new from is held to the same check SaveDraft makes: the caller must be
 	// able to act as it. Without this, a draft saved from the caller's own
 	// address could be turned into one from anyone's (#610).
+	mailboxID := draft.MailboxID
 	if req.From != nil && *req.From != "" {
-		if _, err := mayActAs(h.db.WithContext(r.Context()), claims, *req.From, models.CapMailWrite); err != nil {
+		mailbox, err := mayActAs(h.db.WithContext(r.Context()), claims, *req.From, models.CapMailWrite)
+		if err != nil {
 			if refusedAccount(err) {
 				return Message{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "You are not authorized to send from this address")
 			}
 			return Message{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to check the sender")
 		}
+		// A draft is kept in the mailbox it is from, as SaveDraft keeps it (#1430).
+		mailboxID = mailbox.ID
 	}
 
 	updates := map[string]interface{}{}
 	if req.From != nil {
 		updates["sender"] = *req.From
+	}
+	if mailboxID != draft.MailboxID {
+		updates["mailbox_id"] = mailboxID
 	}
 	if req.To != nil {
 		toJSON, _ := json.Marshal(req.To)
@@ -1673,7 +1680,7 @@ func (h *MessageHandler) updateDraft(r *http.Request, in updateDraftRequest) (Me
 				return draftLookupRefusal(gorm.ErrRecordNotFound)
 			}
 		}
-		if err := tx.Where("id = ? AND is_draft = ? AND mailbox_id = ?", draft.ID, true, draft.MailboxID).First(&updated).Error; err != nil {
+		if err := tx.Where("id = ? AND is_draft = ? AND mailbox_id = ?", draft.ID, true, mailboxID).First(&updated).Error; err != nil {
 			return draftLookupRefusal(err)
 		}
 		return nil

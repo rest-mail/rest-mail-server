@@ -5,8 +5,10 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/grants"
 )
 
 // A draft's from may only be changed to an address the caller may act as:
@@ -98,5 +100,52 @@ func TestSendDraft_RefusesAStoredSenderTheCallerMayNotSendAs(t *testing.T) {
 	}
 	if err := tx.Where("id = ? AND is_draft = ?", draft.ID, true).First(&models.Message{}).Error; err != nil {
 		t.Fatalf("refused send removed the draft: %v", err)
+	}
+}
+
+// A draft is kept in the mailbox it is from: changing from to another mailbox the
+// caller may write to moves it there, and the old mailbox no longer lists it (#1430).
+func TestUpdateDraft_MovesTheDraftToTheMailboxOfItsNewSender(t *testing.T) {
+	db := openAuthzTestDB(t)
+	tx := db.Begin()
+	t.Cleanup(func() { tx.Rollback() })
+
+	fx := seedAuthzFixture(t, tx)
+	var role models.Role
+	if err := tx.Where("name = ?", models.RoleOwner).First(&role).Error; err != nil {
+		t.Fatalf("find the owner role: %v", err)
+	}
+	if err := tx.Create(&models.Grant{HolderKind: models.GrantHolderAccount, HolderID: fx.attackerMailbox.ID,
+		RoleID: role.ID, Scope: grants.Mailbox(fx.ownerMailbox.Address), Mode: models.GrantActive,
+		GrantedByKind: models.AuditActorSystem, GrantedAt: time.Now()}).Error; err != nil {
+		t.Fatalf("grant the second mailbox: %v", err)
+	}
+	draft := models.Message{MailboxID: fx.attackerMailbox.ID, Folder: "Drafts",
+		Sender: fx.attackerMailbox.Address, Subject: "hello", IsDraft: true}
+	if err := tx.Create(&draft).Error; err != nil {
+		t.Fatalf("seed draft: %v", err)
+	}
+
+	h := NewMessageHandler(tx, nil, nil, "", nil)
+	rr := httptest.NewRecorder()
+	composeRoutes(h).ServeHTTP(rr, authzRequest(http.MethodPut, "/api/v1/messages/draft/"+uintToStr(draft.ID), fx.attackerMailbox.ID,
+		map[string]string{"id": uintToStr(draft.ID)}, `{"from":"`+fx.ownerMailbox.Address+`"}`))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("moving the draft: %d (%s)", rr.Code, rr.Body.String())
+	}
+
+	var got models.Message
+	if err := tx.First(&got, draft.ID).Error; err != nil {
+		t.Fatalf("reload draft: %v", err)
+	}
+	if got.MailboxID != fx.ownerMailbox.ID || got.Sender != fx.ownerMailbox.Address {
+		t.Fatalf("draft is in mailbox %d from %q, want %d from %q", got.MailboxID, got.Sender, fx.ownerMailbox.ID, fx.ownerMailbox.Address)
+	}
+	var left int64
+	if err := tx.Model(&models.Message{}).Where("mailbox_id = ? AND is_draft = ?", fx.attackerMailbox.ID, true).Count(&left).Error; err != nil {
+		t.Fatal(err)
+	}
+	if left != 0 {
+		t.Fatalf("the old mailbox still lists %d drafts", left)
 	}
 }
