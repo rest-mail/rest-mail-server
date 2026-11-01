@@ -1,0 +1,9 @@
+{
+  "631": [
+    "microsoftAutodiscover",
+    "mozillaAutoconfig",
+    "mozillaAutoconfigWellKnown",
+    "mtaStsPolicyFile",
+    "receiveTlsReport"
+  ]
+}
