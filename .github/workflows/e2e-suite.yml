@@ -243,8 +243,14 @@ jobs:
           RESTMAIL_LIVE_JS_FILTER_CONFIGS: isolation-a.test isolation-b.test
         run: |
           set -o pipefail
-          chore config:scaffold DOMAIN=isolation-a.test
-          chore config:scaffold DOMAIN=isolation-b.test
+          for domain in isolation-a.test isolation-b.test; do
+            chore config:scaffold DOMAIN="$domain"
+            # A scaffolded instance has internal mTLS on, and fails closed without
+            # its certificates.
+            CONFIG="$domain" chore instance:certs:issue
+            CONFIG="$domain" chore instance:mtls:issue
+            CONFIG="$domain" chore instance:dns:register
+          done
           python3 -m unittest scripts/tests/test_js_filter_isolation_live.py -v 2>&1 | tee "$RUNNER_TEMP/jsfilter-isolation.log"
           if grep -q 'skipped' "$RUNNER_TEMP/jsfilter-isolation.log"; then
             echo "::error::the isolation test was skipped"
