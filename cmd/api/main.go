@@ -308,8 +308,8 @@ func main() {
 		anchorWorker = auditanchor.NewWorker(database, cfg.GatewayHostname, cfg.AuditAnchorEmailTo)
 		anchorWorker.Start()
 	}
-	// The optional second target runs on its own, so a failing endpoint never
-	// holds up the email anchors.
+	// The optional extra targets run on their own, so a failing endpoint or
+	// bucket never holds up the email anchors.
 	var httpsAnchorWorker *auditanchor.HTTPSWorker
 	if cfg.AuditAnchorHTTPSURL != "" {
 		httpsAnchorWorker, err = auditanchor.NewHTTPSWorker(database, cfg.GatewayHostname, cfg.AuditAnchorHTTPSURL, cfg.AuditAnchorHTTPSToken)
@@ -318,6 +318,15 @@ func main() {
 			os.Exit(1)
 		}
 		httpsAnchorWorker.Start()
+	}
+	var s3AnchorWorker *auditanchor.S3Worker
+	if cfg.AuditAnchorS3.Bucket != "" {
+		s3AnchorWorker, err = auditanchor.NewS3Worker(database, cfg.GatewayHostname, cfg.AuditAnchorS3)
+		if err != nil {
+			slog.Error("audit anchor s3", "error", err)
+			os.Exit(1)
+		}
+		s3AnchorWorker.Start()
 	}
 
 	// Start quarantine digest worker
@@ -444,6 +453,9 @@ func main() {
 	}
 	if httpsAnchorWorker != nil {
 		httpsAnchorWorker.Shutdown()
+	}
+	if s3AnchorWorker != nil {
+		s3AnchorWorker.Shutdown()
 	}
 	quotaReconciler.Shutdown()
 	dmarcReporter.Shutdown()

@@ -86,3 +86,59 @@ func TestLoadAuditAnchorHTTPS(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadAuditAnchorS3(t *testing.T) {
+	bucket := map[string]string{
+		"RESTMAIL_AUDIT_ANCHOR_S3_BUCKET": "anchors", "RESTMAIL_AUDIT_ANCHOR_S3_ACCESS_KEY_ID": "AKIDANCHOR",
+		"RESTMAIL_AUDIT_ANCHOR_S3_SECRET_ACCESS_KEY": "anchor-secret",
+	}
+	with := func(extra map[string]string) map[string]string {
+		env := map[string]string{}
+		for k, v := range bucket {
+			env[k] = v
+		}
+		for k, v := range extra {
+			env[k] = v
+		}
+		return env
+	}
+	for _, tc := range []struct {
+		name string
+		env  map[string]string
+		want AuditAnchorS3Config
+		bad  bool
+	}{
+		{name: "off by default"},
+		{name: "aws defaults", env: bucket, want: AuditAnchorS3Config{Region: "us-east-1", Bucket: "anchors", AccessKeyID: "AKIDANCHOR", SecretAccessKey: "anchor-secret", Prefix: "audit-anchors/"}},
+		{name: "custom store", env: with(map[string]string{"RESTMAIL_AUDIT_ANCHOR_S3_ENDPOINT": "https://s3.example.net", "RESTMAIL_AUDIT_ANCHOR_S3_REGION": "eu-1", "RESTMAIL_AUDIT_ANCHOR_S3_PREFIX": "mx1/anchors/", "RESTMAIL_AUDIT_ANCHOR_S3_FORCE_PATH_STYLE": "true"}),
+			want: AuditAnchorS3Config{Endpoint: "https://s3.example.net", Region: "eu-1", Bucket: "anchors", AccessKeyID: "AKIDANCHOR", SecretAccessKey: "anchor-secret", Prefix: "mx1/anchors/", ForcePathStyle: true}},
+		{name: "plain http refused", env: with(map[string]string{"RESTMAIL_AUDIT_ANCHOR_S3_ENDPOINT": "http://s3.example.net"}), bad: true},
+		{name: "endpoint with path", env: with(map[string]string{"RESTMAIL_AUDIT_ANCHOR_S3_ENDPOINT": "https://s3.example.net/anchors"}), bad: true},
+		{name: "credentials in endpoint", env: with(map[string]string{"RESTMAIL_AUDIT_ANCHOR_S3_ENDPOINT": "https://user:pass@s3.example.net"}), bad: true},
+		{name: "missing secret", env: with(map[string]string{"RESTMAIL_AUDIT_ANCHOR_S3_SECRET_ACCESS_KEY": ""}), bad: true},
+		{name: "settings without bucket", env: map[string]string{"RESTMAIL_AUDIT_ANCHOR_S3_ACCESS_KEY_ID": "AKIDANCHOR"}, bad: true},
+		{name: "absolute prefix", env: with(map[string]string{"RESTMAIL_AUDIT_ANCHOR_S3_PREFIX": "/anchors/"}), bad: true},
+		{name: "invalid path style", env: with(map[string]string{"RESTMAIL_AUDIT_ANCHOR_S3_FORCE_PATH_STYLE": "perhaps"}), bad: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			clearEnv(t)
+			t.Setenv("ENVIRONMENT", "test")
+			for k, v := range tc.env {
+				t.Setenv(k, v)
+			}
+			cfg, err := Load()
+			if tc.bad {
+				if err == nil || !strings.Contains(err.Error(), "RESTMAIL_AUDIT_ANCHOR_S3") {
+					t.Fatalf("invalid config accepted: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(cfg.AuditAnchorS3, tc.want) {
+				t.Fatalf("anchor object storage: %+v", cfg.AuditAnchorS3)
+			}
+		})
+	}
+}

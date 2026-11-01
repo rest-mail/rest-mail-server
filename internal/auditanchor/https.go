@@ -37,7 +37,8 @@ type httpsTarget struct {
 	backoff    time.Duration
 }
 
-type httpsDelivery struct {
+// delivery is a target's answer to one anchor.
+type delivery struct {
 	result   string // accepted, refused or unreachable
 	status   int
 	attempts int
@@ -46,8 +47,8 @@ type httpsDelivery struct {
 
 // post tries up to httpsAttempts times, doubling the wait between attempts.
 // Network errors, 408, 429 and 5xx are retried; any other answer is final.
-func (t *httpsTarget) post(ctx context.Context, body string) httpsDelivery {
-	var d httpsDelivery
+func (t *httpsTarget) post(ctx context.Context, body string) delivery {
+	var d delivery
 	wait := t.backoff
 	for d.attempts < httpsAttempts {
 		if d.attempts > 0 {
@@ -152,31 +153,64 @@ func (w *HTTPSWorker) Shutdown() {
 // Check posts a due anchor and records the attempt, returning true only when
 // the endpoint accepted it and the audit entry committed. A refused or
 // unreachable endpoint is recorded as a failed entry and returned as an error.
-// Any attempt, failed or not, starts the hourly limit, so an endpoint that
-// stays down is retried and recorded at most once an hour. The publication
-// lock is held across the POST so API replicas never post the same anchor.
 func (w *HTTPSWorker) Check(ctx context.Context, now time.Time) (bool, error) {
 	if rmail.ContainsControlChar(w.server) || len(w.server) == 0 || len(w.server) > 255 {
 		return false, fmt.Errorf("invalid audit anchor server name")
 	}
-	var delivery *httpsDelivery
-	err := w.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	d, err := publishExtra(ctx, w.db, now, extraTarget{
+		action: httpsAction, lock: httpsPublicationLock, server: w.server,
+		fields: models.AuditTarget{"endpoint": hostOf(w.target.url)},
+		deliver: func(ctx context.Context, _ time.Time, _ audit.Anchor, body string) delivery {
+			return w.target.post(ctx, body)
+		},
+	})
+	if err != nil {
+		return false, fmt.Errorf("record audit anchor https: %w", err)
+	}
+	if d == nil {
+		return false, nil
+	}
+	if d.result != "accepted" {
+		return false, fmt.Errorf("audit anchor https %s after %d attempts: %v", d.result, d.attempts, d.err)
+	}
+	slog.Info("audit anchor https accepted", "endpoint", hostOf(w.target.url))
+	return true, nil
+}
+
+// extraTarget is one optional place, besides email, that anchors are copied to.
+type extraTarget struct {
+	action string
+	lock   int64
+	server string
+	// fields say where the anchor went; every attempt records them.
+	fields  models.AuditTarget
+	deliver func(ctx context.Context, now time.Time, head audit.Anchor, body string) delivery
+}
+
+// publishExtra delivers a due anchor to t and records the attempt as a t.action
+// entry, returning nil when nothing was due or another replica holds the lock.
+// Any attempt, failed or not, starts the hourly limit, so a target that stays
+// down is retried and recorded at most once an hour. The publication lock is
+// held across the delivery so API replicas never deliver the same anchor.
+func publishExtra(ctx context.Context, db *gorm.DB, now time.Time, t extraTarget) (*delivery, error) {
+	var sent *delivery
+	err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var locked bool
-		if err := tx.Raw("SELECT pg_try_advisory_xact_lock(?)", httpsPublicationLock).Scan(&locked).Error; err != nil {
+		if err := tx.Raw("SELECT pg_try_advisory_xact_lock(?)", t.lock).Scan(&locked).Error; err != nil {
 			return err
 		}
 		if !locked {
 			return nil
 		}
 		var attempt models.AuditEntry
-		if err := tx.Where("action = ?", httpsAction).Order("seq DESC").Limit(1).Find(&attempt).Error; err != nil {
+		if err := tx.Where("action = ?", t.action).Order("seq DESC").Limit(1).Find(&attempt).Error; err != nil {
 			return err
 		}
 		if attempt.Seq > 0 && now.Sub(attempt.OccurredAt) < minimumInterval {
 			return nil
 		}
 		var previous models.AuditEntry
-		if err := tx.Where("action = ? AND outcome = ?", httpsAction, models.AuditOutcomeSuccess).Order("seq DESC").Limit(1).Find(&previous).Error; err != nil {
+		if err := tx.Where("action = ? AND outcome = ?", t.action, models.AuditOutcomeSuccess).Order("seq DESC").Limit(1).Find(&previous).Error; err != nil {
 			return err
 		}
 		last, err := previousHead(previous)
@@ -201,11 +235,14 @@ func (w *HTTPSWorker) Check(ctx context.Context, now time.Time) (bool, error) {
 			return nil
 		}
 		now = now.UTC().Truncate(time.Microsecond)
-		d := w.target.post(ctx, anchorBody(w.server, now, head, last))
+		d := t.deliver(ctx, now, head, anchorBody(t.server, now, head, last))
 		entry := models.AuditEntry{
-			OccurredAt: now, ActorKind: models.AuditActorSystem, Action: httpsAction, Outcome: models.AuditOutcomeSuccess,
+			OccurredAt: now, ActorKind: models.AuditActorSystem, Action: t.action, Outcome: models.AuditOutcomeSuccess,
 			Target: models.AuditTarget{"seq": strconv.FormatInt(head.Seq, 10), "hash": head.Hash, "previous_seq": strconv.FormatInt(last.Seq, 10), "previous_hash": last.Hash,
-				"endpoint": hostOf(w.target.url), "delivery": d.result, "attempts": strconv.Itoa(d.attempts)},
+				"delivery": d.result, "attempts": strconv.Itoa(d.attempts)},
+		}
+		for k, v := range t.fields {
+			entry.Target[k] = v
 		}
 		if d.status != 0 {
 			entry.Target["status"] = strconv.Itoa(d.status)
@@ -216,20 +253,10 @@ func (w *HTTPSWorker) Check(ctx context.Context, now time.Time) (bool, error) {
 		if err := audit.Append(tx, &entry); err != nil {
 			return err
 		}
-		delivery = &d
+		sent = &d
 		return nil
 	})
-	if err != nil {
-		return false, fmt.Errorf("record audit anchor https: %w", err)
-	}
-	if delivery == nil {
-		return false, nil
-	}
-	if delivery.result != "accepted" {
-		return false, fmt.Errorf("audit anchor https %s after %d attempts: %v", delivery.result, delivery.attempts, delivery.err)
-	}
-	slog.Info("audit anchor https accepted", "endpoint", hostOf(w.target.url))
-	return true, nil
+	return sent, err
 }
 
 func hostOf(endpoint string) string {

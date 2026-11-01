@@ -155,6 +155,17 @@ api:
     url: ""
     # Secret with key TOKEN, sent as a bearer token. Empty = no token.
     existingSecret: ""
+  # Optionally also write each anchor to a bucket with S3 Object Lock and a
+  # default retention rule. Empty bucket = off; endpoint must be https://
+  # (empty = AWS for the region).
+  auditAnchorS3:
+    bucket: ""
+    endpoint: ""
+    region: us-east-1
+    prefix: audit-anchors/
+    forcePathStyle: false
+    # Secret with keys ACCESS_KEY_ID and SECRET_ACCESS_KEY; required with bucket.
+    existingSecret: ""
   replicaCount: 1
   image:
     repository: ghcr.io/rest-mail/api
