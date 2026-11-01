@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/mail"
 	"time"
@@ -62,6 +64,8 @@ func contactsOf(rows []models.Contact) []Contact {
 // contacts.
 type ContactsImported struct {
 	Imported int `json:"imported"`
+	// Skipped is how many entries named a contact the account already has.
+	Skipped int `json:"skipped"`
 }
 
 // contactPath names one of the account's contacts.
@@ -96,8 +100,9 @@ func (h *ContactHandler) RegisterContacts(rs endpoint.Routes) {
 		Status:      http.StatusCreated, SuccessStatuses: []int{http.StatusOK},
 		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.block)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/contacts/import",
-		OperationID: "importContacts", Summary: "Bulk import contacts", Tags: tags,
-		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.importContacts)
+		OperationID: "importContacts", Summary: "Bulk import contacts", Tags: tags, DescribedRequest: importContactsRequest{},
+		Description: "As many contacts as fit the API's request size limit. Every entry is checked first, and contacts the account already has are skipped.",
+		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.importContacts)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/contacts/suggest",
 		OperationID: "suggestContacts", Summary: "Autocomplete contacts by query", Tags: tags,
 		Description: "At most 10 contacts whose address or name contains q, blocked ones left out; an empty q answers none.",
@@ -414,6 +419,20 @@ func (h *ContactHandler) suggest(r *http.Request, in suggestContactsRequest) (en
 	return endpoint.List[Contact]{Data: contactsOf(contacts)}, nil
 }
 
+// contactsPath names the account whose contacts a route acts on.
+type contactsPath struct {
+	ID uint32 `path:"id" minimum:"1" example:"1"`
+}
+
+const (
+	// importBatchSize is how many contacts one INSERT carries: a file's size is
+	// limited by the request cap, its row count is not, and PostgreSQL limits a
+	// statement's parameters.
+	importBatchSize = 500
+	// maxImportProblems is how many bad addresses one refusal names.
+	maxImportProblems = 100
+)
+
 type importContactsRequest struct {
 	ID   uint32             `path:"id" minimum:"1" example:"1"`
 	Body importContactsBody `body:""`
@@ -428,60 +447,167 @@ type importContactEntry struct {
 	Name  string `json:"name,omitempty" maxLength:"255"`
 }
 
-// importContacts bulk-imports contacts for a mailbox.
+// importContacts bulk-imports contacts for a mailbox. The upload goes to a file first and
+// is read an entry at a time, twice: a check of every entry, then the writes. Its size
+// never sits in memory.
 // POST /api/v1/accounts/{id}/contacts/import
-func (h *ContactHandler) importContacts(r *http.Request, in importContactsRequest) (ContactsImported, error) {
+func (h *ContactHandler) importContacts(r *http.Request, in contactsPath) (ContactsImported, error) {
+	file, done, err := endpoint.SpoolBody(r, "application/json")
+	if err != nil {
+		return ContactsImported{}, err
+	}
+	defer done()
+
+	// Validate the whole file before writing so a bad entry cannot leave a
+	// partially imported request behind.
+	problems := map[string]string{}
+	total, err := eachImportEntry(file, func(_ int, _ importContactEntry, found map[string]string) error {
+		for field, problem := range found {
+			if len(problems) < maxImportProblems {
+				problems[field] = problem
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return ContactsImported{}, err
+	}
+	if len(problems) > 0 {
+		return ContactsImported{}, endpoint.Invalid(problems)
+	}
+	if total == 0 {
+		return ContactsImported{}, endpoint.Invalid(map[string]string{"contacts": "required"})
+	}
+
 	mailboxID, err := h.resolveMailboxID(r, in.ID, models.CapMailWrite)
 	if err != nil {
 		return ContactsImported{}, err
 	}
-
-	entries := in.Body.Contacts
-	if len(entries) == 0 {
-		return ContactsImported{}, endpoint.Invalid(map[string]string{"contacts": "required"})
-	}
-
-	// Validate the whole batch before writing so a bad entry cannot leave a
-	// partially imported request behind.
-	errors := map[string]string{}
-	for i, entry := range entries {
-		field := fmt.Sprintf("contacts[%d].email", i)
-		if entry.Email == "" {
-			errors[field] = "required"
-		} else if address, err := mail.ParseAddress(entry.Email); err != nil || address.Address != entry.Email {
-			errors[field] = "must be an email address"
-		}
-	}
-	if len(errors) > 0 {
-		return ContactsImported{}, endpoint.Invalid(errors)
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return ContactsImported{}, fmt.Errorf("rewind the contact import: %w", err)
 	}
 
 	imported := 0
 	if err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
-		for _, entry := range entries {
-			contact := models.Contact{
-				MailboxID:  mailboxID,
-				Email:      entry.Email,
-				Name:       entry.Name,
-				TrustLevel: "auto",
-				Source:     "import",
+		// A duplicate must not abort PostgreSQL's batch transaction. Other
+		// failures roll back the whole import rather than reporting a partial
+		// import as a success.
+		batch := make([]models.Contact, 0, importBatchSize)
+		flush := func() error {
+			if len(batch) == 0 {
+				return nil
 			}
-			// A duplicate must not abort PostgreSQL's batch transaction. Other
-			// failures roll back the whole batch rather than reporting a partial
-			// import as a success.
 			result := tx.Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "mailbox_id"}, {Name: "email"}},
 				DoNothing: true,
-			}).Create(&contact)
+			}).Create(&batch)
 			if result.Error != nil {
 				return fmt.Errorf("import contact: %w", result.Error)
 			}
 			imported += int(result.RowsAffected)
+			batch = batch[:0]
+			return nil
 		}
-		return nil
+		if _, err := eachImportEntry(file, func(_ int, entry importContactEntry, _ map[string]string) error {
+			batch = append(batch, models.Contact{MailboxID: mailboxID, Email: entry.Email, Name: entry.Name, TrustLevel: "auto", Source: "import"})
+			if len(batch) == importBatchSize {
+				return flush()
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		return flush()
 	}); err != nil {
 		return ContactsImported{}, err
 	}
 
-	return ContactsImported{Imported: imported}, nil
+	return ContactsImported{Imported: imported, Skipped: total - imported}, nil
+}
+
+// eachImportEntry walks a {"contacts":[...]} file one entry at a time, holding one entry
+// in memory. problems is what the type's rules and the address check say about the entry,
+// by field; a body that isn't that shape is the refusal a bound body would get. It answers
+// how many entries there were.
+func eachImportEntry(file io.Reader, each func(int, importContactEntry, map[string]string) error) (int, error) {
+	unreadable := endpoint.Refuse(http.StatusBadRequest, "bad_request", "Invalid request body")
+	decoder := json.NewDecoder(file)
+	first, err := decoder.Token()
+	if err != nil {
+		return 0, unreadable
+	}
+	if first != json.Delim('{') {
+		return 0, endpoint.Invalid(map[string]string{"body": "the body is not a JSON object"})
+	}
+	total := 0
+	for decoder.More() {
+		key, err := decoder.Token()
+		if err != nil {
+			return 0, unreadable
+		}
+		if key != "contacts" {
+			// The request type refuses a field it doesn't declare; ask it, for its words.
+			name, _ := json.Marshal(key)
+			return 0, endpoint.BindBody(&importContactsBody{}, []byte(`{"contacts":[{"email":"a@example.org"}],`+string(name)+`:null}`))
+		}
+		open, err := decoder.Token()
+		if err != nil {
+			return 0, unreadable
+		}
+		if open == nil {
+			continue
+		}
+		if open != json.Delim('[') {
+			return 0, endpoint.Invalid(map[string]string{"contacts": "required"})
+		}
+		for decoder.More() {
+			var raw json.RawMessage
+			if err := decoder.Decode(&raw); err != nil {
+				return 0, unreadable
+			}
+			entry, problems := readImportEntry(raw, total)
+			if err := each(total, entry, problems); err != nil {
+				return 0, err
+			}
+			total++
+		}
+		if _, err := decoder.Token(); err != nil {
+			return 0, unreadable
+		}
+	}
+	if _, err := decoder.Token(); err != nil {
+		return 0, unreadable
+	}
+	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
+		return 0, unreadable
+	}
+	return total, nil
+}
+
+// readImportEntry holds one entry to the rules the request type states, by the same binder
+// a bound body goes through, and then to the address check.
+func readImportEntry(raw json.RawMessage, index int) (importContactEntry, map[string]string) {
+	var entry importContactEntry
+	prefix := fmt.Sprintf("contacts[%d]", index)
+	var refusal *endpoint.Error
+	if err := endpoint.BindBody(&entry, raw); errors.As(err, &refusal) {
+		problems := map[string]string{}
+		for field, problem := range refusal.Fields {
+			if field == "body" {
+				problems[prefix] = problem
+				continue
+			}
+			problems[prefix+"."+field] = problem
+		}
+		if len(problems) == 0 {
+			problems[prefix] = refusal.Message
+		}
+		return entry, problems
+	} else if err != nil {
+		return entry, map[string]string{prefix: "could not be read"}
+	}
+	if address, err := mail.ParseAddress(entry.Email); err != nil || address.Address != entry.Email {
+		return entry, map[string]string{prefix + ".email": "must be an email address"}
+	}
+	return entry, nil
 }

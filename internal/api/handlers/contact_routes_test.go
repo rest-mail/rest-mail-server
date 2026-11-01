@@ -43,7 +43,7 @@ func TestContactResponseJSONParity(t *testing.T) {
 	}{
 		{"contact", row, contactOf(row)},
 		{"empty contact", models.Contact{}, contactOf(models.Contact{})},
-		{"imported", map[string]int{"imported": 2}, ContactsImported{Imported: 2}},
+		{"imported", map[string]int{"imported": 2, "skipped": 1}, ContactsImported{Imported: 2, Skipped: 1}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			old, err := json.Marshal(tc.old)

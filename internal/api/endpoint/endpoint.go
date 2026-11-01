@@ -79,6 +79,11 @@ type Operation struct {
 	// Middleware runs before binding, in order, after the middleware its Routes already
 	// apply: a capability check, a rate limit. Each describes what it adds.
 	Middleware []Middleware
+
+	// DescribedRequest, when set, is the request as the document states it, for a handler
+	// that reads the body itself (SpoolBody) so a large one never sits in memory. Req then
+	// binds only the parameters. The handler enforces the body rules this type states.
+	DescribedRequest any
 }
 
 // Middleware is a middleware and a description of what it adds to every operation it wraps:
@@ -265,7 +270,14 @@ func Register[Req, Resp any](rs Routes, op Operation, handler func(*http.Request
 	reqType := reflect.TypeOf((*Req)(nil)).Elem()
 	shape := requestShape(reqType)
 
-	rs.Registry.record(rs.appliedTo(op.Method), op, reqType, respType, reflect.TypeOf((*Data[Resp])(nil)).Elem(), shape)
+	// A handler that spools its body binds only what comes before it, and describes
+	// the whole request.
+	describedType, describedShape := reqType, shape
+	if op.DescribedRequest != nil {
+		describedType = reflect.TypeOf(op.DescribedRequest)
+		describedShape = requestShape(describedType)
+	}
+	rs.Registry.record(rs.appliedTo(op.Method), op, describedType, respType, reflect.TypeOf((*Data[Resp])(nil)).Elem(), describedShape)
 	if rs.ResponseHeaders != nil {
 		rs.Registry.addResponseHeaders(rs.ResponseHeaders(op.Path))
 	}

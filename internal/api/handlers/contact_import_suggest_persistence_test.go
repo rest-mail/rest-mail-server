@@ -40,7 +40,7 @@ func TestContactImportRollbackAndDuplicatePersistence(t *testing.T) {
 		return rr
 	}
 	rr := send(`{"contacts":[{"email":"new@example.com"},{"email":"duplicate@example.com","name":"Must not overwrite"},{"email":"repeat@example.com"},{"email":"repeat@example.com"}]}`)
-	if rr.Code != 200 || strings.TrimSpace(rr.Body.String()) != `{"data":{"imported":2}}` {
+	if rr.Code != 200 || strings.TrimSpace(rr.Body.String()) != `{"data":{"imported":2,"skipped":2}}` {
 		t.Fatalf("duplicate import:%d %s", rr.Code, rr.Body)
 	}
 	var kept models.Contact
@@ -52,8 +52,12 @@ func TestContactImportRollbackAndDuplicatePersistence(t *testing.T) {
 	}
 	const callback = "contact_import_batch_failure"
 	if err := tx.Callback().Create().Before("gorm:create").Register(callback, func(db *gorm.DB) {
-		if c, ok := db.Statement.Dest.(*models.Contact); ok && c.Email == "fail@example.com" {
-			_ = db.AddError(errors.New("private batch persistence failure"))
+		if batch, ok := db.Statement.Dest.(*[]models.Contact); ok {
+			for _, c := range *batch {
+				if c.Email == "fail@example.com" {
+					_ = db.AddError(errors.New("private batch persistence failure"))
+				}
+			}
 		}
 	}); err != nil {
 		t.Fatal(err)

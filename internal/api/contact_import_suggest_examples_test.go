@@ -99,7 +99,7 @@ func TestContactImportSuggestExamples(t *testing.T) {
 						t.Fatalf("import fields/conflict target changed:%v", fields)
 					}
 				}
-				if name == "batch_failure" && len(calls) != 4 {
+				if name == "batch_failure" && len(calls) != 3 {
 					t.Fatal("failed batch attempted extra entries")
 				}
 			})

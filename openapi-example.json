@@ -17031,7 +17031,8 @@
         "status": 200,
         "body": {
           "data": {
-            "imported": 1
+            "imported": 1,
+            "skipped": 0
           }
         },
         "mediaType": "application/json"
