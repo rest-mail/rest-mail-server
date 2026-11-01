@@ -55,6 +55,26 @@ func TestS3Garage(t *testing.T) {
 	if err != nil || !bytes.Equal(got, data[1048573:]) {
 		t.Fatalf("Garage range: bytes=%d error=%v", len(got), err)
 	}
+	// The sweep lists the real store: with a grace in the future every object is old
+	// enough, the one a row holds stays, and the one none holds goes.
+	orphan, _, err := s.Put(ctx, []byte("no attachment refers to this"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cleaner := NewCleaner(nil, s, "", -time.Hour, time.Hour)
+	cleaner.held = heldBy(ref)
+	if _, err := cleaner.Sweep(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if kept, err := s.Open(ctx, ref); err != nil {
+		t.Fatalf("Garage sweep removed a referenced object: %v", err)
+	} else {
+		_ = kept.Close()
+	}
+	if gone, err := s.Open(ctx, orphan); err == nil {
+		_ = gone.Close()
+		t.Fatal("Garage sweep left an unreferenced object")
+	}
 	c.S3Bucket = "attachments-denied"
 	_, _, err = NewS3(c).Put(ctx, []byte("must not reach another bucket"))
 	var response *smithyhttp.ResponseError

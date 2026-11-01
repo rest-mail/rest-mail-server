@@ -50,6 +50,10 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
+	if r.Method == http.MethodGet && r.URL.Query().Get("list-type") == "2" {
+		f.list(w, r.URL.Query().Get("prefix"))
+		return
+	}
 	ref, ok := strings.CutPrefix(r.URL.Path, "/"+f.Config.S3Bucket+"/")
 	if !ok {
 		w.WriteHeader(http.StatusNotFound)
@@ -86,4 +90,19 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
+}
+
+// list answers ListObjectsV2 with every object under prefix, each last modified at
+// the same fixed time HEAD reports.
+func (f *Server) list(w http.ResponseWriter, prefix string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var contents strings.Builder
+	for ref, data := range f.objects {
+		if strings.HasPrefix(ref, prefix) {
+			fmt.Fprintf(&contents, "<Contents><Key>%s</Key><LastModified>2026-01-01T00:00:00Z</LastModified><Size>%d</Size></Contents>", ref, len(data))
+		}
+	}
+	w.Header().Set("Content-Type", "application/xml")
+	fmt.Fprintf(w, `<ListBucketResult><IsTruncated>false</IsTruncated>%s</ListBucketResult>`, contents.String())
 }

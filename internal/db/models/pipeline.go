@@ -212,7 +212,7 @@ type Attachment struct {
 	ContentType string    `gorm:"size:100" json:"content_type"`
 	SizeBytes   int64     `json:"size_bytes"`
 	StorageType string    `gorm:"size:20;default:filesystem" json:"storage_type"` // "filesystem" or "s3"
-	StorageRef  string    `gorm:"size:500;not null" json:"storage_ref"`
+	StorageRef  string    `gorm:"size:500;not null;index" json:"storage_ref"`
 	Checksum    string    `gorm:"size:64;index" json:"checksum"` // SHA-256 hex
 	CreatedAt   time.Time `json:"created_at"`
 

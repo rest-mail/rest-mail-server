@@ -148,7 +148,13 @@ func (f *extractAttFilter) store(ctx context.Context, att pipeline.Attachment, d
 		var existing models.Attachment
 		if err := db.Where("checksum = ? AND storage_type = ?", checksum, f.cfg.StorageType).
 			First(&existing).Error; err == nil {
-			return existing.StorageRef, checksum, nil
+			// Reusing the file makes it young again, so the attachment cleanup's grace
+			// period covers this delivery until its row exists (#1388).
+			now := time.Now()
+			if err := os.Chtimes(existing.StorageRef, now, now); err == nil {
+				return existing.StorageRef, checksum, nil
+			}
+			// It is gone or can't be touched: write the bytes again below.
 		}
 	}
 
