@@ -197,3 +197,12 @@ func (r *Reader) Close() error {
 	r.body = nil
 	return err
 }
+
+// lastModified is when ref was last written.
+func (s *S3) lastModified(ctx context.Context, ref string) (time.Time, error) {
+	head, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(ref)})
+	if err != nil {
+		return time.Time{}, err
+	}
+	return aws.ToTime(head.LastModified), nil
+}

@@ -40,6 +40,18 @@ var (
 		Help: "Total queue processing errors",
 	})
 
+	// AttachmentCleanupRemoved counts stored attachment objects nothing referred to, removed.
+	AttachmentCleanupRemoved = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "restmail_attachment_cleanup_removed_total",
+		Help: "Stored attachment objects removed because no attachment refers to them",
+	})
+
+	// AttachmentCleanupBytes counts the space those removals gave back.
+	AttachmentCleanupBytes = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "restmail_attachment_cleanup_bytes_total",
+		Help: "Bytes freed by removing unreferenced attachment objects",
+	})
+
 	// ActiveConnections tracks the number of active protocol connections.
 	ActiveConnections = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -242,6 +254,8 @@ func init() {
 		HTTPRequestDuration,
 		QueueSize,
 		QueueProcessed,
+		AttachmentCleanupRemoved,
+		AttachmentCleanupBytes,
 		QueueErrors,
 		ActiveConnections,
 		MessagesReceived,

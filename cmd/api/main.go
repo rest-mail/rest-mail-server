@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"github.com/rest-mail/rest-mail-server/internal/attachmentstore"
 	"log/slog"
 	"net"
 	"net/http"
@@ -379,6 +380,11 @@ func main() {
 	greylistPurger := greylist.NewPurger(database, time.Hour)
 	greylistPurger.Start()
 
+	// Remove stored attachment objects nothing refers to any more (#1388).
+	attachmentCleaner := attachmentstore.NewCleaner(database, attachmentstore.NewS3(cfg.Attachments),
+		attachmentstore.FilesystemRoot, attachmentstore.DefaultCleanupGrace, 24*time.Hour)
+	attachmentCleaner.Start()
+
 	// Start the vacation-responses purger (hourly): deletes vacation_responses
 	// rows past their retention horizon so the auto-reply dedup table stays
 	// bounded rather than growing one row per (mailbox, sender) forever.
@@ -464,6 +470,7 @@ func main() {
 	rollupWorker.Shutdown()
 	tracePruner.Shutdown()
 	greylistPurger.Shutdown()
+	attachmentCleaner.Stop()
 	vacationPurger.Shutdown()
 	dkimRotation.Shutdown()
 	digestWorker.Shutdown()
