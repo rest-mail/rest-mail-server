@@ -78,18 +78,9 @@ exclude-operation-id:
   - resetTestData
   - restoreTestSnapshot
 
-# Documented responses the examples phase cannot provoke yet, by pattern. A
-# transaction is named "<path> > <summary> > <status>[ > <type>]". Each pattern
-# names one operation's documented statuses that no example proves (#1334):
-# give a status an example, with x-requires and an in-process proof if it needs
-# setup, and take it off here and out of tests/contract/status-baseline.txt.
-exclude-matching:
-  # getAttachment: bodyless 304/412 cannot carry a named media-type example,
-  # and its 500's media-type transactions are built from the conditional
-  # headers' examples, which a healthy server answers 304 or 412. Its
-  # surface.exclude entries give the reasons; #1166 tracks the rest.
-  # getAttachment
-  - '^/api/v1/attachments/\{id\} > .* > (304|412|500)( >|$)'
+# No documented response is held back from the run (#1334): tests/contract/test_gate.py
+# fails on a pattern here. The coverage phase adds its own (tests/contract/probes.py).
+exclude-matching: []
 
 # Each documented response has one example (#1236). One that says, in
 # x-requires, that proving it needs a principal, a body, a spent limit or a
@@ -105,25 +96,15 @@ named-values: illustrate
 # What the run is held to (vertrag's surface gate, #376): every operation in
 # the spec, counted only when every documented transaction of it was sent in
 # the examples phase and passed, none failed, none skipped, none answered 5xx.
-# A shortfall exits 3. Taken out of the count, each with its reason: the
-# operations never sent (exclude-operation-id above), and the documented
-# statuses exclude-matching keeps back, which must stay in step with it. The
-# statuses no example proves yet are listed by operation in
-# tests/contract/status-baseline.txt, which run.sh adds here and holds to only
-# shrink (tests/contract/status_baseline.py, #1334).
+# A shortfall exits 3. Taken out of the count, with their reason: the
+# operations never sent in this phase (exclude-operation-id above). The statuses
+# no example proves yet are listed by operation in
+# tests/contract/status-baseline.txt, empty today, which run.sh adds here and
+# holds to only shrink (tests/contract/status_baseline.py, #1334).
 surface:
   count: passed
   require: 100
   exclude:
-    - operation: getAttachment
-      status: "304"
-      reason: "Bodyless responses cannot carry named media-type examples. The required TestAttachmentDownloadExamplesWithVertrag suite sends If-None-Match through the real handler/storage client; full topology coverage remains in #1166."
-    - operation: getAttachment
-      status: "412"
-      reason: "Bodyless responses cannot carry named media-type examples. The required TestAttachmentDownloadExamplesWithVertrag suite sends If-Match through the real handler/storage client; full topology coverage remains in #1166."
-    - operation: getAttachment
-      status: "500"
-      reason: "A healthy topology cannot provoke database/storage/seek faults. The required attachment example suite covers dependency refusals, and TestAttachmentConditionalResponsesDescribeTheWire covers seek errors; topology fault injection remains in #1166."
     - operation: resetTestData
       reason: "Wipes the data the rest of the run depends on: sent last, by the teardown phase (tests/contract/teardown.py)."
     - operation: restoreTestSnapshot

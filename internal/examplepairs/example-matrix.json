@@ -6598,7 +6598,7 @@
             "message": "Request body failed validation",
             "details": {
               "fields": {
-                "name": "Invalid domain name: domain name must be fully-qualified"
+                "name": "must be a fully-qualified domain name"
               }
             }
           }

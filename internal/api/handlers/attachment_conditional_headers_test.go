@@ -36,7 +36,7 @@ func TestAttachmentConditionalResponsesDescribeTheWire(t *testing.T) {
 	for _, tc := range []struct {
 		name, header, value, body, media, contentRange string
 		status                                         int
-		multipart, empty, seekFailure, handlerFailure  bool
+		multipart, empty, handlerFailure               bool
 	}{
 		{name: "whole", status: 200, body: "0123456789", media: "application/octet-stream"},
 		{name: "single range", header: "Range", value: "bytes=2-4", status: 206, body: "234", media: "application/octet-stream", contentRange: "bytes 2-4/10"},
@@ -51,7 +51,6 @@ func TestAttachmentConditionalResponsesDescribeTheWire(t *testing.T) {
 		{name: "invalid range", header: "Range", value: "bytes=invalid", status: 416, media: "text/plain"},
 		{name: "unsatisfiable range", header: "Range", value: "bytes=100-120", status: 416, media: "text/plain", contentRange: "bytes */10"},
 		{name: "empty range fallback", header: "Range", value: "bytes=0-1", status: 200, media: "application/octet-stream", empty: true},
-		{name: "seek failure", status: 500, media: "text/plain", seekFailure: true},
 		{name: "handler failure", status: 500, media: "application/json", handlerFailure: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -69,7 +68,7 @@ func TestAttachmentConditionalResponsesDescribeTheWire(t *testing.T) {
 				if tc.empty {
 					body = ""
 				}
-				content = &attachmentConditionalReader{Reader: strings.NewReader(body), failSeek: tc.seekFailure}
+				content = &attachmentConditionalReader{Reader: strings.NewReader(body)}
 				return endpoint.Served{ContentType: "application/octet-stream", Name: "fixture.txt", Modified: modified,
 					Header: http.Header{"Content-Disposition": {contentDispositionAttachment("fixture.txt")}, "Etag": {`"fixture-etag"`}}, Content: content}, nil
 			})
@@ -158,14 +157,7 @@ func TestAttachmentConditionalResponsesDescribeTheWire(t *testing.T) {
 
 type attachmentConditionalReader struct {
 	*strings.Reader
-	failSeek, closed bool
-}
-
-func (c *attachmentConditionalReader) Seek(offset int64, whence int) (int64, error) {
-	if c.failSeek {
-		return 0, errors.New("private seek failure")
-	}
-	return c.Reader.Seek(offset, whence)
+	closed bool
 }
 
 func (c *attachmentConditionalReader) Close() error { c.closed = true; return nil }

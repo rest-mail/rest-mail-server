@@ -1,4 +1,4 @@
-"""Keep topology download examples paired and fault exclusions narrow."""
+"""Keep topology download examples paired, with no response excluded."""
 
 import re
 import unittest
@@ -17,7 +17,7 @@ class AttachmentContract(unittest.TestCase):
             cls.path = yaml.safe_load(source)["paths"][PATH]
         with (ROOT / "vertrag.yml").open() as source:
             config = yaml.safe_load(source)
-        cls.patterns = [re.compile(p) for p in config["exclude-matching"]]
+        cls.patterns = [re.compile(p) for p in config.get("exclude-matching") or []]
         cls.exclusions = config["surface"]["exclude"]
 
     def test_named_request_headers_pair_only_with_their_response(self):
@@ -46,31 +46,21 @@ class AttachmentContract(unittest.TestCase):
             self.assertFalse(param["required"])
             self.assertNotIn("example", param)
 
-    def test_exclusions_keep_normal_downloads_and_unrelated_operations_enabled(self):
-        for path in (PATH, "/api/v1/messages/{id}/source"):
-            for status, media in (
-                ("200", "application/octet-stream"),
-                ("206", "application/octet-stream"),
-                ("206", "multipart/byteranges"),
-                ("304", ""),
-                ("412", ""),
-                ("416", "text/plain"),
-                ("500", "application/json"),
-                ("500", "text/plain"),
-            ):
-                name = f"{path} > Download an attachment > {status}"
-                if media:
-                    name += " > " + media
-                # The multipart 206 is sent: Vertrag compares its parts, not
-                # its per-response boundary (antimatter-studios/vertrag#121).
-                # The 500 stays excluded: its pair requires a database fault,
-                # but its media-type transactions are still built from the
-                # conditional headers' examples and answered 304 or 412.
-                expected = path == PATH and status in {"304", "412", "500"}
-                with self.subTest(name=name):
-                    self.assertEqual(
-                        any(p.search(name) for p in self.patterns), expected
-                    )
+    def test_no_exclusion_hides_a_download_response(self):
+        for status, media in (
+            ("200", "application/octet-stream"),
+            ("206", "application/octet-stream"),
+            ("206", "multipart/byteranges"),
+            ("304", ""),
+            ("412", ""),
+            ("416", "text/plain"),
+            ("500", "application/json"),
+        ):
+            name = f"{PATH} > Download an attachment > {status}"
+            if media:
+                name += " > " + media
+            with self.subTest(name=name):
+                self.assertFalse(any(p.search(name) for p in self.patterns))
 
     def test_optional_response_headers_remain_optional(self):
         for status in ("200", "206", "304", "412", "416", "500"):
@@ -87,9 +77,7 @@ class AttachmentContract(unittest.TestCase):
             )
         )
 
-    def test_surface_exclusions_keep_whole_and_range_downloads_counted(self):
-        own = [e for e in self.exclusions if e.get("operation") == "getAttachment"]
-        self.assertEqual({e["status"] for e in own}, {"304", "412", "500"})
-        for entry in own:
-            self.assertIn("#1166", entry["reason"])
-            self.assertIn("TestAttachment", entry["reason"])
+    def test_every_download_status_counts_toward_the_surface(self):
+        self.assertEqual(
+            [e for e in self.exclusions if e.get("operation") == "getAttachment"], []
+        )

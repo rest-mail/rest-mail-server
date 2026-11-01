@@ -132,73 +132,28 @@ class Gate(unittest.TestCase):
         )
 
 
-class HeldBackStatuses(unittest.TestCase):
-    """vertrag.yml holds back a documented status only when no example proves
-    it, or surface.exclude gives the reason it cannot be sent (#1334): each
-    exclude-matching pattern names one operation, under a comment with its
-    operationId, and exactly that operation's statuses in
-    tests/contract/status-baseline.txt, none of which has an example, and in
-    surface.exclude. Every other status with an example is sent."""
-
-    PATTERN = re.compile(r"^\^(.+) > (.+) > (\d{3}|\((?:\d{3}\|)+\d{3}\))\( >\|\$\)$")
+class NothingHeldBack(unittest.TestCase):
+    """No documented status is left out of the contract run (#1334): vertrag.yml
+    has no pattern holding one back and no status excluded from the surface, and
+    tests/contract/status-baseline.txt lists none not proven yet. A status the
+    run cannot send gets an in-process proof, not an entry here."""
 
     def setUp(self):
         with open(os.path.join(ROOT, "vertrag.yml")) as source:
-            self.text = source.read()
-        self.config = yaml.safe_load(self.text)
-        with open(os.path.join(ROOT, "openapi-example.json")) as source:
-            self.examples = json.load(source)
-        self.baseline = {}
+            self.config = yaml.safe_load(source)
+
+    def test_no_pattern_holds_a_status_back(self):
+        self.assertEqual(self.config.get("exclude-matching") or [], [])
+
+    def test_no_status_is_excluded_from_the_surface(self):
+        self.assertEqual(
+            [e for e in self.config["surface"]["exclude"] if "status" in e], []
+        )
+
+    def test_the_status_baseline_is_empty(self):
         with open(os.path.join(ROOT, "tests/contract/status-baseline.txt")) as source:
-            for line in source:
-                line = line.split("#", 1)[0].strip()
-                if line:
-                    op, status = line.split()
-                    self.baseline.setdefault(op, set()).add(status)
-
-    def held(self):
-        """operationId -> the statuses its pattern holds back."""
-        held = {}
-        lines = self.text.split("\n")
-        start = lines.index("exclude-matching:")
-        for previous, line in zip(lines[start:], lines[start + 1:]):
-            if not line.startswith("  - "):
-                if line and not line.startswith("  #"):
-                    break
-                continue
-            pattern = yaml.safe_load(line[4:])
-            match = self.PATTERN.match(pattern)
-            self.assertIsNotNone(match, pattern)
-            self.assertTrue(previous.startswith("  # ") and " " not in previous[4:].strip(), pattern)
-            op = previous[4:].strip()
-            self.assertNotIn(op, held, "one pattern an operation")
-            held[op] = set(re.findall(r"\d{3}", match.group(3)))
-        return held
-
-    def reasoned(self):
-        reasoned = {}
-        for entry in self.config["surface"]["exclude"]:
-            if "status" in entry:
-                reasoned.setdefault(entry["operation"], set()).add(str(entry["status"]))
-        return reasoned
-
-    def test_each_pattern_holds_back_its_operations_baseline_or_reasoned_statuses(self):
-        expected = {}
-        for source in (self.baseline, self.reasoned()):
-            for op, statuses in source.items():
-                expected.setdefault(op, set()).update(statuses)
-        self.assertEqual(self.held(), expected)
-
-    def test_no_baseline_status_has_an_example(self):
-        for op, statuses in self.baseline.items():
-            for status in statuses:
-                with self.subTest(operation=op, status=status):
-                    proven = [name for name, pair in self.examples.get(op, {}).items()
-                              if str(pair["response"]["status"]) == status]
-                    self.assertEqual(proven, [])
-
-    def test_every_pattern_is_in_the_run(self):
-        self.assertEqual(len(self.held()), len(self.config["exclude-matching"]))
+            listed = [line for line in source if line.split("#", 1)[0].strip()]
+        self.assertEqual(listed, [])
 
 
 if __name__ == "__main__":

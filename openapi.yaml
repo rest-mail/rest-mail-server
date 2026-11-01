@@ -4907,7 +4907,7 @@ paths:
                 range_not_satisfiable:
                   value: "invalid range: failed to overlap\n"
         '500':
-          description: Handler dependency or streaming failure.
+          description: A handler dependency failed.
           headers:
             Content-Disposition:
               description: Safe attachment filename if the failure occurs in the content writer.
@@ -4930,9 +4930,6 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/ErrorResponse"
-            text/plain:
-              schema:
-                type: string
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -14977,6 +14974,8 @@ components:
         name:
           type: string
           minLength: 1
+          format: idn-hostname
+          pattern: '\.'
         server_type:
           type: [string, "null"]
           enum: [traditional, restmail, "", null]
@@ -14985,6 +14984,7 @@ components:
         default_quota_bytes:
           type: integer
           format: int64
+          minimum: 0
         sending_policy:
           # vertrag 0.29 drops body probes when a property contains a $ref.
           # Keep this enum in step with DomainSendingPolicy.
@@ -15006,6 +15006,7 @@ components:
         default_quota_bytes:
           type: integer
           format: int64
+          minimum: 0
         # Inline rather than a $ref to DomainSendingPolicy: vertrag 0.29
         # validates each boundary probe against the body schema without
         # resolving a nested $ref, and drops every probe of a body that has

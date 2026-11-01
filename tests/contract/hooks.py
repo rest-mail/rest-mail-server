@@ -2263,6 +2263,12 @@ def create_a_domain_that_is_not_there(transaction):
         or not name
     ):
         return
+    # A probe's name is the generator's example.com, which is the fixtures'
+    # hosted domain: it creates a domain of its own instead.
+    if name == "example.com":
+        name = "domain-probe.example.net"
+        body["name"] = name
+        transaction["request"]["body"] = json.dumps(body)
     for domain in fixture_call(transaction, "GET", "/api/v1/admin/domains") or []:
         if domain.get("name") == name:
             fixture_call(

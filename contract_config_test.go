@@ -21,9 +21,6 @@ func TestContractExclusionsCompile(t *testing.T) {
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		t.Fatal(err)
 	}
-	if len(config.ExcludeMatching) == 0 {
-		t.Fatal("contract config has no exclusion patterns")
-	}
 	for _, pattern := range config.ExcludeMatching {
 		if _, err := regexp.Compile(pattern); err != nil {
 			t.Errorf("contract exclusion %q: %v", pattern, err)

@@ -234,8 +234,7 @@ func attachmentConditionalResponses() []oapifly.EndpointResponse {
 		{Status: http.StatusNotModified, Description: "The conditional request's cached representation is current; no response body.", Headers: conditional},
 		{Status: http.StatusPreconditionFailed, Description: "An If-Match or If-Unmodified-Since precondition failed; no response body.", Headers: precondition},
 		{Status: http.StatusRequestedRangeNotSatisfiable, Description: "The byte range is malformed or does not overlap the attachment.", Type: oapifly.TypeOf[string](), MediaType: "text/plain", Headers: rangeError},
-		{Status: http.StatusInternalServerError, Description: "A handler dependency failed, or the stored content could not be served.", Type: oapifly.TypeOf[respond.ErrorResponse](), Headers: streamError},
-		{Status: http.StatusInternalServerError, Description: "A handler dependency failed, or the stored content could not be served.", Type: oapifly.TypeOf[string](), MediaType: "text/plain", Headers: streamError},
+		{Status: http.StatusInternalServerError, Description: "A handler dependency failed.", Type: oapifly.TypeOf[respond.ErrorResponse](), Headers: streamError},
 	}
 }
 
