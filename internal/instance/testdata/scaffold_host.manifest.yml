@@ -68,6 +68,7 @@ db:
 # standard mail defaults.
 components:
   - { name: postgres }
+  - { name: garage }
   - name: api
     port: 8080
   - name: smtp-gateway

@@ -590,6 +590,8 @@ func Render(m *Manifest) ([]byte, error) {
 		switch c.Name {
 		case "postgres":
 			iv("POSTGRES_IP", c.IP)
+		case "garage":
+			iv("GARAGE_IP", c.IP)
 		case "api":
 			iv("API_IP", c.IP)
 			iv("API_PORT", strconv.Itoa(c.Port))
