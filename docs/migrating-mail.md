@@ -164,7 +164,9 @@ may leave an unreferenced content-addressed object; it does not leave a message
 or attachment reference, and a rerun reuses the same object content.
 
 Direct IMAP source import is available alongside Maildir/mbox. Persistent Deleted
-and keyword restoration, OAuth source support and the separate imapsync
-cutover proof remain outside this implementation. The wider migration outcome
+and keyword restoration and OAuth source support remain outside this
+implementation. Copying with imapsync also works: the E2E job copies a folder
+from Dovecot with it and compares folders, counts, subjects and flags
+(`scripts/tests/test_imapsync_live.py`). The wider migration outcome
 stays tracked in [#734](https://github.com/rest-mail/rest-mail-server/issues/734);
 this does not claim its full acceptance criteria are complete.
