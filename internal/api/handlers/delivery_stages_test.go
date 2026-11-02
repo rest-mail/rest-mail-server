@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
@@ -16,17 +17,25 @@ type stagedFilter struct {
 	name   string
 	action pipeline.Action
 	ran    *[]string
+	// sawCheck reports whether the content check could see what the required one added.
+	sawCheck *bool
 }
 
 func (f *stagedFilter) Name() string              { return f.name }
 func (f *stagedFilter) Type() pipeline.FilterType { return pipeline.FilterTypeTransform }
-func (f *stagedFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
+func (f *stagedFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
 	*f.ran = append(*f.ran, f.name)
 	if f.name == "spf_check" {
 		email.Headers.Raw["X-Stage-Check"] = []string{"spf pass"}
+		pipeline.AuthResultsFromContext(ctx).Add(pipeline.AuthResult{Method: pipeline.AuthSPF, Result: "pass", Property: pipeline.PropMailFrom, Domain: "remote.test"})
+	}
+	if f.sawCheck != nil {
+		*f.sawCheck = email.Headers.Raw["X-Stage-Check"] != nil
 	}
 	return &pipeline.FilterResult{Type: pipeline.FilterTypeTransform, Action: f.action, Message: email}, nil
 }
+
+var stagedSawCheck bool
 
 func stagedHandler(t *testing.T, content pipeline.Action) (*MessageHandler, localDeliveryParams, *gorm.DB, *[]string) {
 	t.Helper()
@@ -53,7 +62,7 @@ func stagedHandler(t *testing.T, content pipeline.Action) (*MessageHandler, loca
 		return &stagedFilter{name: "spf_check", action: pipeline.ActionContinue, ran: ran}, nil
 	})
 	registry.Register("rspamd", func([]byte) (pipeline.Filter, error) {
-		return &stagedFilter{name: "rspamd", action: content, ran: ran}, nil
+		return &stagedFilter{name: "rspamd", action: content, ran: ran, sawCheck: &stagedSawCheck}, nil
 	})
 	h := NewMessageHandler(tx, nil, pipeline.NewEngine(registry, nil), "", nil)
 	raw := "From: sender@remote.test\r\nSubject: staged\r\n\r\nbody\r\n"
@@ -107,12 +116,12 @@ func TestContentStageStoresWhatTheRequiredStageSaw(t *testing.T) {
 	if len(*ran) != 2 || (*ran)[1] != "rspamd" {
 		t.Fatalf("ran %v", *ran)
 	}
-	var headers map[string][]string
-	if err := json.Unmarshal(msg.Headers, &headers); err != nil {
-		t.Fatal(err)
+	if !stagedSawCheck {
+		t.Fatal("the content check could not see what the required check added")
 	}
-	if headers["X-Stage-Check"] == nil {
-		t.Fatalf("the stored message lost what the required check added: %v", headers)
+	// The required check's verdict reaches the stored message.
+	if !strings.Contains(msg.RawMessage, "spf=pass") {
+		t.Fatalf("the stored message lost the required check's verdict: %q", msg.RawMessage)
 	}
 }
 
