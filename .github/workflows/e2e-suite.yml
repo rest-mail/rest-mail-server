@@ -213,6 +213,9 @@ jobs:
           CONTRACT_ENDPOINT: http://10.99.0.20:8080
           CONTRACT_LOGS: ${{ runner.temp }}
           CONTRACT_DESCRIPTION_MODE: ${{ inputs.description-mode }}
+          # TestDraftLifecycleExamplesWithVertrag makes its scratch databases on
+          # this server, the topology's own, and skips without it.
+          DB_HOST: 10.99.0.43
         run: chore contract
 
       - name: API code coverage of the contract run (report)

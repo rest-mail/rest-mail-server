@@ -18,9 +18,9 @@ import (
 )
 
 var draftExampleNames = map[string][]string{
-	"saveDraft":   {"empty", "with_sender", "wrong_type", "invalid_recipient", "malformed_json", "foreign_sender", "request_too_large"},
-	"updateDraft": {"example", "empty_patch", "missing", "not_draft", "wrong_type", "invalid_id", "malformed_json", "foreign_owner", "request_too_large"},
-	"sendDraft":   {"sent", "discarded", "no_recipients", "missing", "not_draft", "invalid_id", "foreign_owner", "request_too_large"},
+	"saveDraft":   {"empty", "wrong_type", "malformed_json", "foreign_sender", "request_too_large"},
+	"updateDraft": {"example", "missing", "invalid_id", "malformed_json", "foreign_owner", "request_too_large"},
+	"sendDraft":   {"sent", "discarded", "no_recipients", "missing", "invalid_id", "foreign_owner", "request_too_large"},
 }
 
 func draftExampleRoute(operation string) (string, string) {
