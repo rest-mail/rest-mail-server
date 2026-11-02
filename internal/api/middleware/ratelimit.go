@@ -145,6 +145,11 @@ func clientIP(r *http.Request) string {
 // brute-force and credential-stuffing without disrupting legitimate interactive
 // use. Over-limit requests get 429 with a Retry-After header.
 func RateLimit(cfg RateLimitConfig) func(http.Handler) http.Handler {
+	middleware, _ := ResettableRateLimit(cfg)
+	return middleware
+}
+
+func ResettableRateLimit(cfg RateLimitConfig) (func(http.Handler) http.Handler, func()) {
 	rl := newRateLimiter(cfg)
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -155,7 +160,18 @@ func RateLimit(cfg RateLimitConfig) func(http.Handler) http.Handler {
 			}
 			next.ServeHTTP(w, r)
 		})
-	}
+	}, rl.reset
+}
+
+func (rl *rateLimiter) reset() {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	clear(rl.buckets)
+	rl.lastSweep = time.Time{}
+}
+
+func (b *FailureBudget) Reset() {
+	b.rl.reset()
 }
 
 // writeRateLimited answers 429 with a Retry-After of retry, at least a second.

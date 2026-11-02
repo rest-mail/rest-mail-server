@@ -18,6 +18,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	"github.com/rest-mail/rest-mail-server/internal/testreset"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -25,9 +26,10 @@ import (
 // TestHandler provides endpoints for testing and debugging the mail system.
 // These endpoints are only available in non-production environments.
 type TestHandler struct {
-	db       *gorm.DB
-	cfg      *config.Config
-	resolver *net.Resolver
+	db         *gorm.DB
+	cfg        *config.Config
+	resolver   *net.Resolver
+	resetState []func()
 }
 
 func NewTestHandler(db *gorm.DB, cfg *config.Config) *TestHandler {
@@ -228,11 +230,21 @@ func (h *TestHandler) resetTestData(r *http.Request, _ endpoint.Empty) (TestData
 		return TestDataStatus{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "test endpoints disabled in production")
 	}
 	slog.Warn("test: resetting all data")
-	if err := h.db.WithContext(r.Context()).Transaction(func(tx *gorm.DB) error {
-		if err := clearTestData(tx); err != nil {
+	ctx, cancel := context.WithTimeout(r.Context(), testreset.DrainTimeout)
+	defer cancel()
+	if err := testreset.Reset(ctx, h.db, func(conn *gorm.DB) error {
+		if err := conn.Transaction(func(tx *gorm.DB) error {
+			if err := cleanResetData(tx); err != nil {
+				return err
+			}
+			return seedTestData(tx)
+		}); err != nil {
 			return err
 		}
-		return seedTestData(tx)
+		for _, reset := range h.resetState {
+			reset()
+		}
+		return nil
 	}); err != nil {
 		return TestDataStatus{}, fmt.Errorf("reset test data: %w", err)
 	}

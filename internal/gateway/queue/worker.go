@@ -20,12 +20,14 @@ import (
 	"time"
 
 	"github.com/rest-mail/go-mtasts/pkg/mtasts"
+	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/dane"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
 	"github.com/rest-mail/rest-mail-server/internal/outbound"
+	"github.com/rest-mail/rest-mail-server/internal/testreset"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -164,6 +166,7 @@ func messageRequires8BitTransport(bodyType, raw string) bool {
 // Worker processes outbound mail queue entries.
 type Worker struct {
 	db           *gorm.DB
+	testReset    bool
 	hostname     string
 	numWorkers   int
 	pollInterval time.Duration
@@ -422,6 +425,31 @@ func (w *Worker) processLoop(workerID int) {
 }
 
 func (w *Worker) processOne(workerID int) {
+	if !w.testReset {
+		w.processNext(workerID)
+		return
+	}
+	if err := testreset.Delivery(w.db, func(conn *gorm.DB) {
+		delivery := &Worker{
+			db: conn, hostname: w.hostname,
+			tlsInsecure: w.tlsInsecure, stsEnforce: w.stsEnforce, sts: w.sts, dane: w.dane,
+			masterKey: w.masterKey, relayRoots: w.relayRoots, resolver: w.resolver,
+			restmailRoots: w.restmailRoots, smtpRoots: w.smtpRoots,
+			txtResolver: w.txtResolver, tlsReportClient: w.tlsReportClient,
+			bounceMax: w.bounceMax, bounceWindow: w.bounceWindow, suppressionTTL: w.suppressionTTL,
+			sendDeadline: w.sendDeadline, reclaim: w.reclaim, allowPrivateDest: w.allowPrivateDest,
+		}
+		delivery.processNext(workerID)
+	}); err != nil {
+		slog.Error("queue: test reset barrier failed", "error", err)
+	}
+}
+
+func (w *Worker) EnableTestReset(cfg *config.Config) {
+	w.testReset = !cfg.IsProduction()
+}
+
+func (w *Worker) processNext(workerID int) {
 	// Claim a pending item using raw SQL with FOR UPDATE SKIP LOCKED
 	var item models.OutboundQueue
 	now := time.Now()

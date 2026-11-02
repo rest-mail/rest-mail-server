@@ -240,6 +240,7 @@ func main() {
 	}
 
 	queueWorker := queue.NewWorker(database, cfg.GatewayHostname, cfg.QueueWorkers, cfg.QueuePollInterval)
+	queueWorker.EnableTestReset(cfg)
 	queueWorker.SetRESTMAILRootCAs(restmailRoots)
 	// #171: the worker DKIM-signs outbound mail that arrived unsigned (SMTP
 	// submission), which needs the key to decrypt the domain's at-rest DKIM key.

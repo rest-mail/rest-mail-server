@@ -144,7 +144,12 @@ func TestTestDataMutationPersistence(t *testing.T) {
 	if reset.Mailboxes[0].ID != admin.ID || !reflect.DeepEqual(reset.Credentials[0], initial.Credentials[0]) || !reflect.DeepEqual(reset.Grants, initial.Grants) || !reflect.DeepEqual(reset.Domains[0], initial.Domains[0]) {
 		t.Fatal("reset changed the retained administrator, credential, domain or grant")
 	}
-	if reset.Mailboxes[1].ID == seeded.Mailboxes[1].ID {
-		t.Fatal("reset did not replace non-admin fixtures")
+	if status, err := h.resetTestData(r, endpoint.Empty{}); err != nil || status.Status != "reset_complete" {
+		t.Fatalf("second reset status %q, error %v", status.Status, err)
+	}
+	for index, account := range read().Mailboxes {
+		if account.ID != reset.Mailboxes[index].ID || account.Address != reset.Mailboxes[index].Address {
+			t.Fatal("repeated reset changed fixture identities")
+		}
 	}
 }

@@ -23,6 +23,14 @@ import (
 
 var testDataMutationPaths = map[string]string{"resetTestData": "/api/v1/admin/test/reset", "seedTestData": "/api/v1/admin/test/seed"}
 
+var testResetScenarioTables = []string{
+	"attachments", "outbound_queue", "messages", "quarantine", "vacation_configs", "vacation_responses",
+	"contacts", "sieve_scripts", "quota_usage", "credentials", "grants", "aliases", "message_traces",
+	"custom_filters", "bans", "restmail_capabilities", "certificates", "domain_sender_rules", "greylist_entries",
+	"mailboxes", "pipelines", "domains", "suppressions", "refresh_tokens", "roles", "role_capabilities",
+	"capabilities", "owner_keys", "audit_log", "test_reset_baseline",
+}
+
 type testDataMutationContextKey struct{}
 
 type testDataMutationConnection struct {
@@ -88,8 +96,12 @@ func (c *testDataMutationConnection) relevant(ctx context.Context, q string, arg
 }
 
 func (c *testDataMutationConnection) ExecContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Result, error) {
-	if strings.Contains(q, "pg_advisory_xact_lock") {
+	if strings.Contains(q, "pg_advisory_") {
 		return driver.RowsAffected(0), nil
+	}
+	if strings.HasPrefix(q, "CREATE TABLE IF NOT EXISTS test_reset_baseline") || strings.HasPrefix(q, "INSERT INTO test_reset_baseline") {
+		c.relevant(ctx, "RESET_BASELINE", nil)
+		return driver.RowsAffected(1), nil
 	}
 	if strings.HasPrefix(q, `INSERT INTO "audit_log"`) {
 		return driver.RowsAffected(1), nil
@@ -108,6 +120,7 @@ func (c *testDataMutationConnection) ExecContext(ctx context.Context, q string, 
 		return driver.RowsAffected(0), nil
 	}
 	if strings.HasPrefix(q, "DELETE FROM ") {
+		q = strings.ReplaceAll(q, `"`, "")
 		c.relevant(ctx, q, args)
 		if c.aborted {
 			return nil, &pgconn.PgError{Code: "25P02", Message: "fixture transaction aborted"}
@@ -177,6 +190,19 @@ func (c *testDataMutationConnection) insert(ctx context.Context, q string, args 
 }
 
 func (c *testDataMutationConnection) QueryContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
+	if strings.Contains(q, "information_schema.tables") {
+		rows := &authReadSnapshotRows{columns: []string{"table_name"}}
+		for _, table := range testResetScenarioTables {
+			if table == "attachments" && c.mode == "missing_table" {
+				continue
+			}
+			rows.rows = append(rows.rows, []driver.Value{table})
+		}
+		return rows, nil
+	}
+	if strings.Contains(q, "pg_get_serial_sequence") {
+		return &authReadSnapshotRows{columns: []string{"pg_get_serial_sequence"}, rows: [][]driver.Value{{nil}}}, nil
+	}
 	if rows, ok := c.receiveQuery(ctx, q, args); ok {
 		return rows, nil
 	}
