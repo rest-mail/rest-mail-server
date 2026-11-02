@@ -63,8 +63,19 @@ python3 -B tests/contract/report_files.py "${reset_run[@]}" "$out" "${names[@]}"
 if [ "${CONTRACT_DEFER_SUMMARY:-0}" != 1 ]; then
   summary_phases=("$phase")
   if [ "$phase" = gate ]; then summary_phases=(examples coverage); fi
-  trap 'python3 -B tests/contract/summary.py "$out" "${summary_phases[@]}"' EXIT
+  trap 'status=$?; python3 -B tests/contract/summary.py "$out" "${summary_phases[@]}" || true; exit "$status"' EXIT
 fi
+# A narrowed run can select no operation with a signing key, and Vertrag refuses
+# the signing-key pin then, before it sends anything. Vertrag is what knows what a
+# selection holds, so ask it, and write the probe configuration again without the
+# pin. A full run always has the field, so there the refusal stays an error.
+drop_unmatched_pin() {
+  [ ${#select[@]} -ne 0 ] && grep -q 'fuzz.pin names a field or argument nothing in this description declares' "$1" || return 1
+  echo "a narrowed run: nothing selected has a signing key, so it is not pinned"
+  python3 -B tests/contract/probes.py "$out/vertrag-run.yml" "$out/vertrag-probes.yml" "$2.xml" --no-pin
+  python3 -B tests/contract/reports.py "$out/vertrag-probes.yml" "$out/vertrag-probes.yml" "$2" "${narrowed[@]}"
+}
+
 # Select the same verified binary as CI before contacting the target server.
 CONTRACT_VERTRAG="$(python3 -B scripts/vertrag_pin.py ensure .cache/bin)"
 export CONTRACT_VERTRAG
@@ -119,6 +130,11 @@ gate)
   code=0
   "$CONTRACT_VERTRAG" run --config "$out/vertrag-probes.yml" --sequence --phases coverage "${select[@]}" \
     2>&1 | tee "$logs/contract.log" || code=$?
+  if drop_unmatched_pin "$logs/contract.log" "$out/coverage"; then
+    code=0
+    "$CONTRACT_VERTRAG" run --config "$out/vertrag-probes.yml" --sequence --phases coverage "${select[@]}" \
+      2>&1 | tee "$logs/contract.log" || code=$?
+  fi
   echo "vertrag exited $code"
   if [ "$code" -ne 0 ] && [ "$code" -ne 2 ]; then exit "$code"; fi
   if [ ${#select[@]} -eq 0 ]; then
@@ -191,6 +207,10 @@ fuzz)
   python3 -B tests/contract/reports.py "$out/vertrag-probes.yml" "$out/vertrag-probes.yml" "$out/fuzz" "${narrowed[@]}"
   "$CONTRACT_VERTRAG" run --config "$out/vertrag-probes.yml" --sequence --phases fuzz "${select[@]}" \
     >"$logs/contract-fuzz.log" 2>&1 || echo "vertrag exited $?: findings are in the report"
+  if drop_unmatched_pin "$logs/contract-fuzz.log" "$out/fuzz"; then
+    "$CONTRACT_VERTRAG" run --config "$out/vertrag-probes.yml" --sequence --phases fuzz "${select[@]}" \
+      >"$logs/contract-fuzz.log" 2>&1 || echo "vertrag exited $?: findings are in the report"
+  fi
   cat "$logs/contract-fuzz.log"
   ;;
 esac
