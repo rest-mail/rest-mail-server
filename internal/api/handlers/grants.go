@@ -337,7 +337,7 @@ func grantChangeError(err error) error {
 		return endpoint.Invalid(map[string]string{"role": "no such role"})
 	case errors.Is(err, errTwoFactorRequired):
 		return endpoint.Refuse(http.StatusForbidden, "two_factor_required",
-			"Changing grants needs a session signed in with two-factor authentication: sign in again with your code")
+			"This action needs a session signed in with two-factor authentication: sign in again with your code")
 	case errors.Is(err, errNoSuchGrant):
 		return endpoint.Refuse(http.StatusNotFound, "not_found", "Grant not found")
 	case errors.Is(err, grants.ErrExceedsHeld):
