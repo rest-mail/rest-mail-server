@@ -58,6 +58,9 @@ vars:
   # API_INTERNAL_MTLS_VOLUME; `up` copies the API's to /certs/internal-*.
   API_INTERNAL_MTLS: '{{.API_INTERNAL_MTLS | default "false"}}'
   API_INTERNAL_MTLS_PORT: '{{.API_INTERNAL_MTLS_PORT | default "8443"}}'
+  # Go build tags for the dev image's build, empty for a normal one. Only the
+  # contract fault run sets them (faultinject,fault_<name>: tests/contract/faults.yml).
+  API_BUILD_TAGS: '{{.API_BUILD_TAGS | default ""}}'
 
 tasks:
 
@@ -99,8 +102,17 @@ tasks:
             -e GOPATH=/tmp/go -e GOMODCACHE=/tmp/go/pkg/mod \
             -e GOCACHE=/tmp/go-build-cache \
             -e GOPROXY=file:///go/pkg/mod/cache/download,https://proxy.golang.org,direct"
+          # Air's go build reads GOFLAGS, so the tags reach the binary it runs.
+          if [ -n "{{.API_BUILD_TAGS}}" ]; then
+            echo "  building the api with tags {{.API_BUILD_TAGS}}"
+            DEV_FLAGS="$DEV_FLAGS -e GOFLAGS=-tags={{.API_BUILD_TAGS}}"
+          fi
         else
           DEV_FLAGS=""
+          if [ -n "{{.API_BUILD_TAGS}}" ]; then
+            echo "ERROR: API_BUILD_TAGS needs mode=dev; the prod image is built without them" >&2
+            exit 1
+          fi
         fi
         docker rm -f {{.API_CONTAINER_NAME}} >$OUTPUT 2>&1 || true
         # The testbed dnsmasq must be the ONLY resolver (mounted resolv.conf, not

@@ -29,6 +29,7 @@ In the `E2E (full topology)` job (`.github/workflows/e2e-suite.yml`), after the
 | `authorization` | Every selected operation as each configured principal, checked against the spec's security roles. | Report only, after the gates |
 | `ownership` | Each account tenant's principals sent the other tenant's account id, on the operations they are entitled to; every answer must be 403 or 404. | Report only, after authorization |
 | `fuzz` | Values drawn from each schema, shrunk to the smallest failing input, with a replayable seed. | Nightly (`contract-fuzz.yml`), never blocks |
+| faults | The API built with each fault in `faults.yml`, and the phase the fault names run on its operation: it must turn red ([Fault catalogue](#fault-catalogue-654)). | Nightly (`contract-faults.yml`), fails on a fault not caught |
 
 ### Attachment download contract
 
@@ -534,6 +535,52 @@ mailboxes the principal cannot write to.
 Vertrag is a released binary selected by the checksum pin in
 `.github/workflows/e2e-suite.yml`; it is installed independently of this
 module's Go dependencies.
+
+## Fault catalogue (#654)
+
+A green contract run only means something if a broken server turns it red.
+`faults.yml` lists faults the run must catch. Each entry names the fault, the
+Go build tags that apply it, the operation it breaks and the phase expected to
+catch it. Its switch is `internal/faultinject/fault_<name>.go`, a file built
+only with the tags `faultinject` and `fault_<name>`. The whole package and
+`cmd/api/faults.go` need the `faultinject` tag, so a normal build holds no fault
+code; the normal build's `injectFaults` (`cmd/api/nofaults.go`) returns the
+router as it is.
+
+`chore contract:faults` runs it against a running E2E topology, and the
+nightly `Contract faults` workflow (`contract-faults.yml`) runs it after the
+stages pass. For each operation in the catalogue it first runs the phase,
+narrowed to that operation, on the normal API, which must be green. Then, for
+each fault, it restarts the API built with the fault's tags (`GOFLAGS=-tags=`,
+through `RESTMAIL_API_BUILD_TAGS`), checks that the API logged `fault injection
+active` for it, and runs the phase again. The fault is caught only if that
+phase's report fails a transaction of the operation. A phase that never ran, or
+a failure elsewhere, does not count. The normal API is restored at the end.
+`.cache/contract/faults.md` has the verdicts, and `faults-<name>-<phase>.xml`
+each run's report.
+
+The first faults break response shapes, which the `examples` phase gates.
+Authorization and ownership faults wait until those phases stop being
+report-only; status and limit faults come later.
+
+### Adding a fault
+
+1. Write `internal/faultinject/fault_<name>.go`, starting
+   `//go:build faultinject && fault_<name>`. Its `init` registers a `Fault`:
+   the route's method and path, a `Break` that rewrites the recorded answer
+   (`renameField`, `replaceField` and `setMediaType` are in
+   `faultinject.go`), and an `Example` of the route's normal answer for the
+   package test.
+2. Add its entry to `faults.yml`: `name`, `build_tags`
+   (`faultinject,fault_<name>`), `operation`, `phase` and `breaks`.
+
+`go test ./internal/faultinject` (no tags) holds the catalogue and the
+switches to each other, and requires the `faultinject` tag on every source
+file in the package. CI's `Test the contract fault switch` step builds the API
+with every fault's tags and checks that each one changes its route's answer.
+To try one by hand: `chore api:up RESTMAIL_API_BUILD_TAGS=faultinject,fault_<name>
+RESTMAIL_INTERNAL_MTLS=true`, then `tests/contract/run.sh gate --operation-id
+<operation>`.
 
 ## Files
 

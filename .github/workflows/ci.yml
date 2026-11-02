@@ -177,6 +177,17 @@ jobs:
           # The in-process example tests write the pairs they proved here (#1237).
           RESTMAIL_EXAMPLE_PROOFS: ${{ runner.temp }}/proofs/example-proofs-rest.json
 
+      # The contract fault switch (#654): the API builds with every fault in
+      # tests/contract/faults.yml, and each one changes its route's answer. The
+      # run above holds the catalogue to the switches without the tags.
+      - name: Test the contract fault switch
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet pyyaml
+          tags="$(python3 -B tests/contract/faults.py tags)"
+          go vet -tags "$tags" ./cmd/api ./internal/faultinject
+          go test -race -count=1 -tags "$tags" ./internal/faultinject
+
       # Today only internal/api writes proofs; the report reads whatever is here.
       - name: Upload example proofs
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
