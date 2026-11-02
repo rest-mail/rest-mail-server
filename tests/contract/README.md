@@ -69,6 +69,14 @@ fixture admin and a suppressed recipient on `restmail.test`; the hooks point
 setup (the topology lists no owner or status keys, so those answer 409); their
 other examples are proven in-process (#1334).
 
+### The routes the mail gateways call
+
+`checkMailboxAddress` and `deliverMessage` are served only on the API's internal
+listener, which requires the gateway's client certificate. `vertrag.yml`'s
+`endpoints` sends them there in the primary run, with the certificate
+`chore test:contract-mtls` copies out of the SMTP gateway. A `CONTRACT_ENDPOINT`
+naming another server sends them to that server instead.
+
 ### Operations that take a two-factor session
 
 The grant operations (`createGrant`, `deleteGrant`, `activateGrant`,

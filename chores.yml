@@ -669,6 +669,17 @@ tasks:
           exit 1
         fi
         docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test
+      - task: test:contract-mtls
+
+  test:contract-mtls:
+    desc: Copy the gateway's internal mTLS certificate for the contract run's machine routes (vertrag.yml endpoints)
+    cmds:
+      - |
+        set -eu
+        mkdir -p .cache/contract-mtls
+        for file in internal-ca.crt internal-client.crt internal-client.key; do
+          docker cp "{{.RESTMAIL_PROJECT}}-smtp-gateway:/certs/$file" ".cache/contract-mtls/$file"
+        done
 
   test:contract-domain-tenants:
     desc: Prepare the domain administrators of the ownership phase on the disposable topology
@@ -818,15 +829,14 @@ tasks:
       # Provision the internal-mTLS material (dedicated CA + API server + gateway
       # client cert), then bring the stack up WITH internal mTLS ON so the e2e
       # gate exercises the real gateway→API handshake. The restmail.test manifest
-      # is testbed-owned (external to this repo), so its `internal_mtls: true` is
-      # forced here as a call var on the task reference (call vars beat dotenv) —
-      # the testbed's configs/restmail/manifest.yml should carry it too, for parity.
+      # is testbed-owned, so the switch is set here. It goes in the environment of
+      # a new invocation because the service tasks read it through their include
+      # mappings, which a call var on `task: instance:up` never reached (#1339).
       - task: instance:mtls:issue
         vars: {CONFIG: restmail.test}
       - task: instance:dns:register
         vars: {CONFIG: restmail.test}
-      - task: instance:up
-        vars: {CONFIG: restmail.test, RESTMAIL_INTERNAL_MTLS: 'true'}
+      - RESTMAIL_INTERNAL_MTLS=true "${CHORE_BIN:-chore}" instance:up CONFIG=restmail.test
       - task: instance:dkim
         vars: {CONFIG: restmail.test}
       # Fail the bring-up loudly if a domain's provisioned DKIM selector has
