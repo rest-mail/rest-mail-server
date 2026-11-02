@@ -58,8 +58,14 @@ func (c AttachmentStorageConfig) Validate() error {
 			return fmt.Errorf("ATTACHMENT_S3_ENDPOINT must be an HTTP(S) origin without credentials, path or query")
 		}
 	}
-	if !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9/_-]*/$`).MatchString(c.S3Prefix) || strings.Contains(c.S3Prefix, "//") {
+	if !validObjectPrefix(c.S3Prefix) {
 		return fmt.Errorf("ATTACHMENT_S3_PREFIX must be a relative object prefix ending in /, using letters, digits, /, _ or -")
 	}
 	return nil
+}
+
+var objectPrefix = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9/_-]*/$`)
+
+func validObjectPrefix(prefix string) bool {
+	return objectPrefix.MatchString(prefix) && !strings.Contains(prefix, "//")
 }

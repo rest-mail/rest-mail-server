@@ -60,6 +60,7 @@ const (
 
 type Config struct {
 	Attachments AttachmentStorageConfig
+	Messages    MessageStorageConfig
 	// Database
 	DBHost            string
 	DBPort            int
@@ -869,6 +870,10 @@ func Load() (*Config, error) {
 	cfg.TrustedCACertPath = getEnv("TRUSTED_CA_CERT", "/certs/ca.crt")
 	cfg.DNSBLConfigPath = strings.TrimSpace(getEnv("RESTMAIL_DNSBL_CONFIG", ""))
 	cfg.Attachments, err = loadAttachmentStorage()
+	if err != nil {
+		return nil, err
+	}
+	cfg.Messages, err = loadMessageStorage(cfg.Attachments)
 	if err != nil {
 		return nil, err
 	}
