@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	"github.com/rest-mail/rest-mail-server/internal/api/handlers"
+	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
@@ -42,7 +43,10 @@ func fixtureDB(t *testing.T) *gorm.DB {
 			t.Error(err)
 		}
 	})
-	if err := db.AutoMigrate(&models.Domain{}, &models.OutboundQueue{}); err != nil {
+	if err := rmdb.AutoMigrate(db); err != nil {
+		t.Fatal(err)
+	}
+	if err := bootstrap.EnsureRBAC(db); err != nil {
 		t.Fatal(err)
 	}
 	tx := db.Begin()
@@ -165,9 +169,6 @@ func TestAPIKeyFixtureRequiresTheDisposableDomain(t *testing.T) {
 
 func TestLinkFixtureSupportsUnmodifiedGeneratedProof(t *testing.T) {
 	db := fixtureDB(t)
-	if err := db.AutoMigrate(&models.Mailbox{}, &models.Credential{}); err != nil {
-		t.Fatal(err)
-	}
 	if err := db.Create(&models.Domain{Name: "restmail.test"}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -222,13 +223,7 @@ func TestDomainTenantFixtureRequiresTheDisposableDomain(t *testing.T) {
 
 func TestDomainTenantsAdministerOnlyTheirOwnDomain(t *testing.T) {
 	db := fixtureDB(t)
-	if err := db.AutoMigrate(&models.Mailbox{}, &models.Credential{}, &models.QuotaUsage{}, &models.Role{}, &models.Grant{}); err != nil {
-		t.Fatal(err)
-	}
 	if err := db.Create(&models.Domain{Name: "restmail.test", ServerType: "restmail", Active: true}).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Create(&models.Role{Name: "admin"}).Error; err != nil {
 		t.Fatal(err)
 	}
 	first, err := prepareDomainTenants(db, "restmail.test")
@@ -250,12 +245,18 @@ func TestDomainTenantsAdministerOnlyTheirOwnDomain(t *testing.T) {
 		if err := db.Where("address = ?", first[tenant].Address).First(&account).Error; err != nil {
 			t.Fatal(err)
 		}
-		var scopes []string
-		if err := db.Model(&models.Grant{}).Where("holder_id = ?", account.ID).Pluck("scope", &scopes).Error; err != nil {
+		var held []models.Grant
+		if err := db.Preload("Role").Where("holder_kind = ? AND holder_id = ?", models.GrantHolderAccount, account.ID).Find(&held).Error; err != nil {
 			t.Fatal(err)
 		}
-		if len(scopes) != 1 || scopes[0] != "domain:"+want {
-			t.Fatalf("tenant %s holds %v, want the admin role on %s only", tenant, scopes, want)
+		wantScopes := map[string]string{"admin": "domain:" + want, models.RoleReceiver: "mailbox:" + account.Address}
+		if len(held) != len(wantScopes) {
+			t.Fatalf("tenant %s holds %v, want only %v", tenant, held, wantScopes)
+		}
+		for _, grant := range held {
+			if scope, ok := wantScopes[grant.Role.Name]; !ok || grant.Scope != scope || grant.Mode != models.GrantActive {
+				t.Fatalf("tenant %s holds %+v, want only active grants %v", tenant, grant, wantScopes)
+			}
 		}
 		credential, err := repositories.NewCredentialRepository(db).MatchPassword(account.ID, domainTenantPassword, time.Now())
 		if err != nil || credential == nil {
