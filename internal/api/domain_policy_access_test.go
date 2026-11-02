@@ -7,7 +7,7 @@ import (
 )
 
 // A domain grant reaches every scoped policy operation on its own domain only. Relay
-// writes and report listing deliberately require an installation-wide grant instead.
+// writes deliberately require an installation-wide grant instead.
 func TestDomainMailPolicyDomainGrant(t *testing.T) {
 	f := newGrantsFixture(t, fixtureAdmin{name: "policy"})
 	owner := f.token(t, "owner")
@@ -36,7 +36,6 @@ func TestDomainMailPolicyDomainGrant(t *testing.T) {
 	ownID := strconv.FormatUint(uint64(f.a.ID), 10)
 	for _, tc := range []struct{ method, path, body string }{
 		{"PUT", "/api/v1/admin/domains/" + ownID + "/relay", `{"transport":"direct"}`},
-		{"GET", "/api/v1/admin/tls-reports?domain_id=" + ownID, ""},
 	} {
 		if rr := doRequest(f.router, tc.method, tc.path, token, tc.body); rr.Code != http.StatusForbidden {
 			t.Errorf("global-only %s: %d %s, want 403", tc.path, rr.Code, rr.Body)

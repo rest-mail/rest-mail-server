@@ -794,6 +794,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 
 		policyChecks := handlers.DomainPolicyRouteChecks{
 			OnDomain: describedCapability(needsOnDomain),
+			OnList:   describedCapability(needsOnList),
 			At:       describedCapability(needs),
 		}
 		senderRuleH.Register(admin, policyChecks)

@@ -15,8 +15,10 @@ import (
 
 	"github.com/antimatter-studios/go-oapifly"
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
+	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/api/respond"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"gorm.io/gorm"
 )
 
@@ -306,9 +308,21 @@ type listTLSReportsInput struct {
 
 // listReports returns TLS-RPT reports with optional filters and pagination.
 func (h *TLSReportHandler) listReports(r *http.Request, in listTLSReportsInput) (endpoint.List[TLSReport], error) {
+	if scopes, restricted := middleware.CapabilityScopes(r, middleware.CapDomainsRead); restricted {
+		allowed := false
+		for _, scope := range scopes {
+			if scope == grants.All || strings.HasPrefix(scope, "domain:") {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return endpoint.List[TLSReport]{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "Insufficient permissions")
+		}
+	}
 	h = h.forRequest(r)
 	limit, offset := pagination(in.Limit, in.Offset, 50, 200)
-	query := h.db.Model(&models.TLSReport{})
+	query := filterAdminList(h.db.Model(&models.TLSReport{}), r, middleware.CapDomainsRead, "tls_reports")
 	if in.DomainID != nil {
 		query = query.Where("domain_id = ?", *in.DomainID)
 	}

@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 
 type describedOperation struct {
 	OperationID string                `json:"operationId"`
+	Description string                `json:"description"`
 	Security    []map[string][]string `json:"security"`
 	Responses   map[string]struct {
 		Content map[string]struct {
@@ -126,6 +128,12 @@ func refName(t *testing.T, schema map[string]interface{}) string {
 
 func TestDomainMailPolicyIsDescribed(t *testing.T) {
 	paths, schemas := describedAPI(t)
+	tlsDescription := paths["/api/v1/admin/tls-reports"]["get"].Description
+	for _, text := range []string{"domains:read on the report's domain", "pagination totals", "whether or not domain_id is supplied", "same empty list as a nonexistent domain", "domains:read at *", "refused with 403"} {
+		if !strings.Contains(tlsDescription, text) {
+			t.Errorf("TLS report description is missing %q: %s", text, tlsDescription)
+		}
+	}
 	for _, tc := range []struct {
 		path, method, id, capability string
 		statuses                     []string

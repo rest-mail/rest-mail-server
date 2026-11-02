@@ -26521,6 +26521,107 @@
       }
     }
   },
+  "listTlsReports": {
+    "domain_missing_filter": {
+      "summary": "A missing domain has no visible reports",
+      "request": {
+        "query": {
+          "domain_id": 9999
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [],
+          "pagination": {
+            "has_more": false
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_other_filter": {
+      "summary": "Another domain is indistinguishable from a missing domain",
+      "request": {
+        "query": {
+          "domain_id": 2
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [],
+          "pagination": {
+            "has_more": false
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_own_filter": {
+      "summary": "A domain administrator may filter its own reports",
+      "request": {
+        "query": {
+          "domain_id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [],
+          "pagination": {
+            "has_more": false
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "domain_unfiltered": {
+      "summary": "An omitted domain filter still respects the domain grant",
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [],
+          "pagination": {
+            "has_more": false
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "global_unfiltered": {
+      "summary": "An installation-wide reader may list every domain",
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [],
+          "pagination": {
+            "has_more": false
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "required_capability": {
+      "summary": "No domains:read grant keeps the existing refusal",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Insufficient permissions"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "login": {
     "email_missing": {
       "request": {
