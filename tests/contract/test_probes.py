@@ -1,8 +1,9 @@
-"""Generated signing-key fixtures must never replace named error examples."""
+"""Held signing keys and snooze dates must never replace named error examples."""
 
 import re
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 
 import probes
@@ -23,13 +24,44 @@ class ProbeConfig(unittest.TestCase):
         self.assertEqual(probes.main(self.source, self.output, self.report), 0)
         self.config = yaml.safe_load(self.output.read_text())
 
-    def test_no_pin_leaves_the_signing_key_out(self):
-        self.assertEqual(self.config["fuzz"]["pin"].keys(), {"private_key"})
+    def test_no_pin_leaves_the_pins_out(self):
+        self.assertEqual(
+            self.config["fuzz"]["pin"].keys(), {"private_key", "snoozed_until"}
+        )
         self.assertEqual(
             probes.main(self.source, self.output, self.report, pin=False), 0
         )
         config = yaml.safe_load(self.output.read_text())
         self.assertFalse(config.get("fuzz", {}).get("pin"))
+
+    def test_a_named_pin_is_dropped_and_the_other_stays(self):
+        self.assertEqual(
+            probes.main(
+                self.source, self.output, self.report, unpinned=["snoozed_until"]
+            ),
+            0,
+        )
+        config = yaml.safe_load(self.output.read_text())
+        self.assertEqual(config["fuzz"]["pin"].keys(), {"private_key"})
+
+    def test_dropping_every_pin_leaves_no_pin_section_to_refuse(self):
+        self.assertEqual(
+            probes.main(
+                self.source,
+                self.output,
+                self.report,
+                unpinned=["private_key", "snoozed_until"],
+            ),
+            0,
+        )
+        config = yaml.safe_load(self.output.read_text())
+        self.assertFalse(config.get("fuzz", {}).get("pin"))
+
+    def test_the_held_snooze_date_is_in_the_future_the_server_requires(self):
+        until = datetime.fromisoformat(
+            self.config["fuzz"]["pin"]["snoozed_until"].replace("Z", "+00:00")
+        )
+        self.assertGreater(until, datetime.now(timezone.utc))
 
     def test_full_examples_keep_their_surface_gate_and_have_no_pins(self):
         self.assertEqual(self.source.read_text(), self.before)
@@ -74,9 +106,17 @@ class ProbeConfig(unittest.TestCase):
                     status.startswith("4"),
                 )
 
-    def test_only_opaque_key_is_held_and_paths_survive_generated_config_location(self):
+    def test_only_the_key_and_snooze_date_are_held_and_paths_survive_generated_config_location(
+        self,
+    ):
         self.assertEqual(
-            self.config["fuzz"], {"pin": {"private_key": probes.DKIM_KEY.read_text()}}
+            self.config["fuzz"],
+            {
+                "pin": {
+                    "private_key": probes.DKIM_KEY.read_text(),
+                    "snoozed_until": probes.SNOOZE_UNTIL,
+                }
+            },
         )
         self.assertEqual(
             self.config["spec"], str(ROOT / ".cache/contract/openapi.json")

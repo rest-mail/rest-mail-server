@@ -247,26 +247,6 @@ def an_api_key_of_its_own_to_edit(transaction):
     transaction["fullPath"] = parent + "/" + str(key["id"]) + ("?" + query if query else "")
 
 
-@hooks.before("snoozeThread")
-def a_future_date_for_a_snooze_probe(transaction):
-    # The schema cannot say a snooze must end in the future, so a coverage
-    # probe's generated date goes forward a century. The named examples, such as
-    # the refusal of a past date, are sent as written, and so is a probe of a value
-    # that is not a date.
-    if not transaction.get("name", "").startswith("coverage:"):
-        return
-    try:
-        body = hooks.get_json(transaction)
-    except ValueError:
-        return
-    if not isinstance(body, dict):
-        return
-    until = body.get("snoozed_until")
-    if isinstance(until, str) and until.startswith("20") and until < time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()):
-        body["snoozed_until"] = "2" + str(int(until[1:4]) + 100).zfill(3) + until[4:]
-        hooks.set_json(transaction, body)
-
-
 def hosted_mailboxes(origin):
     request = urllib.request.Request(
         origin + "/api/v1/admin/mailboxes?limit=1000",
@@ -1280,6 +1260,45 @@ def cancel_a_message_we_made(transaction):
     scheduled_id = schedule_a_message(transaction)
     if isinstance(scheduled_id, int):
         transaction["fullPath"] = f"/api/v1/messages/scheduled/{scheduled_id:d}"
+
+
+@hooks.before("deleteMessage")
+def delete_a_message_we_made(transaction):
+    # The example's message, 51, is a number and not a fixture: which row it
+    # names depends on how many messages the run has made so far, and that row
+    # may belong to someone else or be gone. Coverage sends the example with its
+    # own id before its valid probes, so the fixture admin's request gets a
+    # message of its own to delete. Another principal's request, the refusal
+    # examples' ids and the probes' ids are sent as they are. Only the path
+    # changes, so Vertrag does not abandon the probe.
+    path, _, query = transaction.get("fullPath", "").partition("?")
+    if path.rsplit("/", 1)[-1] != "51" or not with_the_fixture_admins_session(transaction):
+        return
+    origin = origin_of(transaction)
+    raw = (
+        f"Message-ID: <delete-{time.time_ns()}@restmail.test>\r\n"
+        "From: sender@example.test\r\n"
+        f"To: {ADMIN}\r\n"
+        f"Date: {formatdate(usegmt=True)}\r\n"
+        "Subject: Delete contract fixture\r\n\r\nDelete fixture.\r\n"
+    ).encode()
+    request = urllib.request.Request(
+        origin + f"/api/v1/accounts/{mailbox_id(origin, ADMIN):d}/messages/import",
+        data=json.dumps(
+            {
+                "raw_message": base64.b64encode(raw).decode(),
+                "folder": "Contract delete",
+                "internal_date": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            }
+        ).encode(),
+        headers={"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        message_id = (json.load(response).get("data") or {}).get("id")
+    if type(message_id) is not int or message_id < 1:
+        raise RuntimeError("the delete fixture's import returned no message")
+    transaction["fullPath"] = f"/api/v1/messages/{message_id:d}" + ("?" + query if query else "")
 
 
 @hooks.before("listQueue")

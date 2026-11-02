@@ -93,6 +93,32 @@ Vertrag 0.42.0's `--fail-on-skipped-probes` fails coverage with exit 2 when
 non-login valid probes are skipped; it deliberately exempts login. Once this
 baseline is empty, use that flag directly instead of retaining skip debt.
 
+### A hook cannot change a generated body
+
+Vertrag 0.42.0 ends a generated probe whose body a before hook changed
+(`runner.ErrChangedByHook`). `fuzz.Cover` marks it not sent, and the coverage
+command then drops it: it is not in the report, the skip count or
+`skipped-probes-baseline.txt`. A hook that always rewrites a body therefore
+leaves that operation's valid probes unsent and invisible. A hook also never
+sees a `coverage: ` name: the prefix is added to the result, not the transaction.
+
+A value the schema cannot describe goes through `fuzz.pin` instead, which holds
+it before the probe is rendered. `snoozed_until` is held in the future because
+the generator's only date-time is in 2020, and the server rightly refuses that
+(`probes.py`). Both valid snooze probes then reach the server. A pin also takes
+away the probes that vary its own field, so the named examples prove those
+refusals in the gated examples phase, which is not pinned: `past`,
+`malformed_time`, `snoozed_until_missing` and `snoozed_until_wrong_type`.
+
+### Message ids in examples
+
+deleteMessage's `primary` example names message 51, and the coverage phase sends
+it with that id before the valid probes. 51 names whichever row the sequence
+reached, so any change in how many messages the run makes moves it: with one more
+import it became the draft `sendDraft` removes, the example answered 404, and both
+valid probes were skipped. `delete_a_message_we_made` gives the fixture admin's
+request a message of its own, by changing only the path.
+
 ### Attachment download contract
 
 The topology examples send an ordinary download, `Range: bytes=0-0` for a
@@ -749,7 +775,8 @@ a hosted domain and mailbox for each address a test send probe uses, and,
 - `gate.py`: the contract coverage gate. `gate.py --failing-probes openapi.yaml <report>` prints
   the operations with a failing probe, in the baseline's form.
 - `probes.py`: prepares the coverage/fuzz configuration after the full examples
-  gate, holding only the public `fixtures/dkim-key.pem` signing key. Its tests
+  gate, holding only the public `fixtures/dkim-key.pem` signing key and a snooze
+  date in the future. Its tests
   keep pins out of the examples gate and preserve all success probes.
 - `authorization.py`: builds a private configuration from the E2E principals
   for the report-only authorization phase. Its JUnit report and log are

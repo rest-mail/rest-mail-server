@@ -54,7 +54,7 @@ func threadSnoozeScenarios(t *testing.T) mailRemovalScenarios {
 	fixture := newMailRulesWriteScenarios(t, func(base mailRemovalConnection) driver.Connector {
 		return threadSnoozeConnection{base}
 	}, 512)
-	for _, name := range []string{"snoozed", "cancelled", "past", "malformed_time", "thread_missing", "write_unavailable"} {
+	for _, name := range []string{"snoozed", "cancelled", "past", "malformed_time", "snoozed_until_missing", "snoozed_until_wrong_type", "thread_missing", "write_unavailable"} {
 		fixture.scenarios[name] = fixture.scenarios["found"]
 	}
 	return fixture
@@ -66,7 +66,7 @@ func TestThreadSnoozeExamples(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(pairs["snoozeThread"]) < 14 {
+	if len(pairs["snoozeThread"]) < 16 {
 		t.Fatal("missing snooze examples")
 	}
 	for name, pair := range pairs["snoozeThread"] {

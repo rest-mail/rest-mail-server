@@ -65,14 +65,17 @@ if [ "${CONTRACT_DEFER_SUMMARY:-0}" != 1 ]; then
   if [ "$phase" = gate ]; then summary_phases=(examples coverage); fi
   trap 'status=$?; python3 -B tests/contract/summary.py "$out" "${summary_phases[@]}" || true; exit "$status"' EXIT
 fi
-# A narrowed run can select no operation with a signing key, and Vertrag refuses
-# the signing-key pin then, before it sends anything. Vertrag is what knows what a
-# selection holds, so ask it, and write the probe configuration again without the
-# pin. A full run always has the field, so there the refusal stays an error.
+# A narrowed run can select no operation with a pinned field, and Vertrag refuses
+# such a pin, before it sends anything. Vertrag is what knows what a selection
+# holds, so ask it, and write the probe configuration again without the pins it
+# names. A full run always has the fields, so there the refusal stays an error.
 drop_unmatched_pin() {
-  [ ${#select[@]} -ne 0 ] && grep -q 'fuzz.pin names a field or argument nothing in this description declares' "$1" || return 1
-  echo "a narrowed run: nothing selected has a signing key, so it is not pinned"
-  python3 -B tests/contract/probes.py "$out/vertrag-run.yml" "$out/vertrag-probes.yml" "$2.xml" --no-pin
+  [ ${#select[@]} -ne 0 ] || return 1
+  local names
+  names="$(sed -n 's/.*fuzz\.pin names .* nothing in this description declares: \([a-z_, ]*\).*/\1/p' "$1" | head -n 1 | tr -d ' ')"
+  [ -n "$names" ] || return 1
+  echo "a narrowed run: nothing selected has $names, so it is not pinned"
+  python3 -B tests/contract/probes.py "$out/vertrag-run.yml" "$out/vertrag-probes.yml" "$2.xml" "--no-pin=$names"
   python3 -B tests/contract/reports.py "$out/vertrag-probes.yml" "$out/vertrag-probes.yml" "$2" "${narrowed[@]}"
 }
 

@@ -4981,6 +4981,10 @@ paths:
               body: malformed
           malformed_time:
             value: 1
+          snoozed_until_missing:
+            value: 1
+          snoozed_until_wrong_type:
+            value: 1
           no_grants:
             value: 1
             x-requires:
@@ -5039,6 +5043,10 @@ paths:
             x-requires:
               body: malformed
           malformed_time:
+            value: thread/2026@example.net
+          snoozed_until_missing:
+            value: thread/2026@example.net
+          snoozed_until_wrong_type:
             value: thread/2026@example.net
           no_grants:
             value: thread/2026@example.net
@@ -5102,6 +5110,11 @@ paths:
               malformed_time:
                 value:
                   snoozed_until: tomorrow
+              snoozed_until_missing:
+                value: {}
+              snoozed_until_wrong_type:
+                value:
+                  snoozed_until: 12345
               no_grants:
                 value:
                   snoozed_until: '2099-01-01T10:00:00Z'
@@ -5272,6 +5285,22 @@ paths:
                           id: must be at least 1
                       message: Path parameters failed validation
                 malformed_time:
+                  value:
+                    error:
+                      code: validation_failed
+                      details:
+                        fields:
+                          snoozed_until: must be a date-time
+                      message: Request body failed validation
+                snoozed_until_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      details:
+                        fields:
+                          snoozed_until: required
+                      message: Request body failed validation
+                snoozed_until_wrong_type:
                   value:
                     error:
                       code: validation_failed
