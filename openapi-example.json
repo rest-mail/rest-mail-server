@@ -285,6 +285,27 @@
         "mediaType": "application/json"
       }
     },
+    "setup_required": {
+      "summary": "The account has not completed setup",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "stream": {
       "summary": "The account's event stream",
       "description": "The stream stays open; the in-process and browser-session suites read its events.",
@@ -27591,7 +27612,19 @@
   },
   "registerPushDevice": {
     "already_registered": {
-      "request": {},
+      "summary": "This session already registered the token",
+      "description": "The same registration again answers the session's existing device, unchanged, with 200; nothing new is stored.",
+      "requires": {
+        "state": "existing_device"
+      },
+      "request": {
+        "body": {
+          "platform": "apns",
+          "token": "5c1d7e0f3a9b2c4d6e8f0a1b3c5d7e9f1a2b4c6d8e0f2a3b5c7d9e1f3a4b6c8d",
+          "environment": "production",
+          "app_id": "com.antimatterstudios.restmail"
+        }
+      },
       "response": {
         "status": 200,
         "body": {
@@ -27601,18 +27634,20 @@
             "environment": "production",
             "created_at": "2026-01-01T00:00:00Z"
           }
-        }
+        },
+        "mediaType": "application/json"
       }
     },
     "app_id_mismatch": {
+      "summary": "The registration names another app",
+      "description": "The body fits the schema; the handler refuses an app id other than the APNs topic this server is configured with.",
       "request": {
         "body": {
           "platform": "apns",
           "token": "5c1d7e0f3a9b2c4d6e8f0a1b3c5d7e9f1a2b4c6d8e0f2a3b5c7d9e1f3a4b6c8d",
           "environment": "production",
           "app_id": "com.example.other"
-        },
-        "invalid": true
+        }
       },
       "response": {
         "status": 422,
@@ -27626,10 +27661,57 @@
               }
             }
           }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "The session lookup fails",
+      "description": "Session and setup checks pass, but reading whether the session is still alive fails. Nothing is stored.",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "body": {
+          "platform": "apns",
+          "token": "5c1d7e0f3a9b2c4d6e8f0a1b3c5d7e9f1a2b4c6d8e0f2a3b5c7d9e1f3a4b6c8d",
+          "environment": "production",
+          "app_id": "com.antimatterstudios.restmail"
         }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to register the device"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type. The route and Vertrag transport hook send those exact bytes rather than JSON-quoting them.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "registered": {
+      "summary": "A new device for this session",
       "request": {
         "body": {
           "platform": "apns",
@@ -27647,7 +27729,105 @@
             "environment": "production",
             "created_at": "2026-01-01T00:00:00Z"
           }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "body": {
+          "platform": "apns",
+          "token": "5c1d7e0f3a9b2c4d6e8f0a1b3c5d7e9f1a2b4c6d8e0f2a3b5c7d9e1f3a4b6c8d",
+          "environment": "production",
+          "app_id": "com.antimatterstudios.restmail"
         }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "body": {
+          "platform": "apns",
+          "token": "5c1d7e0f3a9b2c4d6e8f0a1b3c5d7e9f1a2b4c6d8e0f2a3b5c7d9e1f3a4b6c8d",
+          "environment": "production",
+          "app_id": "com.antimatterstudios.restmail"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "setup_required": {
+      "summary": "The account has not completed setup",
+      "description": "The session is current but its account still has to finish setting up. The SetupDone middleware refuses the request before the handler runs.",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "body": {
+          "platform": "apns",
+          "token": "5c1d7e0f3a9b2c4d6e8f0a1b3c5d7e9f1a2b4c6d8e0f2a3b5c7d9e1f3a4b6c8d",
+          "environment": "production",
+          "app_id": "com.antimatterstudios.restmail"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "setup_required",
+            "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No credential is sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "body": {
+          "platform": "apns",
+          "token": "5c1d7e0f3a9b2c4d6e8f0a1b3c5d7e9f1a2b4c6d8e0f2a3b5c7d9e1f3a4b6c8d",
+          "environment": "production",
+          "app_id": "com.antimatterstudios.restmail"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
       }
     }
   },
