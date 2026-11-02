@@ -11,7 +11,7 @@
   "layout": {
     "mode": "grid",
     "cols": 4,
-    "gapX": 66,
+    "gapX": 60,
     "gapY": 70,
     "cellW": 160,
     "cellH": 64
@@ -20,7 +20,7 @@
     {
       "id": "servers",
       "type": "external",
-      "label": "Other mail servers",
+      "label": "Other servers",
       "sublabel": "Postfix, Exim, Gmail…",
       "row": 0,
       "col": 0
@@ -52,7 +52,7 @@
     {
       "id": "imapgw",
       "type": "backend",
-      "label": "IMAP, POP3 gateways",
+      "label": "IMAP/POP3",
       "sublabel": "993, 995",
       "row": 1,
       "col": 1
@@ -93,7 +93,7 @@
     {
       "id": "remote",
       "type": "external",
-      "label": "Recipients' servers",
+      "label": "Remote servers",
       "sublabel": "SMTP, or RESTMAIL",
       "row": 3,
       "col": 3

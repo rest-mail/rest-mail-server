@@ -63,7 +63,7 @@
       "lane": "server",
       "col": 0,
       "type": "backend",
-      "label": "250 OK, accepted",
+      "label": "250 OK",
       "sublabel": "for a domain not yours",
       "icon": "failure"
     },
@@ -80,7 +80,7 @@
       "lane": "server",
       "col": 2,
       "type": "backend",
-      "label": "Delivered from your IP",
+      "label": "Spam sent",
       "sublabel": "sent from your IP"
     },
     {
@@ -88,7 +88,7 @@
       "lane": "mistakes",
       "col": 1,
       "type": "security",
-      "label": "No sending limits",
+      "label": "No limits",
       "sublabel": "one login sends millions"
     },
     {
@@ -97,6 +97,7 @@
       "col": 2,
       "type": "cloud",
       "label": "Gmail, Microsoft, Yahoo",
+      "width": 160,
       "sublabel": "traps and user reports"
     },
     {
@@ -104,7 +105,7 @@
       "lane": "internet",
       "col": 1,
       "type": "external",
-      "label": "DNS blocklists",
+      "label": "Blocklists",
       "sublabel": "Spamhaus lists your IP"
     },
     {
@@ -112,7 +113,7 @@
       "lane": "internet",
       "col": 0,
       "type": "external",
-      "label": "Your real mail bounces",
+      "label": "Mail bounces",
       "sublabel": "550 5.7.1: IP listed",
       "icon": "failure"
     }
