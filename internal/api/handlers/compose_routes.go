@@ -10,6 +10,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/api/respond"
+	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
@@ -64,6 +65,11 @@ type CalendarEventSummary struct {
 // nothing kept.
 type SendDiscarded struct {
 	Status string `json:"status" enums:"discarded"`
+}
+
+type sendMessageDescription struct {
+	apitypes.SendMessageRequest
+	From string `json:"from" minLength:"1"`
 }
 
 // sendOutcomes are the answers a send gives, each with its own status: the sent message (201),
@@ -190,6 +196,7 @@ func (h *MessageHandler) RegisterCompose(rs endpoint.Routes, audit ...func(strin
 		Security:    readAndSend}, h.respondToCalendar)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/send",
 		OperationID: "sendMessage", Summary: "Send a message", Tags: []string{"Messages"},
+		DescribedRequest: sendMessageDescription{},
 		Description: "Sent at once (201), or with scheduled_at stored and sent then (202); the outbound pipeline may " +
 			"discard it (200). " + delegatedSendingDescription,
 		Status: http.StatusCreated, SuccessStatuses: []int{http.StatusOK, http.StatusAccepted},

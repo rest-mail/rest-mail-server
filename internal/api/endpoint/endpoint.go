@@ -80,9 +80,9 @@ type Operation struct {
 	// apply: a capability check, a rate limit. Each describes what it adds.
 	Middleware []Middleware
 
-	// DescribedRequest, when set, is the request as the document states it, for a handler
-	// that reads the body itself (SpoolBody) so a large one never sits in memory. Req then
-	// binds only the parameters. The handler enforces the body rules this type states.
+	// DescribedRequest states the full request schema while Req controls binding. The
+	// handler enforces any additional rules, preserving its authorization order or
+	// reading a body itself (SpoolBody) so a large one never sits in memory.
 	DescribedRequest any
 }
 

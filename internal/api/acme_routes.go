@@ -33,12 +33,12 @@ func registerACME(rs endpoint.Routes, responder http.Handler) {
 			return endpoint.Document{}, fmt.Errorf("ACME challenge responder answered %d", captured.status)
 		}
 	}
-	for _, route := range []struct{ method, id string }{
-		{http.MethodGet, "acmeChallenge"},
-		{http.MethodHead, "headAcmeChallenge"},
+	for _, route := range []struct{ Method, OperationID string }{
+		{Method: http.MethodGet, OperationID: "acmeChallenge"},
+		{Method: http.MethodHead, OperationID: "headAcmeChallenge"},
 	} {
-		endpoint.Register(rs, endpoint.Operation{Method: route.method, Path: "/.well-known/acme-challenge/{token}",
-			OperationID: route.id, Summary: "ACME HTTP-01 challenge response", Tags: []string{"System"},
+		endpoint.Register(rs, endpoint.Operation{Method: route.Method, Path: "/.well-known/acme-challenge/{token}",
+			OperationID: route.OperationID, Summary: "ACME HTTP-01 challenge response", Tags: []string{"System"},
 			Description: "Present only when ACME is enabled. An unknown challenge token is refused with plain-text 404.",
 			Security:    oapifly.Public, MediaType: "text/plain",
 			Responses: []oapifly.EndpointResponse{{Status: http.StatusNotFound, MediaType: "text/plain", Type: oapifly.TypeOf[string](),

@@ -32,7 +32,20 @@ func TestExamplePairsFitTheDescription(t *testing.T) {
 
 	found := map[string]bool{}
 	missing := 0
-	for _, w := range describedRouters(t).generator("test").Report() {
+	generators := gapGenerators(t)
+	registered := map[string]bool{}
+	for _, generator := range generators {
+		for operation := range generatedOperationIDs(t, generator) {
+			registered[operation] = true
+		}
+	}
+	warnings := map[string]oapifly.Warning{}
+	for _, generator := range generators {
+		for _, warning := range generator.Report() {
+			warnings[exampleFinding(warning)] = warning
+		}
+	}
+	for _, w := range warnings {
 		switch w.Kind {
 		case oapifly.WarnExampleMissing:
 			if !phaseStatuses[w.Status] {
@@ -40,7 +53,7 @@ func TestExamplePairsFitTheDescription(t *testing.T) {
 			}
 			continue
 		case oapifly.WarnExampleOrphaned:
-			if w.Method == "" && inOracle[w.OperationID] {
+			if w.Method == "" && (inOracle[w.OperationID] || registered[w.OperationID]) {
 				continue
 			}
 		case oapifly.WarnExampleInvalid, oapifly.WarnExamplesUnreadable:

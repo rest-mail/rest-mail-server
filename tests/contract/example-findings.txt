@@ -5,5 +5,3 @@
 #   request type does not state; state it in the type (go-oapifly#23), or, for a rule no
 #   schema can state, take the mark off the example.
 # - example-invalid on a response: the example and the response type disagree.
-example-invalid sendMessage/from_missing
-example-invalid sendMessage/unsubscribe_not_allowed
