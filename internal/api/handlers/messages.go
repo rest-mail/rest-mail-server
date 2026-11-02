@@ -2174,6 +2174,14 @@ type localDeliveryParams struct {
 	TLSVersion  string
 	// RequireTLS is the message's REQUIRETLS tag (RFC 8689 §4.1).
 	RequireTLS bool
+	// Stage is the part of delivery to run; the zero value is all of it. A message queued
+	// for its content checks runs deliverRequired while the sender waits, and deliverContent
+	// later, with one State between them (#1437).
+	Stage deliveryStage
+	State *deliveryState
+	// InCommit runs in the transaction that stores the message, so taking a queued message
+	// off its queue and storing it happen together or not at all.
+	InCommit func(tx *gorm.DB) error
 	// IndependentAttachments gives a forwarded local copy its own object lifetime.
 	IndependentAttachments bool
 }
@@ -2215,9 +2223,12 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	// later reject/quarantine still counts as received) on messages_received,
 	// labelled by transport. Non inbound-MX deliveries (nil ReceivedTLS) are not
 	// counted — this measures mail received from the internet.
-	recordInboundReceived(params.ReceivedTLS)
-	if consumed, err := h.tlsReports.receive(ctx, mailbox.Address, params.RawMessage); consumed || err != nil {
-		return nil, err
+	// The content stage is the same arrival, already counted and already looked at.
+	if params.Stage != deliverContent {
+		recordInboundReceived(params.ReceivedTLS)
+		if consumed, err := h.tlsReports.receive(ctx, mailbox.Address, params.RawMessage); consumed || err != nil {
+			return nil, err
+		}
 	}
 
 	// Authentication-Results claiming this server's authserv-id did not come
@@ -2331,7 +2342,8 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		}
 
 		pipelineCtx := pipeline.WithDB(ctx, h.db)
-		pipelineResult, pipeErr := h.engine.Execute(pipelineCtx, pipelineCfg, emailJSON)
+		stageCfg, runState := params.stageOf(pipelineCfg, emailJSON)
+		pipelineResult, pipeErr := h.engine.ExecuteStage(pipelineCtx, stageCfg, emailJSON, runState)
 		if pipeErr != nil {
 			return nil, fmt.Errorf("pipeline execution failed: %w", pipeErr)
 		}
@@ -2386,6 +2398,12 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 			h.recordTrace(buildTrace(traceBase))
 			return nil, fmt.Errorf("deferred: try again later")
 		case pipeline.ActionContinue:
+			// The required checks passed: the message is accepted, and the rest of
+			// delivery is the content stage's. The trace is recorded there, at the end.
+			if params.Stage == deliverRequired {
+				params.State.keep(pipelineResult.FinalEmail)
+				return nil, errContentStageNext
+			}
 			emailJSON = pipelineResult.FinalEmail
 			authResults = pipelineResult.Auth
 			// Stash the delivered trace; it is recorded after the Message row is
@@ -2589,6 +2607,11 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	}
 
 	if err := h.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if params.InCommit != nil {
+			if err := params.InCommit(tx); err != nil {
+				return err
+			}
+		}
 		if err := repositories.ReserveStorage(tx, mailbox.ID, int64(sizeBytes)+totalAttBytes); err != nil {
 			return err
 		}

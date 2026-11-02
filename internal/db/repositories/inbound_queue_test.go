@@ -23,7 +23,7 @@ func openInboundQueue(t *testing.T) (*InboundQueue, *gorm.DB) {
 }
 
 func inboundMessage(ref string) *models.InboundMessage {
-	return &models.InboundMessage{ObjectRef: ref, Size: 5, Checksum: "abc", MailFrom: "a@example.org", Recipients: models.JSONB(`["b@example.test"]`)}
+	return &models.InboundMessage{ObjectRef: ref, Size: 5, Checksum: "abc", MailFrom: "a@example.org", Recipient: "b@example.test"}
 }
 
 func TestInboundQueueHandsOutTheOldestFirst(t *testing.T) {
