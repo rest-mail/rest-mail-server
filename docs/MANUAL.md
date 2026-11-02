@@ -1022,6 +1022,26 @@ kubectl delete secret restmail-api restmail-postgres -n rest-mail
 
 Delete the volumes and keep the Secrets, or the other way round, only if you mean to: the data is unreadable without `MASTER_KEY`, and the database refuses a password it was not created with.
 
+#### Publish MTA-STS only after policy HTTPS is ready
+
+For a domain with an active policy, `chore dns:show` prints its policy-derived
+`_mta-sts` TXT record and `mta-sts.<domain> CNAME <mail host>`; `chore dns:check`
+compares both with public DNS. For cert-manager installs, run
+`chore dns:mta-sts-hosts > mta-sts-hosts.json` in the deployment pipeline and pass
+the result to Helm with `-f mta-sts-hosts.json`. It supplies `api.mtaSts.hosts`:
+the API ingress routes only `/.well-known/mta-sts.txt` on those names, and adds
+them to its TLS hosts for cert-manager's ingress-shim. Enable API ingress TLS
+and configure its cert-manager issuer annotation first.
+
+The record list cannot inspect the ingress or externally validate certificates,
+so its per-domain warning accurately says HTTPS is unverified, even after a
+successful deploy. Publish the CNAME, deploy routing and wait for certificate
+issuance, then fetch the policy over normally verified HTTPS **before** publishing
+`_mta-sts`. The [operator playbook](installing.md#mta-sts-policy-hosts-with-cert-manager)
+has the pipeline commands and readiness checks. Installs **without cert-manager**
+rely on [#123](https://github.com/rest-mail/rest-mail-server/issues/123), including
+REST Mail's own ACME obtaining these certificates (item 4 of #727).
+
 #### Ask the server what state it is in
 
 ```sh

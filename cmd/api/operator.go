@@ -62,9 +62,10 @@ const operatorUsage = `restmail-api operator commands
       Signs everybody out: every refresh token, then every account's epoch.
       Output: {"refresh_tokens": N, "accounts": N}
 
-  restmail-api dns-records --mail-host HOST [--ip ADDRESS]
+  restmail-api dns --mail-host HOST [--ip ADDRESS]
       The records each domain must publish: MX, SPF, DMARC, and DKIM where the
-      domain has a key. ADDRESS adds the mail host's A record and the PTR.
+      domain has a key; MTA-STS TXT and policy-host CNAME for active policies.
+      ADDRESS adds the mail host's A record and the PTR. dns-records is an alias.
       Output: {"domains": [{"domain": ..., "records": [...]}]}
 
   restmail-api dkim-key ensure --domain NAME
@@ -128,7 +129,7 @@ func runOperator(args []string, stdout, stderr io.Writer) int {
 		return resetPassword(args[1:], os.Stdin, stdout, stderr)
 	case "revoke-sessions":
 		return revokeSessions(args[1:], stdout, stderr)
-	case "dns-records":
+	case "dns", "dns-records":
 		return dnsRecords(args[1:], stdout, stderr)
 	case "dkim-key":
 		return dkimKeyCommand(args[1:], stdout, stderr)
@@ -348,7 +349,7 @@ func dnsRecords(args []string, stdout, stderr io.Writer) int {
 		entry := recordsForDomain(d, host, *ip, cfg.MasterKey, clientPorts(cfg))
 		entry.Records = append(entry.Records, rotationRecords(d, byDomain[d.ID], cfg.MasterKey)...)
 		if policy, ok := policyOf[d.ID]; ok {
-			addMTASTSRecord(&entry, d, policy)
+			addMTASTSRecord(&entry, d, policy, host)
 		}
 		out.Domains = append(out.Domains, entry)
 	}
@@ -359,8 +360,8 @@ func dnsRecords(args []string, stdout, stderr io.Writer) int {
 type domainRecords struct {
 	Domain  string          `json:"domain"`
 	Records []dns.DNSRecord `json:"records"`
-	// Problem says why a record is missing, when one is: no DKIM key yet,
-	// one this server cannot read, or a name that cannot be put in DNS.
+	// Problem says why a record is missing or publication needs care: no DKIM key,
+	// unreadable material, an invalid DNS name, or unverified policy-host HTTPS.
 	Problem string `json:"problem,omitempty"`
 }
 
@@ -389,11 +390,10 @@ func recordsForDomain(d models.Domain, mailHost, ip, masterKey string, ports dns
 	return entry
 }
 
-// addMTASTSRecord adds the _mta-sts record of a domain with an active MTA-STS policy, its id
-// derived from the policy (#727), so dns:check reports a published id the policy has moved on
-// from. A policy that cannot be served, an mx that is not a host name, gets no record: the
-// problem says why.
-func addMTASTSRecord(entry *domainRecords, d models.Domain, policy models.MTASTSPolicy) {
+// addMTASTSRecord adds the policy-derived TXT and policy-host CNAME for an active policy
+// (#727). It cannot verify ingress or certificate readiness, so publication carries a note.
+// A policy with an invalid mx host gets neither record, and the problem says why.
+func addMTASTSRecord(entry *domainRecords, d models.Domain, policy models.MTASTSPolicy, mailHost string) {
 	name, err := mail.DomainASCII(d.Name)
 	if err != nil {
 		return // the entry already says the name cannot be published
@@ -407,7 +407,13 @@ func addMTASTSRecord(entry *domainRecords, d models.Domain, policy models.MTASTS
 		entry.Problem = problem
 		return
 	}
-	entry.Records = append(entry.Records, dns.MTASTSRecord(name, id))
+	entry.Records = append(entry.Records, dns.MTASTSRecord(name, id), dns.DNSRecord{
+		Type: "CNAME", Name: "mta-sts." + name, Value: mailHost, TTL: 3600,
+	})
+	if entry.Problem != "" {
+		entry.Problem += "; "
+	}
+	entry.Problem += "MTA-STS policy host mta-sts." + name + ": HTTPS route and certificate are unverified; do not publish _mta-sts until both are ready"
 }
 
 // clientPorts are the client listeners the gateways bind, from the same

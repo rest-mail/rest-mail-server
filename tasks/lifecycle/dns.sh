@@ -51,6 +51,11 @@ args=(dns-records --mail-host "$host")
 if ! records=$(operator "${args[@]}" 2>&1); then
   die "Could not read the domains: $(operator_error "$records")"
 fi
+if [ "$mode" = mta-sts-hosts ]; then
+  jq '{api: {mtaSts: {hosts: [.domains[].records[] |
+    select(.type == "CNAME" and (.name | startswith("mta-sts."))) | .name] | unique}}}' <<<"$records"
+  exit $?
+fi
 [ "$(jq '.domains | length' <<<"$records")" -gt 0 ] || {
   say "The server has no domains yet. Add one in the rest-mail app, then run this again."
   exit 0
@@ -84,6 +89,7 @@ check)
     case $type in
     MX) got=$(dig +short @"$resolver" MX "$name" | awk '{ print $2 }' | sed 's/\.$//') ;;
     PTR) got=$(dig +short @"$resolver" -x "$name" | sed 's/\.$//') ;;
+    CNAME) got=$(dig +short @"$resolver" CNAME "$name" | sed 's/\.$//') ;;
     TXT) got=$(dig +short @"$resolver" TXT "$name" | sed 's/" "//g; s/^"//; s/"$//') ;;
     # priority weight port target; the target's final dot goes, but not a
     # target that is only ".", which says the service is not offered.
@@ -106,5 +112,5 @@ check)
   fi
   say "Everything is published."
   ;;
-*) die "usage: dns.sh show|check" ;;
+*) die "usage: dns.sh show|check|mta-sts-hosts" ;;
 esac

@@ -283,6 +283,8 @@ api:
   service:
     type: ClusterIP
     port: 8080
+  mtaSts:
+    hosts: []
   ingress:
     enabled: false
     className: ""

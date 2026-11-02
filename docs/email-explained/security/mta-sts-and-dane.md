@@ -170,9 +170,16 @@ dig +dnssec +short TLSA _25._tcp.mx1.example.org
   fetch), so it changes exactly when the policy does and the operator never
   picks one; `chore dns:check` reports a published `id` the policy has moved on
   from ([`internal/db/models/mtasts.go`](../../../internal/db/models/mtasts.go)).
-  The `mta-sts.<domain>` host record, and a certificate covering that name, are
-  not printed or obtained yet:
-  [#727](https://github.com/rest-mail/rest-mail-server/issues/727).
+  It also prints `mta-sts.<domain> CNAME <mail host>`. For cert-manager installs,
+  the deployment pipeline renders `api.mtaSts.hosts` with
+  `chore dns:mta-sts-hosts`; the chart routes only the policy path on those hosts
+  and includes them on the API ingress certificate request. Publish the CNAME,
+  deploy the routes and certificate, verify policy HTTPS, then publish `_mta-sts`.
+  The record list warns that HTTPS is unverified because it cannot observe
+  ingress or certificate readiness, not because it has detected a failure.
+  See the [operator playbook](../../installing.md#mta-sts-policy-hosts-with-cert-manager).
+  Installs **without cert-manager**, including REST Mail's own ACME obtaining
+  these names, rely on [#123](https://github.com/rest-mail/rest-mail-server/issues/123).
 - **TLS-RPT:** REST Mail accepts reports sent to it over HTTPS, at
   `/.well-known/smtp-tlsrpt`, with limits on size and rate
   ([`tlsrpt.go`](../../../internal/api/handlers/tlsrpt.go)), and `chore

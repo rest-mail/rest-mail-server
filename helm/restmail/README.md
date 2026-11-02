@@ -381,6 +381,42 @@ first alone.
    (RFC 8460). For RESTMAIL discovery to find the server, the API's host has to
    be the MX host, `mailserver.hostname`.
 
+### MTA-STS policy hosts (cert-manager)
+
+Runtime policy domains are supplied by the install, not discovered by Helm:
+
+```yaml
+api:
+  mtaSts:
+    hosts: [mta-sts.example.com, mta-sts.example.org]
+  ingress:
+    enabled: true
+    host: mx.example.com
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt
+    tls:
+      enabled: true
+      secretName: restmail-api-tls
+```
+
+Each policy host routes only the exact `/.well-known/mta-sts.txt` path to the
+API, preserving Host for policy selection. With TLS enabled the API ingress's
+`tls.hosts` also includes these names, so cert-manager's ingress-shim requests
+them on the API certificate. Configure an existing issuer and an ingress class
+appropriate to the cluster. The default `api.mtaSts.hosts: []` changes no rendered
+resource.
+
+The install's pipeline can run `chore dns:mta-sts-hosts > mta-sts-hosts.json`
+and pass `-f mta-sts-hosts.json` on upgrade; this derives the list from the same
+`restmail-api dns` records as DNS publication. Regenerate it when active policies
+change. Publish the CNAME first, deploy the ingress and certificate, verify the
+policy over HTTPS, then publish `_mta-sts`. The per-domain DNS note remains
+because the operator cannot verify ingress or certificate readiness.
+See the [operator playbook](../../docs/installing.md#mta-sts-policy-hosts-with-cert-manager)
+for the full pipeline. Installs **without cert-manager** rely on
+[#123](https://github.com/rest-mail/rest-mail-server/issues/123), including
+REST Mail's own ACME for these names; that is not implemented by this chart change.
+
 ## Install (development against rest-mail/testbed in kind/k3s)
 
 The dev override file `values-dev.yaml` encodes the testbed-specific
