@@ -1265,7 +1265,7 @@ paths:
                   value:
                     error:
                       code: two_factor_required
-                      message: 'Changing grants needs a session signed in with two-factor authentication: sign in again
+                      message: 'This action needs a session signed in with two-factor authentication: sign in again
                         with your code'
                 recent_two_factor_required:
                   value:
@@ -1322,7 +1322,7 @@ paths:
                   value:
                     error:
                       code: two_factor_required
-                      message: 'Changing grants needs a session signed in with two-factor authentication: sign in again
+                      message: 'This action needs a session signed in with two-factor authentication: sign in again
                         with your code'
                 recent_two_factor_required:
                   value:
@@ -1655,7 +1655,7 @@ paths:
                   value:
                     error:
                       code: two_factor_required
-                      message: 'Changing grants needs a session signed in with two-factor authentication: sign in again
+                      message: 'This action needs a session signed in with two-factor authentication: sign in again
                         with your code'
         "409":
           description: An account with this address exists, or the operator's owned-account limit has been reached (owned_account_limit).
@@ -1758,7 +1758,7 @@ paths:
                   value:
                     error:
                       code: two_factor_required
-                      message: 'Changing grants needs a session signed in with two-factor authentication: sign in again
+                      message: 'This action needs a session signed in with two-factor authentication: sign in again
                         with your code'
                 recent_two_factor_required:
                   value:
@@ -1865,7 +1865,7 @@ paths:
                   value:
                     error:
                       code: two_factor_required
-                      message: 'Changing grants needs a session signed in with two-factor
+                      message: 'This action needs a session signed in with two-factor
                         authentication: sign in again with your code'
   /api/v1/accounts/{id}/credentials:
     parameters:
@@ -1998,7 +1998,7 @@ paths:
                   value:
                     error:
                       code: two_factor_required
-                      message: 'Changing grants needs a session signed in with two-factor authentication: sign in again
+                      message: 'This action needs a session signed in with two-factor authentication: sign in again
                         with your code'
                 recent_two_factor_required:
                   value:
@@ -2066,7 +2066,7 @@ paths:
                   value:
                     error:
                       code: two_factor_required
-                      message: 'Changing grants needs a session signed in with two-factor
+                      message: 'This action needs a session signed in with two-factor
                         authentication: sign in again with your code'
   "/api/v1/accounts/{id}/client-secrets":
     {
@@ -2715,7 +2715,7 @@ paths:
                   value:
                     error:
                       code: two_factor_required
-                      message: 'Changing grants needs a session signed in with two-factor authentication: sign in again
+                      message: 'This action needs a session signed in with two-factor authentication: sign in again
                         with your code'
                 recent_two_factor_required:
                   value:
@@ -2783,7 +2783,7 @@ paths:
                   value:
                     error:
                       code: two_factor_required
-                      message: 'Changing grants needs a session signed in with two-factor authentication: sign in again
+                      message: 'This action needs a session signed in with two-factor authentication: sign in again
                         with your code'
         "404":
           description: No such API key of this account, or already revoked
@@ -5832,7 +5832,7 @@ paths:
                   value:
                     error:
                       code: two_factor_required
-                      message: "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
+                      message: "This action needs a session signed in with two-factor authentication: sign in again with your code"
         "200":
           description: Message released
           content:
@@ -6635,7 +6635,7 @@ paths:
                   value:
                     error:
                       code: two_factor_required
-                      message: 'Changing grants needs a session signed in with two-factor
+                      message: 'This action needs a session signed in with two-factor
                         authentication: sign in again with your code'
     delete:
       parameters:
@@ -6703,7 +6703,7 @@ paths:
                   value:
                     error:
                       code: two_factor_required
-                      message: 'Changing grants needs a session signed in with two-factor
+                      message: 'This action needs a session signed in with two-factor
                         authentication: sign in again with your code'
   /api/v1/admin/mailboxes:
     get:
@@ -6905,7 +6905,7 @@ paths:
                   value:
                     error:
                       code: two_factor_required
-                      message: 'Changing grants needs a session signed in with two-factor
+                      message: 'This action needs a session signed in with two-factor
                         authentication: sign in again with your code'
                 recent_two_factor_required:
                   value:
@@ -6960,7 +6960,7 @@ paths:
                   value:
                     error:
                       code: two_factor_required
-                      message: 'Changing grants needs a session signed in with two-factor authentication: sign in again
+                      message: 'This action needs a session signed in with two-factor authentication: sign in again
                         with your code'
         "404":
           description: Mailbox not found
@@ -10379,7 +10379,7 @@ paths:
                   value:
                     error:
                       code: two_factor_required
-                      message: 'Changing grants needs a session signed in with two-factor authentication: sign in again
+                      message: 'This action needs a session signed in with two-factor authentication: sign in again
                         with your code'
                 recent_two_factor_required:
                   value:
@@ -10439,7 +10439,7 @@ paths:
                   value:
                     error:
                       code: two_factor_required
-                      message: 'Changing grants needs a session signed in with two-factor authentication: sign in again
+                      message: 'This action needs a session signed in with two-factor authentication: sign in again
                         with your code'
                 recent_two_factor_required:
                   value:
@@ -11176,7 +11176,7 @@ paths:
                   value:
                     error:
                       code: two_factor_required
-                      message: 'Changing grants needs a session signed in with two-factor authentication: sign in again
+                      message: 'This action needs a session signed in with two-factor authentication: sign in again
                         with your code'
                 recent_two_factor_required:
                   value:
@@ -11230,7 +11230,7 @@ paths:
                   value:
                     error:
                       code: two_factor_required
-                      message: 'Changing grants needs a session signed in with two-factor authentication: sign in again
+                      message: 'This action needs a session signed in with two-factor authentication: sign in again
                         with your code'
         "404":
           $ref: "#/components/responses/NotFound"
@@ -11467,7 +11467,7 @@ paths:
                   value:
                     error:
                       code: two_factor_required
-                      message: 'Changing grants needs a session signed in with two-factor authentication: sign in again
+                      message: 'This action needs a session signed in with two-factor authentication: sign in again
                         with your code'
         "404":
           $ref: "#/components/responses/NotFound"
@@ -12757,7 +12757,7 @@ paths:
                   value:
                     error:
                       code: two_factor_required
-                      message: 'Changing grants needs a session signed in with two-factor authentication: sign in again
+                      message: 'This action needs a session signed in with two-factor authentication: sign in again
                         with your code'
                 recent_two_factor_required:
                   value:
