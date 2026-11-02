@@ -659,13 +659,13 @@ The throttle probe requires ordinary 401 `unauthorized` refusals followed by
 refusals prove the throttle missing. Neither phase claims to send Vertrag's
 unproven 413/429 examples.
 
-Both entries retain #1493 in `known_gap` pending live end-to-end evidence.
-After merge, dispatch **Contract faults** (`contract-faults.yml`) on main.
-Require green normal-API baselines and both fault reports to contain the
-expected missing-guard failures. A caught fault with `known_gap` deliberately
-fails with **now caught**; this is the proof-review signal, not a green workflow
-claim. Then remove those two markers and rerun the workflow to require green.
-Local mocked HTTP tests and builds alone do not authorize removing the markers.
+Both faults were proven live by **Contract faults** run
+[41537491645](https://github.com/rest-mail/rest-mail-server/actions/runs/41537491645):
+the normal-API baselines were green and both fault reports held the expected
+missing-guard failures. They no longer carry `known_gap`, so the workflow now
+requires both to be caught. Local mocked HTTP tests and builds alone do not
+justify removing a `known_gap` marker: a caught fault with one deliberately
+fails with **now caught**, which is the signal to review the proof.
 
 No secrets fault is claimed here: the normal `contract` command gates on
 `secret_scan.py`, but the fault runner judges examples JUnit and the narrow

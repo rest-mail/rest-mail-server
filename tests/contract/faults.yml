@@ -57,7 +57,6 @@ faults:
     path: /api/v1/auth/login
     phase: body_cap
     breaks: The API body cap is disabled; oversized login bodies reach validation instead of receiving 413
-    known_gap: "#1493"
 
   - name: login_rate_limit_disabled
     build_tags: faultinject,fault_login_rate_limit_disabled
@@ -65,4 +64,3 @@ faults:
     path: /api/v1/auth/login
     phase: auth_throttle
     breaks: The shared authentication throttle is disabled; repeated refused logins no longer receive 429
-    known_gap: "#1493"
