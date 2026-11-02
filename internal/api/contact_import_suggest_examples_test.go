@@ -123,6 +123,9 @@ func TestContactImportSuggestExamplesWithVertrag(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Run("contact reply-time exchanges", func(t *testing.T) {
+		contactReplyTimeContractExamples(t, binary)
+	})
 	f := newContactImportSuggestScenarios(t)
 	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
 	if err != nil {

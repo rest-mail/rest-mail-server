@@ -29,14 +29,15 @@ func NewContactHandler(db *gorm.DB) *ContactHandler {
 // Contact is an address an account's mail is filtered by: trusted, blocked, or learned from
 // what it sent.
 type Contact struct {
-	ID         uint      `json:"id"`
-	MailboxID  uint      `json:"mailbox_id"`
-	Email      string    `json:"email"`
-	Name       string    `json:"name"`
-	TrustLevel string    `json:"trust_level" enums:"auto,trusted,blocked"`
-	Source     string    `json:"source" enums:"sent,manual,import"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID                uint      `json:"id"`
+	MailboxID         uint      `json:"mailbox_id"`
+	Email             string    `json:"email"`
+	Name              string    `json:"name"`
+	TrustLevel        string    `json:"trust_level" enums:"auto,trusted,blocked"`
+	Source            string    `json:"source" enums:"sent,manual,import"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
+	UsualReplySeconds *int64    `json:"usual_reply_seconds,omitempty" minimum:"1" description:"Median seconds to this contact's first reply to each sent message, from this account's history only. Omitted when disabled or fewer than three matched replies exist."`
 }
 
 func contactOf(m models.Contact) Contact {
@@ -82,6 +83,14 @@ func (h *ContactHandler) RegisterContacts(rs endpoint.Routes) {
 	reads := handlerChecked(models.CapMailRead, schemes...)
 	writes := handlerChecked(models.CapMailWrite, schemes...)
 	tags := []string{"Contacts"}
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/contact-reply-time",
+		OperationID: "getContactReplyTimeSetting", Summary: "Get the account's contact reply-time setting", Tags: tags,
+		Description: "Off by default. Only this account's stored mail is used; no history is calculated or returned while disabled. Nothing is sent to contacts or external services.",
+		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.getReplyTimeSetting)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPut, Path: "/api/v1/accounts/{id}/contact-reply-time",
+		OperationID: "setContactReplyTimeSetting", Summary: "Set the account's contact reply-time setting", Tags: tags,
+		Description: "Opt in to contact reply-time estimates in contact lists and suggestions. Uses the median of at least three first replies matched by In-Reply-To, or the last References ID when In-Reply-To is absent, to this account's Sent messages addressed to the contact. Uses stored received_at timestamps, ignores drafts, deleted mail and nonpositive delays, and counts each sent Message-ID once. This is a local estimate, not a signal from the contact. No headers, outbound requests or tracking are added.",
+		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.setReplyTimeSetting)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/contacts",
 		OperationID: "listContacts", Summary: "List contacts for an account", Tags: tags,
 		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.list)
@@ -117,18 +126,26 @@ var (
 // resolveMailboxID checks the caller may act on the account (mailbox) the
 // URL names with capability, and returns its id.
 func (h *ContactHandler) resolveMailboxID(r *http.Request, accountID uint32, capability string) (uint, error) {
+	mailbox, err := h.resolveContactAccount(r, accountID, capability)
+	if err != nil {
+		return 0, err
+	}
+	return mailbox.ID, nil
+}
+
+func (h *ContactHandler) resolveContactAccount(r *http.Request, accountID uint32, capability string) (*models.Mailbox, error) {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
-		return 0, errContactAccess
+		return nil, errContactAccess
 	}
-	mailboxID, err := resolveAccountMailbox(h.db.WithContext(r.Context()), uint(accountID), claims, capability)
+	mailbox, err := mayReach(h.db.WithContext(r.Context()), claims, uint(accountID), capability)
 	if err != nil {
 		if errors.Is(err, errNoAccess) {
-			return 0, errContactAccess
+			return nil, errContactAccess
 		}
-		return 0, fmt.Errorf("resolve contacts account: %w", err)
+		return nil, fmt.Errorf("resolve contacts account: %w", err)
 	}
-	return mailboxID, nil
+	return mailbox, nil
 }
 
 type listContactsRequest struct {
@@ -142,12 +159,12 @@ type listContactsRequest struct {
 // list returns contacts for a mailbox with optional filtering.
 // GET /api/v1/accounts/{id}/contacts
 func (h *ContactHandler) list(r *http.Request, in listContactsRequest) (endpoint.List[Contact], error) {
-	mailboxID, err := h.resolveMailboxID(r, in.ID, models.CapMailRead)
+	mailbox, err := h.resolveContactAccount(r, in.ID, models.CapMailRead)
 	if err != nil {
 		return endpoint.List[Contact]{}, err
 	}
 
-	query := h.db.WithContext(r.Context()).Model(&models.Contact{}).Where("mailbox_id = ?", mailboxID)
+	query := h.db.WithContext(r.Context()).Model(&models.Contact{}).Where("mailbox_id = ?", mailbox.ID)
 
 	if in.TrustLevel != nil {
 		query = query.Where("trust_level = ?", *in.TrustLevel)
@@ -171,7 +188,8 @@ func (h *ContactHandler) list(r *http.Request, in listContactsRequest) (endpoint
 		return endpoint.List[Contact]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to list contacts")
 	}
 
-	return endpoint.List[Contact]{Data: contactsOf(contacts), Pagination: &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total}}, nil
+	out, err := h.contactsWithReplyTime(r, mailbox, contacts)
+	return endpoint.List[Contact]{Data: out, Pagination: &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total}}, err
 }
 
 // createContactRequest is a new contact: an address, and optionally a name and how far it is
@@ -397,7 +415,7 @@ type suggestContactsRequest struct {
 // suggest returns autocomplete suggestions for the compose "To" field.
 // GET /api/v1/accounts/{id}/contacts/suggest?q=...
 func (h *ContactHandler) suggest(r *http.Request, in suggestContactsRequest) (endpoint.List[Contact], error) {
-	mailboxID, err := h.resolveMailboxID(r, in.ID, models.CapMailRead)
+	mailbox, err := h.resolveContactAccount(r, in.ID, models.CapMailRead)
 	if err != nil {
 		return endpoint.List[Contact]{}, err
 	}
@@ -409,14 +427,15 @@ func (h *ContactHandler) suggest(r *http.Request, in suggestContactsRequest) (en
 	var contacts []models.Contact
 	escaped := "%" + escapeLike(in.Q) + "%"
 	if err := h.db.WithContext(r.Context()).Where("mailbox_id = ? AND (email LIKE ? ESCAPE '\\' OR name LIKE ? ESCAPE '\\') AND trust_level != ?",
-		mailboxID, escaped, escaped, "blocked").
+		mailbox.ID, escaped, escaped, "blocked").
 		Order("name ASC, email ASC").
 		Limit(10).
 		Find(&contacts).Error; err != nil {
 		return endpoint.List[Contact]{}, fmt.Errorf("suggest contacts: %w", err)
 	}
 
-	return endpoint.List[Contact]{Data: contactsOf(contacts)}, nil
+	out, err := h.contactsWithReplyTime(r, mailbox, contacts)
+	return endpoint.List[Contact]{Data: out}, err
 }
 
 // contactsPath names the account whose contacts a route acts on.

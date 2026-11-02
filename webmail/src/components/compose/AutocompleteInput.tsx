@@ -3,6 +3,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useMailStore } from '@/stores/mailStore';
 import { suggestContacts, type ContactSuggestion } from '@/api/client';
 import { cn } from '@/lib/utils';
+import { ContactReplyTime } from '@/components/contacts/ContactReplyTime';
 
 interface AutocompleteInputProps {
   value: string[];
@@ -14,6 +15,7 @@ export function AutocompleteInput({ value, onChange, placeholder }: Autocomplete
   const { activeAccountId } = useMailStore();
   const [inputValue, setInputValue] = useState('');
   const [suggestions, setSuggestions] = useState<ContactSuggestion[]>([]);
+  const [suggestionsAccountId, setSuggestionsAccountId] = useState<number | null>(null);
   const [showDropdown, setShowDropdown] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [loading, setLoading] = useState(false);
@@ -36,6 +38,7 @@ export function AutocompleteInput({ value, onChange, placeholder }: Autocomplete
       const resp = await suggestContacts(activeAccountId, query.trim());
       const existing = new Set(value.map(e => e.toLowerCase()));
       const filtered = resp.data.filter(s => !existing.has(s.email.toLowerCase()));
+      setSuggestionsAccountId(activeAccountId);
       setSuggestions(filtered);
       setHasSearched(true);
       setShowDropdown(true);
@@ -243,6 +246,7 @@ export function AutocompleteInput({ value, onChange, placeholder }: Autocomplete
                 onMouseEnter={() => setHighlightedIndex(i)}
               >
                 {formatSuggestion(s)}
+                <span className="block"><ContactReplyTime seconds={suggestionsAccountId === activeAccountId ? s.usual_reply_seconds : undefined} /></span>
               </button>
             ))
           ) : hasSearched ? (

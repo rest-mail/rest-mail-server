@@ -329,6 +329,17 @@ export interface ContactSuggestion {
   id: number;
   email: string;
   name: string;
+  usual_reply_seconds?: number;
+}
+
+type ContactReplyTimeSetting = paths['/api/v1/accounts/{id}/contact-reply-time']['get']['responses'][200]['content']['application/json'];
+
+export async function getContactReplyTimeSetting(accountId: number): Promise<ContactReplyTimeSetting> {
+  return request(`${BASE}/accounts/${accountId}/contact-reply-time`);
+}
+
+export async function setContactReplyTimeSetting(accountId: number, enabled: boolean): Promise<ContactReplyTimeSetting> {
+  return request(`${BASE}/accounts/${accountId}/contact-reply-time`, { method: 'PUT', body: JSON.stringify({ enabled }) });
 }
 
 export async function suggestContacts(accountId: number, query: string): Promise<{ data: ContactSuggestion[] }> {

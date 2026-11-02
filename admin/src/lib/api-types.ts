@@ -300,6 +300,30 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/accounts/{id}/contact-reply-time": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+    * Get the account's contact reply-time setting
+    * @description Off by default. Only this account's stored mail is used; no history is calculated or returned while disabled. Nothing is sent to contacts or external services.
+    */
+    get: operations["getContactReplyTimeSetting"];
+    /**
+    * Set the account's contact reply-time setting
+    * @description Opt in to contact reply-time estimates in contact lists and suggestions. Uses the median of at least three first replies matched by In-Reply-To, or the last References ID when In-Reply-To is absent, to this account's Sent messages addressed to the contact. Uses stored received_at timestamps, ignores drafts, deleted mail and nonpositive delays, and counts each sent Message-ID once. This is a local estimate, not a signal from the contact. No headers, outbound requests or tracking are added.
+    */
+    put: operations["setContactReplyTimeSetting"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/accounts/{id}/contacts": {
     parameters: {
       query?: never;
@@ -2675,6 +2699,8 @@ export interface components {
       trust_level: "auto" | "trusted" | "blocked";
       /** Format: date-time */
       updated_at: string;
+      /** Format: int64 */
+      usual_reply_seconds?: number | null;
     };
     ContactsImported: {
       imported: number;
@@ -2882,6 +2908,9 @@ export interface components {
     };
     "Data-capabilityResponseList": {
       data: components["schemas"]["capabilityResponse"][];
+    };
+    "Data-contactReplyTimeSetting": {
+      data: components["schemas"]["contactReplyTimeSetting"];
     };
     "Data-createdAPIKey": {
       data: components["schemas"]["createdAPIKey"];
@@ -4213,6 +4242,9 @@ export interface components {
     confirmRequest: {
       totp_code: string;
     };
+    contactReplyTimeSetting: {
+      enabled: boolean;
+    };
     createAPIKeyBody: {
       /** Format: date-time */
       expires_at?: string | null;
@@ -4837,6 +4869,102 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+  getContactReplyTimeSetting: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Data-contactReplyTimeSetting"];
+        };
+      };
+      /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description request_too_large: the body is over the API's size cap */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Unprocessable Entity */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ValidationErrorResponse"];
+        };
+      };
+      /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+      429: {
+        headers: {
+          /** @description Seconds until a request may be made again */
+          "Retry-After": number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal Server Error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description unavailable: the credential or session check could not be made */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   mozillaAutoconfigWellKnown: {
     parameters: {
       query?: {
@@ -5108,6 +5236,115 @@ export interface operations {
       };
       /** @description Internal Server Error */
       500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  setContactReplyTimeSetting: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["contactReplyTimeSetting"];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Data-contactReplyTimeSetting"];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Request Entity Too Large */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Unprocessable Entity */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ValidationErrorResponse"];
+        };
+      };
+      /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+      429: {
+        headers: {
+          /** @description Seconds until a request may be made again */
+          "Retry-After": number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal Server Error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description unavailable: the credential or session check could not be made */
+      503: {
         headers: {
           [name: string]: unknown;
         };

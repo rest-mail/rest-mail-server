@@ -8,6 +8,7 @@ import { VacationView } from '@/components/settings/VacationView';
 import { DangerZone } from '@/components/settings/SettingsView';
 import { User, HardDrive, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ContactReplyTimeSettings } from '@/components/contacts/ContactReplyTimeSettings';
 
 type Tab = 'details' | 'vacation' | 'danger';
 
@@ -86,6 +87,7 @@ export function AccountSettingsView() {
 function DetailsTab({ account, isPrimary }: { account: { id: number; address: string }; isPrimary: boolean }) {
   return (
     <div className="max-w-2xl space-y-4">
+      <ContactReplyTimeSettings key={account.id} accountId={account.id} />
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
