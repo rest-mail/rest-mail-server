@@ -247,6 +247,26 @@ def an_api_key_of_its_own_to_edit(transaction):
     transaction["fullPath"] = parent + "/" + str(key["id"]) + ("?" + query if query else "")
 
 
+@hooks.before("snoozeThread")
+def a_future_date_for_a_snooze_probe(transaction):
+    # The schema cannot say a snooze must end in the future, so a coverage
+    # probe's generated date goes forward a century. The named examples, such as
+    # the refusal of a past date, are sent as written, and so is a probe of a value
+    # that is not a date.
+    if not transaction.get("name", "").startswith("coverage:"):
+        return
+    try:
+        body = hooks.get_json(transaction)
+    except ValueError:
+        return
+    if not isinstance(body, dict):
+        return
+    until = body.get("snoozed_until")
+    if isinstance(until, str) and until.startswith("20") and until < time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()):
+        body["snoozed_until"] = "2" + str(int(until[1:4]) + 100).zfill(3) + until[4:]
+        hooks.set_json(transaction, body)
+
+
 def hosted_mailboxes(origin):
     request = urllib.request.Request(
         origin + "/api/v1/admin/mailboxes?limit=1000",
