@@ -5,12 +5,9 @@ import (
 	"strings"
 )
 
-// MessageStorageConfig is where the original bytes of messages are kept. It follows the
-// attachments' storage type: a bucket if they are in one, and a directory otherwise.
+// MessageStorageConfig is where the original bytes of messages are kept: the attachments' bucket,
+// under a prefix of their own.
 type MessageStorageConfig struct {
-	// Directory is the filesystem store's root, storage attached to every container that
-	// handles mail.
-	Directory string
 	// S3Prefix is where messages sit in the attachments' bucket.
 	S3Prefix string
 	// SpoolDir holds a message while it is uploaded to the bucket. Empty is the system's
@@ -20,12 +17,8 @@ type MessageStorageConfig struct {
 
 func loadMessageStorage(attachments AttachmentStorageConfig) (MessageStorageConfig, error) {
 	c := MessageStorageConfig{
-		Directory: getEnv("MESSAGE_STORAGE_DIR", "/messages"),
-		S3Prefix:  getEnv("MESSAGE_S3_PREFIX", "messages/"),
-		SpoolDir:  getEnv("MESSAGE_SPOOL_DIR", ""),
-	}
-	if !strings.HasPrefix(c.Directory, "/") {
-		return c, fmt.Errorf("MESSAGE_STORAGE_DIR must be an absolute path")
+		S3Prefix: getEnv("MESSAGE_S3_PREFIX", "messages/"),
+		SpoolDir: getEnv("MESSAGE_SPOOL_DIR", ""),
 	}
 	if !validObjectPrefix(c.S3Prefix) {
 		return c, fmt.Errorf("MESSAGE_S3_PREFIX must be a relative object prefix ending in /, using letters, digits, /, _ or -")
