@@ -133,6 +133,9 @@ func TestAppendUID_AppliesFlagsAtCreation(t *testing.T) {
 	if req.Folder != "Archive" {
 		t.Errorf("append delivered to folder %q, want Archive", req.Folder)
 	}
+	if !req.Stored {
+		t.Error("APPEND did not say the client is storing the message, so inbound filters would judge it")
+	}
 	if req.IsRead == nil || !*req.IsRead {
 		t.Errorf("append dropped the \\Seen flag: IsRead = %v, want true", req.IsRead)
 	}

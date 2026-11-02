@@ -1166,6 +1166,7 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody)
 		ReceivedTLS:  req.ReceivedTLS,
 		TLSVersion:   req.TLSVersion,
 		RequireTLS:   req.RequireTLS,
+		Stored:       req.Stored,
 	})
 	if err != nil {
 		if errors.Is(err, repositories.ErrMailboxUnavailable) {
@@ -2161,6 +2162,9 @@ type localDeliveryParams struct {
 	TLSVersion  string
 	// RequireTLS is the message's REQUIRETLS tag (RFC 8689 §4.1).
 	RequireTLS bool
+	// Stored is the account's own client storing a message (IMAP APPEND or COPY):
+	// only attachment extraction runs, because nothing here is arriving mail.
+	Stored bool
 	// IndependentAttachments gives a forwarded local copy its own object lifetime.
 	IndependentAttachments bool
 }
@@ -2315,6 +2319,9 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		pipelineCfg, err := h.localInboundPolicy(ctx, mailbox)
 		if err != nil {
 			return nil, err
+		}
+		if params.Stored {
+			pipelineCfg = storedMessagePolicy(pipelineCfg)
 		}
 
 		pipelineCtx := pipeline.WithDB(ctx, h.db)
