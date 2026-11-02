@@ -126,22 +126,28 @@ def check_account_deletion(client, plain_token, token):
 def check_editing(client, keys, created, secret, domain_path, held, email, plain_token, token):
     """An edit keeps the secret, holds to the same ceiling, and applies to the next request."""
     key = f"{keys}/{created['id']}"
-    client.expect(403, "PATCH", key, held, plain_token, code="two_factor_required")
-    client.expect(403, "PATCH", key, {**held, "password": held["password"] + "-wrong"}, token, code="invalid_password")
-    client.expect(403, "PATCH", key, {**held, "permissions": [
-        {"capability": "domains:read", "scope": "*"}]}, token, code="forbidden")
-    client.expect(422, "PATCH", key, {**held, "permissions": []}, token, code="validation_failed")
+
+    def patch(want, body, as_token, code=None):
+        # An edit spends login's budget, which the checks after this suite need too:
+        # wait for each one's token instead of draining it.
+        time.sleep(1.1)
+        return client.expect(want, "PATCH", key, body, as_token, code=code)
+
+    patch(403, held, plain_token, code="two_factor_required")
+    patch(403, {**held, "password": held["password"] + "-wrong"}, token, code="invalid_password")
+    patch(403, {**held, "permissions": [{"capability": "domains:read", "scope": "*"}]}, token, code="forbidden")
+    patch(422, {**held, "permissions": []}, token, code="validation_failed")
     # A key cannot change itself: these routes are for sessions.
-    client.expect(401, "PATCH", key, held, secret)
+    patch(401, held, secret)
 
     other = [{"capability": "mail:read", "scope": f"mailbox:{email.lower()}"}]
-    edited = client.expect(200, "PATCH", key, {**held, "permissions": other}, token)["data"]
+    edited = patch(200, {**held, "permissions": other}, token)["data"]
     assert_no_secret(edited)
     if edited["permissions"] != other or edited["public_id"] != created["public_id"]:
         raise AssertionError(f"edit answered {edited!r}")
     # The same secret, at once: it no longer reaches the domain.
     client.expect(403, "GET", domain_path, token=secret)
-    client.expect(200, "PATCH", key, held, token)
+    patch(200, held, token)
     client.expect(200, "GET", domain_path, token=secret)
 
 
