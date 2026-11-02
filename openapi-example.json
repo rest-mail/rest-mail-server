@@ -3358,6 +3358,9 @@
     },
     "no_pending": {
       "summary": "No enrollment is waiting to be confirmed",
+      "requires": {
+        "state": "no_authenticator"
+      },
       "request": {
         "body": {
           "totp_code": "123456"
@@ -10861,6 +10864,9 @@
     },
     "not_enabled": {
       "summary": "The account has no authenticator to turn off",
+      "requires": {
+        "state": "no_authenticator"
+      },
       "request": {
         "body": {
           "totp_code": "123456"
