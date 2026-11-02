@@ -4287,11 +4287,11 @@ paths:
   /api/v1/messages/{id}/seal:
     get:
       summary: Verify a message's receipt seal
-      description: Compares the stored receipt seal with the current source, headers and bodies, without
-        changing the seal. intact means unchanged since this server accepted it, not who wrote it or
-        whether it is safe. not_sealed is distinct from mismatch; historical messages are never backfilled.
-        Uses the same mail:read authorization as reading the message. See docs/message-seals.md for
-        the streaming restmail-seal-v1 algorithm and byte framing.
+      description: Compares the stored receipt seal with the current source, headers and bodies,
+        without changing the seal. intact means unchanged since this server accepted it, not who
+        wrote it or whether it is safe. not_sealed is distinct from mismatch; historical messages
+        are never backfilled. Uses the same mail:read authorization as reading the message. See
+        docs/message-seals.md for the streaming restmail-seal-v1 algorithm and byte framing.
       operationId: verifyMessageSeal
       tags:
       - Messages
@@ -4302,19 +4302,76 @@ paths:
         schema:
           minimum: 1
           type: integer
-        example: 1
+        examples:
+          intact:
+            description: Receipt integrity is independent of sender authentication and does not
+              establish safety. Source and stored display fields are checked; no historical backfill.
+            value: 1
+          invalid_id:
+            value: 0
+          mismatch:
+            description: Receipt integrity is independent of sender authentication and does not
+              establish safety. Source and stored display fields are checked; no historical backfill.
+            value: 2
+          missing:
+            value: 2147483647
+          not_sealed:
+            description: Receipt integrity is independent of sender authentication and does not
+              establish safety. Source and stored display fields are checked; no historical backfill.
+            value: 3
+          unauthenticated:
+            value: 1
+            x-requires:
+              principal: anonymous
       responses:
         '200':
           description: OK
           content:
             application/json:
+              examples:
+                intact:
+                  description: Receipt integrity is independent of sender authentication and does
+                    not establish safety. Source and stored display fields are checked; no historical
+                    backfill.
+                  value:
+                    data:
+                      algorithm: restmail-seal-v1
+                      computed_hash: c8df0e809a88268049a3d046bf4c17819b16cbf2e5d3845e15368a251710bfb2
+                      sealed_hash: c8df0e809a88268049a3d046bf4c17819b16cbf2e5d3845e15368a251710bfb2
+                      state: intact
+                mismatch:
+                  description: Receipt integrity is independent of sender authentication and does
+                    not establish safety. Source and stored display fields are checked; no historical
+                    backfill.
+                  value:
+                    data:
+                      algorithm: restmail-seal-v1
+                      computed_hash: 6f04bba035151f7cb8ee4cf1102126d259979e7822f364143192e2339ab31259
+                      sealed_hash: c8df0e809a88268049a3d046bf4c17819b16cbf2e5d3845e15368a251710bfb2
+                      state: mismatch
+                not_sealed:
+                  description: Receipt integrity is independent of sender authentication and does
+                    not establish safety. Source and stored display fields are checked; no historical
+                    backfill.
+                  value:
+                    data:
+                      algorithm: restmail-seal-v1
+                      state: not_sealed
               schema:
                 $ref: '#/components/schemas/Data-MessageSeal'
         '401':
-          description: 'unauthorized, app_password_required or setup_required: a refused session or
-            HTTP Basic credential'
+          description: 'unauthorized, app_password_required or setup_required: a refused session
+            or HTTP Basic credential'
           content:
             application/json:
+              examples:
+                unauthenticated:
+                  value:
+                    error:
+                      code: unauthorized
+                      message: Missing authorization header
+                  x-requires:
+                    principal: anonymous
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
@@ -4327,6 +4384,12 @@ paths:
           description: Not Found
           content:
             application/json:
+              examples:
+                missing:
+                  value:
+                    error:
+                      code: message_not_found
+                      message: Message not found
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '413':
@@ -4339,11 +4402,20 @@ paths:
           description: Unprocessable Entity
           content:
             application/json:
+              examples:
+                invalid_id:
+                  value:
+                    error:
+                      code: validation_failed
+                      details:
+                        fields:
+                          id: must be at least 1
+                      message: Path parameters failed validation
               schema:
                 $ref: '#/components/schemas/ValidationErrorResponse'
         '429':
-          description: 'rate_limited: refused API keys or HTTP Basic credentials, throttled at login''s
-            rate'
+          description: 'rate_limited: refused API keys or HTTP Basic credentials, throttled at
+            login''s rate'
           content:
             application/json:
               schema:
@@ -14850,6 +14922,7 @@ components:
       required:
       - data
       type: object
+
     MessageSeal:
       additionalProperties: false
       properties:
