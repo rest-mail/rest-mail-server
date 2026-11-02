@@ -16,6 +16,7 @@ import types
 import unittest
 from unittest import mock
 import urllib.parse
+import urllib.request
 
 
 def stub_vertrag_hooks():
@@ -235,6 +236,49 @@ class SenderRuleProbes(AdminAPITestCase):
             before = json.loads(json.dumps(transaction))
             hooks.on_the_added_sender_rule(transaction)
             self.assertEqual(transaction, before)
+
+    def test_coverage_cold_start_recreates_each_removal_without_after_hooks(self):
+        self.enterContext(mock.patch.dict(os.environ, {"CONTRACT_COVERAGE": "1"}))
+        for kind in ("allowlist", "blocklist"):
+            for attempt in range(3):
+                with self.subTest(kind=kind, attempt=attempt):
+                    parent = "/api/v1/admin/domains/1/" + kind
+                    transaction = self.transaction(parent + "/1?keep=yes")
+                    transaction["name"] = parent + "/{eid} > Remove entry > 204"
+                    transaction["request"]["headers"] = {"Authorization": "Bearer original"}
+                    before = json.loads(json.dumps(transaction))
+                    hooks.on_the_added_sender_rule(transaction)
+                    restored = self.server.state["rules"][-1]
+                    before["fullPath"] = parent + "/%d?keep=yes" % restored["id"]
+                    self.assertEqual(transaction, before)
+                    self.assertEqual(restored["list"], kind)
+                    with urllib.request.urlopen(urllib.request.Request(
+                        "http://127.0.0.1:%d%s" % (self.server.server_port, transaction["fullPath"]),
+                        method="DELETE",
+                    )) as response:
+                        self.assertEqual(response.status, 204)
+        self.assertEqual(self.server.state["rules"], [
+            {"id": 2, "domain_id": 1, "list": "allowlist", "pattern": "@seeded.example"}
+        ])
+
+    def test_coverage_cold_start_keeps_refusals_and_other_targets(self):
+        self.enterContext(mock.patch.dict(os.environ, {"CONTRACT_COVERAGE": "1"}))
+        for path, status in (
+            (self.PATH + "/1", 404),
+            (self.PATH + "/0", 204),
+            (self.PATH + "/x", 204),
+            (self.PATH + "/2147483647", 204),
+            ("/api/v1/admin/domains/0/allowlist/1", 204),
+            ("/api/v1/admin/domains/x/allowlist/1", 204),
+            ("/api/v1/admin/domains/999/allowlist/1", 204),
+        ):
+            with self.subTest(path=path, status=status):
+                transaction = self.transaction(path)
+                transaction["name"] = "coverage: Remove entry > %d" % status
+                before = json.loads(json.dumps(transaction))
+                hooks.on_the_added_sender_rule(transaction)
+                self.assertEqual(transaction, before)
+        self.assertEqual(len(self.server.state["rules"]), 1)
 
     def test_noncoverage_placeholder_keeps_its_target(self):
         self.enterContext(mock.patch.dict(os.environ, {"CONTRACT_COVERAGE": "0"}))

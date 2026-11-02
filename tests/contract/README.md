@@ -45,7 +45,7 @@ six login probes are expected: generated credentials cannot authenticate.
 | Credential targets absent | `revokeAPIKey` 2, `revokeCredential` 2 | Remaining: 4 |
 | Contact/folder targets absent | `deleteContact` 2, `updateContact` 9, `deleteFolder` 2 | Remaining: 13 |
 | Filter/pipeline/certificate targets absent | `deleteCustomFilter` 1, `getCustomFilter` 1, `updateCustomFilter` 15, `testCustomFilter` 1, `deletePipeline` 1, `updatePipeline` 7, `getCertificate` 1 | Remaining: 27 |
-| Domain/policy targets absent | `deleteMtaStsPolicy` 1, `getMtaStsPolicy` 1, `setMtaStsPolicy` 11 | Remaining: 13 |
+| Domain/policy targets absent | `deleteMtaStsPolicy` 1, `getMtaStsPolicy` 1, `setMtaStsPolicy` 11 | Repaired and removed from the skipped-probe baseline |
 | Held-mail/queue/scheduled fixtures | `deleteQuarantine` 2, `clearSuppression` 2, `bounceQueueEntry` 1, `cancelScheduledMessage` 1, `deleteQueueEntry` 1, `getQueueEntry` 1, `retryQueueEntry` 1 | Remaining: 9 |
 | Draft/send requests | `updateDraft` 10, `sendDraft` 1, `sendMessage` 14 | Remaining: 25 |
 
@@ -59,16 +59,28 @@ the description's original placeholder IDs. Its before hooks receive the
 original transaction name, **not** the reporter's `coverage:` prefix.
 `run.sh` therefore scopes `CONTRACT_COVERAGE=1` to the coverage process (and its
 retry). Alias and sender-rule hooks resolve only placeholder `1` to the
-fixture they already own, recreating that fixture if consumed. Other IDs,
+fixture they own, recreating that fixture if consumed. Sender-rule removal also
+works with an empty process stash: its coverage placeholder gets a dedicated
+rule through the admin API, independently for each list and removal. Other IDs,
 invalid paths, request bodies and transaction credentials are unchanged.
 Other phases do not acquire this placeholder substitution.
+
+MTA-STS creation's documented domain `2` is not a topology fixture. Its hook
+creates a private domain through the admin API, then removes any policy before
+each 201 request. Read, update and delete success requests get an existing
+policy immediately before sending, including after a preceding delete consumed
+it. This setup works in both processes without after-hook state. Request bodies,
+credentials, malformed IDs and missing-domain refusals remain unchanged. A
+narrowed local replay against the real API and PostgreSQL reproduced all 17
+MTA-STS/sender-rule skips before these hooks and none afterward. This is
+Part of #1443, not proof of the whole-topology result.
 
 The newly reached alias update probe exposed a real description defect:
 `destination_address` allowed an empty string, but the handler refused it with
 422. It now declares `format: idn-email`, like alias creation, without changing
 the handler's address policy or its support for omitted/null patch fields.
 
-`skipped-probes-baseline.txt` holds the **91 remaining probes across 25
+`skipped-probes-baseline.txt` holds the **78 remaining probes across 22
 operations**, individually, not as a shared budget. `gate.py` reads 0.42.0's
 JUnit skipped-case reason and fails on a new operation, an increased count,
 an unknown skip format, or a decrease not removed from the baseline. Skipped

@@ -80,7 +80,8 @@ class PolicyAbsentFixture(unittest.TestCase):
         config = yaml.safe_load((ROOT / "vertrag.yml").read_text())
         with patch.dict(sys.modules, {"vertrag_hooks": module}):
             self.loaded = runpy.run_path(str(ROOT / config["hookfiles"]))
-        callbacks = [fn for name, fn in self.before if name == "getMtaStsPolicy"]
+        callbacks = [fn for name, fn in self.before
+                     if name == "getMtaStsPolicy" and fn.__name__ == "prepare_policy_absent_domain"]
         self.assertEqual(len(callbacks), 1, "fixture hook must register exactly once")
         self.prepare = callbacks[0]
         self.assertTrue(any(name == "createAccount" for name, _ in self.before))
