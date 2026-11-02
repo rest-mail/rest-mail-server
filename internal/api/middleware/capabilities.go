@@ -22,8 +22,8 @@ package middleware
 //
 //	domains:*    domains CRUD/DNS, sender allow/blocklists, MTA-STS,
 //	             TLS-RPT reports, DKIM keys, certificates
-//	mailboxes:*  accounts (mailboxes) CRUD, aliases CRUD; creating an
-//	             account with POST /api/v1/accounts (mailboxes:write)
+//	accounts:*  accounts (mailboxes) CRUD, aliases CRUD; creating an
+//	             account with POST /api/v1/accounts (accounts:write)
 //	users:*      roles/capabilities listing, grants (read; granting and
 //	             removing need users:write)
 //	pipelines:*  pipelines CRUD/test, custom filters, pipeline logs
@@ -46,9 +46,9 @@ const (
 	CapDomainsRead    = "domains:read"
 	CapDomainsWrite   = "domains:write"
 	CapDomainsDelete  = "domains:delete"
-	CapMailboxesRead  = "mailboxes:read"
-	CapMailboxesWrite = "mailboxes:write"
-	CapMailboxesDel   = "mailboxes:delete"
+	CapAccountsRead   = "accounts:read"
+	CapAccountsWrite  = "accounts:write"
+	CapAccountsDel    = "accounts:delete"
 	CapUsersRead      = "users:read"
 	CapUsersWrite     = "users:write"
 	CapUsersDelete    = "users:delete"

@@ -21,7 +21,7 @@ SMTP checks that load grants in the gateway process use this override. IMAP and 
 Sessions need their own capability. `mailbox:session` lets accounts sign in to and use their own mailbox, including over IMAP, POP3 and SMTP; `admin:session` lets administrators sign in and use their administrative grants. A list without `mailbox:session` signs every mailbox user out, administrators' personal mailboxes included, while administrators keep the administrative API. A list without either leaves only a superadmin able to sign in. For example, to keep administrators working during an incident:
 
 ```sh
-RESTMAIL_SERVER_CAPABILITIES=admin:session,domains:read,domains:write,mailboxes:read,mailboxes:write
+RESTMAIL_SERVER_CAPABILITIES=admin:session,domains:read,domains:write,accounts:read,accounts:write
 ```
 
 To return to the stored ceiling, unset the variable on every process and restart them. This change does not add a ceiling editor or protocol-session revocation; those are separate parts of issue #324.

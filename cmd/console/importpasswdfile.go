@@ -23,7 +23,7 @@ Reads a Dovecot passwd-file (user:{SCHEME}hash:uid:gid:gecos:home:shell:extra),
 from the file named or from stdin, and creates one account per user with its
 existing ARGON2ID, ARGON2I, BLF-CRYPT, SHA256-CRYPT or SHA512-CRYPT hash, as
 import-account does. A user without a domain takes --domain. Authentication uses
-RESTMAIL_API_KEY, a scoped API key with mailboxes:write on the domains.
+RESTMAIL_API_KEY, a scoped API key with accounts:write on the domains.
 
 An existing account is reported and left alone, never replaced. A line with no
 password, a weak or unsupported scheme, or an invalid address is reported and
@@ -79,7 +79,7 @@ func runImportPasswdFile(ctx context.Context, args []string, stdin io.Reader, to
 		}
 	}
 	if token == "" && !*dryRun {
-		return o.fail(exitUsage, "no_api_key", "set RESTMAIL_API_KEY to a scoped API key with mailboxes:write on the domains")
+		return o.fail(exitUsage, "no_api_key", "set RESTMAIL_API_KEY to a scoped API key with accounts:write on the domains")
 	}
 	var source io.Reader
 	switch fs.NArg() {

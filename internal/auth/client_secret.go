@@ -53,7 +53,7 @@ func ClientSecretPermissionAllowed(p ScopedPermission) bool {
 	switch p.Capability {
 	case "mail:read", "mail:write", "mail:send", "mail:receive":
 		return true
-	case "domains:read", "mailboxes:read", "pipelines:read", "pipelines:write", "pipelines:delete":
+	case "domains:read", "accounts:read", "pipelines:read", "pipelines:write", "pipelines:delete":
 		return len(p.Scope) > len("domain:") && p.Scope[:len("domain:")] == "domain:"
 	}
 	return false

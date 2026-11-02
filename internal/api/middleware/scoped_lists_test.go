@@ -12,7 +12,7 @@ import (
 )
 
 func TestScopedListAuthorization(t *testing.T) {
-	const cap = "mailboxes:read"
+	const cap = "accounts:read"
 	for _, tc := range []struct {
 		name    string
 		claims  *auth.Claims

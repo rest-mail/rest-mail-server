@@ -1577,12 +1577,12 @@ paths:
       operationId: createAccount
       tags: [Accounts]
       security:
-        - CookieAuth: [mailboxes:write]
-        - BearerAuth: [mailboxes:write]
-        - APIKeyAuth: [mailboxes:write]
+        - CookieAuth: [accounts:write]
+        - BearerAuth: [accounts:write]
+        - APIKeyAuth: [accounts:write]
       summary: Create an account
       description: >
-        The same for everyone. Needs `mailboxes:write` held at a scope covering
+        The same for everyone. Needs `accounts:write` held at a scope covering
         the address's domain. The creator gets the `owner` grant on the new
         account (mail read, write, send, and `mailbox:manage`). With
         `password`, the account gets a password credential and can be signed
@@ -2184,7 +2184,7 @@ paths:
         ]
       },
       "post": {
-        "description": "Requires a human session signed in with a second factor, the current password, and mailbox:manage on the account. Returns client_id and client_secret once; stores only the secret hash. Permissions must be within both the creator's and the account's live grants. The client-secret tier accepts mail:read, mail:write, mail:send and mail:receive; domains:read, mailboxes:read and pipelines:read/write/delete require a domain scope. It rejects all other capabilities, including account/credential creation, granting, password/2FA, audit, retention and server-ceiling controls. expires_at defaults to 90 days. Credential creation is audited as client_secrets.create with actor and credential id. Client secrets exchange at /api/v1/oauth/token; they are never accepted as bearer API keys or mail-client passwords.",
+        "description": "Requires a human session signed in with a second factor, the current password, and mailbox:manage on the account. Returns client_id and client_secret once; stores only the secret hash. Permissions must be within both the creator's and the account's live grants. The client-secret tier accepts mail:read, mail:write, mail:send and mail:receive; domains:read, accounts:read and pipelines:read/write/delete require a domain scope. It rejects all other capabilities, including account/credential creation, granting, password/2FA, audit, retention and server-ceiling controls. expires_at defaults to 90 days. Credential creation is audited as client_secrets.create with actor and credential id. Client secrets exchange at /api/v1/oauth/token; they are never accepted as bearer API keys or mail-client passwords.",
         "operationId": "createClientSecret",
         "parameters": [
           {
@@ -7008,9 +7008,9 @@ paths:
       operationId: listMailboxes
       tags: ["Admin: Mailboxes"]
       security:
-        - CookieAuth: [mailboxes:read]
-        - BearerAuth: [mailboxes:read]
-        - APIKeyAuth: [mailboxes:read]
+        - CookieAuth: [accounts:read]
+        - BearerAuth: [accounts:read]
+        - APIKeyAuth: [accounts:read]
       summary: List mailboxes, optionally filtered by domain
       parameters:
         - name: domain_id
@@ -7040,9 +7040,9 @@ paths:
       operationId: getMailbox
       tags: ["Admin: Mailboxes"]
       security:
-        - CookieAuth: [mailboxes:read]
-        - BearerAuth: [mailboxes:read]
-        - APIKeyAuth: [mailboxes:read]
+        - CookieAuth: [accounts:read]
+        - BearerAuth: [accounts:read]
+        - APIKeyAuth: [accounts:read]
       summary: Get an account by ID
       parameters:
         - name: id
@@ -7097,9 +7097,9 @@ paths:
             value: 2147483647
       tags: ["Admin: Mailboxes"]
       security:
-        - CookieAuth: [mailboxes:write]
-        - BearerAuth: [mailboxes:write]
-        - APIKeyAuth: [mailboxes:write]
+        - CookieAuth: [accounts:write]
+        - BearerAuth: [accounts:write]
+        - APIKeyAuth: [accounts:write]
       summary: Update an account
       description: |
         A new `password` (12 characters or more) replaces every password the
@@ -7227,9 +7227,9 @@ paths:
       operationId: deleteMailbox
       tags: ["Admin: Mailboxes"]
       security:
-        - CookieAuth: [mailboxes:delete]
-        - BearerAuth: [mailboxes:delete]
-        - APIKeyAuth: [mailboxes:delete]
+        - CookieAuth: [accounts:delete]
+        - BearerAuth: [accounts:delete]
+        - APIKeyAuth: [accounts:delete]
       summary: Delete an account
       description: >
         Its credentials are revoked (kept, for the audit trail) and its
@@ -7281,9 +7281,9 @@ paths:
       operationId: endMailboxSessions
       tags: ["Admin: Mailboxes"]
       security:
-        - CookieAuth: [mailboxes:write]
-        - BearerAuth: [mailboxes:write]
-        - APIKeyAuth: [mailboxes:write]
+        - CookieAuth: [accounts:write]
+        - BearerAuth: [accounts:write]
+        - APIKeyAuth: [accounts:write]
       summary: Sign an account out everywhere
       description: >
         Ends every session of the account: its refresh tokens are revoked and
@@ -7313,9 +7313,9 @@ paths:
       operationId: listAdminAPIKeys
       tags: ["Admin: Mailboxes"]
       security:
-        - CookieAuth: [mailboxes:read]
-        - BearerAuth: [mailboxes:read]
-        - APIKeyAuth: [mailboxes:read]
+        - CookieAuth: [accounts:read]
+        - BearerAuth: [accounts:read]
+        - APIKeyAuth: [accounts:read]
       summary: List API keys across accounts
       description: Unrevoked keys of the accounts the caller may read, newest first. Secrets are never returned. Revoke one through its account's own route.
       parameters:
@@ -7374,9 +7374,9 @@ paths:
       operationId: listAliases
       tags: ["Admin: Aliases"]
       security:
-        - CookieAuth: [mailboxes:read]
-        - BearerAuth: [mailboxes:read]
-        - APIKeyAuth: [mailboxes:read]
+        - CookieAuth: [accounts:read]
+        - BearerAuth: [accounts:read]
+        - APIKeyAuth: [accounts:read]
       summary: List aliases, optionally filtered by domain
       parameters:
         - name: domain_id
@@ -7403,9 +7403,9 @@ paths:
       operationId: createAlias
       tags: ["Admin: Aliases"]
       security:
-        - CookieAuth: [mailboxes:write]
-        - BearerAuth: [mailboxes:write]
-        - APIKeyAuth: [mailboxes:write]
+        - CookieAuth: [accounts:write]
+        - BearerAuth: [accounts:write]
+        - APIKeyAuth: [accounts:write]
       summary: Create a new alias
       requestBody:
         required: true
@@ -7535,9 +7535,9 @@ paths:
       operationId: getAlias
       tags: ["Admin: Aliases"]
       security:
-        - CookieAuth: [mailboxes:read]
-        - BearerAuth: [mailboxes:read]
-        - APIKeyAuth: [mailboxes:read]
+        - CookieAuth: [accounts:read]
+        - BearerAuth: [accounts:read]
+        - APIKeyAuth: [accounts:read]
       summary: Get an alias by ID
       parameters:
         - name: id
@@ -7593,9 +7593,9 @@ paths:
       operationId: updateAlias
       tags: ["Admin: Aliases"]
       security:
-        - CookieAuth: [mailboxes:write]
-        - BearerAuth: [mailboxes:write]
-        - APIKeyAuth: [mailboxes:write]
+        - CookieAuth: [accounts:write]
+        - BearerAuth: [accounts:write]
+        - APIKeyAuth: [accounts:write]
       summary: Update an alias
       requestBody:
         required: true
@@ -7685,9 +7685,9 @@ paths:
       operationId: deleteAlias
       tags: ["Admin: Aliases"]
       security:
-        - CookieAuth: [mailboxes:delete]
-        - BearerAuth: [mailboxes:delete]
-        - APIKeyAuth: [mailboxes:delete]
+        - CookieAuth: [accounts:delete]
+        - BearerAuth: [accounts:delete]
+        - APIKeyAuth: [accounts:delete]
       summary: Delete an alias
       responses:
         "204":
@@ -13111,11 +13111,11 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
       security:
       - CookieAuth:
-        - mailboxes:write
+        - accounts:write
       - BearerAuth:
-        - mailboxes:write
+        - accounts:write
       - APIKeyAuth:
-        - mailboxes:write
+        - accounts:write
   /api/v1/auth/invitation:
     post:
       summary: Choose your first password with an invitation

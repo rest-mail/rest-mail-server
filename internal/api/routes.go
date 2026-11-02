@@ -536,7 +536,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 			Describing(describedPersonSession, describedSetupDone))
 	})
 
-	// Provisioning uses the same live mailboxes:write check for sessions and
+	// Provisioning uses the same live accounts:write check for sessions and
 	// explicitly scoped API keys. Other identity and credential changes below
 	// still require a password-authenticated session.
 	audited := describedAudit(auditLog)
@@ -593,7 +593,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 				DescribingWhen(middleware.CSRFProtectsMethod, describedCSRF).Describing(describedBodyCap, describedSetupDone)
 			recoveryEmailH.RegisterOwn(person, personChecks)
 
-			// Accounts (#347). Creating one needs mailboxes:write covering its
+			// Accounts (#347). Creating one needs accounts:write covering its
 			// domain, and makes the creator its owner; the account, its grant
 			// and their entries are recorded in the change's transaction, and a
 			// refused attempt here.

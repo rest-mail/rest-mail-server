@@ -37,7 +37,7 @@ func openAccountsTestDB(t *testing.T) *gorm.DB {
 }
 
 // accountsFixture is a domain of the test's own with an admin holding
-// mailboxes:write on it (the admin role at domain:<name>) and a plain user
+// accounts:write on it (the admin role at domain:<name>) and a plain user
 // holding nothing, both with the password "s3cret-password".
 type accountsFixture struct {
 	domain models.Domain
@@ -116,7 +116,7 @@ func listAccounts(t *testing.T, h *AccountHandler, accountID uint) []accountResp
 }
 
 // TestCreateAccount: POST /api/v1/accounts makes an account the same for
-// everyone who may: mailboxes:write on its domain. The creator owns it, with
+// everyone who may: accounts:write on its domain. The creator owns it, with
 // a grant; without a password it has no credential at all. Refusals: 403 with
 // no capability, 409 when it exists, 422 for a bad address or a domain this
 // server does not host.
@@ -132,7 +132,7 @@ func TestCreateAccount(t *testing.T) {
 	chris := "chris@" + fx.domain.Name
 
 	if rr := create(fx.user.ID, fmt.Sprintf(`{"address":%q}`, chris)); rr.Code != http.StatusForbidden {
-		t.Fatalf("an account without mailboxes:write: %d %s", rr.Code, rr.Body.String())
+		t.Fatalf("an account without accounts:write: %d %s", rr.Code, rr.Body.String())
 	}
 	for _, bad := range []string{"", "no-at-sign", "a b@" + fx.domain.Name, "@" + fx.domain.Name} {
 		if rr := create(fx.admin.ID, fmt.Sprintf(`{"address":%q}`, bad)); rr.Code != http.StatusUnprocessableEntity {
@@ -265,9 +265,9 @@ func TestLinkAccount(t *testing.T) {
 	// Linking reaches the account's mail, not its admin grants: grants are not
 	// passed on.
 	held, _ := grants.Load(db, fx.user.ID, time.Now())
-	if !held.Allows(models.CapMailRead, grants.Mailbox(fx.admin.Address)) || held.Allows("mailboxes:write", grants.Domain(fx.domain.Name)) {
+	if !held.Allows(models.CapMailRead, grants.Mailbox(fx.admin.Address)) || held.Allows("accounts:write", grants.Domain(fx.domain.Name)) {
 		t.Errorf("held after linking: mail %v, admin's domain %v",
-			held.Allows(models.CapMailRead, grants.Mailbox(fx.admin.Address)), held.Allows("mailboxes:write", grants.Domain(fx.domain.Name)))
+			held.Allows(models.CapMailRead, grants.Mailbox(fx.admin.Address)), held.Allows("accounts:write", grants.Domain(fx.domain.Name)))
 	}
 
 	// An account with 2FA needs its code too: a password alone is less than

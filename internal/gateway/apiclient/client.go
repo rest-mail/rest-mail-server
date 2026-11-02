@@ -522,7 +522,7 @@ func (c *Client) ListMailboxes(token string) (*MailboxListResponse, error) {
 }
 
 // CreateMailbox creates an account, owned by the session's: POST
-// /api/v1/accounts, which needs mailboxes:write on its domain. An empty
+// /api/v1/accounts, which needs accounts:write on its domain. An empty
 // password makes one with no password, reached only through its owner.
 func (c *Client) CreateMailbox(token string, address, displayName, password string) error {
 	body := apitypes.CreateAccountRequest{Address: address, DisplayName: displayName, Password: password}

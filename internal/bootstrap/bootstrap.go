@@ -46,10 +46,48 @@ const (
 	FirstAdminRearmed
 )
 
+// renamedCapabilities are capability names that changed, old name first.
+var renamedCapabilities = [][2]string{
+	{"mailboxes:read", "accounts:read"},
+	{"mailboxes:write", "accounts:write"},
+	{"mailboxes:delete", "accounts:delete"},
+}
+
+// renameCapabilities moves an existing installation to the current names. The
+// rows keep their ids, so the roles and the server ceiling that hold them stay as
+// they are, and a capability someone removed from a role stays removed. A stored
+// credential names its capabilities in its scope, so those are rewritten too. The
+// audit log keeps the old names: it records what happened, and it is hash-chained.
+// Once a name is gone this finds nothing, so it does nothing on later starts.
+func renameCapabilities(database *gorm.DB) error {
+	return database.Transaction(func(tx *gorm.DB) error {
+		for _, name := range renamedCapabilities {
+			old, current := name[0], name[1]
+			resource, action, _ := strings.Cut(current, ":")
+			if err := tx.Exec(`UPDATE capabilities SET name = ?, resource = ?, action = ? WHERE name = ?`,
+				current, resource, action, old).Error; err != nil {
+				return fmt.Errorf("rename capability %s: %w", old, err)
+			}
+			if !tx.Migrator().HasTable(&models.Credential{}) {
+				continue
+			}
+			if err := tx.Exec(`UPDATE credentials SET scope = replace(scope::text, ?, ?)::jsonb WHERE scope::text LIKE ?`,
+				`"`+old+`"`, `"`+current+`"`, `%"`+old+`"%`).Error; err != nil {
+				return fmt.Errorf("rename capability %s in credentials: %w", old, err)
+			}
+		}
+		return nil
+	})
+}
+
 // EnsureRBAC creates the built-in capabilities and roles and wires them
 // together. Rows that already exist are left as they are.
 func EnsureRBAC(database *gorm.DB) error {
 	slog.Info("seeding RBAC system")
+
+	if err := renameCapabilities(database); err != nil {
+		return err
+	}
 
 	// Create capabilities
 	capabilities := []models.Capability{
@@ -57,9 +95,9 @@ func EnsureRBAC(database *gorm.DB) error {
 		{Name: "domains:read", Description: "View domains", Resource: "domains", Action: "read"},
 		{Name: "domains:write", Description: "Create/update domains", Resource: "domains", Action: "write"},
 		{Name: "domains:delete", Description: "Delete domains", Resource: "domains", Action: "delete"},
-		{Name: "mailboxes:read", Description: "View mailboxes", Resource: "mailboxes", Action: "read"},
-		{Name: "mailboxes:write", Description: "Create/update mailboxes", Resource: "mailboxes", Action: "write"},
-		{Name: "mailboxes:delete", Description: "Delete mailboxes", Resource: "mailboxes", Action: "delete"},
+		{Name: "accounts:read", Description: "View accounts", Resource: "accounts", Action: "read"},
+		{Name: "accounts:write", Description: "Create/update accounts", Resource: "accounts", Action: "write"},
+		{Name: "accounts:delete", Description: "Delete accounts", Resource: "accounts", Action: "delete"},
 		{Name: "users:read", Description: "View roles and grants", Resource: "users", Action: "read"},
 		{Name: "users:write", Description: "Grant and remove roles", Resource: "users", Action: "write"},
 		{Name: "users:delete", Description: "Remove accounts' grants when deleting them", Resource: "users", Action: "delete"},
@@ -147,7 +185,7 @@ func EnsureRBAC(database *gorm.DB) error {
 	database.Where("name = ?", "admin").First(&adminRole)
 	adminCaps := []string{
 		"domains:read", "domains:write", "domains:delete",
-		"mailboxes:read", "mailboxes:write", "mailboxes:delete",
+		"accounts:read", "accounts:write", "accounts:delete",
 		models.CapMailImport,
 		"pipelines:read", "pipelines:write", "pipelines:delete",
 		"users:read", "messages:read",
@@ -177,7 +215,7 @@ func EnsureRBAC(database *gorm.DB) error {
 	var readonlyRole models.Role
 	database.Where("name = ?", "readonly").First(&readonlyRole)
 	readonlyCaps := []string{
-		"domains:read", "mailboxes:read", "pipelines:read",
+		"domains:read", "accounts:read", "pipelines:read",
 		"users:read", "messages:read", "queue:read", "bans:read",
 		"observability:read",
 		models.CapAdminSession,

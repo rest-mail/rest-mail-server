@@ -12,7 +12,7 @@ func TestCredentialScope_PermissionsRoundTrip(t *testing.T) {
 	in := CredentialScope{
 		MailboxID: 3,
 		Permissions: []auth.ScopedPermission{
-			{Capability: "mailboxes:write", Scope: "domain:a.com"},
+			{Capability: "accounts:write", Scope: "domain:a.com"},
 			{Capability: "mail:read", Scope: "mailbox:bob@a.com"},
 		},
 	}
@@ -21,7 +21,7 @@ func TestCredentialScope_PermissionsRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := v.(string)
-	if !strings.Contains(s, `"permissions":[{"capability":"mailboxes:write","scope":"domain:a.com"}`) {
+	if !strings.Contains(s, `"permissions":[{"capability":"accounts:write","scope":"domain:a.com"}`) {
 		t.Fatalf("stored scope %s", s)
 	}
 	var out CredentialScope

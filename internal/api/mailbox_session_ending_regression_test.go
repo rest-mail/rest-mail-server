@@ -167,11 +167,11 @@ func newMailboxSessionEndingScenarios(t *testing.T) map[string]bulkQueueExampleS
 	keys := map[string]accountListKey{}
 	tokens := map[string]string{}
 	for name, p := range map[string]auth.ScopedPermission{
-		"key_write":        {Capability: middleware.CapMailboxesWrite, Scope: "*"},
-		"key_read":         {Capability: middleware.CapMailboxesRead, Scope: "*"},
-		"key_domain":       {Capability: middleware.CapMailboxesWrite, Scope: "domain:example.org"},
-		"key_mailbox":      {Capability: middleware.CapMailboxesWrite, Scope: "mailbox:owner@example.org"},
-		"key_wrong_domain": {Capability: middleware.CapMailboxesWrite, Scope: "domain:other.test"},
+		"key_write":        {Capability: middleware.CapAccountsWrite, Scope: "*"},
+		"key_read":         {Capability: middleware.CapAccountsRead, Scope: "*"},
+		"key_domain":       {Capability: middleware.CapAccountsWrite, Scope: "domain:example.org"},
+		"key_mailbox":      {Capability: middleware.CapAccountsWrite, Scope: "mailbox:owner@example.org"},
+		"key_wrong_domain": {Capability: middleware.CapAccountsWrite, Scope: "domain:other.test"},
 	} {
 		value, public, hash, err := auth.NewAPIKey()
 		if err != nil {
@@ -212,10 +212,10 @@ func newMailboxSessionEndingScenarios(t *testing.T) map[string]bulkQueueExampleS
 	for _, name := range []string{"ended", "inactive", "self_end", "no_tokens", "missing", "lookup_unavailable", "epoch_unavailable", "refresh_unavailable", "invalid_id", "invalid_format", "request_too_large"} {
 		out[name] = normal
 	}
-	out["write_only"] = makeRouter([]grants.Entry{{Capability: middleware.CapMailboxesWrite, Scope: grants.All}}, false, false)
-	out["read_only"] = makeRouter([]grants.Entry{{Capability: middleware.CapMailboxesRead, Scope: grants.All}}, false, false)
-	out["domain_scope"] = makeRouter([]grants.Entry{{Capability: middleware.CapMailboxesWrite, Scope: grants.Domain("example.org")}}, false, false)
-	out["mailbox_scope"] = makeRouter([]grants.Entry{{Capability: middleware.CapMailboxesWrite, Scope: grants.Mailbox("owner@example.org")}}, false, false)
+	out["write_only"] = makeRouter([]grants.Entry{{Capability: middleware.CapAccountsWrite, Scope: grants.All}}, false, false)
+	out["read_only"] = makeRouter([]grants.Entry{{Capability: middleware.CapAccountsRead, Scope: grants.All}}, false, false)
+	out["domain_scope"] = makeRouter([]grants.Entry{{Capability: middleware.CapAccountsWrite, Scope: grants.Domain("example.org")}}, false, false)
+	out["mailbox_scope"] = makeRouter([]grants.Entry{{Capability: middleware.CapAccountsWrite, Scope: grants.Mailbox("owner@example.org")}}, false, false)
 	out["permission_store_unavailable"] = makeRouter(nil, true, false)
 	out["unauthenticated"] = bulkQueueExampleScenario{accountReadScenario{unavailable, ""}, nil}
 	out["session_unavailable"] = bulkQueueExampleScenario{accountReadScenario{unavailable, token}, nil}
@@ -248,7 +248,7 @@ func newMailboxSessionEndingScenarios(t *testing.T) map[string]bulkQueueExampleS
 			normal.handler.ServeHTTP(w, r)
 		}), ""}, normal.store}
 	}
-	out["wrong_domain"] = makeRouter([]grants.Entry{{Capability: middleware.CapMailboxesWrite, Scope: grants.Domain("other.test")}}, false, false)
+	out["wrong_domain"] = makeRouter([]grants.Entry{{Capability: middleware.CapAccountsWrite, Scope: grants.Domain("other.test")}}, false, false)
 	out["scope_lookup_unavailable"] = out["domain_scope"]
 	out["scoped_missing"] = out["domain_scope"]
 	self := makeRouter(wild, false, false)

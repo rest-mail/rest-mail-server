@@ -65,7 +65,7 @@ func TestContractPrincipals(t *testing.T) {
 	adminAccount := getMailboxByAddress(t, admin, seedAdminAddress)
 
 	// An ordinary account: a password, no grants. The admin makes it, as
-	// only an account holding mailboxes:write can.
+	// only an account holding accounts:write can.
 	ordinary := createMailbox(t, admin, contractOrdinaryAddress, accountPassword, ordinaryPlan.DisplayName)
 	// An account with no password, reached only through its owner.
 	resp, err := twoFactorAdmin(t).post("/api/v1/accounts", map[string]string{

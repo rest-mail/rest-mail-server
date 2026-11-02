@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"gorm.io/gorm"
@@ -100,5 +101,60 @@ func TestReceiveMigrationPreservesExistingMailboxesAndRevocations(t *testing.T) 
 	allowed, err = grants.CanReceive(db, &mailbox)
 	if err != nil || allowed {
 		t.Fatalf("restart restored server receive: %v %v", allowed, err)
+	}
+}
+
+// An installation from before the rename keeps its role assignments and server
+// ceiling, and its API keys keep working, without anyone touching them.
+func TestRenamedCapabilitiesMigrateOnce(t *testing.T) {
+	gdb := openBootstrapTestDB(t)
+	if err := EnsureRBAC(gdb); err != nil {
+		t.Fatal(err)
+	}
+	var capability models.Capability
+	if err := gdb.Where("name = ?", "accounts:write").First(&capability).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := gdb.Model(&capability).Updates(map[string]any{"name": "mailboxes:write", "resource": "mailboxes"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	var assigned int64
+	if err := gdb.Model(&models.RoleCapability{}).Where("capability_id = ?", capability.ID).Count(&assigned).Error; err != nil || assigned == 0 {
+		t.Fatalf("no role holds it: %d %v", assigned, err)
+	}
+	domain := models.Domain{Name: "rename.test", Active: true}
+	if err := gdb.Create(&domain).Error; err != nil {
+		t.Fatal(err)
+	}
+	account := models.Mailbox{DomainID: domain.ID, LocalPart: "rename", Address: "rename@rename.test", Active: true}
+	if err := gdb.Create(&account).Error; err != nil {
+		t.Fatal(err)
+	}
+	key := models.Credential{AccountID: account.ID, Kind: models.CredentialKindAPIKey, PublicID: "rename-key", SecretHash: "x",
+		Scope: models.CredentialScope{Permissions: []auth.ScopedPermission{{Capability: "mailboxes:write", Scope: "*"}}}}
+	if err := gdb.Create(&key).Error; err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if err := EnsureRBAC(gdb); err != nil {
+			t.Fatal(err)
+		}
+		var renamed models.Capability
+		if err := gdb.Where("name = ?", "accounts:write").First(&renamed).Error; err != nil || renamed.ID != capability.ID || renamed.Resource != "accounts" {
+			t.Fatalf("capability row: %+v %v, want id %d", renamed, err, capability.ID)
+		}
+		var old, held int64
+		gdb.Model(&models.Capability{}).Where("name LIKE 'mailboxes:%'").Count(&old)
+		gdb.Model(&models.RoleCapability{}).Where("capability_id = ?", capability.ID).Count(&held)
+		if old != 0 || held != assigned {
+			t.Fatalf("old names %d, roles holding it %d, want 0 and %d", old, held, assigned)
+		}
+		var stored models.Credential
+		if err := gdb.First(&stored, key.ID).Error; err != nil {
+			t.Fatal(err)
+		}
+		if got := stored.Scope.Permissions; len(got) != 1 || got[0].Capability != "accounts:write" || got[0].Scope != "*" {
+			t.Fatalf("stored permissions: %+v", got)
+		}
 	}
 }

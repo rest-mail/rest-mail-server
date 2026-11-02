@@ -249,7 +249,7 @@ export async function linkAccount(data: {
 }
 
 /**
- * Create an account, owned by this one. Needs mailboxes:write on its domain.
+ * Create an account, owned by this one. Needs accounts:write on its domain.
  * Without a password it can't be signed in to, and is reached only through
  * its owners.
  */

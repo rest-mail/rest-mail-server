@@ -10,8 +10,8 @@ import (
 
 func TestNormalizeAPIKeyPermissions(t *testing.T) {
 	got, err := NormalizeAPIKeyPermissions([]auth.ScopedPermission{
-		{Capability: "mailboxes:write", Scope: " Domain:A.com "},
-		{Capability: "mailboxes:write", Scope: "domain:a.com"},
+		{Capability: "accounts:write", Scope: " Domain:A.com "},
+		{Capability: "accounts:write", Scope: "domain:a.com"},
 		{Capability: "mail:read", Scope: "mailbox:Bob@a.com"},
 		{Capability: "mail:read", Scope: "*"},
 	})
@@ -19,7 +19,7 @@ func TestNormalizeAPIKeyPermissions(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []auth.ScopedPermission{
-		{Capability: "mailboxes:write", Scope: "domain:a.com"},
+		{Capability: "accounts:write", Scope: "domain:a.com"},
 		{Capability: "mail:read", Scope: "mailbox:bob@a.com"},
 		{Capability: "mail:read", Scope: "*"},
 	}

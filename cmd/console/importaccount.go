@@ -23,7 +23,7 @@ const importAccountUsage = `restmail import-account — create an account with i
 
 Reads one ARGON2ID, ARGON2I, BLF-CRYPT, SHA256-CRYPT or SHA512-CRYPT hash from
 stdin. Authentication uses RESTMAIL_API_KEY, a scoped API key with
-mailboxes:write on the domain.
+accounts:write on the domain.
 The domain must already exist. An existing account is refused, never replaced.
 The hash and API key are never printed. This imports one account, without mail,
 aliases or forwarding. See docs/migrating-accounts.md for limits and cutover.
@@ -62,7 +62,7 @@ func runImportAccount(ctx context.Context, args []string, stdin io.Reader, token
 		return o.fail(exitUsage, "bad_flag", "give --address as a mail address, with no positional arguments")
 	}
 	if token == "" {
-		return o.fail(exitUsage, "no_api_key", "set RESTMAIL_API_KEY to a scoped API key with mailboxes:write on the domain")
+		return o.fail(exitUsage, "no_api_key", "set RESTMAIL_API_KEY to a scoped API key with accounts:write on the domain")
 	}
 	if isTerminal(stdin) {
 		return o.fail(exitUsage, "no_hash", "pipe the existing password hash on stdin")

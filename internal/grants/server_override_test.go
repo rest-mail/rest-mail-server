@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-var testVocabulary = []string{"admin:session", "domains:read", "mail:read", "mail:send", "mailbox:session", "mailboxes:write"}
+var testVocabulary = []string{"admin:session", "domains:read", "mail:read", "mail:send", "mailbox:session", "accounts:write"}
 
 func overrideServer(t *testing.T, raw string) {
 	t.Helper()
@@ -25,7 +25,7 @@ func overrideServer(t *testing.T, raw string) {
 // The actor's own grants still bound the result.
 func TestServerOverrideReplacesStoredCeiling(t *testing.T) {
 	overrideServer(t, "mail:read, domains:read, mailbox:session")
-	actor := HeldOf(Entry{"mailbox:x@a.test", "mail:read"}, Entry{"mailbox:x@a.test", "mail:send"}, Entry{"mailbox:x@a.test", "mailbox:session"}, Entry{All, "mailboxes:write"})
+	actor := HeldOf(Entry{"mailbox:x@a.test", "mail:read"}, Entry{"mailbox:x@a.test", "mail:send"}, Entry{"mailbox:x@a.test", "mailbox:session"}, Entry{All, "accounts:write"})
 	got, err := withinServer(nil, actor, time.Now())
 	if err != nil {
 		t.Fatal(err)

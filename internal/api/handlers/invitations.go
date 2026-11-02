@@ -43,13 +43,13 @@ var invitationSessionHeaders = map[string]oapifly.ResponseHeader{
 }
 
 // RegisterAdmin keeps invitation issuance behind the same live, scoped
-// mailboxes:write authority that creates an account or changes its password.
+// accounts:write authority that creates an account or changes its password.
 func (h *InvitationHandler) RegisterAdmin(rs endpoint.Routes, checks MailboxRouteChecks) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/mailboxes/{id}/invitation",
 		OperationID: "inviteAccount", Summary: "Invite an account to choose its first password", Tags: []string{"Admin: Mailboxes"},
 		Status: http.StatusCreated, Headers: invitationHeaders, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusServiceUnavailable},
 		Description: "For an active account created without credentials. The invitation lasts 15 minutes; issuing another invalidates the previous one. Only a hash is stored. Authenticator enrollment and server encryption must be enabled before invitations can be issued.",
-		Middleware:  []endpoint.Middleware{checks.OnMailbox(middleware.CapMailboxesWrite)}}, h.issue)
+		Middleware:  []endpoint.Middleware{checks.OnMailbox(middleware.CapAccountsWrite)}}, h.issue)
 }
 
 // RegisterPublic redeems a secret, so it has sign-in's throttle and audit trail.

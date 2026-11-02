@@ -18,9 +18,9 @@ import (
 )
 
 func TestAPIKeyWithinGrants(t *testing.T) {
-	global := grants.HeldOf(grants.Entry{Capability: "mailboxes:write", Scope: "*"})
-	domain := grants.HeldOf(grants.Entry{Capability: "mailboxes:write", Scope: "domain:example.test"})
-	permission := []auth.ScopedPermission{{Capability: "mailboxes:write", Scope: "domain:example.test"}}
+	global := grants.HeldOf(grants.Entry{Capability: "accounts:write", Scope: "*"})
+	domain := grants.HeldOf(grants.Entry{Capability: "accounts:write", Scope: "domain:example.test"})
+	permission := []auth.ScopedPermission{{Capability: "accounts:write", Scope: "domain:example.test"}}
 	if !apiKeyWithinGrants(global, domain, permission) {
 		t.Fatal("a creator may narrow an owner's grant")
 	}
@@ -29,7 +29,7 @@ func TestAPIKeyWithinGrants(t *testing.T) {
 			t.Fatal("both principals must hold the permission")
 		}
 	}
-	if apiKeyWithinGrants(domain, global, []auth.ScopedPermission{{Capability: "mailboxes:write", Scope: "*"}}) {
+	if apiKeyWithinGrants(domain, global, []auth.ScopedPermission{{Capability: "accounts:write", Scope: "*"}}) {
 		t.Fatal("a domain grant must not delegate installation-wide access")
 	}
 }
@@ -63,7 +63,7 @@ func TestAPIKeyLifecycle(t *testing.T) {
 		}
 		return r
 	}
-	createBody := fmt.Sprintf(`{"name":"Provisioning test","password":%q,"permissions":[{"capability":"mailboxes:write","scope":%q}]}`, accountsPassword, grants.Domain(fx.domain.Name))
+	createBody := fmt.Sprintf(`{"name":"Provisioning test","password":%q,"permissions":[{"capability":"accounts:write","scope":%q}]}`, accountsPassword, grants.Domain(fx.domain.Name))
 	noMFA := httptest.NewRecorder()
 	credentialRoutes(h).ServeHTTP(noMFA, request(http.MethodPost, path, createBody, false, map[string]string{"id": id}))
 	if noMFA.Code != http.StatusForbidden {
@@ -126,7 +126,7 @@ func TestAPIKeyLifecycle(t *testing.T) {
 		t.Fatal("key exceeded its explicit permissions")
 	}
 
-	deniedBody := fmt.Sprintf(`{"name":"too broad","password":%q,"permissions":[{"capability":"mailboxes:write","scope":"*"}]}`, accountsPassword)
+	deniedBody := fmt.Sprintf(`{"name":"too broad","password":%q,"permissions":[{"capability":"accounts:write","scope":"*"}]}`, accountsPassword)
 	denied := httptest.NewRecorder()
 	credentialRoutes(h).ServeHTTP(denied, request(http.MethodPost, path, deniedBody, true, map[string]string{"id": id}))
 	if denied.Code != http.StatusForbidden {

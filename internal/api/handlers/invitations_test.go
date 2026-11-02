@@ -62,7 +62,7 @@ func TestInvitationUsesMailboxWriteAndSignInThrottle(t *testing.T) {
 	r := chi.NewRouter()
 	h.RegisterAdmin(endpoint.Routes{Router: r, Registry: endpoint.NewRegistry()}, MailboxRouteChecks{
 		OnMailbox: func(capability string) endpoint.Middleware {
-			if capability != middleware.CapMailboxesWrite {
+			if capability != middleware.CapAccountsWrite {
 				t.Fatalf("wrong authority: %s", capability)
 			}
 			return endpoint.Middleware{Wrap: func(http.Handler) http.Handler {

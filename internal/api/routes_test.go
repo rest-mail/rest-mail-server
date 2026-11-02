@@ -86,7 +86,7 @@ func newTestRouter(t *testing.T) (http.Handler, *auth.JWTService) {
 var (
 	adminRoleCaps = []string{
 		"domains:read", "domains:write", "domains:delete",
-		"mailboxes:read", "mailboxes:write", "mailboxes:delete",
+		"accounts:read", "accounts:write", "accounts:delete",
 		"pipelines:read", "pipelines:write", "pipelines:delete",
 		"users:read", "messages:read",
 		"queue:read", "queue:manage",
@@ -95,7 +95,7 @@ var (
 		"audit:read",
 	}
 	readonlyRoleCaps = []string{
-		"domains:read", "mailboxes:read", "pipelines:read",
+		"domains:read", "accounts:read", "pipelines:read",
 		"users:read", "messages:read", "queue:read", "bans:read",
 		"observability:read",
 	}
@@ -619,7 +619,7 @@ func TestRoutes_SetupSessionReachesOnlySetup(t *testing.T) {
 	}
 }
 
-// Every account may ask to create one; the handler checks mailboxes:write on
+// Every account may ask to create one; the handler checks accounts:write on
 // the domain. HTTP Basic reaches no admin route, and no route that needs a
 // person.
 func TestRoutes_AccountsAndBasic(t *testing.T) {

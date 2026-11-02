@@ -84,13 +84,13 @@ func TestClaims_APIKeyPermissionsNeverInAToken(t *testing.T) {
 		AccountID:         7,
 		CredentialID:      9,
 		CredentialKind:    CredentialKindAPIKey,
-		APIKeyPermissions: []ScopedPermission{{Capability: "mailboxes:write", Scope: "domain:a.com"}},
+		APIKeyPermissions: []ScopedPermission{{Capability: "accounts:write", Scope: "domain:a.com"}},
 	}
 	b, err := json.Marshal(c)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, leak := range []string{"mailboxes:write", "api_key", "permissions"} {
+	for _, leak := range []string{"accounts:write", "api_key", "permissions"} {
 		if strings.Contains(string(b), leak) {
 			t.Fatalf("claims JSON %s carries %q", b, leak)
 		}
@@ -102,10 +102,10 @@ func TestClaims_APIKeyPermissionsNeverInAToken(t *testing.T) {
 
 func TestScopedPermission_JSON(t *testing.T) {
 	var p ScopedPermission
-	if err := json.Unmarshal([]byte(`{"capability":"mailboxes:write","scope":"domain:a.com"}`), &p); err != nil {
+	if err := json.Unmarshal([]byte(`{"capability":"accounts:write","scope":"domain:a.com"}`), &p); err != nil {
 		t.Fatal(err)
 	}
-	if p != (ScopedPermission{Capability: "mailboxes:write", Scope: "domain:a.com"}) {
+	if p != (ScopedPermission{Capability: "accounts:write", Scope: "domain:a.com"}) {
 		t.Fatalf("decoded %+v", p)
 	}
 }

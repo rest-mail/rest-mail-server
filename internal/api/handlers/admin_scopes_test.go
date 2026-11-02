@@ -48,8 +48,8 @@ func TestScopedListSQL(t *testing.T) {
 		{"aliases", []string{"mailbox:x@a.test"}, "1 = 0", "lower(mailboxes.address)"},
 	} {
 		t.Run(tc.resource+strings.Join(tc.scopes, ","), func(t *testing.T) {
-			rr := scopedRequest(tc.scopes, "mailboxes:read", func(w http.ResponseWriter, r *http.Request) {
-				q := filterAdminList(db.Table(tc.resource), r, "mailboxes:read", tc.resource).Where("domain_id = ?", 99)
+			rr := scopedRequest(tc.scopes, "accounts:read", func(w http.ResponseWriter, r *http.Request) {
+				q := filterAdminList(db.Table(tc.resource), r, "accounts:read", tc.resource).Where("domain_id = ?", 99)
 				var rows []map[string]interface{}
 				result := q.Limit(2).Offset(1).Find(&rows)
 				sql := result.Statement.SQL.String()
@@ -117,7 +117,7 @@ func TestScopedListDatabaseIsolation(t *testing.T) {
 	if len(empty.Data) != 0 || empty.Pagination.Total != 0 {
 		t.Fatalf("mailbox learned parent: %+v", empty)
 	}
-	rr := scopedRequest([]string{grants.Domain(a.Name)}, middleware.CapMailboxesRead, mailboxRoutes(NewMailboxHandler(tx, nil, nil)).ServeHTTP, "/api/v1/admin/mailboxes?limit=1&offset=1")
+	rr := scopedRequest([]string{grants.Domain(a.Name)}, middleware.CapAccountsRead, mailboxRoutes(NewMailboxHandler(tx, nil, nil)).ServeHTTP, "/api/v1/admin/mailboxes?limit=1&offset=1")
 	var page listEnvelope
 	if err := json.Unmarshal(rr.Body.Bytes(), &page); err != nil {
 		t.Fatal(err)
@@ -125,7 +125,7 @@ func TestScopedListDatabaseIsolation(t *testing.T) {
 	if rr.Code != 200 || len(page.Data) != 1 || page.Pagination.Total != 2 || page.Pagination.HasMore {
 		t.Fatalf("mailbox paging status%d body%s", rr.Code, rr.Body.String())
 	}
-	rr = scopedRequest([]string{grants.Mailbox(boxes[0].Address)}, middleware.CapMailboxesRead, mailboxRoutes(NewMailboxHandler(tx, nil, nil)).ServeHTTP, "/api/v1/admin/mailboxes")
+	rr = scopedRequest([]string{grants.Mailbox(boxes[0].Address)}, middleware.CapAccountsRead, mailboxRoutes(NewMailboxHandler(tx, nil, nil)).ServeHTTP, "/api/v1/admin/mailboxes")
 	var mailboxPage struct {
 		Data       []models.Mailbox
 		Pagination struct{ Total int }
@@ -139,7 +139,7 @@ func TestScopedListDatabaseIsolation(t *testing.T) {
 	if mailboxPage.Data[0].Domain.Name != "" {
 		t.Fatalf("parent configuration leaked: %s", rr.Body.String())
 	}
-	rr = scopedRequest([]string{grants.Mailbox(boxes[0].Address)}, middleware.CapMailboxesRead, aliasRoutes(NewAliasHandler(tx)).ServeHTTP, "/api/v1/admin/aliases")
+	rr = scopedRequest([]string{grants.Mailbox(boxes[0].Address)}, middleware.CapAccountsRead, aliasRoutes(NewAliasHandler(tx)).ServeHTTP, "/api/v1/admin/aliases")
 	// A fresh envelope each time: total is omitted at 0, and decoding into the
 	// last page would keep its total.
 	page = listEnvelope{}
@@ -149,7 +149,7 @@ func TestScopedListDatabaseIsolation(t *testing.T) {
 	if rr.Code != 200 || len(page.Data) != 0 || page.Pagination.Total != 0 {
 		t.Fatalf("mailbox learned aliases: %s", rr.Body.String())
 	}
-	rr = scopedRequest([]string{grants.Domain(a.Name)}, middleware.CapMailboxesRead, aliasRoutes(NewAliasHandler(tx)).ServeHTTP, "/api/v1/admin/aliases?domain_id="+fmt.Sprint(b.ID))
+	rr = scopedRequest([]string{grants.Domain(a.Name)}, middleware.CapAccountsRead, aliasRoutes(NewAliasHandler(tx)).ServeHTTP, "/api/v1/admin/aliases?domain_id="+fmt.Sprint(b.ID))
 	page = listEnvelope{}
 	if err := json.Unmarshal(rr.Body.Bytes(), &page); err != nil {
 		t.Fatal(err)
@@ -175,14 +175,14 @@ func TestScopedListDatabaseIsolation(t *testing.T) {
 
 func TestScopedParentDomainRedaction(t *testing.T) {
 	for _, allow := range []bool{false, true} {
-		entries := []grants.Entry{{Scope: "mailbox:x@a.test", Capability: "mailboxes:read"}}
+		entries := []grants.Entry{{Scope: "mailbox:x@a.test", Capability: "accounts:read"}}
 		if allow {
 			entries = append(entries, grants.Entry{Scope: "domain:a.test", Capability: "domains:read"})
 		}
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		req = req.WithContext(context.WithValue(req.Context(), middleware.ClaimsKey, &auth.Claims{AccountID: 1}))
 		rr := httptest.NewRecorder()
-		middleware.RequireCapability(func(uint) (grants.Held, error) { return grants.HeldOf(entries...), nil }, "mailboxes:read", func(*http.Request) (string, bool, error) { return "mailbox:x@a.test", true, nil })(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		middleware.RequireCapability(func(uint) (grants.Held, error) { return grants.HeldOf(entries...), nil }, "accounts:read", func(*http.Request) (string, bool, error) { return "mailbox:x@a.test", true, nil })(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			box := models.Mailbox{Domain: models.Domain{Name: "a.test", SendingPolicy: "bulk", DKIMSelector: "private-setup"}}
 			redactMailboxDomain(r, &box)
 			if (box.Domain.Name != "") != allow {
@@ -197,8 +197,8 @@ func TestScopedParentDomainRedaction(t *testing.T) {
 }
 
 func TestScopedDomainBodyCheck(t *testing.T) {
-	rr := scopedRequest([]string{"domain:a.test"}, "mailboxes:write", func(w http.ResponseWriter, r *http.Request) {
-		if !scopedDomainAllowed(r, "mailboxes:write", "a.test") || scopedDomainAllowed(r, "mailboxes:write", "b.test") {
+	rr := scopedRequest([]string{"domain:a.test"}, "accounts:write", func(w http.ResponseWriter, r *http.Request) {
+		if !scopedDomainAllowed(r, "accounts:write", "a.test") || scopedDomainAllowed(r, "accounts:write", "b.test") {
 			t.Error("body domain check widened scope")
 		}
 		w.WriteHeader(200)
@@ -209,11 +209,11 @@ func TestScopedDomainBodyCheck(t *testing.T) {
 }
 
 func TestScopedParentDomainKeyCeiling(t *testing.T) {
-	claims := &auth.Claims{AccountID: 1, CredentialID: 3, CredentialKind: auth.CredentialKindAPIKey, APIKeyPermissions: []auth.ScopedPermission{{Capability: "mailboxes:read", Scope: "domain:a.test"}}}
+	claims := &auth.Claims{AccountID: 1, CredentialID: 3, CredentialKind: auth.CredentialKindAPIKey, APIKeyPermissions: []auth.ScopedPermission{{Capability: "accounts:read", Scope: "domain:a.test"}}}
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ClaimsKey, claims))
 	rr := httptest.NewRecorder()
-	middleware.RequireCapabilityOnList(func(uint) (grants.Held, error) { return grants.HeldOf(grants.Entry{Capability: "*", Scope: "*"}), nil }, "mailboxes:read")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	middleware.RequireCapabilityOnList(func(uint) (grants.Held, error) { return grants.HeldOf(grants.Entry{Capability: "*", Scope: "*"}), nil }, "accounts:read")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		box := models.Mailbox{Domain: models.Domain{Name: "a.test", SendingPolicy: "bulk", DKIMSelector: "sensitive"}}
 		redactMailboxDomain(r, &box)
 		if box.Domain.Name != "" || box.Domain.SendingPolicy != "" || box.Domain.DKIMSelector != "" {

@@ -49,7 +49,7 @@ func (h *MailboxHandler) list(r *http.Request, in adminAddressListRequest) (endp
 	h = h.forRequest(r)
 	limit, offset := pagination(in.Limit, in.Offset, defaultListLimit, maxListLimit)
 
-	query := filterAdminList(h.db.Model(&models.Mailbox{}), r, middleware.CapMailboxesRead, "mailboxes")
+	query := filterAdminList(h.db.Model(&models.Mailbox{}), r, middleware.CapAccountsRead, "mailboxes")
 	if in.DomainID != nil {
 		query = query.Where("domain_id = ?", *in.DomainID)
 	}
