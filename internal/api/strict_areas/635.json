@@ -1,0 +1,15 @@
+{
+  "635": [
+    "createAPIKey",
+    "createAccount",
+    "createAppPassword",
+    "getAccount",
+    "linkAccount",
+    "listAPIKeys",
+    "listAccounts",
+    "listCredentials",
+    "revokeAPIKey",
+    "revokeCredential",
+    "unlinkAccount"
+  ]
+}

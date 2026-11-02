@@ -4468,8 +4468,7 @@
       "request": {
         "body": {
           "name": "Mail\nClient"
-        },
-        "invalid": true
+        }
       },
       "response": {
         "status": 422,
@@ -4484,6 +4483,30 @@
             }
           }
         }
+      }
+    },
+    "password_only": {
+      "summary": "A session without the mailbox's second factor",
+      "requires": {
+        "state": "enrolled_authenticator"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "iPhone Mail"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "two_factor_required",
+            "message": "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "rate_limited": {
