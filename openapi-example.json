@@ -30464,12 +30464,9 @@
     "example": {
       "summary": "The configured public delivery endpoint is advertised",
       "description": "No session is required. The protocol document has no API data envelope. The configured gateway wins over caller Host and forwarding headers; every answer is no-store.",
-      "requires": {
-        "state": "hosted_restmail_domain"
-      },
       "request": {
         "query": {
-          "domain": "example.test"
+          "domain": "restmail.test"
         }
       },
       "response": {

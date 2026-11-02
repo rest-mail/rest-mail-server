@@ -21,7 +21,6 @@ faults:
     operation: restmailDiscover
     path: /.well-known/restmail
     phase: examples
-    known_gap: "#1455"
     breaks: GET /.well-known/restmail answers without its required endpoint field (sent as url)
 
   - name: discover_wrong_media_type
