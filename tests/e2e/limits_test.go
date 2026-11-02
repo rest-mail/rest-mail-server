@@ -485,6 +485,9 @@ func (l *limitsRun) basicRefusals(t *testing.T) {
 	}
 }
 
+// gatewayDeliverPath is deliverMessage, which the mail gateways call.
+const gatewayDeliverPath = "/api/v1/messages/deliver"
+
 // bodyCaps declares a body over every cap to each operation that declares a
 // 413, and expects the 413 before a byte of it is sent. TLS-RPT reads before
 // it refuses, so it is held with a real body (tlsrpt). The requests are A's,
@@ -500,6 +503,12 @@ func (l *limitsRun) bodyCaps(t *testing.T) {
 		status, err := declareOversizedBody(u.Host, op.method, limitsPath(op.path, l.aID), l.a.token)
 		if err != nil {
 			t.Errorf("%s: %v", op, err)
+			continue
+		}
+		// With internal mTLS on, the gateways' route is only on the internal
+		// listener, so the public one has nothing to cap. Anything else still fails.
+		if status == http.StatusMethodNotAllowed && op.path == gatewayDeliverPath {
+			t.Logf("%s is not on the public listener: not checked here", op)
 			continue
 		}
 		if status != http.StatusRequestEntityTooLarge {
