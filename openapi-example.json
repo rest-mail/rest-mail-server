@@ -26840,8 +26840,8 @@
   },
   "prometheusMetrics": {
     "available": {
-      "summary": "The public operation answers without credentials",
-      "description": "The response body is validated by its schema and the registered-route tests. Document contents and metrics values are not frozen into an example.",
+      "summary": "An allowlisted caller scrapes without credentials",
+      "description": "The source is in METRICS_ALLOWED_CIDRS (loopback and private networks by default) and collection succeeds. Metrics values are not frozen into an example. The API route still answers when all three gateway metrics ports are 0; the API has no metrics-off setting.",
       "request": {},
       "response": {
         "status": 200,
@@ -26850,7 +26850,7 @@
     },
     "internal_error": {
       "summary": "A scrape that cannot read the database fails without detail",
-      "description": "Fault precondition: the database refuses queries, so the DKIM key-age collector cannot read the key inventory and the scrape fails. The public response does not disclose the collector's error.",
+      "description": "The source is allowlisted, but the database refuses queries, so the DKIM key-age collector cannot read the key inventory and the scrape fails. The public response does not disclose the collector's error.",
       "requires": {
         "fault": "database"
       },
@@ -26864,6 +26864,19 @@
           }
         },
         "mediaType": "application/json"
+      }
+    },
+    "outside_allowlist": {
+      "summary": "A disallowed or undeterminable source cannot discover metrics",
+      "description": "The effective source is outside METRICS_ALLOWED_CIDRS or cannot be determined. The middleware answers before collection, even if the database is unavailable. An untrusted peer cannot bypass the gate with forwarded headers; a trusted proxy's X-Forwarded-For origin is checked instead. The live run cannot change its TCP source or the server's network configuration to establish this precondition.",
+      "requires": {
+        "network": "outside_metrics_allowlist"
+      },
+      "request": {},
+      "response": {
+        "status": 404,
+        "body": "404 page not found\n",
+        "mediaType": "text/plain"
       }
     }
   },

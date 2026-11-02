@@ -2793,7 +2793,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Prometheus metrics exposition */
+        /**
+         * Prometheus metrics exposition
+         * @description No credentials are required, but METRICS_ALLOWED_CIDRS restricts the source network. Unset or empty, it allows loopback, RFC1918 and IPv6 unique-local networks. The TCP peer is used unless it is in PROXY_PROTOCOL_TRUSTED_CIDRS; only then is X-Forwarded-For honored. An allowed caller receives 200 on a successful scrape, or a sanitized JSON 500 if collection fails. A disallowed or undeterminable source receives plain-text 404 before any metrics are collected. The API route is always registered: there is no API metrics-off setting. Setting SMTP_METRICS_PORT, IMAP_METRICS_PORT or POP3_METRICS_PORT to 0 disables only that gateway's metrics listener, not this route.
+         */
         get: operations["prometheusMetrics"];
         put?: never;
         post?: never;
@@ -23753,6 +23756,15 @@ export interface operations {
         responses: {
             /** @description OK */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
