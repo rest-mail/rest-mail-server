@@ -36,9 +36,9 @@ const (
 // permerror), and the domain it authenticated under Property. DKIM records one
 // per signature.
 type AuthResult struct {
-	Method   AuthMethod `json:"method"`
+	Method   AuthMethod `json:"method" enums:"spf,dkim,arc,dmarc"`
 	Result   string     `json:"result"`
-	Property string     `json:"property,omitempty"`
+	Property string     `json:"property,omitempty" enums:"smtp.mailfrom,smtp.helo,header.d,header.from"`
 	Domain   string     `json:"domain,omitempty"`
 	// Selector is a DKIM signature's s= tag, which a DMARC aggregate report
 	// names beside its d= (RFC 9990 §3.1.1.12). It stays inside the server.
@@ -140,6 +140,75 @@ func AuthResultsHeader(rs []AuthResult) string {
 	}
 	b.WriteString("\r\n")
 	return b.String()
+}
+
+// The one state a reader shows for a message's verdicts. None of them says the
+// message is safe: signed only means a signature verified.
+const (
+	AuthVerdictSigned   = "signed"   // A DKIM signature verified and DMARC did not fail.
+	AuthVerdictUnsigned = "unsigned" // Nothing verified. Not a failure: forwards and lists break DKIM.
+	AuthVerdictMismatch = "mismatch" // DMARC failed: the From domain is not what was authenticated.
+)
+
+// AuthVerdict derives the reader's state from verdicts. Only dmarc=fail is a
+// mismatch, because a missing signature or a domain with no DMARC policy is
+// ordinary mail.
+func AuthVerdict(rs []AuthResult) string {
+	signed := false
+	for _, r := range rs {
+		if r.Method == AuthDMARC && r.Result == "fail" {
+			return AuthVerdictMismatch
+		}
+		if r.Method == AuthDKIM && r.Result == "pass" {
+			signed = true
+		}
+	}
+	if signed {
+		return AuthVerdictSigned
+	}
+	return AuthVerdictUnsigned
+}
+
+// ParseStoredAuthResults reads the verdicts back from a stored raw message. It
+// reads only the first header field, because delivery prepends this server's
+// Authentication-Results there and strips any incoming field claiming
+// AuthServID. ok is false when that field is not there, as on a message this
+// server sent or a draft: no verdicts were reached for it.
+func ParseStoredAuthResults(raw string) (results []AuthResult, ok bool) {
+	field, rest, found := strings.Cut(raw, "\n")
+	if !found {
+		return nil, false
+	}
+	// Unfold the continuation lines of the first field (RFC 5322 section 2.2.3).
+	for len(rest) > 0 && (rest[0] == '\t' || rest[0] == ' ') {
+		var line string
+		line, rest, _ = strings.Cut(rest, "\n")
+		field += " " + line
+	}
+	name, value, found := strings.Cut(field, ":")
+	if !found || !strings.EqualFold(name, "Authentication-Results") {
+		return nil, false
+	}
+	parts := strings.Split(value, ";")
+	if strings.TrimSpace(parts[0]) != AuthServID {
+		return nil, false
+	}
+	for _, part := range parts[1:] {
+		tokens := strings.Fields(part)
+		if len(tokens) == 0 {
+			continue
+		}
+		method, result, found := strings.Cut(tokens[0], "=")
+		if !found {
+			continue // "none": no verdict was reached.
+		}
+		r := AuthResult{Method: AuthMethod(method), Result: result}
+		if len(tokens) > 1 {
+			r.Property, r.Domain, _ = strings.Cut(tokens[1], "=")
+		}
+		results = append(results, r)
+	}
+	return results, true
 }
 
 // IsHostName reports whether name is a plain host name: dot-separated labels of

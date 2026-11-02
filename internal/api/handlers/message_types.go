@@ -6,6 +6,7 @@ import (
 
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 // Message is a message in an account as the mail routes answer it: its envelope, its bodies,
@@ -20,6 +21,11 @@ func messageOf(m models.Message) Message {
 	if m.Mailbox.ID != 0 {
 		loaded := mailboxOf(m.Mailbox)
 		mailbox = &loaded
+	}
+	authResults, authed := pipeline.ParseStoredAuthResults(m.RawMessage)
+	authVerdict := ""
+	if authed {
+		authVerdict = pipeline.AuthVerdict(authResults)
 	}
 	return Message{
 		ID:                m.ID,
@@ -56,6 +62,8 @@ func messageOf(m models.Message) Message {
 		CreatedAt:         m.CreatedAt,
 		UpdatedAt:         m.UpdatedAt,
 		Mailbox:           mailbox,
+		AuthResults:       authResults,
+		AuthVerdict:       authVerdict,
 	}
 }
 
