@@ -251,6 +251,7 @@ func (f *fakeAPI) getMessage(w http.ResponseWriter, r *http.Request) {
 	var dr apiclient.MessageDetailResponse
 	dr.Data = apiclient.MessageSummary{
 		ID:         m.id,
+		MailboxID:  7,
 		Folder:     m.folder,
 		Subject:    m.subject,
 		Sender:     m.sender,
@@ -473,10 +474,13 @@ type transcript struct {
 	done chan struct{}
 }
 
-func newTranscript(t *testing.T, backend goimap.Backend) *transcript {
+func newTranscript(t *testing.T, backend goimap.Backend, configure ...func(*imapserver.Session)) *transcript {
 	t.Helper()
 	client, server := net.Pipe()
 	sess := imapserver.NewSession(server, backend, "imap.test", nil, goimap.NopLimiter{})
+	for _, configureSession := range configure {
+		configureSession(sess)
+	}
 
 	done := make(chan struct{})
 	go func() {
