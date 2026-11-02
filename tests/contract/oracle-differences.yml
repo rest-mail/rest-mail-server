@@ -721,7 +721,7 @@
   reason: >-
     Null leaves an optional patch field unchanged, as the handlers have always done.
 - operation: updateAlias
-  difference: "request body application/json.properties.destination_address.format: openapi.yaml \"email\", generated absent"
+  difference: "request body application/json.properties.destination_address.format: openapi.yaml \"email\", generated \"idn-email\""
   reason: >-
     The shared REST Mail address validator remains in the handler: it accepts internationalized and display-name mail addresses already used by clients, while the binder email format rejects display-name addresses. Its existing field messages and validation order are preserved.
 - operation: updateAlias

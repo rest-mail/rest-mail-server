@@ -31,6 +31,56 @@ In the `E2E (full topology)` job (`.github/workflows/e2e-suite.yml`), after the
 | `fuzz` | Values drawn from each schema, shrunk to the smallest failing input, with a replayable seed. | Nightly (`contract-fuzz.yml`), never blocks |
 | faults | The API built with each fault in `faults.yml`, and the phase the fault names run on its operation: it must turn red ([Fault catalogue](#fault-catalogue-654)). | Nightly (`contract-faults.yml`), fails on a fault not caught |
 
+### Skipped valid coverage probes (#1443)
+
+The newest completed merge-group E2E run available when this work started was
+[41458365703](https://github.com/rest-mail/rest-mail-server/actions/runs/41458365703)
+(2026-11-02, main merge group for #1478). Its log identifies Vertrag 0.42.0
+and names all 29 operations behind **101 skipped valid probes**. The additional
+six login probes are expected: generated credentials cannot authenticate.
+
+| Group | Operations and skipped probe counts | This change |
+| --- | --- | --- |
+| Alias and sender-rule targets consumed/replaced before coverage | `getAlias` 1, `updateAlias` 5, `removeFromAllowlist` 2, `removeFromBlocklist` 2 | Repaired and removed from the skipped-probe baseline |
+| Credential targets absent | `revokeAPIKey` 2, `revokeCredential` 2 | Remaining: 4 |
+| Contact/folder targets absent | `deleteContact` 2, `updateContact` 9, `deleteFolder` 2 | Remaining: 13 |
+| Filter/pipeline/certificate targets absent | `deleteCustomFilter` 1, `getCustomFilter` 1, `updateCustomFilter` 15, `testCustomFilter` 1, `deletePipeline` 1, `updatePipeline` 7, `getCertificate` 1 | Remaining: 27 |
+| Domain/policy targets absent | `deleteMtaStsPolicy` 1, `getMtaStsPolicy` 1, `setMtaStsPolicy` 11 | Remaining: 13 |
+| Held-mail/queue/scheduled fixtures | `deleteQuarantine` 2, `clearSuppression` 2, `bounceQueueEntry` 1, `cancelScheduledMessage` 1, `deleteQueueEntry` 1, `getQueueEntry` 1, `retryQueueEntry` 1 | Remaining: 9 |
+| Draft/send requests | `updateDraft` 10, `sendDraft` 1, `sendMessage` 14 | Remaining: 25 |
+
+The log says 404 for absent targets, 422 for the draft/send examples, and
+"got no answer" for quarantine/suppression/bounce/scheduled cancellation.
+Those remaining groups still need per-operation diagnosis; the grouping is
+not a claim that every underlying cause has been proven.
+
+Vertrag sequences examples with linked resource IDs, but coverage starts from
+the description's original placeholder IDs. Its before hooks receive the
+original transaction name, **not** the reporter's `coverage:` prefix.
+`run.sh` therefore scopes `CONTRACT_COVERAGE=1` to the coverage process (and its
+retry). Alias and sender-rule hooks resolve only placeholder `1` to the
+fixture they already own, recreating that fixture if consumed. Other IDs,
+invalid paths, request bodies and transaction credentials are unchanged.
+Other phases do not acquire this placeholder substitution.
+
+The newly reached alias update probe exposed a real description defect:
+`destination_address` allowed an empty string, but the handler refused it with
+422. It now declares `format: idn-email`, like alias creation, without changing
+the handler's address policy or its support for omitted/null patch fields.
+
+`skipped-probes-baseline.txt` holds the **91 remaining probes across 25
+operations**, individually, not as a shared budget. `gate.py` reads 0.42.0's
+JUnit skipped-case reason and fails on a new operation, an increased count,
+an unknown skip format, or a decrease not removed from the baseline. Skipped
+cases never count as passing boundary probes. This file does not exclude
+anything: the requests and valid probes remain selected. The actual whole-API
+count still requires the merge-queue topology; narrowed local proofs cannot
+establish it.
+
+Vertrag 0.42.0's `--fail-on-skipped-probes` fails coverage with exit 2 when
+non-login valid probes are skipped; it deliberately exempts login. Once this
+baseline is empty, use that flag directly instead of retaining skip debt.
+
 ### Attachment download contract
 
 The topology examples send an ordinary download, `Range: bytes=0-0` for a

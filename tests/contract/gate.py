@@ -19,11 +19,17 @@ refusal (a transaction whose status is 4xx) is not judged: its request is the
 refused one, so a valid-mode probe built from it is refused too, which says
 nothing about the operation's validation (#386).
 
-Usage: gate.py <openapi.yaml> <vertrag.yml> <junit.xml> <coverage-baseline.txt>
+Skipped valid probes have a separate per-operation count ratchet in
+skipped-probes-baseline.txt. Neither a new skipped operation nor a larger
+count can spend another operation's budget. A smaller count must shrink the
+baseline. The pinned tool exempts login's generated-credential probes itself.
+
+Usage: gate.py <openapi.yaml> <vertrag.yml> <junit.xml> <coverage-baseline.txt> [skipped-probes-baseline.txt]
        gate.py --failing-probes <openapi.yaml> <junit.xml>
            prints the operations with a failing probe, in baseline form.
 """
 import os
+import re
 import sys
 import xml.etree.ElementTree as ET
 
@@ -31,6 +37,7 @@ import yaml
 
 METHODS = ("get", "put", "post", "delete", "patch")
 PROBE = "coverage: "
+SKIPPED_PROBES = re.compile(r"([1-9][0-9]*) valid probe\(s\) skipped: .+")
 
 
 def operations(spec_path):
@@ -87,13 +94,48 @@ def results(report_path, ops):
         op = ops.get((parts[0], parts[1])) if len(parts) >= 3 else None
         if op is None or refusal(parts[2]):
             continue
+        if case.find("skipped") is not None:
+            continue
         probed.add(op)
         if any(case.find(tag) is not None for tag in ("failure", "error")):
             probes_failed.add(op)
     return probed, probes_failed
 
 
-def gate(spec_path, config_path, report_path, baseline_path):
+def skipped_counts(report_path, ops):
+    counts = {}
+    for case in ET.parse(report_path).getroot().iter("testcase"):
+        name = case.get("name", "")
+        skipped = case.find("skipped")
+        if not name.startswith(PROBE) or skipped is None:
+            continue
+        parts = name[len(PROBE):].split(" · ", 1)[0].split(" > ")
+        operation = ops.get(tuple(parts[:2]))
+        match = SKIPPED_PROBES.fullmatch(skipped.get("message", ""))
+        if operation is None or len(parts) < 3 or not match or not name.endswith(" · valid probes skipped"):
+            raise ValueError("unrecognized skipped coverage result: " + name)
+        if not refusal(parts[2]):
+            counts[operation] = counts.get(operation, 0) + int(match[1])
+    return counts
+
+
+def skipped_baseline(path, all_ids):
+    counts = {}
+    if path is None:
+        return counts
+    with open(path) as source:
+        for line in source:
+            fields = line.split("#", 1)[0].split()
+            if not fields:
+                continue
+            if (len(fields) != 2 or fields[0] not in all_ids or fields[0] in counts
+                    or not re.fullmatch(r"[1-9][0-9]*", fields[1])):
+                raise ValueError("invalid skipped-probe baseline entry: " + line.strip())
+            counts[fields[0]] = int(fields[1])
+    return counts
+
+
+def gate(spec_path, config_path, report_path, baseline_path, skipped_baseline_path=None):
     ops = operations(spec_path)
     all_ids = set(ops.values())
     skipped, uncounted = exclusions(config_path)
@@ -125,16 +167,33 @@ def gate(spec_path, config_path, report_path, baseline_path):
         return 1
     try:
         probed, probes_failed = results(report_path, ops)
+        counts = skipped_counts(report_path, ops)
+        allowed = skipped_baseline(skipped_baseline_path, all_ids)
     except ET.ParseError as err:
         # vertrag exits 1 when it cannot read the spec, leaving an empty report.
         print("the report at %s is unreadable (%s): vertrag judged nothing (see its log)" % (
             report_path, err))
         return 1
+    except ValueError as err:
+        print(str(err))
+        return 1
+
+    print("Coverage phase: %d valid probes skipped; the baseline holds %d (login probes are exempt)" % (
+        sum(counts.values()), sum(allowed.values())))
+    for operation in sorted(counts.keys() | allowed.keys()):
+        actual, limit = counts.get(operation, 0), allowed.get(operation, 0)
+        if actual > limit:
+            ok = False
+            print("Skipped valid probes increased: %s: %d > %d" % (operation, actual, limit))
+        elif actual < limit:
+            ok = False
+            print("Skipped valid probes decreased: %s: %d < %d; shrink tests/contract/skipped-probes-baseline.txt" % (
+                operation, actual, limit))
 
     new = sorted(probes_failed - set(listed))
     # Only an operation that was probed has passed its probes: one the run never
     # probed stays in the baseline.
-    fixed = sorted((set(listed) & probed) - probes_failed)
+    fixed = sorted((set(listed) & probed) - probes_failed - counts.keys())
     print("Coverage phase: %d operations with a failing boundary probe; the baseline holds %d" % (
         len(probes_failed), len(listed)))
     if new:
@@ -157,7 +216,7 @@ def main(argv):
         for op in sorted(results(report_path, ops)[1]):
             print(op)
         return 0
-    return gate(*argv[:4])
+    return gate(*argv)
 
 
 if __name__ == "__main__":

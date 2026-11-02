@@ -1,0 +1,34 @@
+# Skipped valid coverage probes, by operationId. This is a ratchet, not an
+# exclusion: all operations and probes remain selected. Both increases and
+# decreases fail; a decrease must lower this file in the same change.
+# Evidence: E2E merge-group runs 41458365703 and 41491618197, Vertrag 0.42.0, 2026-11-02.
+# Alias lookups and updates are repaired in #1443. Sender-rule removals still skip in the
+# full run, where the coverage process has no record of the rule the examples added.
+# Login's six generated-credential probes are exempt in Vertrag itself.
+bounceQueueEntry 1
+cancelScheduledMessage 1
+clearSuppression 2
+deleteContact 2
+deleteCustomFilter 1
+deleteFolder 2
+deleteMtaStsPolicy 1
+deletePipeline 1
+deleteQuarantine 2
+deleteQueueEntry 1
+getCertificate 1
+getCustomFilter 1
+getMtaStsPolicy 1
+getQueueEntry 1
+removeFromAllowlist 2
+removeFromBlocklist 2
+retryQueueEntry 1
+revokeAPIKey 2
+revokeCredential 2
+sendDraft 1
+sendMessage 14
+setMtaStsPolicy 11
+testCustomFilter 1
+updateContact 9
+updateCustomFilter 15
+updateDraft 10
+updatePipeline 7

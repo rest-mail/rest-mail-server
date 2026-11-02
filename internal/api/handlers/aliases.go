@@ -154,7 +154,7 @@ func (h *AliasHandler) get(r *http.Request, in adminAddressPath) (Alias, error) 
 }
 
 type updateAliasRequest struct {
-	DestinationAddress *string `json:"destination_address,omitempty"`
+	DestinationAddress *string `json:"destination_address,omitempty" format:"idn-email"`
 	Active             *bool   `json:"active,omitempty"`
 }
 
