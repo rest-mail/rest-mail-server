@@ -239,6 +239,7 @@ type ProtocolSignedIn struct {
 }
 
 type Message struct {
+	Class             string                `json:"class" enums:"newsletter,receipt,notification,person" description:"Derived on read from stored headers. newsletter: valid List-Id or HTTP(S)/mailto List-Unsubscribe (list-shaped); notification: otherwise Auto-Submitted auto-generated/auto-replied or Precedence bulk/list/junk; person: otherwise, including malformed signals. receipt is reserved: these headers cannot distinguish commercial receipts from other automated mail. Only newsletter may collapse; person must never be hidden. Not an authenticity or safety verdict"`
 	ID                uint                  `json:"id"`
 	MailboxID         uint                  `json:"mailbox_id"`
 	Folder            string                `json:"folder"`

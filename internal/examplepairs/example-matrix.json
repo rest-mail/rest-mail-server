@@ -14452,6 +14452,7 @@
         "status": 201,
         "body": {
           "data": {
+            "class": "person",
             "body_html": "\u003cp\u003eplease review\u003c/p\u003e\n\u003cp\u003e---------- Forwarded message ----------\u003cbr\u003e\nFrom: old@example.test\u003cbr\u003e\nSubject: receipt\u003c/p\u003e\n\u003cp\u003eoriginal\u003cimg src=\"cid:original-image\"\u003e\u003c/p\u003e",
             "body_text": "please review\n\n---------- Forwarded message ----------\nFrom: old@example.test\nSubject: receipt\n\noriginal receipt",
             "created_at": "2030-01-02T03:04:05Z",
@@ -16171,6 +16172,7 @@
         "status": 200,
         "body": {
           "data": {
+            "class": "person",
             "id": 10,
             "mailbox_id": 10,
             "folder": "INBOX",
@@ -16241,6 +16243,7 @@
         "status": 200,
         "body": {
           "data": {
+            "class": "person",
             "id": 1,
             "mailbox_id": 1,
             "folder": "INBOX",
@@ -16295,6 +16298,7 @@
         "status": 200,
         "body": {
           "data": {
+            "class": "person",
             "id": 7,
             "mailbox_id": 1,
             "folder": "INBOX",
@@ -16348,6 +16352,7 @@
         "status": 200,
         "body": {
           "data": {
+            "class": "person",
             "id": 1,
             "mailbox_id": 1,
             "folder": "INBOX",
@@ -16458,6 +16463,7 @@
         "status": 200,
         "body": {
           "data": {
+            "class": "person",
             "id": 1,
             "mailbox_id": 1,
             "folder": "INBOX",
@@ -16528,6 +16534,7 @@
         "status": 200,
         "body": {
           "data": {
+            "class": "person",
             "id": 1,
             "mailbox_id": 1,
             "folder": "INBOX",
@@ -16616,6 +16623,7 @@
         "status": 200,
         "body": {
           "data": {
+            "class": "person",
             "id": 6,
             "mailbox_id": 1,
             "folder": "INBOX",
@@ -16686,6 +16694,7 @@
         "status": 200,
         "body": {
           "data": {
+            "class": "person",
             "id": 10,
             "mailbox_id": 10,
             "folder": "INBOX",
@@ -16756,6 +16765,7 @@
         "status": 200,
         "body": {
           "data": {
+            "class": "person",
             "id": 2,
             "mailbox_id": 2,
             "folder": "INBOX",
@@ -18072,6 +18082,7 @@
         "body": {
           "data": [
             {
+              "class": "person",
               "id": 52,
               "mailbox_id": 10,
               "folder": "INBOX",
@@ -18102,6 +18113,7 @@
               "received_tls": false
             },
             {
+              "class": "person",
               "id": 53,
               "mailbox_id": 10,
               "folder": "INBOX",
@@ -18130,6 +18142,7 @@
               "updated_at": "2026-10-20T00:00:00Z"
             },
             {
+              "class": "person",
               "id": 51,
               "mailbox_id": 10,
               "folder": "INBOX",
@@ -18232,6 +18245,7 @@
         "body": {
           "data": [
             {
+              "class": "person",
               "id": 52,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -18262,6 +18276,7 @@
               "received_tls": false
             },
             {
+              "class": "person",
               "id": 53,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -18290,6 +18305,7 @@
               "updated_at": "2026-10-20T00:00:00Z"
             },
             {
+              "class": "person",
               "id": 51,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -18356,6 +18372,7 @@
         "body": {
           "data": [
             {
+              "class": "person",
               "id": 52,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -18386,6 +18403,7 @@
               "received_tls": false
             },
             {
+              "class": "person",
               "id": 53,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -18414,6 +18432,7 @@
               "updated_at": "2026-10-20T00:00:00Z"
             },
             {
+              "class": "person",
               "id": 51,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -18555,6 +18574,7 @@
         "body": {
           "data": [
             {
+              "class": "person",
               "id": 52,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -18585,6 +18605,7 @@
               "received_tls": false
             },
             {
+              "class": "person",
               "id": 53,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -18613,6 +18634,7 @@
               "updated_at": "2026-10-20T00:00:00Z"
             },
             {
+              "class": "person",
               "id": 51,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -18697,6 +18719,7 @@
         "body": {
           "data": [
             {
+              "class": "person",
               "id": 52,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -18727,6 +18750,7 @@
               "received_tls": false
             },
             {
+              "class": "person",
               "id": 53,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -18755,6 +18779,7 @@
               "updated_at": "2026-10-20T00:00:00Z"
             },
             {
+              "class": "person",
               "id": 51,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -18875,6 +18900,7 @@
         "body": {
           "data": [
             {
+              "class": "person",
               "id": 52,
               "mailbox_id": 10,
               "folder": "INBOX",
@@ -18905,6 +18931,7 @@
               "received_tls": false
             },
             {
+              "class": "person",
               "id": 53,
               "mailbox_id": 10,
               "folder": "INBOX",
@@ -18933,6 +18960,7 @@
               "updated_at": "2026-10-20T00:00:00Z"
             },
             {
+              "class": "person",
               "id": 51,
               "mailbox_id": 10,
               "folder": "INBOX",
@@ -23575,6 +23603,7 @@
         "body": {
           "data": [
             {
+              "class": "person",
               "id": 51,
               "mailbox_id": 10,
               "folder": "INBOX",
@@ -23625,6 +23654,7 @@
               "tls_version": "TLS1.3"
             },
             {
+              "class": "person",
               "id": 53,
               "mailbox_id": 10,
               "folder": "INBOX",
@@ -23653,6 +23683,7 @@
               "updated_at": "2026-10-20T00:00:00Z"
             },
             {
+              "class": "person",
               "id": 52,
               "mailbox_id": 10,
               "folder": "INBOX",
@@ -23724,6 +23755,7 @@
         "body": {
           "data": [
             {
+              "class": "person",
               "id": 51,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -23774,6 +23806,7 @@
               "tls_version": "TLS1.3"
             },
             {
+              "class": "person",
               "id": 53,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -23802,6 +23835,7 @@
               "updated_at": "2026-10-20T00:00:00Z"
             },
             {
+              "class": "person",
               "id": 52,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -23870,6 +23904,7 @@
         "body": {
           "data": [
             {
+              "class": "person",
               "id": 51,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -23920,6 +23955,7 @@
               "tls_version": "TLS1.3"
             },
             {
+              "class": "person",
               "id": 53,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -23948,6 +23984,7 @@
               "updated_at": "2026-10-20T00:00:00Z"
             },
             {
+              "class": "person",
               "id": 52,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -24002,6 +24039,7 @@
         "body": {
           "data": [
             {
+              "class": "person",
               "id": 51,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -24052,6 +24090,7 @@
               "tls_version": "TLS1.3"
             },
             {
+              "class": "person",
               "id": 53,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -24080,6 +24119,7 @@
               "updated_at": "2026-10-20T00:00:00Z"
             },
             {
+              "class": "person",
               "id": 52,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -24130,6 +24170,7 @@
         "body": {
           "data": [
             {
+              "class": "person",
               "id": 51,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -24180,6 +24221,7 @@
               "tls_version": "TLS1.3"
             },
             {
+              "class": "person",
               "id": 53,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -24208,6 +24250,7 @@
               "updated_at": "2026-10-20T00:00:00Z"
             },
             {
+              "class": "person",
               "id": 52,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -24277,6 +24320,7 @@
         "body": {
           "data": [
             {
+              "class": "person",
               "id": 51,
               "mailbox_id": 1,
               "folder": "Projects/2026 café",
@@ -24327,6 +24371,7 @@
               "tls_version": "TLS1.3"
             },
             {
+              "class": "person",
               "id": 53,
               "mailbox_id": 1,
               "folder": "Projects/2026 café",
@@ -24355,6 +24400,7 @@
               "updated_at": "2026-10-20T00:00:00Z"
             },
             {
+              "class": "person",
               "id": 52,
               "mailbox_id": 1,
               "folder": "Projects/2026 café",
@@ -24409,6 +24455,7 @@
         "body": {
           "data": [
             {
+              "class": "person",
               "id": 51,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -24519,6 +24566,7 @@
         "body": {
           "data": [
             {
+              "class": "person",
               "id": 51,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -24569,6 +24617,7 @@
               "tls_version": "TLS1.3"
             },
             {
+              "class": "person",
               "id": 53,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -24597,6 +24646,7 @@
               "updated_at": "2026-10-20T00:00:00Z"
             },
             {
+              "class": "person",
               "id": 52,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -24698,6 +24748,7 @@
         "body": {
           "data": [
             {
+              "class": "person",
               "id": 51,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -24748,6 +24799,7 @@
               "tls_version": "TLS1.3"
             },
             {
+              "class": "person",
               "id": 53,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -24776,6 +24828,7 @@
               "updated_at": "2026-10-20T00:00:00Z"
             },
             {
+              "class": "person",
               "id": 52,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -24844,6 +24897,7 @@
         "body": {
           "data": [
             {
+              "class": "person",
               "id": 51,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -24894,6 +24948,7 @@
               "tls_version": "TLS1.3"
             },
             {
+              "class": "person",
               "id": 53,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -24922,6 +24977,7 @@
               "updated_at": "2026-10-20T00:00:00Z"
             },
             {
+              "class": "person",
               "id": 52,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -24994,6 +25050,7 @@
         "body": {
           "data": [
             {
+              "class": "person",
               "id": 52,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -25047,6 +25104,7 @@
         "body": {
           "data": [
             {
+              "class": "person",
               "id": 51,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -25097,6 +25155,7 @@
               "tls_version": "TLS1.3"
             },
             {
+              "class": "person",
               "id": 53,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -25125,6 +25184,7 @@
               "updated_at": "2026-10-20T00:00:00Z"
             },
             {
+              "class": "person",
               "id": 52,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -25197,6 +25257,7 @@
         "body": {
           "data": [
             {
+              "class": "person",
               "id": 53,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -25267,6 +25328,7 @@
         "body": {
           "data": [
             {
+              "class": "person",
               "id": 51,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -25317,6 +25379,7 @@
               "tls_version": "TLS1.3"
             },
             {
+              "class": "person",
               "id": 53,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -25345,6 +25408,7 @@
               "updated_at": "2026-10-20T00:00:00Z"
             },
             {
+              "class": "person",
               "id": 52,
               "mailbox_id": 1,
               "folder": "INBOX",
@@ -25395,6 +25459,7 @@
         "body": {
           "data": [
             {
+              "class": "person",
               "id": 51,
               "mailbox_id": 10,
               "folder": "INBOX",
@@ -25445,6 +25510,7 @@
               "tls_version": "TLS1.3"
             },
             {
+              "class": "person",
               "id": 53,
               "mailbox_id": 10,
               "folder": "INBOX",
@@ -25473,6 +25539,7 @@
               "updated_at": "2026-10-20T00:00:00Z"
             },
             {
+              "class": "person",
               "id": 52,
               "mailbox_id": 10,
               "folder": "INBOX",
@@ -33944,6 +34011,7 @@
         "status": 201,
         "body": {
           "data": {
+            "class": "person",
             "id": 12,
             "mailbox_id": 1,
             "folder": "Drafts",
@@ -45260,6 +45328,7 @@
         "status": 200,
         "body": {
           "data": {
+            "class": "person",
             "id": 12,
             "mailbox_id": 1,
             "folder": "Drafts",

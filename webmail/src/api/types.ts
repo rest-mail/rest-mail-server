@@ -3243,6 +3243,8 @@ export interface components {
             body_html?: string;
             body_text?: string;
             calendar_events?: unknown;
+            /** @enum {string} */
+            class: "newsletter" | "receipt" | "notification" | "person";
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
