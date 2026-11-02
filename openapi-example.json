@@ -16412,6 +16412,23 @@
         },
         "mediaType": "application/json"
       }
+    },
+    "unauthenticated": {
+      "summary": "No credential is sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {},
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
     }
   },
   "getSieveScript": {
@@ -39573,6 +39590,27 @@
                 "contact_import_max_bytes": "must be at least 1"
               }
             }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "summary": "No credential is sent",
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "body": {
+          "contact_import_max_bytes": 20971520
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
           }
         },
         "mediaType": "application/json"
