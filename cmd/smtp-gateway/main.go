@@ -259,16 +259,20 @@ func main() {
 	}
 	queueWorker.SetBounceRateLimit(cfg.BounceDSNMaxPerRecipient, cfg.BounceDSNRateWindow)
 	queueWorker.SetSuppressionTTL(cfg.SuppressionTTL)
-	// OSI-7: size-aware per-attempt send budget + matching reclaim interval. The
-	// per-send deadline scales with each message's size (a fixed 30 s could not
-	// transfer a large body); the reclaim interval is kept strictly above the
-	// worst-case max-size send so a slow legitimate large send is never reclaimed
-	// mid-flight and delivered twice. Both are bounded.
+	// Each SMTP step has its own timer, and the worker holding a row refreshes it
+	// while it runs, so reclaim only has to outlast the longest step (#714). The
+	// RESTMAIL hop's HTTPS requests keep a size-aware budget (OSI-7).
 	queueReclaim := cfg.StaleDeliveringReclaim()
+	queueWorker.SetSMTPTimeouts(cfg.QueueSMTPTimeouts)
 	queueWorker.SetDeliveryDeadline(cfg.InternalDeliveryDeadline, queueReclaim)
-	slog.Info("queue delivery timing configured (OSI-7)",
-		"max_message_size", cfg.SMTPMaxMessageSize,
-		"max_size_send_budget", cfg.InternalDeliveryDeadline(cfg.SMTPMaxMessageSize).String(),
+	slog.Info("queue delivery timing configured",
+		"smtp_greeting_timeout", cfg.QueueSMTPTimeouts.Greeting.String(),
+		"smtp_mail_timeout", cfg.QueueSMTPTimeouts.Mail.String(),
+		"smtp_rcpt_timeout", cfg.QueueSMTPTimeouts.Rcpt.String(),
+		"smtp_data_timeout", cfg.QueueSMTPTimeouts.Data.String(),
+		"smtp_data_block_timeout", cfg.QueueSMTPTimeouts.DataBlock.String(),
+		"smtp_final_reply_timeout", cfg.QueueSMTPTimeouts.FinalReply.String(),
+		"restmail_max_size_budget", cfg.InternalDeliveryDeadline(cfg.SMTPMaxMessageSize).String(),
 		"reclaim_interval", queueReclaim.String(),
 	)
 	if cfg.Environment == "development" || os.Getenv("QUEUE_TLS_INSECURE") == "true" {

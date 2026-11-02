@@ -412,6 +412,16 @@ smtpGateway:
   minTransferRate: ""
   transferGracePeriod: ""
   transferStallTimeout: ""
+  # How long the outbound queue waits at each step of an SMTP conversation, as Go
+  # durations. Empty = server defaults, RFC 5321 §4.5.3.2's minimums: greeting 5m,
+  # MAIL 5m, RCPT 5m, DATA 2m, each data block 3m, final reply 10m. A row with no
+  # heartbeat is reclaimed after the longest of these plus 2 minutes.
+  queueSMTPGreetingTimeout: ""
+  queueSMTPMailTimeout: ""
+  queueSMTPRcptTimeout: ""
+  queueSMTPDataTimeout: ""
+  queueSMTPDataBlockTimeout: ""
+  queueSMTPFinalReplyTimeout: ""
   logLevel: info
   environment: production
   service:

@@ -50,10 +50,10 @@ func TestProbeRESTMAILHasIODeadline(t *testing.T) {
 		mu.Unlock()
 	}()
 
-	// Short per-attempt budget so the probe's deadline fires quickly and the test
+	// A short greeting timer so the probe's deadline fires quickly and the test
 	// stays fast; allowPrivateDest permits the loopback dial past the SSRF guard.
 	w := &Worker{
-		sendDeadline:     func(int64) time.Duration { return 200 * time.Millisecond },
+		smtpTimeouts:     everyStep(200 * time.Millisecond),
 		allowPrivateDest: true,
 		hostname:         "test.local",
 	}
@@ -64,7 +64,7 @@ func TestProbeRESTMAILHasIODeadline(t *testing.T) {
 		done <- probed
 	}()
 
-	// The probe budget is 200ms, so a correctly-bounded probe returns well within
+	// The greeting timer is 200ms, so a correctly-bounded probe returns well within
 	// this. Exceeding it means the probe has no I/O deadline and is wedged on the
 	// silent socket — the exact defect #169 describes.
 	select {

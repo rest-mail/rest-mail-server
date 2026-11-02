@@ -3,15 +3,17 @@ package queue
 import (
 	"testing"
 	"time"
+
+	"github.com/rest-mail/rest-mail-server/internal/config"
 )
 
-// OSI-7 — the outbound queue's per-attempt send budget must scale with each
-// message's size, and the reclaim interval must always strictly exceed the
-// worst-case send budget so a slow legitimate large send is never reclaimed
-// mid-flight and delivered twice.
+// OSI-7 — the budget of the RESTMAIL hop's HTTPS requests must scale with each
+// message's size. #714 — the reclaim interval must exceed the longest single SMTP
+// step, so a slow legitimate step is never reclaimed mid-flight and delivered
+// twice.
 
-// TestNewWorker_DeliveryDeadlineDefaults verifies a fresh worker preserves the
-// historical fixed timing until configured: 30s per send, 15m reclaim.
+// TestNewWorker_DeliveryDeadlineDefaults verifies a fresh worker's timing until
+// configured: 30s per RESTMAIL request, reclaim at the longest step plus a margin.
 func TestNewWorker_DeliveryDeadlineDefaults(t *testing.T) {
 	w := NewWorker(nil, "mx.local", 1, time.Second)
 	if w.reclaim != staleDeliveringTimeout {
@@ -57,24 +59,22 @@ func TestSetDeliveryDeadline_WiresAndGuards(t *testing.T) {
 	}
 }
 
-// TestReclaimExceedsSendBudget is the anti-duplicate invariant at the worker
-// level: with a realistic size-aware budget, the configured reclaim strictly
-// exceeds the worst-case max-size send so an in-flight large send is safe.
-func TestReclaimExceedsSendBudget(t *testing.T) {
-	const maxSize = int64(128 << 20) // 128 MiB
-	// Mirror the config derivation: grace + size/floorRate, reclaim = max(15m, budget+margin).
-	budget := func(sizeBytes int64) time.Duration {
-		return 30*time.Second + time.Duration(sizeBytes/(1<<20))*time.Second
-	}
-	reclaim := 15 * time.Minute
-	if d := budget(maxSize) + 5*time.Minute; d > reclaim {
-		reclaim = d
-	}
+// TestReclaimExceedsLongestStep is the anti-duplicate invariant at the worker
+// level: the reclaim the config derives exceeds the longest SMTP step, whatever
+// the step is set to, and does not depend on the message's size.
+func TestReclaimExceedsLongestStep(t *testing.T) {
+	for _, timers := range []config.OutboundSMTPTimeouts{
+		{},
+		{FinalReply: 45 * time.Minute},
+		{Greeting: 30 * time.Minute, FinalReply: time.Minute},
+	} {
+		c := &config.Config{QueueSMTPTimeouts: timers}
+		w := NewWorker(nil, "mx.local", 1, time.Second)
+		w.SetSMTPTimeouts(c.QueueSMTPTimeouts)
+		w.SetDeliveryDeadline(c.InternalDeliveryDeadline, c.StaleDeliveringReclaim())
 
-	w := NewWorker(nil, "mx.local", 1, time.Second)
-	w.SetDeliveryDeadline(budget, reclaim)
-
-	if w.reclaim <= w.sendDeadline(maxSize) {
-		t.Fatalf("reclaim %v must strictly exceed max-size send budget %v", w.reclaim, w.sendDeadline(maxSize))
+		if w.reclaim <= w.timeouts().Longest() {
+			t.Errorf("reclaim %v must strictly exceed the longest step %v", w.reclaim, w.timeouts().Longest())
+		}
 	}
 }

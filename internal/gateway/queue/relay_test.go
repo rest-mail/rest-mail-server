@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
@@ -64,6 +65,7 @@ type relayPeerOptions struct {
 	rejectAt          string
 	reply             string
 	silentAt          string
+	greetingDelay     time.Duration
 	preTLSAUTH        bool
 	authChallenge     string
 	authMechanisms    string
@@ -112,6 +114,7 @@ func relayTestPeer(t *testing.T, cert tls.Certificate, opts relayPeerOptions) (r
 			_, _ = io.Copy(io.Discard, conn)
 			return
 		}
+		time.Sleep(opts.greetingDelay)
 		reader := bufio.NewReader(conn)
 		writer := bufio.NewWriter(conn)
 		reply := func(s string) bool {
@@ -136,7 +139,7 @@ func relayTestPeer(t *testing.T, cert tls.Certificate, opts relayPeerOptions) (r
 			line = strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
 			result.commands = append(result.commands, line)
 			command, _, _ := strings.Cut(line, " ")
-			if opts.silentAt == command {
+			if opts.silentAt == command || opts.silentAt == "EHLO after TLS" && tlsActive && command == "EHLO" {
 				_, _ = io.Copy(io.Discard, conn)
 				return
 			}
@@ -240,7 +243,7 @@ func relayTestPeer(t *testing.T, cert tls.Certificate, opts relayPeerOptions) (r
 				}
 				if opts.silentAt == "DATA write" {
 					// Do not drain the socket; a large DATA write must observe the
-					// attempt budget even when the peer stops reading.
+					// block's timer even when the peer stops reading.
 					timer := time.NewTimer(250 * time.Millisecond)
 					defer timer.Stop()
 					<-timer.C
@@ -509,7 +512,7 @@ func TestRelayDeadlineAndCancellation(t *testing.T) {
 				settings.roots = roots
 				ctx, cancel := context.WithCancel(context.Background())
 				defer cancel()
-				w := &Worker{hostname: "sender.test", sendDeadline: func(int64) time.Duration { return 100 * time.Millisecond }}
+				w := &Worker{hostname: "sender.test", smtpTimeouts: everyStep(100 * time.Millisecond)}
 				want := context.DeadlineExceeded
 				if cancelEarly {
 					timer := time.AfterFunc(40*time.Millisecond, cancel)
@@ -522,7 +525,7 @@ func TestRelayDeadlineAndCancellation(t *testing.T) {
 					t.Fatalf("want %v, got %v", want, err)
 				}
 				if time.Since(start) > time.Second {
-					t.Fatal("attempt exceeded budget")
+					t.Fatal("attempt exceeded its step's timer")
 				}
 				finish()
 			})
@@ -615,18 +618,14 @@ func TestRelayStalledTLSAndDATA(t *testing.T) {
 			if tc.stage == "DATA write" {
 				item.RawMessage += strings.Repeat("synthetic payload line\r\n", 400000)
 			}
-			var measuredSize int64
-			w := &Worker{hostname: "sender.test", sendDeadline: func(size int64) time.Duration { measuredSize = size; return 100 * time.Millisecond }}
+			w := &Worker{hostname: "sender.test", smtpTimeouts: everyStep(100 * time.Millisecond)}
 			started := time.Now()
 			err := w.deliverToRelay(context.Background(), settings, item)
 			if !errors.Is(err, context.DeadlineExceeded) {
 				t.Fatalf("want deadline, got %v", err)
 			}
 			if time.Since(started) > time.Second {
-				t.Fatal("stalled attempt exceeded budget")
-			}
-			if measuredSize != int64(len(item.RawMessage)) {
-				t.Fatal("deadline budget did not receive prepared message size")
+				t.Fatal("stalled attempt exceeded its step's timer")
 			}
 			result := finish()
 			if tc.stage == "TLS handshake" {
@@ -642,7 +641,7 @@ func TestRelayCallerDeadlineWins(t *testing.T) {
 	settings.roots = roots
 	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
 	defer cancel()
-	w := &Worker{hostname: "sender.test", sendDeadline: func(int64) time.Duration { return time.Hour }}
+	w := &Worker{hostname: "sender.test", smtpTimeouts: everyStep(time.Hour)}
 	started := time.Now()
 	if err := w.deliverToRelay(ctx, settings, relayTestItem()); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("want caller deadline, got %v", err)
@@ -671,5 +670,68 @@ func TestRelaySevenBitPeer(t *testing.T) {
 		if strings.HasPrefix(cmd, "MAIL") && cmd != "MAIL FROM:<"+item.Sender+">" {
 			t.Fatalf("unexpected MAIL parameters: %s", cmd)
 		}
+	}
+}
+
+// The smarthost path has the same timers as direct delivery (#714): a stalled relay
+// is dropped at the timeout of the step it stalled in, with every other timer far
+// from expiring.
+func TestRelayStalledStepIsDroppedAtItsTimeout(t *testing.T) {
+	const timeout = 100 * time.Millisecond
+	cert, roots := relayTestCertificate(t, false)
+	for _, tc := range []struct {
+		stage    string
+		implicit bool
+		set      func(*config.OutboundSMTPTimeouts)
+	}{
+		{"greeting", false, func(s *config.OutboundSMTPTimeouts) { s.Greeting = timeout }},
+		{"EHLO", false, func(s *config.OutboundSMTPTimeouts) { s.Hello = timeout }},
+		{"STARTTLS", false, func(s *config.OutboundSMTPTimeouts) { s.StartTLS = timeout }},
+		{"TLS handshake", false, func(s *config.OutboundSMTPTimeouts) { s.StartTLS = timeout }},
+		{"TLS handshake", true, func(s *config.OutboundSMTPTimeouts) { s.StartTLS = timeout }},
+		{"EHLO after TLS", false, func(s *config.OutboundSMTPTimeouts) { s.Hello = timeout }},
+		{"AUTH", false, func(s *config.OutboundSMTPTimeouts) { s.Auth = timeout }},
+		{"MAIL", false, func(s *config.OutboundSMTPTimeouts) { s.Mail = timeout }},
+		{"RCPT", false, func(s *config.OutboundSMTPTimeouts) { s.Rcpt = timeout }},
+		{"DATA", false, func(s *config.OutboundSMTPTimeouts) { s.Data = timeout }},
+		{"DATA write", false, func(s *config.OutboundSMTPTimeouts) { s.DataBlock = timeout }},
+		{"DATA reply", false, func(s *config.OutboundSMTPTimeouts) { s.FinalReply = timeout }},
+	} {
+		t.Run(fmt.Sprintf("%s/implicit=%v", tc.stage, tc.implicit), func(t *testing.T) {
+			settings, finish := relayTestPeer(t, cert, relayPeerOptions{implicit: tc.implicit, silentAt: tc.stage})
+			settings.roots = roots
+			item := relayTestItem()
+			if tc.stage == "DATA write" {
+				item.RawMessage += strings.Repeat("synthetic payload line\r\n", 400000)
+			}
+			timers := everyStep(time.Hour)
+			tc.set(&timers)
+			w := &Worker{hostname: "sender.test", smtpTimeouts: timers}
+			started := time.Now()
+			err := w.deliverToRelay(context.Background(), settings, item)
+			if !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("want a timeout, got %v", err)
+			}
+			if took := time.Since(started); took < timeout || took > time.Second {
+				t.Fatalf("dropped after %v, want soon after %v", took, timeout)
+			}
+			finish()
+		})
+	}
+}
+
+// A slow relay greeting within its timer is no failure, however short the budget
+// the RESTMAIL hop has.
+func TestRelaySlowGreetingWithinItsTimeoutSucceeds(t *testing.T) {
+	cert, roots := relayTestCertificate(t, false)
+	settings, finish := relayTestPeer(t, cert, relayPeerOptions{greetingDelay: testMinute})
+	settings.roots = roots
+	w := &Worker{hostname: "sender.test", sendDeadline: oldAttemptDeadline, smtpTimeouts: rfcTimeoutsOnTestClock()}
+	item := relayTestItem()
+	if err := w.deliverToRelay(context.Background(), settings, item); err != nil {
+		t.Fatalf("a greeting within its timeout must not fail the attempt: %v", err)
+	}
+	if got := finish(); got.data != item.RawMessage {
+		t.Fatalf("relay received %q", got.data)
 	}
 }

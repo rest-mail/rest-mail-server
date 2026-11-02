@@ -20,10 +20,10 @@ func TestInternalDeliveryDeadline_ScalesAndBounded(t *testing.T) {
 	// 1 MiB/s floor (the default) keeps the arithmetic legible: N MiB ≈ N s + grace.
 	c := &Config{}
 
-	small := c.InternalDeliveryDeadline(1 * 1024 * 1024)    // 1 MiB
-	medium := c.InternalDeliveryDeadline(64 * 1024 * 1024)  // 64 MiB
-	large := c.InternalDeliveryDeadline(128 * 1024 * 1024)  // 128 MiB
-	huge := c.InternalDeliveryDeadline(512 * 1024 * 1024)   // 512 MiB
+	small := c.InternalDeliveryDeadline(1 * 1024 * 1024)   // 1 MiB
+	medium := c.InternalDeliveryDeadline(64 * 1024 * 1024) // 64 MiB
+	large := c.InternalDeliveryDeadline(128 * 1024 * 1024) // 128 MiB
+	huge := c.InternalDeliveryDeadline(512 * 1024 * 1024)  // 512 MiB
 
 	// Proportional growth: a bigger message gets a strictly larger budget.
 	if !(small < medium && medium < large && large < huge) {
@@ -131,38 +131,83 @@ func TestInternalDeliveryBodyLimit_AcceptsMax(t *testing.T) {
 	}
 }
 
-// TestStaleDeliveringReclaim_ExceedsSendBudget is the anti-duplicate invariant:
-// the queue reclaim interval must strictly exceed the worst-case single max-size
-// send budget, so an in-flight slow large send completes before it is reclaimed.
-func TestStaleDeliveringReclaim_ExceedsSendBudget(t *testing.T) {
+// TestStaleDeliveringReclaim_ExceedsLongestStep is the anti-duplicate invariant:
+// the queue reclaim interval must strictly exceed the longest single SMTP step. It
+// no longer scales with the message's size (#714): the worker holding a row
+// refreshes it for as long as the attempt runs.
+func TestStaleDeliveringReclaim_ExceedsLongestStep(t *testing.T) {
 	cases := []int64{
-		DefaultSMTPMaxMessageSize, // 10 MiB — reclaim should stay at the 15m baseline
-		128 * 1024 * 1024,         // 128 MiB — still under baseline
-		4 * 1024 * 1024 * 1024,    // 4 GiB — forces reclaim above the baseline
+		DefaultSMTPMaxMessageSize, // 10 MiB
+		128 * 1024 * 1024,         // 128 MiB
+		4 * 1024 * 1024 * 1024,    // 4 GiB
 	}
 	for _, max := range cases {
 		c := &Config{SMTPMaxMessageSize: max}
-		reclaim := c.StaleDeliveringReclaim()
-		sendBudget := c.InternalDeliveryDeadline(max)
-		if reclaim <= sendBudget {
-			t.Errorf("max=%d: reclaim %v must strictly exceed max-size send budget %v", max, reclaim, sendBudget)
-		}
-		// Never shorter than the historical 15-minute baseline.
-		if reclaim < defaultStaleDeliveringReclaim {
-			t.Errorf("max=%d: reclaim %v must be >= baseline %v", max, reclaim, defaultStaleDeliveringReclaim)
+		if got, want := c.StaleDeliveringReclaim(), 12*time.Minute; got != want {
+			t.Errorf("max=%d: reclaim = %v, want %v", max, got, want)
 		}
 	}
 
-	// For a normal deployment the derived reclaim stays exactly at the baseline
-	// (no behavior change for small mail).
-	c := &Config{SMTPMaxMessageSize: DefaultSMTPMaxMessageSize}
-	if got := c.StaleDeliveringReclaim(); got != defaultStaleDeliveringReclaim {
-		t.Errorf("normal-size reclaim = %v, want unchanged baseline %v", got, defaultStaleDeliveringReclaim)
+	// A longer step raises it; shorter ones lower it, and it stays above each.
+	raised := &Config{QueueSMTPTimeouts: OutboundSMTPTimeouts{FinalReply: 30 * time.Minute}}
+	if got, want := raised.StaleDeliveringReclaim(), 32*time.Minute; got != want {
+		t.Errorf("reclaim with a 30m final reply = %v, want %v", got, want)
+	}
+	short := time.Minute
+	lowered := &Config{QueueSMTPTimeouts: OutboundSMTPTimeouts{Greeting: short, Mail: short, Rcpt: short, Data: short,
+		DataBlock: short, FinalReply: short, Hello: short, StartTLS: short, Auth: short, Quit: short}}
+	if got, want := lowered.StaleDeliveringReclaim(), 3*time.Minute; got != want {
+		t.Errorf("reclaim with every step at 1m = %v, want %v", got, want)
+	}
+}
+
+// RFC 5321 §4.5.3.2's minimums are the defaults, and each of its six timers has a
+// setting ("Timeouts SHOULD be easily reconfigurable").
+func TestQueueSMTPTimeouts_DefaultsAndSettings(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("ENVIRONMENT", "development")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := cfg.QueueSMTPTimeouts, DefaultOutboundSMTPTimeouts(); got != want {
+		t.Fatalf("defaults = %+v, want %+v", got, want)
+	}
+	want := OutboundSMTPTimeouts{
+		Greeting: 5 * time.Minute, Mail: 5 * time.Minute, Rcpt: 5 * time.Minute, Data: 2 * time.Minute,
+		DataBlock: 3 * time.Minute, FinalReply: 10 * time.Minute,
+		Hello: 5 * time.Minute, StartTLS: 5 * time.Minute, Auth: 5 * time.Minute, Quit: 5 * time.Minute,
+	}
+	if cfg.QueueSMTPTimeouts != want {
+		t.Fatalf("defaults = %+v, want the RFC's %+v", cfg.QueueSMTPTimeouts, want)
 	}
 
-	// For a very large max, reclaim must actually have grown above the baseline.
-	big := &Config{SMTPMaxMessageSize: 4 * 1024 * 1024 * 1024}
-	if got := big.StaleDeliveringReclaim(); got <= defaultStaleDeliveringReclaim {
-		t.Errorf("4 GiB reclaim = %v, want grown above baseline %v", got, defaultStaleDeliveringReclaim)
+	for key, read := range map[string]func(OutboundSMTPTimeouts) time.Duration{
+		"QUEUE_SMTP_GREETING_TIMEOUT":    func(t OutboundSMTPTimeouts) time.Duration { return t.Greeting },
+		"QUEUE_SMTP_MAIL_TIMEOUT":        func(t OutboundSMTPTimeouts) time.Duration { return t.Mail },
+		"QUEUE_SMTP_RCPT_TIMEOUT":        func(t OutboundSMTPTimeouts) time.Duration { return t.Rcpt },
+		"QUEUE_SMTP_DATA_TIMEOUT":        func(t OutboundSMTPTimeouts) time.Duration { return t.Data },
+		"QUEUE_SMTP_DATA_BLOCK_TIMEOUT":  func(t OutboundSMTPTimeouts) time.Duration { return t.DataBlock },
+		"QUEUE_SMTP_FINAL_REPLY_TIMEOUT": func(t OutboundSMTPTimeouts) time.Duration { return t.FinalReply },
+	} {
+		clearEnv(t)
+		t.Setenv("ENVIRONMENT", "development")
+		t.Setenv(key, "37m")
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("%s: %v", key, err)
+		}
+		if got := read(cfg.QueueSMTPTimeouts); got != 37*time.Minute {
+			t.Errorf("%s=37m read as %v", key, got)
+		}
+		if got := cfg.StaleDeliveringReclaim(); got != 39*time.Minute {
+			t.Errorf("%s=37m: reclaim = %v, want 39m", key, got)
+		}
+		for _, bad := range []string{"soon", "300", "0s", "-1m"} {
+			t.Setenv(key, bad)
+			if _, err := Load(); err == nil {
+				t.Errorf("Load() with %s=%q should fail", key, bad)
+			}
+		}
 	}
 }

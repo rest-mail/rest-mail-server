@@ -167,6 +167,12 @@ A queue that keeps growing is a symptom, never the problem: read the errors.
   schedule, so the deadline is what ends retrying
   ([`internal/db/models/queue.go`](../../../internal/db/models/queue.go),
   `QueueLifetime`, #711).
+- **A crashed worker's mail comes back.** The worker holding a message refreshes
+  it once a minute while it sends, however long that takes. A message with no
+  refresh for 12 minutes, the longest wait for one reply plus a margin, was left
+  behind by a worker that died, and another worker sends it
+  ([`internal/gateway/queue/smtp_timeouts.go`](../../../internal/gateway/queue/smtp_timeouts.go),
+  #714).
 - **Bounces** are RFC 3464 reports, marked `Auto-Submitted: auto-generated`,
   with `Remote-MTA` and `Last-Attempt-Date`, and with every remote value
   cleaned so a hostile reply cannot inject header lines

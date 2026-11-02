@@ -243,6 +243,9 @@ type Config struct {
 
 	QueueWorkers      int
 	QueuePollInterval time.Duration
+	// QueueSMTPTimeouts bounds each step of an outbound SMTP conversation
+	// (RFC 5321 §4.5.3.2), #714.
+	QueueSMTPTimeouts OutboundSMTPTimeouts
 	MTASTSEnforce     bool // enforce recipient MTA-STS policies on outbound delivery (RFC 8461)
 	// DANEResolver is the loopback address of a DNSSEC-validating resolver; set, the
 	// queue applies DANE for SMTP (RFC 7672) to recipient domains with DNSSEC (#725).
@@ -664,6 +667,10 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("SMTP_TRANSFER_STALL_TIMEOUT must be a positive number of seconds, got %d", stallSecs)
 	}
 	cfg.SMTPTransferStallTimeout = time.Duration(stallSecs) * time.Second
+
+	if cfg.QueueSMTPTimeouts, err = loadOutboundSMTPTimeouts(); err != nil {
+		return nil, err
+	}
 
 	// SMTP anti-abuse tarpit. Same strictness rationale as the transfer knobs: a
 	// malformed value is a startup error, never a silent fallback. Range checks
@@ -1252,10 +1259,9 @@ func (c *Config) MetricsAllowedCIDRs() []string {
 //
 // SMTP_MAX_MESSAGE_SIZE is admin-configurable and can be large (e.g. 128 MiB).
 // Several internal hops that carry a full message body (gateway→API delivery,
-// queue→MX outbound send, the RESTMAIL HTTPS hop) historically had SMALLER fixed
-// ceilings — a 30 s HTTP-client timeout, a 15 s API read/write timeout, a fixed
-// 30 s per-send deadline — that silently strand a large-but-permitted message
-// SMTP already accepted. These accessors derive a TIME budget from the message
+// the RESTMAIL HTTPS hop) historically had SMALLER fixed ceilings — a 30 s
+// HTTP-client timeout, a 15 s API read/write timeout — that silently strand a
+// large-but-permitted message SMTP already accepted. These accessors derive a TIME budget from the message
 // size and a floor throughput so each hop permits a full max-size body, while
 // staying BOUNDED (a finite function of the configured max size and a positive
 // floor rate — never infinite, so the internal path keeps its anti-slowloris
@@ -1267,7 +1273,7 @@ func (c *Config) MetricsAllowedCIDRs() []string {
 // is unset: 1 MiB/s. It is deliberately far above the public
 // SMTP_MIN_TRANSFER_RATE anti-slowloris floor (default 16 KiB/s): the derived
 // deadlines govern hops between trusted components over a fast local/internal
-// network (and our own outbound send to a peer MX), so a max-size body's time
+// network (and the RESTMAIL hop to a peer), so a max-size body's time
 // budget stays modest (128 MiB ≈ 128 s) instead of the hours a 16 KiB/s floor
 // would imply. An operator whose internal API link is genuinely constrained can
 // LOWER it to widen every derived budget. Must be positive.
@@ -1282,18 +1288,6 @@ const internalDeliveryGrace = 30 * time.Second
 // configured max size still yields a sane budget and the derivation never
 // regresses the historical fixed 30 s internal-client timeout for normal mail.
 const minInternalDeliveryDeadline = 30 * time.Second
-
-// defaultStaleDeliveringReclaim is the baseline interval after which an
-// outbound-queue row stuck in "delivering" is treated as orphaned by a crashed
-// worker and reclaimed. The effective reclaim (StaleDeliveringReclaim) only grows
-// above this when a max-size send could legitimately take longer.
-const defaultStaleDeliveringReclaim = 15 * time.Minute
-
-// staleDeliveringReclaimMargin is the slack added on top of the worst-case
-// single-send budget when the queue reclaim interval is derived, so reclaim
-// strictly exceeds any one send attempt: an in-flight legitimately-slow large
-// send can never be reclaimed out from under itself (which would double-send).
-const staleDeliveringReclaimMargin = 5 * time.Minute
 
 // InternalDeliveryFloorRate returns the internal-hop floor throughput in bytes
 // per second (INTERNAL_DELIVERY_FLOOR_RATE, default DefaultInternalDeliveryFloorRate).
@@ -1345,19 +1339,12 @@ func (c *Config) InternalDeliveryBodyLimit() int64 {
 	return c.SMTPMaxMessageSize*3 + 1*1024*1024
 }
 
-// StaleDeliveringReclaim returns how long an outbound-queue row may sit in
-// "delivering" before the worker reclaims it as orphaned. It is the larger of the
-// baseline (defaultStaleDeliveringReclaim) and the worst-case single-send budget
-// (InternalDeliveryDeadline(max size) + margin), guaranteeing reclaim strictly
-// exceeds any one send attempt so a slow-but-legitimate max-size send completes
-// before it can be reclaimed and duplicated. For a normal deployment (10 MiB max)
-// the derived value stays below the baseline, so reclaim is unchanged at 15 min.
+// StaleDeliveringReclaim returns how long an outbound-queue row may go without a
+// heartbeat before the worker reclaims it as orphaned: the longest single SMTP
+// step plus a margin (#714). It no longer depends on the message's size, because
+// the worker holding a row refreshes it for as long as the attempt runs.
 func (c *Config) StaleDeliveringReclaim() time.Duration {
-	derived := c.InternalDeliveryDeadline(c.SMTPMaxMessageSize) + staleDeliveringReclaimMargin
-	if derived > defaultStaleDeliveringReclaim {
-		return derived
-	}
-	return defaultStaleDeliveringReclaim
+	return c.QueueSMTPTimeouts.Reclaim()
 }
 
 // END internal large-message path (OSI-7)
@@ -2051,3 +2038,106 @@ func (s APNsSettings) Partial() bool {
 
 // END push notifications through APNs
 // ══════════════════════════════════════════════════════════════════════════
+
+// staleDeliveringReclaimMargin is the slack on top of the longest single SMTP
+// step when the reclaim interval is derived. It also has to exceed the worker's
+// heartbeat interval (one minute), so a missed beat cannot cost a live attempt
+// its row.
+const staleDeliveringReclaimMargin = 2 * time.Minute
+
+// OutboundSMTPTimeouts is how long the outbound queue waits at each step of an
+// SMTP conversation. Each step has its own timer, set on the socket before the
+// step starts, and nothing times the attempt as a whole, as RFC 5321 §4.5.3.2
+// asks. A zero field means its default.
+type OutboundSMTPTimeouts struct {
+	Greeting   time.Duration // the 220 greeting (RFC 5321 §4.5.3.2.1)
+	Mail       time.Duration // the reply to MAIL (§4.5.3.2.2)
+	Rcpt       time.Duration // the reply to RCPT (§4.5.3.2.3)
+	Data       time.Duration // the 354 after DATA (§4.5.3.2.4)
+	DataBlock  time.Duration // writing one block of the message (§4.5.3.2.5)
+	FinalReply time.Duration // the reply to the final "." (§4.5.3.2.6)
+
+	// The RFC names no minimum for these, and they have no setting of their own.
+	Hello    time.Duration // EHLO, each time it is sent
+	StartTLS time.Duration // STARTTLS's reply and the handshake, or implicit TLS's handshake
+	Auth     time.Duration // AUTH, on the smarthost path
+	Quit     time.Duration // QUIT
+}
+
+// DefaultOutboundSMTPTimeouts returns RFC 5321 §4.5.3.2's minimums, with EHLO,
+// STARTTLS, AUTH and QUIT waiting as long as MAIL and RCPT do.
+func DefaultOutboundSMTPTimeouts() OutboundSMTPTimeouts {
+	return OutboundSMTPTimeouts{
+		Greeting:   5 * time.Minute,
+		Mail:       5 * time.Minute,
+		Rcpt:       5 * time.Minute,
+		Data:       2 * time.Minute,
+		DataBlock:  3 * time.Minute,
+		FinalReply: 10 * time.Minute,
+		Hello:      5 * time.Minute,
+		StartTLS:   5 * time.Minute,
+		Auth:       5 * time.Minute,
+		Quit:       5 * time.Minute,
+	}
+}
+
+// fields lists every timer, for the code that treats them alike.
+func (t *OutboundSMTPTimeouts) fields() []*time.Duration {
+	return []*time.Duration{&t.Greeting, &t.Mail, &t.Rcpt, &t.Data, &t.DataBlock, &t.FinalReply, &t.Hello, &t.StartTLS, &t.Auth, &t.Quit}
+}
+
+// WithDefaults fills every zero field with its default.
+func (t OutboundSMTPTimeouts) WithDefaults() OutboundSMTPTimeouts {
+	defaults := DefaultOutboundSMTPTimeouts()
+	fallbacks := defaults.fields()
+	for i, field := range t.fields() {
+		if *field == 0 {
+			*field = *fallbacks[i]
+		}
+	}
+	return t
+}
+
+// Longest returns the longest single step, zero fields read as their defaults.
+func (t OutboundSMTPTimeouts) Longest() time.Duration {
+	t = t.WithDefaults()
+	var longest time.Duration
+	for _, field := range t.fields() {
+		longest = max(longest, *field)
+	}
+	return longest
+}
+
+// Reclaim returns how long a "delivering" row may go without a heartbeat before
+// it counts as orphaned: longer than any one step can take.
+func (t OutboundSMTPTimeouts) Reclaim() time.Duration {
+	return t.Longest() + staleDeliveringReclaimMargin
+}
+
+// loadOutboundSMTPTimeouts reads the six timers RFC 5321 §4.5.3.2 names. As with
+// the transfer knobs, a malformed or non-positive value is a startup error rather
+// than a silent fallback: a timer of zero would drop every peer at once.
+func loadOutboundSMTPTimeouts() (OutboundSMTPTimeouts, error) {
+	t := DefaultOutboundSMTPTimeouts()
+	for _, setting := range []struct {
+		key   string
+		field *time.Duration
+	}{
+		{"QUEUE_SMTP_GREETING_TIMEOUT", &t.Greeting},
+		{"QUEUE_SMTP_MAIL_TIMEOUT", &t.Mail},
+		{"QUEUE_SMTP_RCPT_TIMEOUT", &t.Rcpt},
+		{"QUEUE_SMTP_DATA_TIMEOUT", &t.Data},
+		{"QUEUE_SMTP_DATA_BLOCK_TIMEOUT", &t.DataBlock},
+		{"QUEUE_SMTP_FINAL_REPLY_TIMEOUT", &t.FinalReply},
+	} {
+		d, err := getEnvDurationStrict(setting.key, *setting.field)
+		if err != nil {
+			return t, err
+		}
+		if d <= 0 {
+			return t, fmt.Errorf("%s must be a positive Go duration, got %s", setting.key, d)
+		}
+		*setting.field = d
+	}
+	return t, nil
+}

@@ -208,10 +208,13 @@ test for each RFC it implements. The gateway configures it in
 - **The server waits at least 5 minutes** for the next command, as RFC 5321
   asks, and a message that is still arriving at a reasonable rate is never cut
   off for being large (`transfer_rate.go`).
-- **As a client,** delivering to other servers, REST Mail today times each
-  attempt as a whole, where RFC 5321 asks for a timeout per command, with 5
-  minutes for the greeting and 10 for the final reply. Changing that is
-  [#714](https://github.com/rest-mail/rest-mail-server/issues/714).
+- **As a client,** delivering to other servers, REST Mail times each command
+  and each 64 KiB block of the message, as RFC 5321 asks, with 5 minutes for
+  the greeting and 10 for the final reply. Nothing times the attempt as a whole,
+  so a slow server gets its message and a stalled one is dropped at that step's
+  timeout. The timeouts are settings
+  ([`internal/gateway/queue/smtp_timeouts.go`](../../../internal/gateway/queue/smtp_timeouts.go),
+  #714).
 
 ## Sources
 
