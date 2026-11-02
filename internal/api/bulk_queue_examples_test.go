@@ -266,10 +266,15 @@ func checkQueueMutationPairWithVertrag(t *testing.T, binary string, s bulkQueueE
 		media := body["content"].(map[string]interface{})["application/json"].(map[string]interface{})
 		examples := media["examples"].(map[string]interface{})
 		selected, ok := examples[name]
-		if !ok {
+		switch {
+		case ok:
+			media["examples"] = map[string]interface{}{name: selected}
+		case len(pair.Request.Body) == 0 && body["required"] != true:
+			// The pair sends no body, which an optional body allows.
+			delete(op, "requestBody")
+		default:
 			t.Fatalf("missing published request %s", name)
 		}
-		media["examples"] = map[string]interface{}{name: selected}
 	}
 	uri := messageCollectionReadURI(path, pair)
 	if parameters, ok := op["parameters"].([]interface{}); ok {
