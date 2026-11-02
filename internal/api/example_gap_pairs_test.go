@@ -264,7 +264,9 @@ func TestACMEExamplePairsThroughProductionRouter(t *testing.T) {
 				}
 				recorder := httptest.NewRecorder()
 				recorder.Code = response.StatusCode
-				recorder.HeaderMap = response.Header
+				for name, values := range response.Header {
+					recorder.Header()[name] = values
+				}
 				_, _ = recorder.Body.Write(bodyBytes)
 				if pair.Response.MediaType == "text/plain" {
 					var body string
