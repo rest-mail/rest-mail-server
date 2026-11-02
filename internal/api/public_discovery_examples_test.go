@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
@@ -57,7 +58,7 @@ func (c publicDiscoveryConnection) QueryContext(_ context.Context, query string,
 			return nil, errors.New("private domain query detail")
 		}
 		r := &authReadSnapshotRows{columns: []string{"id"}}
-		if value == "example.test" || value == "xn--mnchen-3ya.test" {
+		if value == "example.test" || value == "restmail.test" || value == "xn--mnchen-3ya.test" {
 			r.rows = [][]driver.Value{{int64(1)}}
 		}
 		return r, nil
@@ -185,5 +186,39 @@ func TestPublicDiscoveryExamplesWithVertrag(t *testing.T) {
 				checkMailboxLookupWithVertrag(t, binary, handler, "", path, name, pair)
 			})
 		}
+	}
+}
+
+// The live contract run sends only pairs with no requires, against its seeded
+// data (#1455). Discovery's success answer has to be one of them, or nothing
+// proves its shape against a running server, so its domain is the one the
+// contract fixtures host.
+func TestPublicDiscoverySuccessExampleRunsLive(t *testing.T) {
+	pairs, err := oapifly.ReadExamples(restmail.Examples, "openapi-example.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pair, ok := pairs["restmailDiscover"]["example"]
+	if !ok {
+		t.Fatal("restmailDiscover has no example pair")
+	}
+	if pair.Response.Status != http.StatusOK {
+		t.Fatalf("example answers %d, want 200", pair.Response.Status)
+	}
+	if len(pair.Requires) != 0 {
+		t.Fatalf("example requires %v, so the live run does not send it", pair.Requires)
+	}
+	raw, err := os.ReadFile(filepath.Join("..", "..", "tests", "contract", "fixtureplan", "defaults.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var plan struct {
+		Domain string `json:"domain"`
+	}
+	if err := json.Unmarshal(raw, &plan); err != nil {
+		t.Fatal(err)
+	}
+	if got := fmt.Sprint(pair.Request.Query["domain"]); got != plan.Domain {
+		t.Fatalf("example asks about %q, but the contract fixtures host %q", got, plan.Domain)
 	}
 }
