@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/mailimport"
@@ -22,9 +23,11 @@ const importIMAPUsage = `restmail import-imap — copy an IMAP account through t
   restmail import-imap --source imap://old.example.com --starttls --source-user alice@example.com --account-id 12 --dry-run
   restmail import-imap --source imaps://old.example.com --source-user alice@example.com --server https://mail.example.com --account-id 12
 
-Set RESTMAIL_IMAP_PASSWORD to the source password or app password. Set
+Set RESTMAIL_IMAP_PASSWORD to the source password or app password, or set
+RESTMAIL_IMAP_ACCESS_TOKEN to an operator-obtained OAuth access token. Never set
+both. OAuth uses advertised OAUTHBEARER or XOAUTH2 after verified TLS. Set
 RESTMAIL_API_KEY for the destination with mail:import on its account/domain.
-No password argument, URL credentials, unprotected IMAP or insecure TLS option
+No password/token argument, URL credentials, unprotected IMAP or insecure TLS option
 is accepted. An imap:// source requires --starttls; credentials follow verified
 TLS. The source is examined read-only; BODY.PEEK never marks mail read.
 
@@ -41,18 +44,19 @@ All selectable folders, original octets, supported flags and INTERNALDATE are
 copied. Deleted and keyword flags are refused rather than dropped. Rerun to
 resume: destination account/folder/Message-ID deduplication skips existing mail.
 Later source edits, moves and deletes are not synchronized. Empty source folders
-cannot be created by message import. OAuth sources are not supported by this
-command; use a source password/app password over implicit TLS or required STARTTLS.
+cannot be created by message import. No device flow or token refresh is performed.
+If the source refuses an expired token or stops a long copy, obtain a valid token
+and rerun to resume; completed imports are retained.
 See docs/migrating-mail.md for cutover and verification limits.
 `
 
 type imapImportSource func(context.Context, mailimport.IMAPOptions, int64, mailimport.Visit) error
 
-func runImportIMAP(ctx context.Context, args []string, token, password string, client *http.Client, stdout, stderr io.Writer) int {
-	return runImportIMAPSource(ctx, args, token, password, client, stdout, stderr, mailimport.IMAP)
+func runImportIMAP(ctx context.Context, args []string, token, password, accessToken string, client *http.Client, stdout, stderr io.Writer) int {
+	return runImportIMAPSource(ctx, args, token, password, accessToken, client, stdout, stderr, mailimport.IMAP)
 }
 
-func runImportIMAPSource(ctx context.Context, args []string, token, password string, client *http.Client, stdout, stderr io.Writer, readSource imapImportSource) int {
+func runImportIMAPSource(ctx context.Context, args []string, token, password, accessToken string, client *http.Client, stdout, stderr io.Writer, readSource imapImportSource) int {
 	fs := flag.NewFlagSet("import-imap", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	source := fs.String("source", "", "IMAP source URL")
@@ -89,8 +93,11 @@ func runImportIMAPSource(ctx context.Context, args []string, token, password str
 	if err != nil || number < 1 || number > 65535 || fs.NArg() != 0 || *user == "" || *account == 0 || *account > 1<<32-1 || *limit < 1 || *limit > 1<<30 {
 		return o.fail(exitUsage, "bad_flag", "give a valid source, source user, account ID and message limit between 1 byte and 1 GiB")
 	}
-	if password == "" {
-		return o.fail(exitUsage, "no_source_password", "set RESTMAIL_IMAP_PASSWORD to the source password or app password")
+	if password != "" && accessToken != "" {
+		return o.fail(exitUsage, "conflicting_source_credentials", "set either RESTMAIL_IMAP_PASSWORD or RESTMAIL_IMAP_ACCESS_TOKEN, not both")
+	}
+	if password == "" && accessToken == "" {
+		return o.fail(exitUsage, "no_source_password", "set RESTMAIL_IMAP_PASSWORD to the source password or app password, or RESTMAIL_IMAP_ACCESS_TOKEN to an OAuth access token")
 	}
 	var base *url.URL
 	if !*dry {
@@ -131,9 +138,14 @@ func runImportIMAPSource(ctx context.Context, args []string, token, password str
 		}
 		return nil
 	}
-	err = readSource(ctx, mailimport.IMAPOptions{Address: net.JoinHostPort(u.Hostname(), port), Username: *user, Password: password, StartTLS: *startTLS}, *limit, visit)
+	err = readSource(ctx, mailimport.IMAPOptions{Address: net.JoinHostPort(u.Hostname(), port), Username: *user, Password: password, AccessToken: accessToken, StartTLS: *startTLS}, *limit, visit)
 	if err != nil {
-		return o.fail(exitFailed, "import_failed", fmt.Sprintf("%s (completed %d imports, skipped %d existing copies; rerun to resume)", err, imported, skipped))
+		detail := err.Error()
+		if accessToken != "" {
+			detail = strings.ReplaceAll(detail, accessToken, "[redacted]")
+			detail += "; if the source token expired or was refused, obtain a valid RESTMAIL_IMAP_ACCESS_TOKEN and rerun"
+		}
+		return o.fail(exitFailed, "import_failed", fmt.Sprintf("%s (completed %d imports, skipped %d existing copies; rerun to resume)", detail, imported, skipped))
 	}
 	if o.json {
 		_ = json.NewEncoder(stdout).Encode(map[string]any{"messages": total, "imported": imported, "skipped": skipped, "dry_run": *dry})
