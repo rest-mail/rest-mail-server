@@ -55,7 +55,7 @@ func TestDNSRecords_MissingSchemaDoesNotInitialize(t *testing.T) {
 
 func TestDNSRecords_EnforcesReadOnlyTransaction(t *testing.T) {
 	database := scratchDatabase(t)
-	if err := database.Migrator().CreateTable(&models.Domain{}); err != nil {
+	if err := database.Migrator().CreateTable(&models.Domain{}, &models.MTASTSPolicy{}, &models.DKIMRotationKey{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := database.Create(&models.Domain{Name: "example.com"}).Error; err != nil {
