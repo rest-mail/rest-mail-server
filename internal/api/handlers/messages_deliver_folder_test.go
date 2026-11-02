@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +12,7 @@ import (
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
 // TestDeliverMessage_HonorsFolderFlagsAndInternalDate is the DB-backed red-green
@@ -143,5 +146,57 @@ func TestDeliverMessage_InboxInAnyCaseIsInbox(t *testing.T) {
 	}
 	if msg.Folder != "INBOX" {
 		t.Errorf("message delivered into folder %q, want INBOX", msg.Folder)
+	}
+}
+
+type refuseEverything struct{}
+
+func (refuseEverything) Name() string              { return "refuse_everything" }
+func (refuseEverything) Type() pipeline.FilterType { return pipeline.FilterTypeAction }
+func (refuseEverything) Execute(context.Context, *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
+	return &pipeline.FilterResult{Type: pipeline.FilterTypeAction, Action: pipeline.ActionReject, RejectMsg: "550 DMARC policy reject"}, nil
+}
+
+// An account's own client storing a message (IMAP APPEND or COPY) is not arriving
+// mail, so a filter that refuses arriving mail must not refuse it. Copying mail in
+// from another server would otherwise fail on the sender's DMARC policy.
+func TestDeliverMessage_StoredMailIsNotJudged(t *testing.T) {
+	db := openMsgDeleteTestDB(t)
+	if err := db.AutoMigrate(&models.QuotaUsage{}); err != nil {
+		t.Skipf("deliver DB test skipped: migrate quota_usage failed (%v)", err)
+	}
+	tx := db.Begin()
+	t.Cleanup(func() { tx.Rollback() })
+	fx := seedMsgDeleteFixture(t, tx, 0)
+	filters, err := json.Marshal([]pipeline.FilterConfig{{Name: "refuse_everything", Type: pipeline.FilterTypeAction, Enabled: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Create(&models.Pipeline{DomainID: fx.mailbox.DomainID, Direction: "inbound", Active: true, Filters: filters}).Error; err != nil {
+		t.Fatal(err)
+	}
+	registry := withQuietVacation(pipeline.NewRegistry())
+	registry.Register("refuse_everything", func([]byte) (pipeline.Filter, error) { return refuseEverything{}, nil })
+	h := NewMessageHandler(tx, nil, pipeline.NewEngine(registry, nil), "", nil)
+	params := localDeliveryParams{Mailbox: fx.mailbox, Sender: "someone@remote.test", Subject: "Copied", BodyText: "hello"}
+
+	if _, err := h.deliverToLocal(context.Background(), params); err == nil || !strings.HasPrefix(err.Error(), "rejected:") {
+		t.Fatalf("arriving mail: got %v, want it refused", err)
+	}
+	params.Stored = true
+	if msg, err := h.deliverToLocal(context.Background(), params); err != nil || msg == nil {
+		t.Fatalf("stored mail: got %+v, %v; want it kept", msg, err)
+	}
+}
+
+// Storing a message keeps only attachment extraction from the account's policy.
+func TestStoredMessagePolicyKeepsOnlyAttachmentExtraction(t *testing.T) {
+	cfg := &pipeline.PipelineConfig{ID: 7, Filters: []pipeline.FilterConfig{{Name: "dmarc_check"}, {Name: "extract_attachments"}, {Name: "sieve"}}}
+	got := storedMessagePolicy(cfg)
+	if got.ID != 7 || len(got.Filters) != 1 || got.Filters[0].Name != "extract_attachments" {
+		t.Fatalf("got %+v", got)
+	}
+	if len(cfg.Filters) != 3 {
+		t.Fatalf("the account's policy changed: %+v", cfg.Filters)
 	}
 }

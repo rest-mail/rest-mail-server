@@ -127,6 +127,10 @@ type deliverMessageBody struct {
 	// RequireTLS is the REQUIRETLS tag the message arrived with (RFC 8689 §4.1): a copy
 	// REST Mail sends on, a Sieve redirect, goes with TLS required too.
 	RequireTLS bool `json:"require_tls,omitempty"`
+	// Stored says the account's own mail client is putting this message in its
+	// mailbox (IMAP APPEND or COPY), so it is not arriving mail: spam, DMARC and
+	// the account's rules do not judge it. Attachments are still extracted.
+	Stored bool `json:"stored,omitempty"`
 }
 
 type listUnsubscribe struct {

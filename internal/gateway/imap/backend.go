@@ -311,6 +311,7 @@ func (m *mailbox) CopyUID(uid uint32, dest string) (uint32, error) {
 		InReplyTo:    src.InReplyTo,
 		References:   src.References,
 		RawMessage:   []byte(m.rawMessage(src)),
+		Stored:       true,
 		IsAnswered:   &answered,
 		IsRead:       &seen,
 		IsFlagged:    &flagged,
@@ -374,6 +375,7 @@ func (m *mailbox) AppendUID(dest string, f goimap.FlagUpdate, raw []byte) (uint3
 		BodyHTML:   bodyHTML,
 		MessageID:  messageID,
 		RawMessage: raw,
+		Stored:     true,
 	}
 
 	// Apply the client-supplied APPEND flags at creation time. \Flagged writes both
