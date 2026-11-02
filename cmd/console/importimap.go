@@ -23,7 +23,7 @@ const importIMAPUsage = `restmail import-imap — copy an IMAP account through t
   restmail import-imap --source imaps://old.example.com --source-user alice@example.com --server https://mail.example.com --account-id 12
 
 Set RESTMAIL_IMAP_PASSWORD to the source password or app password. Set
-RESTMAIL_API_KEY for the destination with mailboxes:write on its account/domain.
+RESTMAIL_API_KEY for the destination with mail:import on its account/domain.
 No password argument, URL credentials, unprotected IMAP or insecure TLS option
 is accepted. An imap:// source requires --starttls; credentials follow verified
 TLS. The source is examined read-only; BODY.PEEK never marks mail read.
@@ -99,7 +99,7 @@ func runImportIMAPSource(ctx context.Context, args []string, token, password str
 			return o.fail(exitUsage, "bad_flag", "give a valid destination --server URL")
 		}
 		if token == "" {
-			return o.fail(exitUsage, "no_api_key", "set RESTMAIL_API_KEY with mailboxes:write on the destination")
+			return o.fail(exitUsage, "no_api_key", "set RESTMAIL_API_KEY with mail:import on the destination")
 		}
 	}
 	total, imported, skipped := 0, 0, 0

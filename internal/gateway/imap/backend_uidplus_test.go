@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -50,18 +51,18 @@ type patchRecord struct {
 }
 
 type fakeAPI struct {
-	mu       sync.Mutex
-	nextID   uint
-	msgs     map[uint]*fakeMsg
-	patches  []patchRecord
-	deletes  []uint
-	delivers []apiclient.DeliverRequest
-	// deliverStatus, when non-zero, is the HTTP status the deliver endpoint
-	// returns instead of a normal 200; deliverBody is the JSON body to send with
+	mu      sync.Mutex
+	nextID  uint
+	msgs    map[uint]*fakeMsg
+	patches []patchRecord
+	deletes []uint
+	imports []apiclient.ImportRequest
+	// importStatus, when non-zero, is the HTTP status the import endpoint
+	// returns instead of a normal 200; importBody is the JSON body to send with
 	// it. Together they let a test simulate a quarantined/discarded delivery
 	// (200 with no data.id) or a hard delivery failure.
-	deliverStatus int
-	deliverBody   interface{}
+	importStatus int
+	importBody   interface{}
 }
 
 func newFakeAPI() *fakeAPI {
@@ -125,7 +126,7 @@ func (f *fakeAPI) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/v1/auth/protocol-sign-in", f.login)
 	mux.HandleFunc("GET /api/v1/accounts/{acct}/folders/{folder}/messages", f.listMessages)
-	mux.HandleFunc("POST /api/v1/messages/deliver", f.deliver)
+	mux.HandleFunc("POST /api/v1/accounts/{acct}/messages/import", f.importMessage)
 	mux.HandleFunc("GET /api/v1/messages/{id}/raw", f.raw)
 	mux.HandleFunc("GET /api/v1/messages/{id}", f.getMessage)
 	mux.HandleFunc("PATCH /api/v1/messages/{id}", f.patch)
@@ -175,15 +176,15 @@ func (f *fakeAPI) listMessages(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, apiclient.MessageListResponse{Data: out})
 }
 
-func (f *fakeAPI) deliver(w http.ResponseWriter, r *http.Request) {
-	var req apiclient.DeliverRequest
+func (f *fakeAPI) importMessage(w http.ResponseWriter, r *http.Request) {
+	var req apiclient.ImportRequest
 	_ = json.NewDecoder(r.Body).Decode(&req)
 	f.mu.Lock()
-	f.delivers = append(f.delivers, req)
-	// A test may force the delivery outcome: a 200 with no data.id models a
-	// pipeline quarantine/discard; a >=400 status models a hard failure.
-	if f.deliverStatus != 0 {
-		status, body := f.deliverStatus, f.deliverBody
+	f.imports = append(f.imports, req)
+	// A test may force the outcome: a 200 with no data.id models an answer that
+	// names no stored message; a >=400 status models a hard failure.
+	if f.importStatus != 0 {
+		status, body := f.importStatus, f.importBody
 		f.mu.Unlock()
 		w.WriteHeader(status)
 		if body != nil {
@@ -194,48 +195,34 @@ func (f *fakeAPI) deliver(w http.ResponseWriter, r *http.Request) {
 	id := f.nextID
 	f.nextID++
 	// The message is created directly in its destination folder (empty = INBOX),
-	// carrying whatever flags / internal date the delivery specified.
+	// carrying the flags and internal date the request gave.
 	folder := req.Folder
 	if folder == "" {
 		folder = "INBOX"
 	}
-	m := &fakeMsg{
-		id: id, folder: folder, raw: string(req.RawMessage),
-		subject: req.Subject, sender: req.Sender, senderNm: req.SenderName,
-	}
-	if req.IsRead != nil {
-		m.isRead = *req.IsRead
-	}
-	if req.IsFlagged != nil {
-		m.isFlagged = *req.IsFlagged
-	}
-	if req.IsStarred != nil {
-		m.isStarred = *req.IsStarred
-	}
-	if req.IsDraft != nil {
-		m.isDraft = *req.IsDraft
-	}
-	if req.ReceivedAt != nil {
-		m.receivedAt = *req.ReceivedAt
-	}
+	m := &fakeMsg{id: id, folder: folder, raw: string(req.RawMessage), receivedAt: req.InternalDate}
+	m.isRead = slices.Contains(req.Flags, `\Seen`)
+	m.isFlagged = slices.Contains(req.Flags, `\Flagged`)
+	m.isStarred = m.isFlagged
+	m.isDraft = slices.Contains(req.Flags, `\Draft`)
 	f.msgs[id] = m
 	f.mu.Unlock()
-	var dr apiclient.DeliverResponse
-	dr.Data.ID = id
-	dr.Data.Subject = req.Subject
-	writeJSON(w, dr)
+	var resp apiclient.ImportResponse
+	resp.Data.ID = id
+	resp.Data.Imported = true
+	resp.Data.Folder = folder
+	writeJSON(w, resp)
 }
 
-// lastDeliver returns the most recent DeliverRequest the gateway sent, for
-// asserting COPY/APPEND carried the folder, flags and internal date.
-func (f *fakeAPI) lastDeliver(t *testing.T) apiclient.DeliverRequest {
+// lastImport returns the most recent ImportRequest the gateway sent.
+func (f *fakeAPI) lastImport(t *testing.T) apiclient.ImportRequest {
 	t.Helper()
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if len(f.delivers) == 0 {
-		t.Fatal("no delivery was made")
+	if len(f.imports) == 0 {
+		t.Fatal("no import was made")
 	}
-	return f.delivers[len(f.delivers)-1]
+	return f.imports[len(f.imports)-1]
 }
 
 // folderOf returns the folder a stored message currently lives in, or "".

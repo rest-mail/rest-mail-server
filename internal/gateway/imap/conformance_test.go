@@ -65,7 +65,7 @@ func TestAppendUID_NormalizesBareLFToCRLF(t *testing.T) {
 		t.Fatalf("AppendUID: %v", err)
 	}
 
-	stored := api.lastDeliver(t).RawMessage
+	stored := api.lastImport(t).RawMessage
 	// No bare LF may remain: every '\n' must be preceded by '\r'.
 	for i, b := range stored {
 		if b == '\n' && (i == 0 || stored[i-1] != '\r') {

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	goimap "github.com/rest-mail/go-imap/pkg/imap"
 
@@ -294,38 +295,21 @@ func (m *mailbox) CopyUID(uid uint32, dest string) (uint32, error) {
 
 	// Preserve the source flags and internal date on the copy. \Flagged is backed
 	// by both is_flagged and is_starred, mirroring the gateway's symmetric mapping.
-	seen, flagged, starred, draft, answered := src.IsRead, src.IsFlagged, src.IsStarred, src.IsDraft, src.IsAnswered
+	seen, flagged, draft, answered := src.IsRead, src.IsFlagged || src.IsStarred, src.IsDraft, src.IsAnswered
 	received := src.ReceivedAt
 
-	deliverReq := &apiclient.DeliverRequest{
-		Address:      m.email,
-		MailboxID:    src.MailboxID,
-		Folder:       dest,
-		Sender:       src.Sender,
-		SenderName:   src.SenderName,
-		RecipientsTo: src.RecipientsTo,
-		Subject:      src.Subject,
-		BodyText:     src.BodyText,
-		BodyHTML:     src.BodyHTML,
-		MessageID:    src.MsgID,
-		InReplyTo:    src.InReplyTo,
-		References:   src.References,
+	flags := importFlags(goimap.FlagUpdate{Answered: &answered, Seen: &seen, Flagged: &flagged, Draft: &draft})
+	resp, err := m.api.ImportMessage(m.token, src.MailboxID, &apiclient.ImportRequest{
 		RawMessage:   []byte(m.rawMessage(src)),
-		Stored:       true,
-		IsAnswered:   &answered,
-		IsRead:       &seen,
-		IsFlagged:    &flagged,
-		IsStarred:    &starred,
-		IsDraft:      &draft,
-		ReceivedAt:   &received,
-	}
-
-	resp, err := m.api.DeliverMessage(deliverReq)
+		Folder:       dest,
+		Flags:        flags,
+		InternalDate: received,
+	})
 	if err != nil {
 		return 0, err
 	}
 	if resp == nil || resp.Data.ID == 0 {
-		return 0, fmt.Errorf("imap: COPY to %q produced no stored message (quarantined or discarded)", dest)
+		return 0, fmt.Errorf("imap: COPY to %q produced no stored message", dest)
 	}
 	newUID := toUID(resp.Data.ID)
 	if newUID == 0 {
@@ -334,23 +318,22 @@ func (m *mailbox) CopyUID(uid uint32, dest string) (uint32, error) {
 	return newUID, nil
 }
 
-// Append delivers raw RFC 2822 bytes into dest (base Mailbox.Append). It delegates
+// Append stores raw RFC 2822 bytes in dest (base Mailbox.Append). It delegates
 // to AppendUID and discards the reported UID, so the two paths never diverge.
 func (m *mailbox) Append(dest string, f goimap.FlagUpdate, raw []byte) error {
 	_, err := m.AppendUID(dest, f, raw)
 	return err
 }
 
-// AppendUID delivers raw RFC 2822 bytes into dest (APPEND), applying any flags the
-// client supplied to the newly delivered message, and returns that message's UID
-// (UIDPLUS, RFC 4315) — the ID the delivery assigned, which is rest-mail's UID —
-// for the APPENDUID response code.
+// AppendUID stores raw RFC 2822 bytes in dest (APPEND), with any flags the client
+// supplied, and returns that message's UID (UIDPLUS, RFC 4315) — the ID the import
+// assigned, which is rest-mail's UID — for the APPENDUID response code.
 //
-// The message is created directly in dest with its flags in a single delivery, so
-// there is no transient INBOX state and no separate, error-swallowing move/flag
-// step. A delivery that produces no message (pipeline quarantine/discard, or an
-// out-of-range UID) is surfaced as an error rather than reported as a bogus
-// success carrying UID 0.
+// This is the account's own client storing its own mail, not mail arriving, so it
+// goes through the import operation as the signed-in account and no delivery rules
+// judge it. The same message again answers with the copy already there. An
+// out-of-range UID is surfaced as an error rather than a bogus success carrying
+// UID 0.
 func (m *mailbox) AppendUID(dest string, f goimap.FlagUpdate, raw []byte) (uint32, error) {
 	if err := validateFolder(dest); err != nil {
 		return 0, err
@@ -362,45 +345,17 @@ func (m *mailbox) AppendUID(dest string, f goimap.FlagUpdate, raw []byte) (uint3
 	// message. Done before parsing/storing so both the parsed fields and the
 	// persisted raw are consistent.
 	raw = normalizeToCRLF(raw)
-	// Parse basic headers from raw message for the structured delivery fields.
-	subject, bodyText, bodyHTML, messageID, senderName := parseBasicHeaders(raw)
-
-	deliverReq := &apiclient.DeliverRequest{
-		Address:    m.email,
-		Folder:     dest,
-		Sender:     m.email,
-		SenderName: senderName,
-		Subject:    subject,
-		BodyText:   bodyText,
-		BodyHTML:   bodyHTML,
-		MessageID:  messageID,
-		RawMessage: raw,
-		Stored:     true,
-	}
-
-	// Apply the client-supplied APPEND flags at creation time. \Flagged writes both
-	// is_flagged and is_starred so it round-trips through FETCH's
-	// is_flagged || is_starred fold, matching Store's symmetric mapping.
-	if f.Answered != nil {
-		deliverReq.IsAnswered = f.Answered
-	}
-	if f.Seen != nil {
-		deliverReq.IsRead = f.Seen
-	}
-	if f.Flagged != nil {
-		deliverReq.IsFlagged = f.Flagged
-		deliverReq.IsStarred = f.Flagged
-	}
-	if f.Draft != nil {
-		deliverReq.IsDraft = f.Draft
-	}
-
-	resp, err := m.api.DeliverMessage(deliverReq)
+	resp, err := m.api.ImportMessage(m.token, m.accountID, &apiclient.ImportRequest{
+		RawMessage:   raw,
+		Folder:       dest,
+		Flags:        importFlags(f),
+		InternalDate: time.Now(),
+	})
 	if err != nil {
 		return 0, err
 	}
 	if resp == nil || resp.Data.ID == 0 {
-		return 0, fmt.Errorf("imap: APPEND to %q produced no stored message (quarantined or discarded)", dest)
+		return 0, fmt.Errorf("imap: APPEND to %q produced no stored message", dest)
 	}
 	newUID := toUID(resp.Data.ID)
 	if newUID == 0 {
@@ -425,4 +380,19 @@ func (m *mailbox) Quota() (used, limit int64, err error) {
 		return 0, 0, err
 	}
 	return quota.Data.QuotaUsedBytes, quota.Data.QuotaBytes, nil
+}
+
+// importFlags is the IMAP system flags of f that are set. A flag that is unset or
+// false is left out, since the import starts every flag off.
+func importFlags(f goimap.FlagUpdate) []string {
+	var flags []string
+	for _, flag := range []struct {
+		set  *bool
+		name string
+	}{{f.Seen, `\Seen`}, {f.Answered, `\Answered`}, {f.Flagged, `\Flagged`}, {f.Draft, `\Draft`}} {
+		if flag.set != nil && *flag.set {
+			flags = append(flags, flag.name)
+		}
+	}
+	return flags
 }

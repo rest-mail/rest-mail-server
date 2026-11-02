@@ -1,6 +1,7 @@
 package imap
 
 import (
+	"slices"
 	"testing"
 	"time"
 
@@ -48,23 +49,18 @@ func TestCopyUID_PreservesFlagsAndInternalDate(t *testing.T) {
 		t.Fatalf("CopyUID uid = %d, want 900", uid)
 	}
 
-	req := api.lastDeliver(t)
+	req := api.lastImport(t)
 	if req.Folder != "Archive" {
-		t.Errorf("copy delivered to folder %q, want Archive (must be created directly in the destination)", req.Folder)
+		t.Errorf("copy stored to folder %q, want Archive (must be created directly in the destination)", req.Folder)
 	}
-	if req.IsRead == nil || !*req.IsRead {
-		t.Errorf("copy dropped the source \\Seen flag: IsRead = %v, want true", req.IsRead)
+	if !slices.Contains(req.Flags, `\Seen`) {
+		t.Errorf("copy dropped the source \\Seen flag: %v", req.Flags)
 	}
-	if req.IsFlagged == nil || !*req.IsFlagged {
-		t.Errorf("copy dropped the source \\Flagged flag: IsFlagged = %v, want true", req.IsFlagged)
+	if !slices.Contains(req.Flags, `\Flagged`) {
+		t.Errorf("copy dropped the source \\Flagged flag: %v", req.Flags)
 	}
-	// The source's is_starred column is preserved verbatim (COPY duplicates the
-	// stored flags, it does not re-derive them).
-	if req.IsStarred == nil || !*req.IsStarred {
-		t.Errorf("copy dropped the source star: IsStarred = %v, want true", req.IsStarred)
-	}
-	if req.ReceivedAt == nil || !req.ReceivedAt.Equal(srcReceived) {
-		t.Errorf("copy dropped the source INTERNALDATE: ReceivedAt = %v, want %v", req.ReceivedAt, srcReceived)
+	if !req.InternalDate.Equal(srcReceived) {
+		t.Errorf("copy dropped the source INTERNALDATE: %v, want %v", req.InternalDate, srcReceived)
 	}
 }
 
@@ -98,8 +94,8 @@ func TestCopyUID_LandsDirectlyInDestination(t *testing.T) {
 func TestCopyUID_QuarantinedDeliveryReturnsError(t *testing.T) {
 	api := newFakeAPI()
 	api.seed(1, "INBOX", "Subject: Src\r\n\r\nsrc\r\n", "Src")
-	api.deliverStatus = 200
-	api.deliverBody = map[string]interface{}{"data": map[string]interface{}{"status": "processed"}}
+	api.importStatus = 200
+	api.importBody = map[string]interface{}{"data": map[string]interface{}{"status": "processed"}}
 	m := newUnitMailbox(t, api)
 
 	uid, err := m.CopyUID(1, "Archive")
@@ -129,21 +125,15 @@ func TestAppendUID_AppliesFlagsAtCreation(t *testing.T) {
 		t.Fatalf("AppendUID uid = %d, want 910", uid)
 	}
 
-	req := api.lastDeliver(t)
+	req := api.lastImport(t)
 	if req.Folder != "Archive" {
-		t.Errorf("append delivered to folder %q, want Archive", req.Folder)
+		t.Errorf("append stored in folder %q, want Archive", req.Folder)
 	}
-	if !req.Stored {
-		t.Error("APPEND did not say the client is storing the message, so inbound filters would judge it")
+	if !slices.Contains(req.Flags, `\Seen`) {
+		t.Errorf("append dropped the \\Seen flag: %v", req.Flags)
 	}
-	if req.IsRead == nil || !*req.IsRead {
-		t.Errorf("append dropped the \\Seen flag: IsRead = %v, want true", req.IsRead)
-	}
-	if req.IsFlagged == nil || !*req.IsFlagged {
-		t.Errorf("append dropped the \\Flagged flag: IsFlagged = %v, want true", req.IsFlagged)
-	}
-	if req.IsStarred == nil || !*req.IsStarred {
-		t.Errorf("append dropped the mirrored star: IsStarred = %v, want true", req.IsStarred)
+	if !slices.Contains(req.Flags, `\Flagged`) {
+		t.Errorf("append dropped the \\Flagged flag: %v", req.Flags)
 	}
 	if patched := folderPatched(api, uint(uid)); patched != "" {
 		t.Errorf("append performed a separate folder move (PATCH folder=%q); it must be created directly in the destination", patched)
@@ -155,8 +145,8 @@ func TestAppendUID_AppliesFlagsAtCreation(t *testing.T) {
 // [APPENDUID 1 0]`.
 func TestAppendUID_QuarantinedDeliveryReturnsError(t *testing.T) {
 	api := newFakeAPI()
-	api.deliverStatus = 200
-	api.deliverBody = map[string]interface{}{"data": map[string]interface{}{"status": "processed"}}
+	api.importStatus = 200
+	api.importBody = map[string]interface{}{"data": map[string]interface{}{"status": "processed"}}
 	m := newUnitMailbox(t, api)
 
 	uid, err := m.AppendUID("INBOX", goimap.FlagUpdate{}, []byte("Subject: Hi\r\n\r\nbody\r\n"))

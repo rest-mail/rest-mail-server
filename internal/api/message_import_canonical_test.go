@@ -24,9 +24,9 @@ var importScenarios = []importScenario{
 	{"created", "", 200}, {"duplicate", "", 200}, {"default_folder", "", 200},
 	{"missing_message_id", "", 200}, {"binary_source", "", 200}, {"api_key", "", 200},
 	{"body_array", "", 422}, {"unauthenticated", "", 401},
-	{"insufficient_permissions", "denied", 403}, {"missing_scoped_target", "missing", 403},
-	{"unresolved_scoped_id", "", 403}, {"api_key_ceiling", "key_ceiling", 403},
-	{"api_key_holder_revoked", "denied", 403}, {"csrf", "", 403}, {"setup_pending", "setup", 403},
+	{"insufficient_permissions", "denied", 404}, {"missing_scoped_target", "missing", 404},
+	{"unresolved_scoped_id", "", 422}, {"api_key_ceiling", "key_ceiling", 403},
+	{"api_key_holder_revoked", "denied", 404}, {"csrf", "", 403}, {"setup_pending", "setup", 403},
 	{"missing", "disappeared", 404}, {"mailbox_full", "full", 409},
 	{"decoded_too_large", "", 413}, {"request_too_large", "body_limit", 413},
 	{"missing_raw", "", 422}, {"missing_date", "", 422}, {"invalid_folder", "", 422},
@@ -64,6 +64,9 @@ func importScenarioRequest(t *testing.T, tc importScenario) oapifly.ExampleReque
 		body["raw_message"] = "!not-base64!"
 	case "invalid_id", "unresolved_scoped_id":
 		id = 0
+	case "api_key_ceiling":
+		// The key's own account: it may know of it, so it is told what it lacks.
+		id = 1
 	}
 	payload, err := json.Marshal(body)
 	if err != nil {

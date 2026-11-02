@@ -37,18 +37,3 @@ func (h *MessageHandler) localInboundPolicy(ctx context.Context, mailbox models.
 	}
 	return cfg, nil
 }
-
-// storedMessagePolicy is the policy for a message the account's own client stores
-// (IMAP APPEND or COPY). It keeps only attachment extraction, so a message that
-// moved in from another server is kept as it is: a copied message's sender may
-// well fail DMARC here, and judging it would refuse the account's own mail.
-func storedMessagePolicy(cfg *pipeline.PipelineConfig) *pipeline.PipelineConfig {
-	stored := *cfg
-	stored.Filters = nil
-	for _, filter := range cfg.Filters {
-		if filter.Name == "extract_attachments" {
-			stored.Filters = append(stored.Filters, filter)
-		}
-	}
-	return &stored
-}

@@ -12,7 +12,8 @@ type ImportMessageBody struct {
 }
 
 // ImportMessageResult identifies the stored copy. Imported=false means a copy
-// with this Message-ID already existed in this account and folder; it is unchanged.
+// with this Message-ID and these exact octets already existed in this account and
+// folder; it is unchanged.
 type ImportMessageResult struct {
 	ID        uint   `json:"id"`
 	Imported  bool   `json:"imported"`

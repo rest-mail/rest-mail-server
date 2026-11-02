@@ -95,6 +95,12 @@ func (h Held) withinSessions() Held {
 			// Inbound delivery is not a session: neither switch stops mail
 			// arriving.
 			session = ""
+		case e.Capability == models.CapMailImport:
+			// Reached either way: an account importing into its own mailbox, or
+			// an administrator migrating someone's mail in. It reads nothing.
+			if !h.Allows(models.CapAdminSession, e.Scope) {
+				session = models.CapMailboxSession
+			}
 		case mailboxCapability(e.Capability):
 			session = models.CapMailboxSession
 		}

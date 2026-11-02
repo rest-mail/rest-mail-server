@@ -157,12 +157,11 @@ func (refuseEverything) Execute(context.Context, *pipeline.EmailJSON) (*pipeline
 	return &pipeline.FilterResult{Type: pipeline.FilterTypeAction, Action: pipeline.ActionReject, RejectMsg: "550 DMARC policy reject"}, nil
 }
 
-// An account's own client storing a message (IMAP APPEND or COPY) is not arriving
-// mail, so a filter that refuses arriving mail must not refuse it. Copying mail in
-// from another server would otherwise fail on the sender's DMARC policy.
-func TestDeliverMessage_StoredMailIsNotJudged(t *testing.T) {
+// Delivery is for arriving mail, so the account's inbound filters judge it. A
+// client storing its own mail uses the import operation, which runs none of them.
+func TestDeliverMessage_ArrivingMailIsJudged(t *testing.T) {
 	db := openMsgDeleteTestDB(t)
-	if err := db.AutoMigrate(&models.QuotaUsage{}); err != nil {
+	if err := db.AutoMigrate(&models.QuotaUsage{}, &models.Pipeline{}, &models.SieveScript{}); err != nil {
 		t.Skipf("deliver DB test skipped: migrate quota_usage failed (%v)", err)
 	}
 	tx := db.Begin()
@@ -182,21 +181,5 @@ func TestDeliverMessage_StoredMailIsNotJudged(t *testing.T) {
 
 	if _, err := h.deliverToLocal(context.Background(), params); err == nil || !strings.HasPrefix(err.Error(), "rejected:") {
 		t.Fatalf("arriving mail: got %v, want it refused", err)
-	}
-	params.Stored = true
-	if msg, err := h.deliverToLocal(context.Background(), params); err != nil || msg == nil {
-		t.Fatalf("stored mail: got %+v, %v; want it kept", msg, err)
-	}
-}
-
-// Storing a message keeps only attachment extraction from the account's policy.
-func TestStoredMessagePolicyKeepsOnlyAttachmentExtraction(t *testing.T) {
-	cfg := &pipeline.PipelineConfig{ID: 7, Filters: []pipeline.FilterConfig{{Name: "dmarc_check"}, {Name: "extract_attachments"}, {Name: "sieve"}}}
-	got := storedMessagePolicy(cfg)
-	if got.ID != 7 || len(got.Filters) != 1 || got.Filters[0].Name != "extract_attachments" {
-		t.Fatalf("got %+v", got)
-	}
-	if len(cfg.Filters) != 3 {
-		t.Fatalf("the account's policy changed: %+v", cfg.Filters)
 	}
 }

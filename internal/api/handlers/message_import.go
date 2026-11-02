@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
@@ -37,14 +38,15 @@ type MessageImportHandler struct {
 	db        *gorm.DB
 	maxBytes  int64
 	store     *attachmentstore.S3
+	broker    messageEventPublisher
 	directory string
 }
 
-func NewMessageImportHandler(db *gorm.DB, maxBytes int64, store *attachmentstore.S3) *MessageImportHandler {
+func NewMessageImportHandler(db *gorm.DB, maxBytes int64, store *attachmentstore.S3, broker messageEventPublisher) *MessageImportHandler {
 	if maxBytes <= 0 {
 		maxBytes = config.DefaultSMTPMaxMessageSize
 	}
-	return &MessageImportHandler{db: db, maxBytes: maxBytes, store: store, directory: attachmentstore.FilesystemRoot}
+	return &MessageImportHandler{db: db, maxBytes: maxBytes, store: store, broker: broker, directory: attachmentstore.FilesystemRoot}
 }
 
 type importMessageRequest struct {
@@ -52,7 +54,9 @@ type importMessageRequest struct {
 	Body apitypes.ImportMessageBody `body:""`
 }
 
-func (h *MessageImportHandler) Register(rs endpoint.Routes, checks MailboxRouteChecks) {
+// Register adds the operation to the mail routes. The handler checks mail:import
+// on the account, after refusing a body that could never be stored.
+func (h *MessageImportHandler) Register(rs endpoint.Routes) {
 	// Bound JSON before decoding, even when the general API body cap is off.
 	// Base64 expands by 4/3; the remaining allowance bounds folder/flag metadata.
 	limit := int64(math.MaxInt64)
@@ -64,10 +68,23 @@ func (h *MessageImportHandler) Register(rs endpoint.Routes, checks MailboxRouteC
 			Description: "request_too_large: the encoded import exceeds the request body limit", Type: oapifly.TypeOf[respond.ErrorResponse]()}},
 	}}
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/messages/import",
-		OperationID: "importMessage", Summary: "Import one historical message", Tags: []string{"Admin: Mailboxes"},
-		Description: "Stores original message octets, folder, supported system flags and required internal_date without delivery rules or notifications. Requires mailboxes:write on the destination. A Message-ID already present in that account and folder is skipped without changing its flags or date. Messages without Message-ID use a deterministic SHA-256 import identity; the raw source remains unchanged. Every attempt is audited; successful imports and skips also receive a transactional messages.import audit entry. The decoded message is bounded by SMTP_MAX_MESSAGE_SIZE (10 MiB by default); the general API body limit may be stricter. Deleted-state and keyword flags are unsupported and refused rather than hidden or discarded.",
-		Errors:      []int{http.StatusNotFound, http.StatusConflict, http.StatusRequestEntityTooLarge},
-		Middleware:  []endpoint.Middleware{checks.OnMailbox(middleware.CapMailboxesWrite), cap}}, h.importMessage)
+		OperationID: "importMessage", Summary: "Store a message the account already has", Tags: []string{"Messages"},
+		Description: "Stores original message octets, folder, supported system flags and required internal_date without delivery rules or push notifications. Requires mail:import on the destination, which every account holds on its own mailbox. A message whose Message-ID and exact octets are already in that account and folder is skipped without changing its flags or date; the same Message-ID with different octets is stored as another message. Messages without Message-ID use a deterministic SHA-256 import identity; the raw source remains unchanged. Every attempt is audited; successful imports and skips also receive a transactional messages.import audit entry. The decoded message is bounded by SMTP_MAX_MESSAGE_SIZE (10 MiB by default); the general API body limit may be stricter. Deleted-state and keyword flags are unsupported and refused rather than hidden or discarded.",
+		Errors:      []int{http.StatusForbidden, http.StatusNotFound, http.StatusConflict, http.StatusRequestEntityTooLarge},
+		Security:    handlerChecked(models.CapMailImport, folderSchemes...),
+		Middleware:  []endpoint.Middleware{cap}}, h.importMessage)
+}
+
+// importRefusal is how an import names a refused account: one the caller may not
+// know of is not found, like one that does not exist.
+func importRefusal(err error) error {
+	switch {
+	case errors.Is(err, errNoAccess):
+		return endpoint.Refuse(http.StatusNotFound, "mailbox_not_found", "Destination account not found")
+	case errors.Is(err, errNotAllowed):
+		return endpoint.Refuse(http.StatusForbidden, "forbidden", "Insufficient permissions")
+	}
+	return err
 }
 
 var errImportQuota = endpoint.Refuse(http.StatusConflict, "mailbox_full", "The destination account has insufficient quota")
@@ -99,7 +116,8 @@ func (h *MessageImportHandler) importMessage(r *http.Request, in importMessageRe
 		case `\answered`:
 			msg.IsAnswered = true
 		case `\flagged`:
-			msg.IsFlagged = true
+			// \\Flagged is backed by both columns, as the IMAP gateway maps it.
+			msg.IsFlagged, msg.IsStarred = true, true
 		case `\draft`:
 			msg.IsDraft = true
 		default:
@@ -108,6 +126,13 @@ func (h *MessageImportHandler) importMessage(r *http.Request, in importMessageRe
 	}
 	if len(problems) != 0 {
 		return result, endpoint.Invalid(problems)
+	}
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		return result, endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Authentication required")
+	}
+	if _, err := resolveAccountMailbox(h.db, uint(in.ID), claims, models.CapMailImport); err != nil {
+		return result, importRefusal(err)
 	}
 	parsed, err := rmime.Parse(body.RawMessage)
 	if err != nil {
@@ -175,14 +200,19 @@ func (h *MessageImportHandler) importMessage(r *http.Request, in importMessageRe
 			}
 			return err
 		}
-		var existing models.Message
-		err := tx.Where("mailbox_id = ? AND folder = ? AND message_id IN ?", in.ID, body.Folder,
-			[]string{msg.MsgID, strings.Trim(msg.MsgID, "<>")}).Order("id").First(&existing).Error
+		// The same Message-ID with the same octets is this message again, so a
+		// rerun skips it. Different octets are a different message that shares an
+		// ID (an edited draft, a badly made ID), so it is stored.
+		var sameID []models.Message
+		err := tx.Select("id", "message_id", "folder", "raw_message", "raw_octets").
+			Where("mailbox_id = ? AND folder = ? AND message_id IN ?", in.ID, body.Folder,
+				[]string{msg.MsgID, strings.Trim(msg.MsgID, "<>")}).Order("id").Find(&sameID).Error
+		existing := sameContent(sameID, body.RawMessage)
 		switch {
-		case err == nil:
-			result = apitypes.ImportMessageResult{ID: existing.ID, MessageID: existing.MsgID, Folder: existing.Folder}
-		case !errors.Is(err, gorm.ErrRecordNotFound):
+		case err != nil:
 			return err
+		case existing != nil:
+			result = apitypes.ImportMessageResult{ID: existing.ID, MessageID: existing.MsgID, Folder: existing.Folder}
 		default:
 			var rows []models.Attachment
 			var attachmentBytes int64
@@ -250,5 +280,27 @@ func (h *MessageImportHandler) importMessage(r *http.Request, in importMessageRe
 	if err != nil {
 		return apitypes.ImportMessageResult{}, fmt.Errorf("import historical message: %w", err)
 	}
+	// An open client learns of the message; a phone is not told, since this is
+	// mail the account already has.
+	if result.Imported && h.broker != nil {
+		h.broker.Publish(uint(in.ID), SSEEvent{Type: "new_message", Data: map[string]interface{}{
+			"message_id": result.ID, "folder": result.Folder, "sender": msg.Sender, "subject": msg.Subject,
+		}})
+	}
 	return result, nil
+}
+
+// sameContent is the first of messages holding exactly raw. One with no stored
+// source cannot be compared, so it counts as the same: a rerun must not copy it.
+func sameContent(messages []models.Message, raw []byte) *models.Message {
+	for i := range messages {
+		stored := messages[i].RawOctets
+		if len(stored) == 0 {
+			stored = []byte(messages[i].RawMessage)
+		}
+		if len(stored) == 0 || bytes.Equal(stored, raw) {
+			return &messages[i]
+		}
+	}
+	return nil
 }

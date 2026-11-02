@@ -13039,9 +13039,10 @@ paths:
   /api/v1/accounts/{id}/messages/import:
     post:
       description: Stores original message octets, folder, supported system flags and
-        required internal_date without delivery rules or notifications. Requires mailboxes:write
-        on the destination. A Message-ID already present in that account and folder is
-        skipped without changing its flags or date. Messages without Message-ID use a
+        required internal_date without delivery rules or push notifications. Requires mail:import on the destination,
+        which every account holds on its own mailbox. A message whose Message-ID and exact
+        octets are already in that account and folder is skipped without changing its flags
+        or date; the same Message-ID with different octets is stored as another message. Messages without Message-ID use a
         deterministic SHA-256 import identity; the raw source remains unchanged. Every
         attempt is audited; successful imports and skips also receive a transactional
         messages.import audit entry. The decoded message is bounded by SMTP_MAX_MESSAGE_SIZE
@@ -13169,14 +13170,16 @@ paths:
           description: 'unavailable: the session or grants check could not be made'
       security:
       - CookieAuth:
-        - mailboxes:write
+        - mail:import
       - BearerAuth:
-        - mailboxes:write
+        - mail:import
       - APIKeyAuth:
-        - mailboxes:write
-      summary: Import one historical message
+        - mail:import
+      - BasicAuth:
+        - mail:import
+      summary: Store a message the account already has
       tags:
-      - 'Admin: Mailboxes'
+      - Messages
 
 components:
   securitySchemes:
@@ -15054,12 +15057,6 @@ components:
           description: >-
             The message arrived with REQUIRETLS (RFC 8689 §4.1): a copy REST Mail
             sends on, such as a Sieve redirect, goes with TLS required too.
-        stored:
-          type: boolean
-          description: >-
-            The account's own mail client is putting this message in its mailbox
-            (IMAP APPEND or COPY), so it is not arriving mail: spam, DMARC and the
-            account's rules do not judge it. Attachments are still extracted.
 
     # ─────────────────────────────────────────────────────────────
     # RESTMAIL Protocol

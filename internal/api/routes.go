@@ -193,7 +193,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	searchH := handlers.NewSearchHandler(db)
 	attachmentStore := attachmentstore.NewS3(cfg.Attachments)
 	attachmentH := handlers.NewAttachmentHandler(db, attachmentStore)
-	messageImportH := handlers.NewMessageImportHandler(db, cfg.SMTPMaxMessageSize, attachmentStore)
+	messageImportH := handlers.NewMessageImportHandler(db, cfg.SMTPMaxMessageSize, attachmentStore, broker)
 	contactH := handlers.NewContactHandler(db)
 	vacationH := handlers.NewVacationHandler(db)
 	sieveH := handlers.NewSieveHandler(db)
@@ -657,6 +657,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 			DescribingWhen(middleware.CSRFProtectsMethod, describedCSRF).Describing(describedBodyCap)
 		messageH.RegisterFolders(mail)
 		messageH.RegisterMessages(mail)
+		messageImportH.Register(mail)
 		searchH.Register(mail)
 		attachmentH.Register(mail)
 		messageH.RegisterCompose(mail, audited)
@@ -753,7 +754,6 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		mailboxH.Register(admin, handlers.MailboxRouteChecks{
 			OnList: describedCapability(needsOnList), OnMailbox: describedMailboxCapability(needsOnMailbox),
 		})
-		messageImportH.Register(admin, handlers.MailboxRouteChecks{OnMailbox: describedMailboxCapability(needsOnMailbox)})
 		invitationH.RegisterAdmin(admin, handlers.MailboxRouteChecks{
 			OnMailbox: describedMailboxCapability(needsOnMailbox),
 		})
