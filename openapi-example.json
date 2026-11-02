@@ -30058,6 +30058,33 @@
       }
     },
     "internal_error": {
+      "summary": "The shared error adapter sanitizes an unexpected failure",
+      "description": "The endpoint layer advertises a fallback 500. Delivery answers its own dependency failures 503 deferred, so the sending server retries; this pair proves the shared response adapter directly and does not claim that delivery answers a database fault with it.",
+      "requires": {
+        "fault": "error_adapter"
+      },
+      "request": {
+        "body": {
+          "from": "someone@ext-contract.test",
+          "to": [
+            "eve@restmail.test"
+          ],
+          "subject": "Delivered over RESTMAIL",
+          "body_text": "Hello, Eve."
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "lookup_deferred": {
       "summary": "A database failure defers delivery for retry",
       "requires": {
         "fault": "database"
