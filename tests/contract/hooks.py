@@ -205,9 +205,11 @@ def an_api_key_of_its_own_to_edit(transaction):
     if not as_the_two_factor_admin(transaction):
         return
     body = hooks.get_json(transaction)
-    # The body_array refusal has no password to set, and a refused password
-    # keeps the one it sends.
-    if not isinstance(body, dict) or body.get("password") != "current-password":
+    # The body_array refusal has no password to set, a probe of an empty one
+    # keeps it, and the refused password keeps the one it sends. The generator's
+    # stand-in for a password is any other string.
+    password = body.get("password") if isinstance(body, dict) else None
+    if not isinstance(password, str) or not password or password == "not-the-password":
         return
     body["password"] = mfa_admin.PASSWORD
     origin = origin_of(transaction)
