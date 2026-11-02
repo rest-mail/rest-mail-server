@@ -81,6 +81,7 @@ func TestMessageCollectionReadExamples(t *testing.T) {
 }
 
 func TestMessageCollectionReadExamplesWithVertrag(t *testing.T) {
+	t.Run("thread_due", checkThreadDueExamplesWithVertrag)
 	binary := os.Getenv("RESTMAIL_VERTRAG_BINARY")
 	if binary == "" {
 		t.Skip("set RESTMAIL_VERTRAG_BINARY for message collection exchanges")

@@ -78,6 +78,7 @@ func autoMigrate(db *gorm.DB) error {
 		&models.Mailbox{},
 		&models.Alias{},
 		&models.Message{},
+		&models.ThreadDue{},
 		// Mail the user asked the server to send later; replayed through the
 		// ordinary send path when due.
 		&models.ScheduledSend{},

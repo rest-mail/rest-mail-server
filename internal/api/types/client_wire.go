@@ -246,6 +246,8 @@ type Message struct {
 	InReplyTo         string                `json:"in_reply_to"`
 	References        string                `json:"references"`
 	ThreadID          string                `json:"thread_id"`
+	Due               *time.Time            `json:"due,omitempty"`
+	DueSource         *string               `json:"due_source,omitempty" enums:"user,rule,parsed"`
 	Sender            string                `json:"sender"`
 	SenderName        string                `json:"sender_name"`
 	RecipientsTo      json.RawMessage       `json:"recipients_to"`

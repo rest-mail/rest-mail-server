@@ -428,6 +428,13 @@ export async function getCalendarEvents(accountId: number): Promise<{ data: {
 }
 
 // Threads
+export async function setThreadDue(accountId: number, threadId: string, due: string | null): Promise<{ data: { thread_id: string; due: string | null; due_source: 'user' | null } }> {
+  return request(`${BASE}/accounts/${accountId}/threads/${encodeURIComponent(threadId)}/due`, {
+    method: 'POST',
+    body: JSON.stringify({ due, due_source: 'user' }),
+  });
+}
+
 export async function getThread(accountId: number, threadId: string): Promise<{ data: MessageSummary[] }> {
   return request(`${BASE}/accounts/${accountId}/threads/${encodeURIComponent(threadId)}`);
 }

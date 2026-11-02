@@ -73,6 +73,7 @@ func connectTestDB() (*gorm.DB, error) {
 // credentials, and the roles and grants that say what it may do.
 var accountModels = []interface{}{
 	&models.Domain{}, &models.Mailbox{}, &models.QuotaUsage{}, &models.Credential{},
+	&models.ThreadDue{},
 	&models.Role{}, &models.Capability{}, &models.RoleCapability{},
 	&models.Grant{}, &models.GrantActivation{}, &models.RefreshToken{},
 }
