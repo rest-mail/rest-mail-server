@@ -1976,7 +1976,7 @@ tasks:
       - echo "Downloading Go modules..."
       - go mod download
       - echo "Installing webmail dependencies..."
-      - cd webmail && npm ci
+      - cd webmail && corepack pnpm install --frozen-lockfile
       - echo "Verifying build..."
       - go build ./...
       - echo "Setup complete."
