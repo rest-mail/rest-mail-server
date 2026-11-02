@@ -1,8 +1,10 @@
 name: Bump Vertrag
 
 # Pins each new Vertrag release for the contract run (#628): scripts/vertrag_pin.py
-# reads the latest release and its checksum, and a pull request carries the bump. The
-# contract gate (#626) proves the new version still passes; a release that changes a
+# writes scripts/vertrag-pin.yml with the latest release and its checksum, and a pull
+# request carries the bump without changing workflow files. The tracked pin is picked
+# up by git commit -am below. The contract gate (#626) proves the new version still
+# passes; a release that changes a
 # verdict leaves a red bump for a person.
 #
 # A pull request opened with the workflow's own token starts no checks, so the bump also
