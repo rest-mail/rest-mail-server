@@ -52,7 +52,7 @@ func TestImportContacts_ContractBoundaries(t *testing.T) {
 	// A private database lets this exercise the production unique index and
 	// duplicate handling without modifying contacts shared by other tests.
 	db := openAuditTestDB(t)
-	if err := db.AutoMigrate(append(accountModels, &models.Contact{})...); err != nil {
+	if err := db.AutoMigrate(append(accountModels, &models.ServerLimits{}, &models.Contact{})...); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Exec(`CREATE UNIQUE INDEX idx_contacts_mailbox_email ON contacts(mailbox_id, email)`).Error; err != nil {

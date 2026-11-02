@@ -15,7 +15,7 @@ import (
 
 func TestContactImportRollbackAndDuplicatePersistence(t *testing.T) {
 	db := openAuthzTestDB(t)
-	if err := db.AutoMigrate(&models.Contact{}); err != nil {
+	if err := db.AutoMigrate(&models.ServerLimits{}, &models.Contact{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_mailbox_email ON contacts(mailbox_id, email)`).Error; err != nil {
@@ -81,7 +81,7 @@ func TestContactImportRollbackAndDuplicatePersistence(t *testing.T) {
 
 func TestContactSuggestionLiteralPersistence(t *testing.T) {
 	db := openAuthzTestDB(t)
-	if err := db.AutoMigrate(&models.Contact{}); err != nil {
+	if err := db.AutoMigrate(&models.ServerLimits{}, &models.Contact{}); err != nil {
 		t.Fatal(err)
 	}
 	tx := db.Begin()
