@@ -166,7 +166,7 @@ jobs:
           go build -o "$RUNNER_TEMP/testdb-exec" ./tools/testdb-exec
           packages=$(go list ./internal/... | grep -vxF github.com/rest-mail/rest-mail-server/internal/api)
           # shellcheck disable=SC2086 # one package per word
-          go test -race -count=1 -timeout=20m -exec "$RUNNER_TEMP/testdb-exec" -coverprofile=coverage-rest.out $packages ./cmd/... ./tests/contract/fixtureplan ./tests/contract/browser_sessions
+          go test -race -count=1 -timeout=20m -exec "$RUNNER_TEMP/testdb-exec" -coverprofile=coverage-rest.out $packages ./cmd/... ./tests/contract/browser_sessions
         env:
           ENVIRONMENT: test
           DB_HOST: localhost
@@ -176,6 +176,19 @@ jobs:
           DB_PASS: restmail
           # The in-process example tests write the pairs they proved here (#1237).
           RESTMAIL_EXAMPLE_PROOFS: ${{ runner.temp }}/proofs/example-proofs-rest.json
+
+      - name: Test contract fixtures against an empty database
+        run: |
+          set -euo pipefail
+          docker exec "${{ job.services.postgres.id }}" createdb -U restmail restmail_contract_fixture_ci
+          go test -race -count=1 -timeout=20m -v ./tests/contract/fixtures ./tests/contract/fixtureplan
+        env:
+          ENVIRONMENT: test
+          DB_HOST: localhost
+          DB_PORT: "5432"
+          DB_NAME: restmail_contract_fixture_ci
+          DB_USER: restmail
+          DB_PASS: restmail
 
       # The contract fault switch (#654): the API builds with every fault in
       # tests/contract/faults.yml, and each one changes its route's answer. The
