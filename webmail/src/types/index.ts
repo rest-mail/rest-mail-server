@@ -29,6 +29,7 @@ export interface MessageSummary {
   thread_id: string;
   due?: string | null;
   due_source?: 'user' | 'rule' | 'parsed' | null;
+  snoozed_until?: string | null;
   folder: string;
   message_id: string;
   sender: string;

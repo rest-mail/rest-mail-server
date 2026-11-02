@@ -445,6 +445,13 @@ export async function getThread(accountId: number, threadId: string): Promise<{ 
   return request(`${BASE}/accounts/${accountId}/threads/${encodeURIComponent(threadId)}`);
 }
 
+export async function snoozeThread(accountId: number, threadId: string, until: string | null): Promise<{ data: { thread_id: string; snoozed_until: string | null } }> {
+  return request(`${BASE}/accounts/${accountId}/threads/${encodeURIComponent(threadId)}/snooze`, {
+    method: 'POST',
+    body: JSON.stringify({ snoozed_until: until }),
+  });
+}
+
 // Account management
 /** Give up access to an account this one owns or linked (204). */
 export async function deleteAccount(accountId: number): Promise<void> {

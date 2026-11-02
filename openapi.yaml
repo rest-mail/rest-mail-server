@@ -4943,6 +4943,440 @@ paths:
         - mail:write
       - BasicAuth:
         - mail:write
+  /api/v1/accounts/{id}/threads/{threadID}/snooze:
+    post:
+      summary: Snooze a thread or cancel its snooze
+      description: Hides every message in this account's thread from folder listings without changing
+        messages or search results. A future snoozed_until sets or replaces the durable deadline;
+        null cancels it. The existing background worker returns due threads at startup and within
+        30 seconds of their deadline, publishing folder_update to the account's event streams.
+      operationId: snoozeThread
+      tags:
+      - Messages
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+        examples:
+          cancelled:
+            value: 1
+          invalid_id:
+            description: Real transport and path binding are exercised. The JSON body is valid;
+              invalid-body flags do not describe path validation. The test cap is512 bytes; oversize
+              hook sends513 bytes.
+            value: 0
+          key_read:
+            value: 1
+            x-requires:
+              principal: without_capability
+          malformed_json:
+            description: The wire body is the raw truncated JSON byte {, with application/json
+              content type. The route and Vertrag transport hook send those exact bytes rather
+              than JSON-quoting them.
+            value: 1
+            x-requires:
+              body: malformed
+          malformed_time:
+            value: 1
+          snoozed_until_missing:
+            value: 1
+          snoozed_until_wrong_type:
+            value: 1
+          no_grants:
+            value: 1
+            x-requires:
+              principal: without_capability
+          past:
+            value: 1
+          rate_limited:
+            value: 1
+            x-requires:
+              limit: rate
+          request_too_large:
+            description: Real transport and path binding are exercised. The JSON body is valid;
+              invalid-body flags do not describe path validation. The test cap is512 bytes; oversize
+              hook sends513 bytes.
+            value: 1
+            x-requires:
+              body: over_cap
+          session_unavailable:
+            value: 1
+            x-requires:
+              fault: session_store
+          snoozed:
+            value: 1
+          thread_missing:
+            value: 1
+          unauthenticated:
+            value: 1
+            x-requires:
+              principal: anonymous
+          write_unavailable:
+            value: 1
+            x-requires:
+              fault: database
+      - name: threadID
+        in: path
+        required: true
+        schema:
+          type: string
+        examples:
+          cancelled:
+            value: thread/2026@example.net
+          invalid_id:
+            description: Real transport and path binding are exercised. The JSON body is valid;
+              invalid-body flags do not describe path validation. The test cap is512 bytes; oversize
+              hook sends513 bytes.
+            value: thread/2026@example.net
+          key_read:
+            value: thread/2026@example.net
+            x-requires:
+              principal: without_capability
+          malformed_json:
+            description: The wire body is the raw truncated JSON byte {, with application/json
+              content type. The route and Vertrag transport hook send those exact bytes rather
+              than JSON-quoting them.
+            value: thread/2026@example.net
+            x-requires:
+              body: malformed
+          malformed_time:
+            value: thread/2026@example.net
+          snoozed_until_missing:
+            value: thread/2026@example.net
+          snoozed_until_wrong_type:
+            value: thread/2026@example.net
+          no_grants:
+            value: thread/2026@example.net
+            x-requires:
+              principal: without_capability
+          past:
+            value: thread/2026@example.net
+          rate_limited:
+            value: thread/2026@example.net
+            x-requires:
+              limit: rate
+          request_too_large:
+            description: Real transport and path binding are exercised. The JSON body is valid;
+              invalid-body flags do not describe path validation. The test cap is512 bytes; oversize
+              hook sends513 bytes.
+            value: thread/2026@example.net
+            x-requires:
+              body: over_cap
+          session_unavailable:
+            value: thread/2026@example.net
+            x-requires:
+              fault: session_store
+          snoozed:
+            value: thread/2026@example.net
+          thread_missing:
+            value: missing
+          unauthenticated:
+            value: thread/2026@example.net
+            x-requires:
+              principal: anonymous
+          write_unavailable:
+            value: WriteFailure
+            x-requires:
+              fault: database
+      requestBody:
+        required: true
+        content:
+          application/json:
+            examples:
+              cancelled:
+                value:
+                  snoozed_until: null
+              invalid_id:
+                description: Real transport and path binding are exercised. The JSON body is valid;
+                  invalid-body flags do not describe path validation. The test cap is512 bytes;
+                  oversize hook sends513 bytes.
+                value:
+                  snoozed_until: '2099-01-01T10:00:00Z'
+              key_read:
+                value:
+                  snoozed_until: '2099-01-01T10:00:00Z'
+                x-requires:
+                  principal: without_capability
+              malformed_json:
+                description: The wire body is the raw truncated JSON byte {, with application/json
+                  content type. The route and Vertrag transport hook send those exact bytes rather
+                  than JSON-quoting them.
+                value: '{'
+                x-requires:
+                  body: malformed
+              malformed_time:
+                value:
+                  snoozed_until: tomorrow
+              snoozed_until_missing:
+                value: {}
+              snoozed_until_wrong_type:
+                value:
+                  snoozed_until: 12345
+              no_grants:
+                value:
+                  snoozed_until: '2099-01-01T10:00:00Z'
+                x-requires:
+                  principal: without_capability
+              past:
+                value:
+                  snoozed_until: '2000-01-01T00:00:00Z'
+              rate_limited:
+                value:
+                  snoozed_until: '2099-01-01T10:00:00Z'
+                x-requires:
+                  limit: rate
+              request_too_large:
+                description: Real transport and path binding are exercised. The JSON body is valid;
+                  invalid-body flags do not describe path validation. The test cap is512 bytes;
+                  oversize hook sends513 bytes.
+                value:
+                  snoozed_until: '2099-01-01T10:00:00Z'
+                x-requires:
+                  body: over_cap
+              session_unavailable:
+                value:
+                  snoozed_until: '2099-01-01T10:00:00Z'
+                x-requires:
+                  fault: session_store
+              snoozed:
+                value:
+                  snoozed_until: '2099-01-01T10:00:00Z'
+              thread_missing:
+                value:
+                  snoozed_until: '2099-01-01T10:00:00Z'
+              unauthenticated:
+                value:
+                  snoozed_until: '2099-01-01T10:00:00Z'
+                x-requires:
+                  principal: anonymous
+              write_unavailable:
+                value:
+                  snoozed_until: '2099-01-01T10:00:00Z'
+                x-requires:
+                  fault: database
+            schema:
+              additionalProperties: false
+              properties:
+                snoozed_until:
+                  format: date-time
+                  type:
+                  - string
+                  - 'null'
+              required:
+              - snoozed_until
+              type: object
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              examples:
+                cancelled:
+                  value:
+                    data:
+                      snoozed_until: null
+                      thread_id: thread/2026@example.net
+                snoozed:
+                  value:
+                    data:
+                      snoozed_until: '2099-01-01T10:00:00Z'
+                      thread_id: thread/2026@example.net
+              schema:
+                $ref: '#/components/schemas/Data-ThreadSnooze'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              examples:
+                malformed_json:
+                  description: The wire body is the raw truncated JSON byte {, with application/json
+                    content type. The route and Vertrag transport hook send those exact bytes
+                    rather than JSON-quoting them.
+                  value:
+                    error:
+                      code: bad_request
+                      message: Invalid request body
+                  x-requires:
+                    body: malformed
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 'unauthorized, app_password_required or setup_required: a refused session
+            or HTTP Basic credential'
+          content:
+            application/json:
+              examples:
+                unauthenticated:
+                  value:
+                    error:
+                      code: unauthorized
+                      message: Missing authorization header
+                  x-requires:
+                    principal: anonymous
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              examples:
+                key_read:
+                  value:
+                    error:
+                      code: forbidden
+                      message: Access denied
+                  x-requires:
+                    principal: without_capability
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              examples:
+                no_grants:
+                  value:
+                    error:
+                      code: not_found
+                      message: Account not found
+                  x-requires:
+                    principal: without_capability
+                thread_missing:
+                  value:
+                    error:
+                      code: not_found
+                      message: Thread not found
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: Request Entity Too Large
+          content:
+            application/json:
+              examples:
+                request_too_large:
+                  description: Real transport and path binding are exercised. The JSON body is
+                    valid; invalid-body flags do not describe path validation. The test cap is512
+                    bytes; oversize hook sends513 bytes.
+                  value:
+                    error:
+                      code: request_too_large
+                      message: Request body too large
+                  x-requires:
+                    body: over_cap
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              examples:
+                invalid_id:
+                  description: Real transport and path binding are exercised. The JSON body is
+                    valid; invalid-body flags do not describe path validation. The test cap is512
+                    bytes; oversize hook sends513 bytes.
+                  value:
+                    error:
+                      code: validation_failed
+                      details:
+                        fields:
+                          id: must be at least 1
+                      message: Path parameters failed validation
+                malformed_time:
+                  value:
+                    error:
+                      code: validation_failed
+                      details:
+                        fields:
+                          snoozed_until: must be a date-time
+                      message: Request body failed validation
+                snoozed_until_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      details:
+                        fields:
+                          snoozed_until: required
+                      message: Request body failed validation
+                snoozed_until_wrong_type:
+                  value:
+                    error:
+                      code: validation_failed
+                      details:
+                        fields:
+                          snoozed_until: must be a date-time
+                      message: Request body failed validation
+                past:
+                  value:
+                    error:
+                      code: validation_failed
+                      details:
+                        fields:
+                          snoozed_until: must be in the future
+                      message: Request body failed validation
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '429':
+          description: 'rate_limited: refused API keys or HTTP Basic credentials, throttled at
+            login''s rate'
+          content:
+            application/json:
+              examples:
+                rate_limited:
+                  value:
+                    error:
+                      code: rate_limited
+                      message: Too many requests; please slow down
+                  x-requires:
+                    limit: rate
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Retry-After:
+              description: Seconds until a request may be made again
+              required: true
+              schema:
+                type: integer
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              examples:
+                write_unavailable:
+                  value:
+                    error:
+                      code: internal_error
+                      message: Internal server error
+                  x-requires:
+                    fault: database
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: 'unavailable: the credential or session check could not be made'
+          content:
+            application/json:
+              examples:
+                session_unavailable:
+                  value:
+                    error:
+                      code: unavailable
+                      message: Could not verify the session
+                  x-requires:
+                    fault: session_store
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - CookieAuth:
+        - mail:write
+      - BearerAuth:
+        - mail:write
+      - APIKeyAuth:
+        - mail:write
+      - BasicAuth:
+        - mail:write
+
   /api/v1/accounts/{id}/threads/{threadID}:
     parameters:
       - $ref: "#/components/parameters/AccountId"
@@ -14948,6 +15382,14 @@ components:
       required:
       - data
       type: object
+    Data-ThreadSnooze:
+      additionalProperties: false
+      properties:
+        data:
+          $ref: '#/components/schemas/ThreadSnooze'
+      required:
+      - data
+      type: object
 
     MessageSeal:
       additionalProperties: false
@@ -14972,6 +15414,19 @@ components:
       type: object
       description: A receipt integrity check, not sender authentication or a safety verdict. Historical
         messages without a seal are not mismatches.
+
+    ThreadSnooze:
+      type: object
+      additionalProperties: false
+      required: [thread_id, snoozed_until]
+      properties:
+        thread_id:
+          type: string
+        snoozed_until:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: "null"
 
     Message:
       type: object
@@ -15010,11 +15465,24 @@ components:
         thread_id:
           type: string
         due:
-          type: [string, "null"]
           format: date-time
+          type:
+          - string
+          - 'null'
         due_source:
-          type: [string, "null"]
-          enum: [user, rule, parsed, null]
+          enum:
+          - user
+          - rule
+          - parsed
+          - null
+          type:
+          - string
+          - 'null'
+        snoozed_until:
+          format: date-time
+          type:
+          - string
+          - 'null'
         sender:
           type: string
         sender_name:

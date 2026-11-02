@@ -204,6 +204,10 @@ func (h *MessageHandler) RegisterMessages(rs endpoint.Routes) {
 		OperationID: "setThreadDue", Summary: "Set or clear a thread's due date", Tags: tags,
 		Description: "Stores an account-scoped user-set due date without changing message order or folders. Send an RFC 3339 due date-time, or null to clear both due and due_source. due_source must be user; rule and parsed are reserved for future work. Unknown threads and threads outside this account are 404.",
 		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.setThreadDue)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/threads/{threadID}/snooze",
+		OperationID: "snoozeThread", Summary: "Snooze a thread or cancel its snooze", Tags: tags,
+		Description: "Hides every message in this account's thread from folder listings without changing messages or search results. A future snoozed_until sets or replaces the durable deadline; null cancels it. The existing background worker returns due threads at startup and within 30 seconds of their deadline, publishing folder_update to the account's event streams.",
+		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.snoozeThread)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/messages/{id}/raw",
 		OperationID: "getRawMessage", Summary: "Get the raw RFC 2822 message source", Tags: tags,
 		Description: "The message as it arrived, headers and all. 404 not_found when no source was kept.",
@@ -258,7 +262,8 @@ func (h *MessageHandler) listMessages(r *http.Request, in listMessagesRequest) (
 	// pair: a page cut by id alone skipped every message whose id is above the cut but whose
 	// date is older, such as a copy, which keeps its source's date (#805).
 	query := h.db.Where("mailbox_id = ? AND folder = ? AND is_deleted = ?", mailboxID, folder, false).
-		Select(messageDueFields).
+		Select(messageThreadFields).
+		Where(visibleThreads).
 		Order("received_at DESC, id DESC").
 		Limit(limit + 1)
 	if after, ok := decodeMessageCursor(in.Cursor); ok {
@@ -283,7 +288,7 @@ func (h *MessageHandler) listMessages(r *http.Request, in listMessagesRequest) (
 	}
 
 	var total int64
-	if err := h.db.Model(&models.Message{}).Where("mailbox_id = ? AND folder = ? AND is_deleted = ?", mailboxID, folder, false).Count(&total).Error; err != nil {
+	if err := h.db.Model(&models.Message{}).Where("mailbox_id = ? AND folder = ? AND is_deleted = ?", mailboxID, folder, false).Where(visibleThreads).Count(&total).Error; err != nil {
 		return zero, fmt.Errorf("count messages: %w", err)
 	}
 
@@ -320,7 +325,7 @@ func (h *MessageHandler) ownedMessage(r *http.Request, id uint32, capability str
 
 // getMessage returns a single message by ID.
 func (h *MessageHandler) getMessage(r *http.Request, in messagePath) (Message, error) {
-	msg, err := h.ownedMessage(r, in.ID, models.CapMailRead, messageDueFields)
+	msg, err := h.ownedMessage(r, in.ID, models.CapMailRead, messageThreadFields)
 	if err != nil {
 		return Message{}, err
 	}
@@ -1323,7 +1328,7 @@ func (h *MessageHandler) listFolders(r *http.Request, in accountPath) (endpoint.
 
 	var folders []FolderSummary
 	if err := h.db.Model(&models.Message{}).
-		Select("folder, COUNT(CASE WHEN is_deleted = false THEN 1 END) as total, COUNT(CASE WHEN is_deleted = false AND is_read = false THEN 1 END) as unread").
+		Select("folder, COUNT(CASE WHEN is_deleted = false AND "+visibleThreads+" THEN 1 END) as total, COUNT(CASE WHEN is_deleted = false AND is_read = false AND "+visibleThreads+" THEN 1 END) as unread").
 		Where("mailbox_id = ?", mailboxID).
 		Group("folder").
 		Order("folder ASC").
@@ -1815,7 +1820,7 @@ func (h *MessageHandler) getThread(r *http.Request, in threadRequest) (endpoint.
 
 	var messages []models.Message
 	if err := h.db.Where("mailbox_id = ? AND thread_id = ? AND is_deleted = ?", mailboxID, in.ThreadID, false).
-		Select(messageDueFields).
+		Select(messageThreadFields).
 		Order("received_at ASC").
 		Find(&messages).Error; err != nil {
 		return endpoint.List[Message]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to retrieve thread")

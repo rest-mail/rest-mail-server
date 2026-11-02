@@ -1262,6 +1262,45 @@ def cancel_a_message_we_made(transaction):
         transaction["fullPath"] = f"/api/v1/messages/scheduled/{scheduled_id:d}"
 
 
+@hooks.before("deleteMessage")
+def delete_a_message_we_made(transaction):
+    # The example's message, 51, is a number and not a fixture: which row it
+    # names depends on how many messages the run has made so far, and that row
+    # may belong to someone else or be gone. Coverage sends the example with its
+    # own id before its valid probes, so the fixture admin's request gets a
+    # message of its own to delete. Another principal's request, the refusal
+    # examples' ids and the probes' ids are sent as they are. Only the path
+    # changes, so Vertrag does not abandon the probe.
+    path, _, query = transaction.get("fullPath", "").partition("?")
+    if path.rsplit("/", 1)[-1] != "51" or not with_the_fixture_admins_session(transaction):
+        return
+    origin = origin_of(transaction)
+    raw = (
+        f"Message-ID: <delete-{time.time_ns()}@restmail.test>\r\n"
+        "From: sender@example.test\r\n"
+        f"To: {ADMIN}\r\n"
+        f"Date: {formatdate(usegmt=True)}\r\n"
+        "Subject: Delete contract fixture\r\n\r\nDelete fixture.\r\n"
+    ).encode()
+    request = urllib.request.Request(
+        origin + f"/api/v1/accounts/{mailbox_id(origin, ADMIN):d}/messages/import",
+        data=json.dumps(
+            {
+                "raw_message": base64.b64encode(raw).decode(),
+                "folder": "Contract delete",
+                "internal_date": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            }
+        ).encode(),
+        headers={"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        message_id = (json.load(response).get("data") or {}).get("id")
+    if type(message_id) is not int or message_id < 1:
+        raise RuntimeError("the delete fixture's import returned no message")
+    transaction["fullPath"] = f"/api/v1/messages/{message_id:d}" + ("?" + query if query else "")
+
+
 @hooks.before("listQueue")
 def list_the_sent_messages_queue_entry(transaction):
     # The example asks for status=pending (the enum's first value), and the

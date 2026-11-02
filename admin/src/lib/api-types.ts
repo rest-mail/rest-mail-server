@@ -798,6 +798,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/accounts/{id}/threads/{threadID}/snooze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Snooze a thread or cancel its snooze
+         * @description Hides every message in this account's thread from folder listings without changing messages or search results. A future snoozed_until sets or replaces the durable deadline; null cancels it. The existing background worker returns due threads at startup and within 30 seconds of their deadline, publishing folder_update to the account's event streams.
+         */
+        post: operations["snoozeThread"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/accounts/{id}/vacation": {
         parameters: {
             query?: never;
@@ -3268,6 +3288,9 @@ export interface components {
         "Data-ThreadDue": {
             data: components["schemas"]["ThreadDue"];
         };
+        "Data-ThreadSnooze": {
+            data: components["schemas"]["ThreadSnooze"];
+        };
         "Data-accountResponse": {
             data: components["schemas"]["accountResponse"];
         };
@@ -3696,6 +3719,8 @@ export interface components {
             sender: string;
             sender_name: string;
             size_bytes: number;
+            /** Format: date-time */
+            snoozed_until?: string | null;
             subject: string;
             thread_id: string;
             tls_version?: string;
@@ -4528,6 +4553,11 @@ export interface components {
             due: string | null;
             /** @enum {string|null} */
             due_source: "user" | "rule" | "parsed" | null;
+            thread_id: string;
+        };
+        ThreadSnooze: {
+            /** Format: date-time */
+            snoozed_until: string | null;
             thread_id: string;
         };
         TransportCount: {
@@ -10337,6 +10367,119 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Data-ThreadDue"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    snoozeThread: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                threadID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date-time */
+                    snoozed_until: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-ThreadSnooze"];
                 };
             };
             /** @description Bad Request */

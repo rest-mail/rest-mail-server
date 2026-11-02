@@ -63,6 +63,7 @@ type Message struct {
 	ThreadID     string     `gorm:"size:995;index" json:"thread_id"`
 	Due          *time.Time `gorm:"->;-:migration" json:"-"`
 	DueSource    *string    `gorm:"->;-:migration" json:"-"`
+	SnoozedUntil *time.Time `gorm:"->;-:migration" json:"-"`
 	Sender       string     `gorm:"size:255;not null" json:"sender"`
 	SenderName   string     `gorm:"size:255" json:"sender_name"`
 	RecipientsTo JSONB      `gorm:"type:jsonb;not null;default:'[]'" json:"recipients_to"`

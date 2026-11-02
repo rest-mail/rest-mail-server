@@ -1,12 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { API_BASE } from '../api/base';
-
-export interface SSEEvent {
-  type: string;
-  data: Record<string, unknown>;
-}
-
-const EVENT_TYPES = ['new_message', 'folder_update', 'message_updated', 'message_deleted', 'message_sent'];
+import { openMailStream, type SSEEvent } from '../lib/mailStream';
+export type { SSEEvent } from '../lib/mailStream';
 
 /**
  * Open a native EventSource for one account. Authentication is by cookie: the
@@ -18,22 +13,7 @@ const EVENT_TYPES = ['new_message', 'folder_update', 'message_updated', 'message
  */
 function openStream(accountId: number, onEvent: (e: SSEEvent) => void): () => void {
   const url = `${API_BASE}/accounts/${accountId}/events`;
-  const es = new EventSource(url, { withCredentials: true });
-
-  const handler = (type: string) => (evt: MessageEvent) => {
-    try {
-      onEvent({ type, data: JSON.parse(evt.data) });
-    } catch {
-      // ignore malformed JSON
-    }
-  };
-  // The server names every event (`event: <type>`), so we subscribe per type
-  // rather than the default `message` listener.
-  for (const type of EVENT_TYPES) {
-    es.addEventListener(type, handler(type) as EventListener);
-  }
-
-  return () => es.close();
+  return openMailStream(url, onEvent);
 }
 
 /**

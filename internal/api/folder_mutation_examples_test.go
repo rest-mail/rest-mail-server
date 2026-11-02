@@ -109,6 +109,7 @@ func TestFolderMutationExamples(t *testing.T) {
 }
 
 func TestFolderMutationExamplesWithVertrag(t *testing.T) {
+	t.Run("snoozeThread", checkThreadSnoozeExamplesWithVertrag)
 	binary := os.Getenv("RESTMAIL_VERTRAG_BINARY")
 	if binary == "" {
 		t.Skip("set RESTMAIL_VERTRAG_BINARY for folder mutation exchanges")

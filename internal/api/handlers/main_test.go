@@ -74,6 +74,7 @@ func connectTestDB() (*gorm.DB, error) {
 var accountModels = []interface{}{
 	&models.Domain{}, &models.Mailbox{}, &models.QuotaUsage{}, &models.Credential{},
 	&models.ThreadDue{},
+	&models.ThreadSnooze{},
 	&models.Role{}, &models.Capability{}, &models.RoleCapability{},
 	&models.Grant{}, &models.GrantActivation{}, &models.RefreshToken{},
 }
