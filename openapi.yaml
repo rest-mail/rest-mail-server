@@ -5237,7 +5237,7 @@ paths:
         - APIKeyAuth: [mail:write]
         - BasicAuth: [mail:write]
       summary: Bulk import contacts
-      description: Validates all entries before importing. Existing contacts are skipped.
+      description: As many contacts as fit the API's request size limit. Every entry is checked first, and contacts the account already has are skipped.
       requestBody:
         required: true
         content:
@@ -5278,13 +5278,15 @@ paths:
                 properties:
                   data:
                     type: object
-                    required: [imported]
+                    required: [imported, skipped]
                     properties:
                       imported:
                         type: integer
+                      skipped:
+                        type: integer
               examples:
                 imported:
-                  value: {data: {imported: 1}}
+                  value: {data: {imported: 1, skipped: 0}}
         '400':
           description: The body is not valid JSON or not the declared media type
           content:

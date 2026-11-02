@@ -115,12 +115,13 @@ func TestImportContacts_ContractBoundaries(t *testing.T) {
 			}
 		})
 	}
-	for _, body := range []string{
-		`{"contacts":[{"email":"alice@example.com"}]}`,
-		`{"contacts":[{"email":"existing@example.com","name":"Overwrite"},{"email":"bob@example.com","name":"Bob"}]}`,
+	// In order: the next check reads the contacts by their ids.
+	for _, batch := range []struct{ body, want string }{
+		{`{"contacts":[{"email":"alice@example.com"}]}`, "{\"data\":{\"imported\":1,\"skipped\":0}}\n"},
+		{`{"contacts":[{"email":"existing@example.com","name":"Overwrite"},{"email":"bob@example.com","name":"Bob"}]}`, "{\"data\":{\"imported\":1,\"skipped\":1}}\n"},
 	} {
-		rr := post(body)
-		if rr.Code != http.StatusOK || rr.Body.String() != "{\"data\":{\"imported\":1}}\n" {
+		rr := post(batch.body)
+		if rr.Code != http.StatusOK || rr.Body.String() != batch.want {
 			t.Fatalf("valid batch: status %d, body %s", rr.Code, rr.Body)
 		}
 	}

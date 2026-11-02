@@ -57,25 +57,29 @@ func (c *contactImportSuggestConnection) QueryContext(ctx context.Context, q str
 			c.tx.relevant = true
 		}
 		c.record(q, args)
-		fields, err := exampleInsertFields(q, args)
-		if err != nil {
-			return nil, err
-		}
-		email := fields["email"].(string)
-		if email == "fail@example.com" {
-			return nil, errors.New("private contact import detail")
-		}
-		if email == "duplicate@example.com" || c.seen[email] {
-			if strings.Contains(q, `ON CONFLICT ("mailbox_id","email") DO NOTHING`) {
-				return &authReadSnapshotRows{columns: []string{"id"}}, nil
+		// One INSERT carries a batch: an @ in an argument is one row's address.
+		rows := [][]driver.Value{}
+		for _, arg := range args {
+			email, ok := arg.Value.(string)
+			if !ok || !strings.Contains(email, "@") {
+				continue
 			}
-			return nil, &pgconn.PgError{Code: "23505", Message: "private duplicate detail"}
+			if email == "fail@example.com" {
+				return nil, errors.New("private contact import detail")
+			}
+			if email == "duplicate@example.com" || c.seen[email] {
+				if strings.Contains(q, `ON CONFLICT ("mailbox_id","email") DO NOTHING`) {
+					continue
+				}
+				return nil, &pgconn.PgError{Code: "23505", Message: "private duplicate detail"}
+			}
+			if c.seen == nil {
+				c.seen = map[string]bool{}
+			}
+			c.seen[email] = true
+			rows = append(rows, []driver.Value{int64(len(rows) + 1)})
 		}
-		if c.seen == nil {
-			c.seen = map[string]bool{}
-		}
-		c.seen[email] = true
-		return &authReadSnapshotRows{columns: []string{"id"}, rows: [][]driver.Value{{int64(1)}}}, nil
+		return &authReadSnapshotRows{columns: []string{"id"}, rows: rows}, nil
 	}
 	if strings.Contains(q, `FROM "contacts"`) {
 		if len(args) != 5 || !strings.Contains(q, "mailbox_id =") || !strings.Contains(q, `email LIKE ?`) && !strings.Contains(q, `email LIKE $`) || !strings.Contains(q, `ESCAPE '\'`) || !strings.Contains(q, "ORDER BY name ASC, email ASC") || args[1].Value != args[2].Value || args[3].Value != "blocked" || args[4].Value != int64(10) {
