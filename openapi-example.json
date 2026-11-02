@@ -209,11 +209,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -1400,6 +1400,29 @@
         "mediaType": "application/json"
       }
     },
+    "key_read": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "existing@example.com"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "lookup_unavailable": {
       "requires": {
         "fault": "database"
@@ -1459,11 +1482,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -5490,6 +5513,29 @@
         "mediaType": "application/json"
       }
     },
+    "key_read": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "email": "new@example.com"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "malformed_json": {
       "description": "The wire body is the raw truncated JSON byte {, with application/json content type. The route and Vertrag transport hook send those exact bytes rather than JSON-quoting them.",
       "requires": {
@@ -5526,11 +5572,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -6218,6 +6264,29 @@
         "mediaType": "application/json"
       }
     },
+    "key_read": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "New folder"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "malformed_json": {
       "description": "The wire body is the raw truncated JSON byte {, with application/json content type. The route and Vertrag transport hook send those exact bytes rather than JSON-quoting them.",
       "requires": {
@@ -6254,11 +6323,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -7826,6 +7895,27 @@
         "mediaType": "application/json"
       }
     },
+    "key_read": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "cid": 41,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "lookup_unavailable": {
       "requires": {
         "fault": "database"
@@ -7876,11 +7966,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -8573,6 +8663,27 @@
         "mediaType": "application/json"
       }
     },
+    "key_read": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "folder": "Work",
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "missing": {
       "request": {
         "path": {
@@ -8602,11 +8713,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -9196,7 +9307,7 @@
         "mediaType": "application/json"
       }
     },
-    "key_wrong_scope": {
+    "key_read": {
       "requires": {
         "principal": "without_capability"
       },
@@ -9211,6 +9322,26 @@
           "error": {
             "code": "forbidden",
             "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_wrong_scope": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "message_not_found",
+            "message": "Message not found"
           }
         },
         "mediaType": "application/json"
@@ -9756,6 +9887,27 @@
         "mediaType": "application/json"
       }
     },
+    "key_read": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "mid": 41
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "missing": {
       "request": {
         "path": {
@@ -9785,11 +9937,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -10117,7 +10269,7 @@
         "mediaType": "application/json"
       }
     },
-    "no_grants": {
+    "key_read": {
       "requires": {
         "principal": "without_capability"
       },
@@ -10132,6 +10284,26 @@
           "error": {
             "code": "forbidden",
             "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "no_grants": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -10824,6 +10996,26 @@
         "mediaType": "application/json"
       }
     },
+    "key_read": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "lookup_unavailable": {
       "requires": {
         "fault": "database"
@@ -10854,11 +11046,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -11733,11 +11925,11 @@
         "mediaType": "application/json"
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "message_not_found",
+            "message": "Message not found"
           }
         },
         "mediaType": "application/json"
@@ -14333,11 +14525,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "message_not_found",
+            "message": "Message not found"
           }
         },
         "mediaType": "application/json"
@@ -14455,6 +14647,26 @@
           "error": {
             "code": "unauthorized",
             "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "write_only": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -15495,11 +15707,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -15590,6 +15802,28 @@
         },
         "mediaType": "application/json"
       }
+    },
+    "write_only": {
+      "summary": "A mail-write grant alone does not permit a read",
+      "description": "A caller that can see the account is told this action is what it lacks.",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
     }
   },
   "getRawMessage": {
@@ -15639,11 +15873,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "message_not_found",
+            "message": "Message not found"
           }
         },
         "mediaType": "application/json"
@@ -15761,6 +15995,26 @@
           "error": {
             "code": "unauthorized",
             "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "write_only": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -16054,11 +16308,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -16145,6 +16399,28 @@
           "error": {
             "code": "unauthorized",
             "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "write_only": {
+      "summary": "A mail-write grant alone does not permit a read",
+      "description": "A caller that can see the account is told this action is what it lacks.",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -16313,11 +16589,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -16423,6 +16699,27 @@
           "error": {
             "code": "unauthorized",
             "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "write_only": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "thread/2026@example.net"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -16595,11 +16892,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -16690,6 +16987,28 @@
         },
         "mediaType": "application/json"
       }
+    },
+    "write_only": {
+      "summary": "A mail-write grant alone does not permit a read",
+      "description": "A caller that can see the account is told this action is what it lacks.",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
     }
   },
   "importContacts": {
@@ -16749,6 +17068,34 @@
         "mediaType": "application/json"
       }
     },
+    "key_read": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "contacts": [
+            {
+              "email": "new@example.com",
+              "name": "New"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "malformed_json": {
       "description": "The wire body is the raw truncated JSON byte {, with application/json content type. The route and Vertrag transport hook send those exact bytes rather than JSON-quoting them.",
       "requires": {
@@ -16790,11 +17137,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -19518,11 +19865,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -19630,6 +19977,28 @@
           "error": {
             "code": "unauthorized",
             "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "write_only": {
+      "summary": "A mail-write grant alone does not permit a read",
+      "description": "A caller that can see the account is told this action is what it lacks.",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -20178,11 +20547,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -20269,6 +20638,28 @@
           "error": {
             "code": "unauthorized",
             "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "write_only": {
+      "summary": "A mail-write grant alone does not permit a read",
+      "description": "A caller that can see the account is told this action is what it lacks.",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -21016,11 +21407,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -21121,6 +21512,26 @@
           "error": {
             "code": "unauthorized",
             "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "write_only": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -21833,11 +22244,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -21922,6 +22333,27 @@
           "error": {
             "code": "unauthorized",
             "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "write_only": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "folder": "INBOX",
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -22598,11 +23030,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -22683,6 +23115,26 @@
           "error": {
             "code": "unauthorized",
             "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "write_only": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -25735,6 +26187,52 @@
         "mediaType": "application/json"
       }
     },
+    "key_read": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "script": "keep;"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_wrong_scope": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "script": "keep;"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "lookup_unavailable": {
       "requires": {
         "fault": "database"
@@ -25794,11 +26292,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -28234,6 +28732,30 @@
         "mediaType": "application/json"
       }
     },
+    "key_read": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "folder": "Work",
+          "id": 1
+        },
+        "body": {
+          "name": "New folder"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "malformed_json": {
       "description": "The wire body is the raw truncated JSON byte {, with application/json content type. The route and Vertrag transport hook send those exact bytes rather than JSON-quoting them.",
       "requires": {
@@ -28272,11 +28794,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -31003,11 +31525,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "message_not_found",
+            "message": "Message not found"
           }
         },
         "mediaType": "application/json"
@@ -33411,6 +33933,31 @@
         "mediaType": "application/json"
       }
     },
+    "key_read": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": true,
+          "subject": "Away",
+          "body": "Back soon."
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "lookup_unavailable": {
       "requires": {
         "fault": "database"
@@ -33474,11 +34021,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -33963,11 +34510,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -34084,6 +34631,29 @@
           "error": {
             "code": "unauthorized",
             "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "write_only": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "query": {
+          "q": "example"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
           }
         },
         "mediaType": "application/json"
@@ -35727,6 +36297,30 @@
         "mediaType": "application/json"
       }
     },
+    "key_read": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "cid": 1,
+          "id": 1
+        },
+        "body": {
+          "name": "Changed"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "lookup_unavailable": {
       "requires": {
         "fault": "database"
@@ -35810,11 +36404,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -36548,11 +37142,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "message_not_found",
+            "message": "Message not found"
           }
         },
         "mediaType": "application/json"
@@ -38074,6 +38668,29 @@
         "mediaType": "application/json"
       }
     },
+    "key_read": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "script": "keep;"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "malformed_json": {
       "description": "The wire body is the raw truncated JSON byte {, with application/json content type. The route and Vertrag transport hook send those exact bytes rather than JSON-quoting them.",
       "requires": {
@@ -38110,11 +38727,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Access denied"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"

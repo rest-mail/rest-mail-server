@@ -46,8 +46,8 @@ func TestSieveValidate_AuthorizedLikePut(t *testing.T) {
 	}
 	for _, tc := range refused {
 		rr := validateSieveAs(h, tc.claims, owner)
-		if rr.Code != http.StatusForbidden {
-			t.Errorf("%s: expected 403, got %d (%s)", tc.name, rr.Code, rr.Body.String())
+		if rr.Code != http.StatusNotFound {
+			t.Errorf("%s: expected 404, got %d (%s)", tc.name, rr.Code, rr.Body.String())
 		}
 	}
 

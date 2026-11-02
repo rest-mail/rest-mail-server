@@ -122,7 +122,7 @@ func TestAPIKeyLifecycle(t *testing.T) {
 		}
 	}
 	// A key cannot use its account's unrelated mail permissions.
-	if _, err := mayReach(db, claims, fx.admin.ID, models.CapMailRead); !errors.Is(err, errNoAccess) {
+	if _, err := mayReach(db, claims, fx.admin.ID, models.CapMailRead); !refusedAccount(err) {
 		t.Fatal("key exceeded its explicit permissions")
 	}
 

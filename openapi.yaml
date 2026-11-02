@@ -3016,6 +3016,8 @@ paths:
         - BasicAuth: [mail:read]
       summary: List folders for an account
       responses:
+        "404":
+          $ref: "#/components/responses/NotFound"
         "200":
           description: List of folders
           content:
@@ -3056,6 +3058,8 @@ paths:
                 value:
                   name: 12
       responses:
+        "404":
+          $ref: "#/components/responses/NotFound"
         "201":
           description: Folder created
           content:
@@ -3197,6 +3201,8 @@ paths:
           schema:
             type: string
       responses:
+        "404":
+          $ref: "#/components/responses/NotFound"
         "422":
           $ref: "#/components/responses/ValidationError"
         "200":
@@ -4988,6 +4994,8 @@ paths:
           schema:
             type: string
       responses:
+        "404":
+          $ref: "#/components/responses/NotFound"
         "422":
           $ref: "#/components/responses/ValidationError"
         "200":
@@ -5045,6 +5053,8 @@ paths:
                   name: Someone
                   trust_level: friend
       responses:
+        "404":
+          $ref: "#/components/responses/NotFound"
         "201":
           description: Contact created
           content:
@@ -5191,6 +5201,8 @@ paths:
             example:
               email: spam@example.org
       responses:
+        "404":
+          $ref: "#/components/responses/NotFound"
         # 201 first: the run blocks a new sender, then the same one again.
         "201":
           description: Sender blocked, as a new contact
@@ -5254,6 +5266,8 @@ paths:
                     - {email: valid-import@example.org, name: Must not be imported}
                     - {email: not-an-email}
       responses:
+        "404":
+          $ref: "#/components/responses/NotFound"
         "200":
           description: Import result
           content:
@@ -5353,6 +5367,8 @@ paths:
             type: string
           example: ad
       responses:
+        "404":
+          $ref: "#/components/responses/NotFound"
         "200":
           description: Contact suggestions
           content:
@@ -5382,6 +5398,8 @@ paths:
         - BasicAuth: [mail:read]
       summary: Get vacation auto-reply settings
       responses:
+        "404":
+          $ref: "#/components/responses/NotFound"
         "200":
           description: Vacation config
           content:
@@ -5428,6 +5446,8 @@ paths:
                   start_date: "2030-01-02T00:00:00Z"
                   end_date: "2030-01-01T00:00:00Z"
       responses:
+        "404":
+          $ref: "#/components/responses/NotFound"
         "200":
           description: Vacation config updated
           content:
@@ -5515,6 +5535,8 @@ paths:
         - BasicAuth: [mail:write]
       summary: Disable vacation auto-reply
       responses:
+        "404":
+          $ref: "#/components/responses/NotFound"
         "204":
           description: Vacation disabled
 
@@ -5580,6 +5602,8 @@ paths:
               script_null:
                 value: {script: null, active: true}
       responses:
+        "404":
+          $ref: "#/components/responses/NotFound"
         # 201 first: the run creates the script, then replaces it.
         "201":
           description: Sieve script created
@@ -5643,6 +5667,8 @@ paths:
         - BasicAuth: [mail:write]
       summary: Delete the Sieve filter script
       responses:
+        "404":
+          $ref: "#/components/responses/NotFound"
         "200":
           description: Script deleted
           content:
@@ -5694,6 +5720,8 @@ paths:
               script_null:
                 value: {script: null}
       responses:
+        "404":
+          $ref: "#/components/responses/NotFound"
         "200":
           description: Validation result
           content:
@@ -5754,6 +5782,8 @@ paths:
         - BasicAuth: [mail:read]
       summary: List quarantined messages
       responses:
+        "404":
+          $ref: "#/components/responses/NotFound"
         "200":
           description: Quarantined messages
           content:
@@ -5884,6 +5914,8 @@ paths:
         answers 401. Access lookup failures return 500 before any stream opens;
         missing or inaccessible accounts retain 403.
       responses:
+        "404":
+          $ref: "#/components/responses/NotFound"
         "200":
           description: SSE event stream
           content:
@@ -10889,6 +10921,8 @@ paths:
         - BasicAuth: [mail:read]
       summary: List calendar events (grouped by UID, latest version) for the mailbox
       responses:
+        "404":
+          $ref: "#/components/responses/NotFound"
         "200":
           description: Calendar event summaries
           content:

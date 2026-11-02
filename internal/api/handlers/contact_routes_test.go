@@ -102,8 +102,8 @@ func TestContactBindingBeforeDatabase(t *testing.T) {
 		t.Run("bound "+tc.method+tc.path, func(t *testing.T) {
 			rr := httptest.NewRecorder()
 			routes.ServeHTTP(rr, httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body)))
-			if rr.Code != http.StatusForbidden {
-				t.Fatalf("want 403 forbidden, got %d %s", rr.Code, rr.Body)
+			if rr.Code != http.StatusNotFound {
+				t.Fatalf("want 404, got %d %s", rr.Code, rr.Body)
 			}
 		})
 	}

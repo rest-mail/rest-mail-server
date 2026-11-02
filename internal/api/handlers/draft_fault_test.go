@@ -285,7 +285,7 @@ func TestDraftMissingAndDeniedResponsesStayUnchanged(t *testing.T) {
 			h := composeRoutes(NewMessageHandler(draftFaultGorm(t, d), nil, nil, "", nil))
 			rr := httptest.NewRecorder()
 			h.ServeHTTP(rr, draftFaultRequest(t, index))
-			assertDraftFault(t, d, rr, 403)
+			assertDraftFault(t, d, rr, 404)
 		})
 	}
 }

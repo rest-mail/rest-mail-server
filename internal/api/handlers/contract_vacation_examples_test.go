@@ -72,8 +72,8 @@ func TestSetVacation_ExamplePairs(t *testing.T) {
 		"422": {"body_array", "body_missing", "dates_reversed", "enabled_missing", "reply_missing", "subject_missing"},
 	}
 	statuses := names(op.Responses)
-	if !reflect.DeepEqual(statuses, []string{"200", "400", "422"}) {
-		t.Fatalf("response statuses %v, want 200, 400 and 422", statuses)
+	if !reflect.DeepEqual(statuses, []string{"200", "400", "404", "422"}) {
+		t.Fatalf("response statuses %v, want 200, 400, 404 and 422", statuses)
 	}
 	paired := map[string]bool{}
 	for status, expected := range want {

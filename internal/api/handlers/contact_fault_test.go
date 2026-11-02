@@ -354,7 +354,7 @@ func TestContactSuccessAndAbsenceStayStable(t *testing.T) {
 			d := &contactFaultDB{denied: true}
 			rr := httptest.NewRecorder()
 			contactFaultRouter(contactFaultGorm(t, d)).ServeHTTP(rr, contactFaultRequest(t, index))
-			assertContactFault(t, d, rr, 403)
+			assertContactFault(t, d, rr, 404)
 			if d.read != 1 || d.write != 0 || d.begin != 0 {
 				t.Fatal("denied account reached contacts")
 			}

@@ -63,12 +63,12 @@ func TestQuarantineBindingBeforeDatabase(t *testing.T) {
 }
 
 // Without a session the account is not reachable: 403, as before, and nothing is looked up.
-func TestQuarantineWithoutClaimsIsForbidden(t *testing.T) {
+func TestQuarantineWithoutClaimsIsNotFound(t *testing.T) {
 	routes := quarantineRoutes(NewPipelineHandler(nil, nil, filters.JSSidecar{}))
 	rr := httptest.NewRecorder()
 	routes.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/v1/accounts/1/quarantine", nil))
-	if rr.Code != http.StatusForbidden || !strings.Contains(rr.Body.String(), `"forbidden"`) {
-		t.Fatalf("want 403 forbidden, got %d %s", rr.Code, rr.Body)
+	if rr.Code != http.StatusNotFound || !strings.Contains(rr.Body.String(), `"not_found"`) {
+		t.Fatalf("want 404, got %d %s", rr.Code, rr.Body)
 	}
 }
 

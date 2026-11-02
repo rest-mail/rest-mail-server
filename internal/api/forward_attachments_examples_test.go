@@ -315,7 +315,7 @@ func TestForwardAttachmentsRealRouteRefusesPartialWrites(t *testing.T) {
 	for _, tc := range []struct {
 		mode   string
 		status int
-	}{{"full", 422}, {"size", 413}, {"source_failure", 500}, {"missing_object", 500}, {"checksum", 500}, {"attachment_failure", 500}, {"queue_failure", 500}, {"quota_failure", 500}, {"denied", 403}} {
+	}{{"full", 422}, {"size", 413}, {"source_failure", 500}, {"missing_object", 500}, {"checksum", 500}, {"attachment_failure", 500}, {"queue_failure", 500}, {"quota_failure", 500}, {"denied", 404}} {
 		t.Run(tc.mode, func(t *testing.T) {
 			f := newForwardFixture(t, tc.mode)
 			w := f.request(t)

@@ -95,7 +95,7 @@ func TestMailRemovalExamples(t *testing.T) {
 						t.Fatalf("lookup/write attempts=%d/%d, want %t/%t", lookups, writes, wantLookup, wantWrite)
 					}
 				} else {
-					wantWrite := rr.Code == 200 || rr.Code == 404 || name == "write_unavailable"
+					wantWrite := rr.Code == 200 || (rr.Code == 404 && !strings.Contains(rr.Body.String(), "Account not found")) || name == "write_unavailable"
 					if (len(calls) == 1) != wantWrite || len(calls) > 1 {
 						t.Fatalf("quarantine mutation attempts=%d for %s", len(calls), name)
 					}

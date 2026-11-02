@@ -152,6 +152,10 @@ func TestDelegatedSendingCapabilitiesAndAudit(t *testing.T) {
 				w := httptest.NewRecorder()
 				router.ServeHTTP(w, req)
 				want := 403
+				if strings.HasSuffix(tc.name, "wrong_scope") && (route == "forward" || route == "draft") {
+					// A key scoped elsewhere may not know the source message exists (#1327).
+					want = 404
+				}
 				if tc.allowed {
 					want = 201
 				}

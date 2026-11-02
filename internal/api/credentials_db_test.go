@@ -732,7 +732,7 @@ func TestAppPasswords_ReachOnlyTheirOwnMailbox(t *testing.T) {
 	}
 
 	appPassword := basic(f.address, f.createAppPassword("laptop").Password)
-	if rr := f.do(http.MethodGet, linkedFolders, appPassword, ""); rr.Code != http.StatusForbidden {
+	if rr := f.do(http.MethodGet, linkedFolders, appPassword, ""); rr.Code != http.StatusNotFound {
 		t.Errorf("the app password on a linked mailbox: %d %s", rr.Code, rr.Body.String())
 	}
 	rr := f.do(http.MethodGet, "/api/v1/accounts", appPassword, "")

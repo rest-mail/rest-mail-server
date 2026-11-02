@@ -40,8 +40,8 @@ type contractPrincipal struct {
 //
 //	principal                 admin route   own mailbox   owned account
 //	admin                     200           200           200 (its owner)
-//	ordinary account          403           200           403
-//	app password (Basic)      401           200           403
+//	ordinary account          403           200           404
+//	app password (Basic)      401           200           404
 //	owned, no password        cannot sign in
 //	no credentials            401           401           401
 //
@@ -129,13 +129,13 @@ func TestContractPrincipals(t *testing.T) {
 		{"admin", admin.get, folders(owned.ID), http.StatusOK},
 		{"ordinary", user.get, adminRoute, http.StatusForbidden},
 		{"ordinary", user.get, folders(ordinary.ID), http.StatusOK},
-		{"ordinary", user.get, folders(owned.ID), http.StatusForbidden},
-		{"ordinary", user.get, folders(other.ID), http.StatusForbidden},
+		{"ordinary", user.get, folders(owned.ID), http.StatusNotFound},
+		{"ordinary", user.get, folders(other.ID), http.StatusNotFound},
 		{"other", otherUser.get, folders(other.ID), http.StatusOK},
-		{"other", otherUser.get, folders(ordinary.ID), http.StatusForbidden},
+		{"other", otherUser.get, folders(ordinary.ID), http.StatusNotFound},
 		{"app password", basic.get, adminRoute, http.StatusUnauthorized},
 		{"app password", basic.get, folders(ordinary.ID), http.StatusOK},
-		{"app password", basic.get, folders(owned.ID), http.StatusForbidden},
+		{"app password", basic.get, folders(owned.ID), http.StatusNotFound},
 		{"no credentials", anonymous.get, adminRoute, http.StatusUnauthorized},
 		{"no credentials", anonymous.get, folders(ordinary.ID), http.StatusUnauthorized},
 		{"no credentials", anonymous.get, folders(owned.ID), http.StatusUnauthorized},

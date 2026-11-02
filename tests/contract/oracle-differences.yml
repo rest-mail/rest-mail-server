@@ -1667,10 +1667,6 @@
   reason: >-
     When the stored script was validated at install. It has always been written for a stored
     script; the oracle omits it.
-- operation: getSieveScript
-  difference: "response 404: openapi.yaml only"
-  reason: >-
-    Never written: an account with no script answers 200 with the empty script.
 - operation: deleteSieveScript
   difference: "response 200 application/json.properties.data.properties.status.enum: openapi.yaml absent, generated [\"deleted\"]"
   reason: >-
@@ -2099,10 +2095,6 @@
   difference: "request body application/json.properties.is_draft: openapi.yaml absent, generated {\"type\":[\"boolean\",\"null\"]}"
   reason: >-
     The IMAP gateway sets \Draft through is_draft (APPEND and STORE); the oracle omits it.
-- operation: getThread
-  difference: "response 404: openapi.yaml only"
-  reason: >-
-    Never written: a thread with no messages in the account is an empty list.
 - operation: searchMessages
   difference: "response 404: generated only"
   reason: >-

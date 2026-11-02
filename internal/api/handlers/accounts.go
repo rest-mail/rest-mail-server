@@ -184,7 +184,7 @@ func (h *AccountHandler) list(r *http.Request, _ struct{}) (endpoint.List[accoun
 			}
 			if _, err := mayReach(h.db, claims, account.ID, models.CapMailRead); err == nil {
 				visible = append(visible, account)
-			} else if !errors.Is(err, errNoAccess) {
+			} else if !refusedAccount(err) {
 				return endpoint.List[accountResponse]{}, errPermissionsUnverified
 			}
 		}
