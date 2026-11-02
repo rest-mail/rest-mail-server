@@ -208,12 +208,10 @@ jobs:
           CONTRACT_DESCRIPTION_MODE: ${{ inputs.description-mode }}
         run: chore contract
 
-      - name: Limits suite (report)
+      - name: Limits suite
         # Every limit the API declares, spent on a restarted API so its buckets
-        # are the suite's own (#660). A report until a run has shown every
-        # declaration answering as declared; then drop continue-on-error.
+        # are the suite's own (#660). A gate.
         if: inputs.contract-phases == 'gate'
-        continue-on-error: true
         run: |
           set -o pipefail
           chore test:limits 2>&1 | tee "$RUNNER_TEMP/limits.log"

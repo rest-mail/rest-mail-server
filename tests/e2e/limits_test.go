@@ -48,6 +48,7 @@ func TestLimits(t *testing.T) {
 	t.Run("EventStreams", l.eventStreams)
 	t.Run("AuthThrottle", l.authThrottle)
 	t.Run("RecoveryFailures", l.recoveryFailures)
+	t.Run("RecoveryEmailRequests", l.recoveryEmailRequests)
 	t.Run("OwnerThrottle", l.ownerThrottle)
 	t.Run("TLSRPT", l.tlsrpt)
 	t.Run("PipelineTestThrottle", l.pipelineTestThrottle)
@@ -64,7 +65,6 @@ const (
 	authThrottleGrants  = "rate_limited: login's per-IP limit"
 	ownerThrottleGroup  = "rate_limited: too many requests to the owner endpoints' throttle"
 	tlsrptThrottleGroup = "rate_limited: too many reports from one address"
-	pipelineTestGroup   = "rate_limited: pipeline preview limit exceeded"
 	basicRefusalGroup   = "rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate"
 	apiKeyRefusalGroup  = "rate_limited: refused API keys, throttled at login's rate"
 	// handlerLimitGroup is the bare status text: what a route says when it
@@ -74,13 +74,14 @@ const (
 )
 
 // handlerLimits are the operations whose handler answers 429 itself, and the
-// limit each spends: the account's send rate (#184), and the address's
-// recovery failures (#124).
+// limit each spends: the account's send rate (#184), the address's recovery
+// failures (#124), and the recovery emails asked for an address.
 var handlerLimits = map[string]string{
 	"POST /api/v1/messages/send":            "sends",
 	"POST /api/v1/messages/draft/{id}/send": "sends",
 	"POST /api/v1/messages/{id}/forward":    "sends",
 	"POST /api/v1/auth/recover":             "recovery",
+	"POST /api/v1/auth/recover/email":       "recovery email requests",
 }
 
 // The defaults the suite expects the topology to run with (config.go).
@@ -164,7 +165,7 @@ func sortOperations(ops []limitsOperation) {
 // declared places every declared 429 in a limit the suite spends.
 func (l *limitsRun) declared(t *testing.T) {
 	known := map[string]bool{authThrottleShared: true, authThrottleGrants: true, ownerThrottleGroup: true,
-		tlsrptThrottleGroup: true, pipelineTestGroup: true, basicRefusalGroup: true, apiKeyRefusalGroup: true,
+		tlsrptThrottleGroup: true, basicRefusalGroup: true, apiKeyRefusalGroup: true,
 		handlerLimitGroup: true}
 	for description, ops := range l.limits {
 		if !known[description] {
@@ -242,7 +243,7 @@ func (l *limitsRun) recipients(t *testing.T) {
 	}
 	resp, err := l.a.post("/api/v1/messages/send", map[string]any{"from": l.aAddr, "to": to, "subject": "too many", "body_text": "x"})
 	requireNoError(t, err)
-	requireRefusal(t, resp, http.StatusBadRequest, "too_many_recipients")
+	requireRefusal(t, resp, http.StatusUnprocessableEntity, "validation_failed")
 }
 
 func (l *limitsRun) send(t *testing.T, c *apiClient, from, to string) *http.Response {
@@ -252,7 +253,9 @@ func (l *limitsRun) send(t *testing.T, c *apiClient, from, to string) *http.Resp
 	return resp
 }
 
-// sends spends account A's send rate; account B may still send.
+// sends spends account A's send rate; account B may still send. The send past
+// the minute's allowance is not refused: it is held and goes out when the
+// allowance comes back, at the time it answers with (#1298).
 func (l *limitsRun) sends(t *testing.T) {
 	for i := 0; i < sendsPerMinute; i++ {
 		resp := l.send(t, l.a, l.aAddr, l.bAddr)
@@ -261,8 +264,21 @@ func (l *limitsRun) sends(t *testing.T) {
 		}
 		resp.Body.Close()
 	}
-	retry := requireRateLimited(t, l.send(t, l.a, l.aAddr, l.bAddr), "the send after the minute's allowance")
-	l.sendsRetryFrom = time.Now().Add(retry)
+	over := l.send(t, l.a, l.aAddr, l.bAddr)
+	if over.StatusCode != http.StatusAccepted {
+		t.Fatalf("the send after the minute's allowance: %d %s, want 202 held", over.StatusCode, readBody(over))
+	}
+	var held struct {
+		Data struct {
+			Status      string    `json:"status"`
+			ScheduledAt time.Time `json:"scheduled_at"`
+		} `json:"data"`
+	}
+	requireNoError(t, decodeJSON(over, &held))
+	if held.Data.Status != "held" || !held.Data.ScheduledAt.After(time.Now()) {
+		t.Fatalf("the send after the minute's allowance: status %q, scheduled at %s, want held until later", held.Data.Status, held.Data.ScheduledAt)
+	}
+	l.sendsRetryFrom = held.Data.ScheduledAt
 
 	resp := l.send(t, l.b, l.bAddr, l.aAddr)
 	if resp.StatusCode != http.StatusCreated {
@@ -272,7 +288,7 @@ func (l *limitsRun) sends(t *testing.T) {
 	}
 }
 
-// sendsComeBack sends as A again once the Retry-After of sends has passed.
+// sendsComeBack sends as A again once the time the held send named has passed.
 func (l *limitsRun) sendsComeBack(t *testing.T) {
 	if l.sendsRetryFrom.IsZero() {
 		t.Skip("the send limit was not spent")
@@ -280,7 +296,7 @@ func (l *limitsRun) sendsComeBack(t *testing.T) {
 	time.Sleep(time.Until(l.sendsRetryFrom) + time.Second)
 	resp := l.send(t, l.a, l.aAddr, l.bAddr)
 	if resp.StatusCode != http.StatusCreated {
-		t.Errorf("a send after Retry-After: %d %s", resp.StatusCode, readBody(resp))
+		t.Errorf("a send once the allowance is back: %d %s", resp.StatusCode, readBody(resp))
 	} else {
 		resp.Body.Close()
 	}
@@ -365,6 +381,29 @@ func (l *limitsRun) authThrottle(t *testing.T) {
 	}
 }
 
+// recoveryEmailRequests spends one address's recovery emails. The limit is per
+// address, and known and unknown addresses are charged alike, so another address
+// can still ask.
+func (l *limitsRun) recoveryEmailRequests(t *testing.T) {
+	// The sign-in bucket refills first: each request spends from it too, and a
+	// spent bucket would look like this address's limit. Five, the 429 and the
+	// other address need seven, and the last subtest left only a few.
+	time.Sleep(10 * time.Second)
+	ask := func(address string) *http.Response {
+		return l.call(t, nil, limitsOperation{"POST", "/api/v1/auth/recover/email"}, map[string]any{"email": address})
+	}
+	for i := 0; i < 200; i++ {
+		resp := ask("limits-recovery@restmail.test")
+		if resp.StatusCode == http.StatusTooManyRequests {
+			requireRateLimited(t, resp, "recovery emails for one address")
+			l.requireNotLimited(t, "recovery emails for another address", ask("limits-recovery-other@restmail.test"))
+			return
+		}
+		resp.Body.Close()
+	}
+	t.Fatal("recovery emails for one address answered no 429 in 200 requests")
+}
+
 // recoveryFailures spends one address's recovery failures, from an IP whose
 // sign-in bucket is not spent; another address may still try.
 func (l *limitsRun) recoveryFailures(t *testing.T) {
@@ -430,7 +469,10 @@ func (l *limitsRun) pipelineTestThrottle(t *testing.T) {
 	spend := func() *http.Response {
 		return l.call(t, l.admin, limitsOperation{"POST", "/api/v1/admin/pipelines/test"}, map[string]any{})
 	}
-	retry := l.spendThenProbe(t, "the pipeline preview throttle", spend, l.limits[pipelineTestGroup], func(op limitsOperation) *http.Response {
+	// The admin routes' API key throttle also declares a 429, and the description
+	// holds one per status, so the previews are named here and not found by it.
+	previews := []limitsOperation{{"POST", "/api/v1/admin/pipelines/test"}, {"POST", "/api/v1/admin/pipelines/test-filter"}}
+	retry := l.spendThenProbe(t, "the pipeline preview throttle", spend, previews, func(op limitsOperation) *http.Response {
 		return l.call(t, l.admin, op, map[string]any{})
 	})
 	l.requireNotLimited(t, "the owner endpoints' bucket", l.call(t, nil, limitsOperation{"GET", "/api/v1/server"}, nil))
