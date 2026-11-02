@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rest-mail/rest-mail-server/internal/api/limittest"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"github.com/rest-mail/rest-mail-server/internal/config"
 )
@@ -31,7 +32,8 @@ func apiKeyRefusalLimited(t *testing.T) http.Handler {
 func TestAPIKeyRefusalLimitedAnswersTheThrottle(t *testing.T) {
 	rr := httptest.NewRecorder()
 	apiKeyRefusalLimited(t).ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/domains", nil))
-	if rr.Code != http.StatusTooManyRequests || rr.Header().Get("Retry-After") == "" {
+	if rr.Code != http.StatusTooManyRequests {
 		t.Fatalf("got %d %q, want 429 with Retry-After", rr.Code, rr.Header().Get("Retry-After"))
 	}
+	limittest.RetryAfter(t, rr.Header())
 }

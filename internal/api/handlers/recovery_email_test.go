@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
+	"github.com/rest-mail/rest-mail-server/internal/api/limittest"
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
@@ -100,9 +101,10 @@ func TestRecoveryEmailUnknownAndDependencyFailureAreUniformAndThrottled(t *testi
 			for i := 0; i < 6; i++ {
 				rr := emailRecoveryCall(routes, "POST", "/api/v1/auth/recover/email", map[string]string{"email": "UNKNOWN@Example.test"})
 				if i == 5 {
-					if rr.Code != 429 || rr.Header().Get("Retry-After") == "" {
+					if rr.Code != 429 {
 						t.Fatalf("budget %d %s", rr.Code, rr.Body)
 					}
+					limittest.RetryAfter(t, rr.Header())
 					continue
 				}
 				if rr.Code != 200 {

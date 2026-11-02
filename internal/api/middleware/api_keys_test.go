@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/rest-mail/rest-mail-server/internal/api/limittest"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 )
@@ -144,16 +145,18 @@ func TestAPIKeys_RefusalsAreThrottled(t *testing.T) {
 	}, nil, &RateLimitConfig{RPS: 0.001, Burst: 1})
 	h := keys.Authenticate(fallbackMarkerMiddleware)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	codes := []int{}
+	var rec *httptest.ResponseRecorder
 	for i := 0; i < 3; i++ {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		req.Header.Set("Authorization", "Bearer "+testAPIKey)
-		rec := httptest.NewRecorder()
+		rec = httptest.NewRecorder()
 		h.ServeHTTP(rec, req)
 		codes = append(codes, rec.Code)
 	}
 	if codes[0] != http.StatusUnauthorized || codes[2] != http.StatusTooManyRequests {
 		t.Fatalf("codes = %v, want 401 then 429", codes)
 	}
+	limittest.RetryAfter(t, rec.Header())
 }
 
 func TestCredentialAllows(t *testing.T) {

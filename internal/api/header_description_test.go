@@ -1,9 +1,12 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -73,6 +76,44 @@ func TestSecurityHeadersDescribeEveryResponse(t *testing.T) {
 					if rr.Header().Get(name) != want {
 						t.Errorf("%s %s = %q, want %q", path, name, rr.Header().Get(name), want)
 					}
+				}
+			}
+		})
+	}
+}
+
+// Every described operation on the public listener answers with the declared security
+// headers, whatever refuses it first. Requests come from a public peer without credentials,
+// so the network gates and authentication refusals are the responses checked.
+func TestEveryPublicResponseCarriesSecurityHeaders(t *testing.T) {
+	cfg := middleware.SecurityHeadersConfig{HSTSMaxAgeSeconds: 63072000}
+	routers := NewRouters(newFailingGormDB(t), auth.NewJWTService(routerTestSecret, time.Minute, time.Hour),
+		&config.Config{Environment: "test", SecurityHeadersEnabled: true, HSTSMaxAgeSeconds: cfg.HSTSMaxAgeSeconds}, nil)
+	t.Cleanup(routers.Close)
+	description, warnings := routers.Description("test")
+	if len(warnings) != 0 {
+		t.Fatal(warnings)
+	}
+	data, err := json.Marshal(description)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]interface{}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatal(err)
+	}
+	for _, op := range operationsOf(doc) {
+		t.Run(op.id, func(t *testing.T) {
+			path := concretePath(op.path)
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+			req := httptest.NewRequest(strings.ToUpper(op.method), path, nil).WithContext(ctx)
+			req.RemoteAddr = "192.0.2.10:40000"
+			rr := httptest.NewRecorder()
+			routers.Public.ServeHTTP(rr, req)
+			for name, values := range middleware.SecurityHeaderValues(cfg, path) {
+				if !slices.Contains(rr.Header().Values(name), values[0]) {
+					t.Errorf("%s %s answered %d with %s = %q, want %q", op.method, path, rr.Code, name, rr.Header().Values(name), values[0])
 				}
 			}
 		})

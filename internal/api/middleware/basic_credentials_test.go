@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
+	"github.com/rest-mail/rest-mail-server/internal/api/limittest"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
@@ -178,9 +179,10 @@ func TestBasicCredentials_GuessesAreThrottledPerIP(t *testing.T) {
 	// Budget spent: answered unchecked, and not recorded.
 	rr := httptest.NewRecorder()
 	router.ServeHTTP(rr, basicRequest("user@example.com", testAppPassword, "203.0.113.1"))
-	if rr.Code != http.StatusTooManyRequests || rr.Header().Get("Retry-After") == "" {
+	if rr.Code != http.StatusTooManyRequests {
 		t.Fatalf("over budget: status %d", rr.Code)
 	}
+	limittest.RetryAfter(t, rr.Header())
 	if f.calls != 3 || len(sink.entries) != 3 {
 		t.Errorf("%d checks and %d entries, want 3 of each", f.calls, len(sink.entries))
 	}
