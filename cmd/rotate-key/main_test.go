@@ -11,6 +11,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/crypto"
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
 )
 
@@ -46,7 +47,7 @@ func openRotateTestDB(t *testing.T) *gorm.DB {
 	}
 	server, err := rmdb.Connect(cfg)
 	if err != nil {
-		t.Skipf("rotate-key test skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "rotate-key test skipped: no database reachable (%v)", err)
 	}
 	name := fmt.Sprintf("restmail_rotate_%d_%d", os.Getpid(), time.Now().UnixNano())
 	if err := server.Exec("CREATE DATABASE " + name).Error; err != nil {

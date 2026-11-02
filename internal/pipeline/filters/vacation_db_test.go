@@ -11,6 +11,7 @@ import (
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 )
 
 // A vacation reply is queued with a null reverse path (RFC 5230 §5.1), From:
@@ -25,7 +26,7 @@ func TestVacation_ReplyLeavesWithNullSender(t *testing.T) {
 	}
 	gdb, err := rmdb.Connect(cfg)
 	if err != nil {
-		t.Skipf("vacation DB test skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "vacation DB test skipped: no database reachable (%v)", err)
 	}
 	if err := gdb.AutoMigrate(&models.Domain{}, &models.Mailbox{}, &models.VacationConfig{},
 		&models.VacationResponse{}, &models.OutboundQueue{}); err != nil {
@@ -125,7 +126,7 @@ func TestVacation_IntervalRunsFromTheLatestReply(t *testing.T) {
 	}
 	gdb, err := rmdb.Connect(cfg)
 	if err != nil {
-		t.Skipf("vacation DB test skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "vacation DB test skipped: no database reachable (%v)", err)
 	}
 	if err := gdb.AutoMigrate(&models.Domain{}, &models.Mailbox{}, &models.VacationConfig{},
 		&models.VacationResponse{}, &models.OutboundQueue{}); err != nil {

@@ -20,6 +20,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
 )
 
@@ -40,7 +41,7 @@ func openRevocationTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	gdb, err := connectTestDB()
 	if err != nil {
-		t.Skipf("session-revocation DB test skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "session-revocation DB test skipped: no database reachable (%v)", err)
 	}
 	if err := gdb.AutoMigrate(accountModels...); err != nil {
 		t.Skipf("session-revocation DB test skipped: migrate failed (%v)", err)

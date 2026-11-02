@@ -14,6 +14,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/dkimrotate"
 	"github.com/rest-mail/rest-mail-server/internal/outbound"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
 )
 
@@ -37,7 +38,7 @@ func openStageTestDB(t *testing.T) *gorm.DB {
 		DBName: env("DB_NAME", "restmail"), DBUser: env("DB_USER", "restmail"), DBPass: env("DB_PASS", "restmail")}
 	server, err := rmdb.Connect(&cfg)
 	if err != nil {
-		t.Skipf("no database reachable: %v", err)
+		testdb.Unreachable(t, "no database reachable: %v", err)
 	}
 	t.Cleanup(func() {
 		if sqlDB, err := server.DB(); err == nil {

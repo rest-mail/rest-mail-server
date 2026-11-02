@@ -11,6 +11,7 @@ import (
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
 )
 
@@ -27,7 +28,7 @@ func openGreylistTestDB(t *testing.T) *gorm.DB {
 	}
 	gdb, err := rmdb.Connect(cfg)
 	if err != nil {
-		t.Skipf("greylist DB test skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "greylist DB test skipped: no database reachable (%v)", err)
 	}
 	if err := gdb.AutoMigrate(&models.GreylistEntry{}); err != nil {
 		t.Skipf("greylist DB test skipped: migrate failed (%v)", err)

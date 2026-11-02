@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
 )
 
@@ -62,7 +63,7 @@ func openTransportSecTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	gdb, err := connectTestDB()
 	if err != nil {
-		t.Skipf("inbound transport-security DB test skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "inbound transport-security DB test skipped: no database reachable (%v)", err)
 	}
 	if err := gdb.AutoMigrate(&models.Message{}); err != nil {
 		t.Skipf("inbound transport-security DB test skipped: migrate failed (%v)", err)

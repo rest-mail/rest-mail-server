@@ -9,6 +9,7 @@ import (
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
 )
 
@@ -112,7 +113,7 @@ func openDMARCCaptureDB(t *testing.T) (*gorm.DB, string) {
 	}
 	db, err := rmdb.Connect(cfg)
 	if err != nil {
-		t.Skipf("DMARC capture DB test skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "DMARC capture DB test skipped: no database reachable (%v)", err)
 	}
 	if err := db.AutoMigrate(&models.DMARCAggregateRecord{}); err != nil {
 		t.Skipf("DMARC capture DB test skipped: migrate failed (%v)", err)

@@ -9,6 +9,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
 )
 
@@ -23,7 +24,7 @@ func openFailureTestDB(t *testing.T) *gorm.DB {
 	}
 	gdb, err := rmdb.Connect(cfg)
 	if err != nil {
-		t.Skipf("failure-handling DB test skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "failure-handling DB test skipped: no database reachable (%v)", err)
 	}
 	if err := gdb.AutoMigrate(&models.OutboundQueue{}); err != nil {
 		t.Skipf("failure-handling DB test skipped: migrate failed (%v)", err)

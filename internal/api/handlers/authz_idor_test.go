@@ -12,6 +12,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline/filters"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
 )
 
@@ -22,7 +23,7 @@ func openAuthzTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	gdb, err := connectTestDB()
 	if err != nil {
-		t.Skipf("authz IDOR DB test skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "authz IDOR DB test skipped: no database reachable (%v)", err)
 	}
 	if err := gdb.AutoMigrate(
 		&models.Domain{},

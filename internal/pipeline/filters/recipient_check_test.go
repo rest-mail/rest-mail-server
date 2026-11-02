@@ -12,6 +12,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
 )
 
@@ -28,7 +29,7 @@ func openRecipientCheckTestDB(t *testing.T) *gorm.DB {
 	}
 	gdb, err := rmdb.Connect(cfg)
 	if err != nil {
-		t.Skipf("recipient_check DB test skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "recipient_check DB test skipped: no database reachable (%v)", err)
 	}
 	if err := gdb.AutoMigrate(&models.Domain{}, &models.Mailbox{}, &models.Alias{}); err != nil {
 		t.Skipf("recipient_check DB test skipped: migrate failed (%v)", err)

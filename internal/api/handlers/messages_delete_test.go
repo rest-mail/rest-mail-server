@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
 )
 
@@ -16,7 +17,7 @@ func openMsgDeleteTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	gdb, err := connectTestDB()
 	if err != nil {
-		t.Skipf("message-delete DB test skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "message-delete DB test skipped: no database reachable (%v)", err)
 	}
 	if err := gdb.AutoMigrate(append(accountModels, &models.Message{}, &models.Attachment{})...); err != nil {
 		t.Skipf("message-delete DB test skipped: migrate failed (%v)", err)

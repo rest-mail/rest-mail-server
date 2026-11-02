@@ -15,6 +15,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
 )
 
@@ -232,7 +233,7 @@ func openTLSRPTTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	gdb, err := connectTestDB()
 	if err != nil {
-		t.Skipf("TLS-RPT DB test skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "TLS-RPT DB test skipped: no database reachable (%v)", err)
 	}
 	if err := gdb.AutoMigrate(&models.Domain{}, &models.TLSReport{}); err != nil {
 		t.Skipf("TLS-RPT DB test skipped: migrate failed (%v)", err)

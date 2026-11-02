@@ -11,6 +11,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 )
 
 func TestDKIMKeyAgeCollector_DatabaseInventory(t *testing.T) {
@@ -29,7 +30,7 @@ func TestDKIMKeyAgeCollector_DatabaseInventory(t *testing.T) {
 		DBName: env("DB_NAME", "restmail"), DBUser: env("DB_USER", "restmail"), DBPass: env("DB_PASS", "restmail"),
 	})
 	if err != nil {
-		t.Skipf("DKIM metric DB test skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "DKIM metric DB test skipped: no database reachable (%v)", err)
 	}
 	sqlDB, err := database.DB()
 	if err != nil {

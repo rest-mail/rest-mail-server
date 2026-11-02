@@ -27,6 +27,7 @@ import (
 	pop3gw "github.com/rest-mail/rest-mail-server/internal/gateway/pop3"
 	smtpgw "github.com/rest-mail/rest-mail-server/internal/gateway/smtp"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
 )
 
@@ -130,7 +131,7 @@ func createMigratedScratchDB(t *testing.T, purpose string) *gorm.DB {
 	t.Helper()
 	ensureMigratedTemplate()
 	if migratedTemplate.skip != "" {
-		t.Skipf("skipped: %s", migratedTemplate.skip)
+		testdb.Unreachable(t, "skipped: %s", migratedTemplate.skip)
 	}
 	if migratedTemplate.err != nil {
 		t.Fatalf("template database: %v", migratedTemplate.err)
@@ -151,7 +152,7 @@ func createScratchDBFrom(t *testing.T, purpose, template string) *gorm.DB {
 	cfg := scratchDBConfig()
 	admin, err := rmdb.Connect(&cfg)
 	if err != nil {
-		t.Skipf("skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "skipped: no database reachable (%v)", err)
 	}
 	name := fmt.Sprintf("restmail_%s_%d_%d", purpose, os.Getpid(), time.Now().UnixNano())
 	create := "CREATE DATABASE " + name
