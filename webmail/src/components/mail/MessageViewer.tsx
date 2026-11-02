@@ -18,6 +18,7 @@ import type { Attachment, MessageDetail, MessageSummary } from '@/types';
 import { CalendarInvite } from './CalendarInvite';
 import { HtmlMessageBody } from './HtmlMessageBody';
 import { ThreadDueControl } from './ThreadDueControl';
+import { ThreadSnoozeControl } from './ThreadSnoozeControl';
 import { TrustBadge, TrustReceipt } from './signals';
 import { cn } from '@/lib/utils';
 import { SenderReplyTime } from '@/components/contacts/SenderReplyTime';
@@ -296,6 +297,8 @@ export function MessageViewer() {
             <ActionWord k="x" label="delete" style={v.actions} onClick={() => deleteMsg(msg.id)} />
           </>
         )}
+
+        <ThreadSnoozeControl key={msg.id} message={msg} />
 
         {/* Spacer */}
         <div className="flex-1" />

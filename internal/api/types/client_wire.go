@@ -249,6 +249,7 @@ type Message struct {
 	ThreadID          string                `json:"thread_id"`
 	Due               *time.Time            `json:"due,omitempty"`
 	DueSource         *string               `json:"due_source,omitempty" enums:"user,rule,parsed"`
+	SnoozedUntil      *time.Time            `json:"snoozed_until,omitempty" description:"The thread's snooze deadline, when snoozed; search and direct reads still include it"`
 	Sender            string                `json:"sender"`
 	SenderName        string                `json:"sender_name"`
 	RecipientsTo      json.RawMessage       `json:"recipients_to"`

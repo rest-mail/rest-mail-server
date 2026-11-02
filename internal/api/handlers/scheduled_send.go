@@ -74,12 +74,14 @@ func (s *ScheduledSender) run() {
 	defer close(s.done)
 	ticker := time.NewTicker(scheduledSendInterval)
 	defer ticker.Stop()
+	s.h.returnSnoozedThreads(context.Background())
 	s.h.dispatchSendLimitNotices(context.Background())
 	for {
 		select {
 		case <-s.stop:
 			return
 		case <-ticker.C:
+			s.h.returnSnoozedThreads(context.Background())
 			s.h.runScheduledSends(context.Background())
 			s.h.dispatchSendLimitNotices(context.Background())
 		}

@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import type { Folder, MessageSummary, MessageDetail, Account } from '../types';
 import * as api from '../api/client';
 import { threadDueChange } from '../lib/threadDue';
+import { threadSnoozeChange } from '../lib/threadSnooze';
 
 interface MailState {
   // Accounts
@@ -42,6 +43,8 @@ interface MailState {
   markFlagged: (msgId: number, flagged: boolean) => Promise<void>;
   deleteMsg: (msgId: number) => Promise<void>;
   setThreadDue: (mailboxId: number, threadId: string, due: string | null) => Promise<void>;
+  snoozeThread: (mailboxId: number, threadId: string, until: string | null) => Promise<void>;
+  applyThreadSnooze: (mailboxId: number, threadId: string, until: string | null) => void;
   removeAccount: (accountId: number) => Promise<void>;
   refresh: () => Promise<void>;
   searchMessages: (query: string) => Promise<void>;
@@ -202,6 +205,16 @@ export const useMailStore = create<MailState>((set, get) => ({
   setThreadDue: async (mailboxId, threadId, due) => {
     const response = await api.setThreadDue(mailboxId, threadId, due);
     set(state => threadDueChange(state, mailboxId, threadId, response.data.due, response.data.due_source));
+  },
+
+  applyThreadSnooze: (mailboxId, threadId, until) => {
+    set(state => threadSnoozeChange(state, mailboxId, threadId, until));
+  },
+
+  snoozeThread: async (mailboxId, threadId, until) => {
+    const response = await api.snoozeThread(mailboxId, threadId, until);
+    get().applyThreadSnooze(mailboxId, threadId, response.data.snoozed_until);
+    await get().refresh();
   },
 
   removeAccount: async (accountId) => {

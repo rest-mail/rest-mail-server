@@ -22,6 +22,7 @@ import { PipelineConfigView } from '@/components/admin/PipelineConfigView';
 import { SettingsView } from '@/components/settings/SettingsView';
 import { AccountSettingsView } from '@/components/account/AccountSettingsView';
 import { useMultiAccountSSE, type SSEEvent } from '@/hooks/useSSE';
+import { handleThreadSnoozeEvent } from '@/lib/threadSnooze';
 import { useNotifications } from '@/hooks/useNotifications';
 
 function App() {
@@ -62,7 +63,9 @@ function App() {
       );
       refresh();
     } else if (event.type === 'folder_update') {
-      loadFolders();
+      if (!handleThreadSnoozeEvent(event.data, useMailStore.getState().applyThreadSnooze, refresh)) {
+        loadFolders();
+      }
     } else if (event.type === 'message_updated' || event.type === 'message_deleted') {
       refresh();
     } else if (event.type === 'message_sent') {
