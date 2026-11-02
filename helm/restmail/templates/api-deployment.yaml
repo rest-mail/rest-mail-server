@@ -28,7 +28,7 @@ spec:
       annotations:
         # Force redeploy when ConfigMap or Secret content changes.
         checksum/configmap: {{ include (print $.Template.BasePath "/api-configmap.yaml") . | sha256sum }}
-        {{- if and (eq .Values.api.attachments.storageType "s3") (not .Values.api.attachments.s3.existingSecret) }}
+        {{- if and (eq .Values.api.attachments.storageType "s3") (not .Values.garage.enabled) (not .Values.api.attachments.s3.existingSecret) }}
         checksum/attachments-secret: {{ include (print $.Template.BasePath "/api-attachment-secret.yaml") . | sha256sum }}
         {{- end }}
         {{- if not .Values.api.existingSecret }}
@@ -44,6 +44,44 @@ spec:
       {{- end }}
       securityContext:
         {{- include "restmail.podSecurityContext" (list . "api") | nindent 8 }}
+      {{- if .Values.garage.enabled }}
+      # The API checks its bucket at startup, so the bucket has to exist first.
+      initContainers:
+        - name: garage-bootstrap
+          image: "{{ .Values.garage.bootstrapImage.repository }}:{{ .Values.garage.bootstrapImage.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            {{- include "restmail.containerSecurityContext" (list . "js-filter") | nindent 12 }}
+          command:
+            - python3
+            - -I
+            - -B
+            - /bootstrap/garage-bootstrap.py
+            - --admin
+            - http://{{ include "restmail.componentName" (list . "garage") }}:3903
+            - --bucket
+            - {{ .Values.garage.bucket | quote }}
+          env:
+            - name: GARAGE_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "restmail.componentName" (list . "garage") }}
+                  key: ADMIN_TOKEN
+            - name: GARAGE_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "restmail.componentName" (list . "garage") }}
+                  key: ACCESS_KEY_ID
+            - name: GARAGE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "restmail.componentName" (list . "garage") }}
+                  key: SECRET_ACCESS_KEY
+          volumeMounts:
+            - name: garage-bootstrap
+              mountPath: /bootstrap
+              readOnly: true
+      {{- end }}
       containers:
         - name: api
           image: "{{ .Values.api.image.repository }}:{{ include "restmail.imageTag" (list . .Values.api.image.tag) }}"
@@ -65,7 +103,7 @@ spec:
           env:
             {{- include "restmail.dbEnv" . | nindent 12 }}
             {{- if eq .Values.api.attachments.storageType "s3" }}
-            {{- $attachmentSecret := .Values.api.attachments.s3.existingSecret | default (include "restmail.componentName" (list . "api-attachments-s3")) }}
+            {{- $attachmentSecret := include "restmail.attachments.secretName" . }}
             - name: ATTACHMENT_S3_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
@@ -170,6 +208,11 @@ spec:
           resources:
             {{- toYaml .Values.api.resources | nindent 12 }}
       volumes:
+        {{- if .Values.garage.enabled }}
+        - name: garage-bootstrap
+          configMap:
+            name: {{ include "restmail.componentName" (list . "garage-bootstrap") }}
+        {{- end }}
         # Only the CA certificate, for the API to trust the peers it issued
         # (TRUSTED_CA_CERT reads /certs/ca.crt). The API serves no mail TLS, so
         # it gets neither the gateways' key nor anything else the Secret holds;

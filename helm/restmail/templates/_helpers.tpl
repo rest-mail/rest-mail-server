@@ -258,7 +258,10 @@ Validate required production values.
 {{- if not (has $attachments.storageType (list "filesystem" "s3")) -}}
 {{- fail "api.attachments.storageType must be filesystem or s3" -}}
 {{- end -}}
-{{- if eq $attachments.storageType "s3" -}}
+{{- if and .Values.garage.enabled (ne $attachments.storageType "s3") -}}
+{{- fail "garage.enabled keeps attachments in Garage: set garage.enabled=false to use api.attachments.storageType=filesystem" -}}
+{{- end -}}
+{{- if and (eq $attachments.storageType "s3") (not .Values.garage.enabled) -}}
 {{- if not (and $attachments.s3.bucket $attachments.s3.region) -}}
 {{- fail "S3 attachments require api.attachments.s3.bucket and region" -}}
 {{- end -}}
@@ -482,3 +485,29 @@ Internal mTLS volume projecting only the keys a role needs (least privilege):
 {{- end }}
 {{- end -}}
 
+{{/*
+The API's S3 settings: the bundled Garage's, or those given in api.attachments.s3.
+*/}}
+{{- define "restmail.attachments.endpoint" -}}
+{{- if .Values.garage.enabled -}}
+http://{{ include "restmail.componentName" (list . "garage") }}:3900
+{{- else -}}
+{{- .Values.api.attachments.s3.endpoint -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "restmail.attachments.region" -}}
+{{- if .Values.garage.enabled -}}garage{{- else -}}{{- .Values.api.attachments.s3.region -}}{{- end -}}
+{{- end -}}
+
+{{- define "restmail.attachments.bucket" -}}
+{{- if .Values.garage.enabled -}}{{- .Values.garage.bucket -}}{{- else -}}{{- .Values.api.attachments.s3.bucket -}}{{- end -}}
+{{- end -}}
+
+{{- define "restmail.attachments.secretName" -}}
+{{- if .Values.garage.enabled -}}
+{{- include "restmail.componentName" (list . "garage") -}}
+{{- else -}}
+{{- .Values.api.attachments.s3.existingSecret | default (include "restmail.componentName" (list . "api-attachments-s3")) -}}
+{{- end -}}
+{{- end -}}

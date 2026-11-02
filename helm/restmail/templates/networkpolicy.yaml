@@ -40,6 +40,32 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
+{{- if .Values.garage.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "restmail.componentName" (list . "garage") }}
+  labels:
+    {{- include "restmail.componentLabels" (list . "garage") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "restmail.componentSelectorLabels" (list . "garage") | nindent 6 }}
+  policyTypes:
+    - Ingress
+  # Only the API reaches it: S3 for objects, and the admin API for its bootstrap.
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "restmail.componentSelectorLabels" (list . "api") | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 3900
+        - protocol: TCP
+          port: 3903
+{{- end }}
 {{- if .Values.postgres.enabled }}
 ---
 apiVersion: networking.k8s.io/v1
@@ -130,6 +156,17 @@ spec:
         - protocol: TCP
           port: {{ .Values.jsFilter.port }}
     # Outbound HTTPS/HTTP for ACME issuance and any remote fetches.
+    {{- if .Values.garage.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "restmail.componentSelectorLabels" (list . "garage") | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 3900
+        - protocol: TCP
+          port: 3903
+    {{- end }}
     {{- if eq .Values.api.attachments.storageType "s3" }}
     {{- with .Values.api.attachments.s3.networkPolicy.to }}
     # Private object storage, scoped to the configured peers and S3 port.

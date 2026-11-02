@@ -2,9 +2,11 @@
 """Give a Garage node its layout, a bucket and a key to reach it, if it lacks them.
 
 Safe to run again: what is already there is left alone. It uses only Garage's admin API.
+The secrets can come from the environment, so they stay off a command line.
 """
 import argparse
 import json
+import os
 import sys
 import time
 import urllib.error
@@ -30,7 +32,7 @@ class Garage:
             return json.loads(raw) if raw else {}
 
 
-def wait_for_nodes(garage, seconds=60):
+def wait_for_nodes(garage, seconds=120):
     deadline = time.monotonic() + seconds
     while True:
         try:
@@ -74,11 +76,13 @@ def ensure_key(garage, access_key, secret_key, bucket_id):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--admin", required=True)
-    parser.add_argument("--admin-token", required=True)
+    parser.add_argument("--admin-token", default=os.environ.get("GARAGE_ADMIN_TOKEN"))
     parser.add_argument("--bucket", required=True)
-    parser.add_argument("--access-key", required=True)
-    parser.add_argument("--secret-key", required=True)
+    parser.add_argument("--access-key", default=os.environ.get("GARAGE_ACCESS_KEY"))
+    parser.add_argument("--secret-key", default=os.environ.get("GARAGE_SECRET_KEY"))
     args = parser.parse_args(argv)
+    if not (args.admin_token and args.access_key and args.secret_key):
+        parser.error("the admin token, access key and secret key are all required")
     garage = Garage(args.admin, args.admin_token)
     try:
         ensure_layout(garage, wait_for_nodes(garage))

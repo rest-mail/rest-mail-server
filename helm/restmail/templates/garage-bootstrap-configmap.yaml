@@ -1,0 +1,11 @@
+{{- if .Values.garage.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "restmail.componentName" (list . "garage-bootstrap") }}
+  labels:
+    {{- include "restmail.componentLabels" (list . "garage") | nindent 4 }}
+data:
+  garage-bootstrap.py: |-
+    {{- .Files.Get "files/garage-bootstrap.py" | nindent 4 }}
+{{- end }}

@@ -25,9 +25,9 @@ data:
   MAX_OWNED_ACCOUNTS: {{ .Values.api.maxOwnedAccounts | default 0 | quote }}
   ATTACHMENT_STORAGE_TYPE: {{ .Values.api.attachments.storageType | quote }}
   {{- if eq .Values.api.attachments.storageType "s3" }}
-  ATTACHMENT_S3_ENDPOINT: {{ .Values.api.attachments.s3.endpoint | quote }}
-  ATTACHMENT_S3_REGION: {{ .Values.api.attachments.s3.region | quote }}
-  ATTACHMENT_S3_BUCKET: {{ .Values.api.attachments.s3.bucket | quote }}
+  ATTACHMENT_S3_ENDPOINT: {{ include "restmail.attachments.endpoint" . | quote }}
+  ATTACHMENT_S3_REGION: {{ include "restmail.attachments.region" . | quote }}
+  ATTACHMENT_S3_BUCKET: {{ include "restmail.attachments.bucket" . | quote }}
   ATTACHMENT_S3_PREFIX: {{ .Values.api.attachments.s3.prefix | quote }}
   ATTACHMENT_S3_FORCE_PATH_STYLE: {{ .Values.api.attachments.s3.forcePathStyle | quote }}
   {{- end }}

@@ -631,8 +631,25 @@ fi
 pass "guard rejects secure sslMode against a non-TLS bundled Postgres"
 
 echo
+echo "== the bundled Garage =="
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" > "$tmp/garage.yaml"
+assert_contains "Garage runs by default" "$tmp/garage.yaml" 'name: restmail-garage'
+assert_contains "the API uses Garage" "$tmp/garage.yaml" 'ATTACHMENT_S3_ENDPOINT: "http://restmail-garage:3900"'
+assert_contains "the bucket is made before the API starts" "$tmp/garage.yaml" 'name: garage-bootstrap'
+yq 'select(.kind == "ConfigMap")' "$tmp/garage.yaml" > "$tmp/garage-configmaps.yaml"
+assert_absent "Garage's keys never enter a ConfigMap" "$tmp/garage-configmaps.yaml" 'rpc_secret'
+yq 'select(.kind == "Secret" and .metadata.name == "restmail-garage") | .metadata.annotations' "$tmp/garage.yaml" > "$tmp/garage-keep.yaml"
+assert_contains "Garage's keys outlive an uninstall" "$tmp/garage-keep.yaml" 'keep'
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set garage.enabled=false --set api.attachments.storageType=filesystem > "$tmp/nogarage.yaml"
+assert_absent "no Garage when turned off" "$tmp/nogarage.yaml" 'restmail-garage'
+if helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set api.attachments.storageType=filesystem > /dev/null 2>&1; then
+  echo "FAIL: the filesystem was taken with Garage on"; exit 1
+fi
+
 echo "== private S3 attachments and retained migration volume =="
 cat > "$tmp/s3-values.yaml" <<'YAML'
+garage:
+  enabled: false
 api:
   attachments:
     storageType: s3

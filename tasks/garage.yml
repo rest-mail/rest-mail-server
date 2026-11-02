@@ -15,7 +15,7 @@ vars:
   GARAGE_PROJECT: '{{.GARAGE_PROJECT | default "rest-mail"}}'
   GARAGE_NETWORK: '{{.GARAGE_NETWORK | default "testbed_mailnet"}}'
   GARAGE_IP: '{{.GARAGE_IP | default "10.99.0.44"}}'
-  GARAGE_IMAGE: '{{.GARAGE_IMAGE | default "dxflrs/garage:v2.4.1"}}'
+  GARAGE_IMAGE: '{{.GARAGE_IMAGE | default "dxflrs/garage:v2.4.1@sha256:9c96caa2612d3411acc5b0e6701fb238dbfba33e533a6d7d3d811a4b12d0d020"}}'
   GARAGE_CONTAINER_NAME: '{{.GARAGE_PROJECT}}-garage'
   GARAGE_DATA_VOLUME: '{{.GARAGE_PROJECT}}-garage-data'
   GARAGE_BUCKET: '{{.GARAGE_BUCKET | default "restmail"}}'
@@ -60,7 +60,7 @@ tasks:
           -v "$config":/etc/garage.toml:ro \
           --entrypoint /garage {{.GARAGE_IMAGE}} server >/dev/null
       - |
-        python3 -B scripts/garage-bootstrap.py \
+        python3 -B helm/restmail/files/garage-bootstrap.py \
           --admin http://{{.GARAGE_IP}}:3903 --admin-token {{.GARAGE_ADMIN_TOKEN}} \
           --bucket {{.GARAGE_BUCKET}} --access-key {{.GARAGE_ACCESS_KEY}} --secret-key {{.GARAGE_SECRET_KEY}} || {
           docker logs --tail 40 {{.GARAGE_CONTAINER_NAME}} 2>&1

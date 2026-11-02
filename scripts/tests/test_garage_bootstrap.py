@@ -3,7 +3,7 @@ import pathlib
 import unittest
 
 spec = importlib.util.spec_from_file_location(
-    "garage_bootstrap", pathlib.Path(__file__).resolve().parents[1] / "garage-bootstrap.py")
+    "garage_bootstrap", pathlib.Path(__file__).resolve().parents[2] / "helm/restmail/files/garage-bootstrap.py")
 bootstrap = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bootstrap)
 

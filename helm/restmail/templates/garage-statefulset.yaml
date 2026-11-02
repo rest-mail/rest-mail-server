@@ -1,0 +1,87 @@
+{{- if .Values.garage.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "restmail.componentName" (list . "garage") }}
+  labels:
+    {{- include "restmail.componentLabels" (list . "garage") | nindent 4 }}
+spec:
+  replicas: 1
+  serviceName: {{ include "restmail.componentName" (list . "garage") }}
+  selector:
+    matchLabels:
+      {{- include "restmail.componentSelectorLabels" (list . "garage") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "restmail.componentSelectorLabels" (list . "garage") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "restmail.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: garage
+          image: "{{ .Values.garage.image.repository }}:{{ .Values.garage.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          command: ["/garage", "server"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: s3
+              containerPort: 3900
+              protocol: TCP
+            - name: admin
+              containerPort: 3903
+              protocol: TCP
+          readinessProbe:
+            tcpSocket:
+              port: s3
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: s3
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.garage.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: config
+              mountPath: /etc/garage.toml
+              subPath: garage.toml
+              readOnly: true
+      volumes:
+        - name: config
+          secret:
+            secretName: {{ include "restmail.componentName" (list . "garage") }}
+            defaultMode: 0440
+            items:
+              - key: garage.toml
+                path: garage.toml
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - {{ .Values.garage.persistence.accessMode }}
+        resources:
+          requests:
+            storage: {{ .Values.garage.persistence.size }}
+        {{- with .Values.garage.persistence.storageClass }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+{{- end }}
