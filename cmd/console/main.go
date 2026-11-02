@@ -121,7 +121,7 @@ func runSubcommand(args []string, stdout, stderr io.Writer) (code int, handled b
 	case "import-imap":
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
-		return runImportIMAP(ctx, args[2:], os.Getenv("RESTMAIL_API_KEY"), os.Getenv("RESTMAIL_IMAP_PASSWORD"), client, stdout, stderr), true
+		return runImportIMAP(ctx, args[2:], os.Getenv("RESTMAIL_API_KEY"), os.Getenv("RESTMAIL_IMAP_PASSWORD"), os.Getenv("RESTMAIL_IMAP_ACCESS_TOKEN"), client, stdout, stderr), true
 	case "import-mbox":
 		return runImportMail(context.Background(), "mbox", args[2:], os.Getenv("RESTMAIL_API_KEY"), client, stdout, stderr), true
 	case "tlsa-records":

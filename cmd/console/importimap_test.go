@@ -60,7 +60,7 @@ func TestImportIMAPPublicAPIAndResumableSummary(t *testing.T) {
 	}
 	for _, want := range []struct{ imported, skipped int }{{2, 0}, {0, 2}} {
 		var out, stderr bytes.Buffer
-		code := runImportIMAPSource(context.Background(), []string{"--source", "imaps://old.example.test:1993", "--source-user", "user*master", "--server", srv.URL, "--account-id", "12", "--json"}, "destination-key-never-log", "source-password-never-log", srv.Client(), &out, &stderr, reader)
+		code := runImportIMAPSource(context.Background(), []string{"--source", "imaps://old.example.test:1993", "--source-user", "user*master", "--server", srv.URL, "--account-id", "12", "--json"}, "destination-key-never-log", "source-password-never-log", "", srv.Client(), &out, &stderr, reader)
 		var summary struct{ Messages, Imported, Skipped int }
 		if err := json.Unmarshal(out.Bytes(), &summary); err != nil || code != exitOK || summary.Messages != 2 || summary.Imported != want.imported || summary.Skipped != want.skipped || stderr.Len() != 0 {
 			t.Fatalf("summary: code=%d out=%s err=%s decode=%v", code, &out, &stderr, err)
@@ -117,7 +117,7 @@ func TestImportIMAPDryRunAndPartialFailure(t *testing.T) {
 				return nil
 			}
 			var out, stderr bytes.Buffer
-			code := runImportIMAPSource(context.Background(), args, token, "source-password-never-log", srv.Client(), &out, &stderr, reader)
+			code := runImportIMAPSource(context.Background(), args, token, "source-password-never-log", "", srv.Client(), &out, &stderr, reader)
 			if dry {
 				if code != exitOK || requests.Load() != 0 || !strings.Contains(out.String(), `"dry_run":true`) || stderr.Len() != 0 {
 					t.Fatalf("dry-run wrote to API: code=%d requests=%d out=%s err=%s", code, requests.Load(), &out, &stderr)
@@ -151,7 +151,7 @@ func TestImportIMAPRejectsUnsafeSettings(t *testing.T) {
 		t.Run(fmt.Sprint(extra), func(t *testing.T) {
 			args := append([]string{"--source", "imaps://old.example.test", "--source-user", "alice", "--account-id", "12", "--dry-run", "--json"}, extra...)
 			var out, stderr bytes.Buffer
-			code := runImportIMAPSource(context.Background(), args, "destination-key-never-log", "source-password-never-log", http.DefaultClient, &out, &stderr, func(context.Context, mailimport.IMAPOptions, int64, mailimport.Visit) error {
+			code := runImportIMAPSource(context.Background(), args, "destination-key-never-log", "source-password-never-log", "", http.DefaultClient, &out, &stderr, func(context.Context, mailimport.IMAPOptions, int64, mailimport.Visit) error {
 				t.Fatal("invalid settings contacted source")
 				return nil
 			})

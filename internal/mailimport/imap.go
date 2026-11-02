@@ -13,6 +13,7 @@ import (
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
+	"github.com/emersion/go-sasl"
 
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
@@ -22,6 +23,7 @@ import (
 // verified TLS connection, never returned in errors or written to disk.
 type IMAPOptions struct {
 	Address, Username, Password string
+	AccessToken                 string
 	StartTLS                    bool // Require a verified upgrade before any credentials.
 	TLSConfig                   *tls.Config
 }
@@ -35,8 +37,11 @@ func IMAP(ctx context.Context, options IMAPOptions, maxBytes int64, visit Visit)
 		return errors.New("message size limit must be between 1 byte and 1 GiB")
 	}
 	host, _, err := net.SplitHostPort(options.Address)
-	if err != nil || host == "" || options.Username == "" || options.Password == "" {
-		return errors.New("give an IMAP source address, username and password")
+	if err != nil || host == "" || options.Username == "" || (options.Password == "" && options.AccessToken == "") {
+		return errors.New("give an IMAP source address, username and password or access token")
+	}
+	if options.Password != "" && options.AccessToken != "" {
+		return errors.New("give either an IMAP source password or an access token, not both")
 	}
 	tlsConfig := &tls.Config{}
 	if options.TLSConfig != nil {
@@ -78,8 +83,24 @@ func IMAP(ctx context.Context, options IMAPOptions, maxBytes int64, visit Visit)
 	if err := c.WaitGreeting(); err != nil {
 		return errors.New("IMAP source greeting failed")
 	}
-	if err := c.Login(options.Username, options.Password).Wait(); err != nil {
-		return errors.New("IMAP source sign-in failed")
+	if options.AccessToken != "" {
+		var auth sasl.Client
+		caps := c.Caps()
+		switch {
+		case caps.Has(imap.AuthCap(sasl.OAuthBearer)):
+			auth = sasl.NewOAuthBearerClient(&sasl.OAuthBearerOptions{Username: options.Username, Token: options.AccessToken})
+		case caps.Has(imap.AuthCap("XOAUTH2")):
+			auth = &imapXOAUTH2Client{username: options.Username, token: options.AccessToken}
+		default:
+			return errors.New("IMAP source does not advertise OAUTHBEARER or XOAUTH2 over verified TLS")
+		}
+		if err := c.Authenticate(auth); err != nil {
+			return errors.New("IMAP source OAuth sign-in failed; obtain a valid access token and rerun")
+		}
+	} else {
+		if err := c.Login(options.Username, options.Password).Wait(); err != nil {
+			return errors.New("IMAP source sign-in failed")
+		}
 	}
 	folders, err := c.List("", "*", nil).Collect()
 	if err != nil {
@@ -175,6 +196,18 @@ func IMAP(ctx context.Context, options IMAPOptions, maxBytes int64, visit Visit)
 		return errors.New("IMAP source did not complete logout")
 	}
 	return nil
+}
+
+type imapXOAUTH2Client struct {
+	username, token string
+}
+
+func (auth *imapXOAUTH2Client) Start() (string, []byte, error) {
+	return "XOAUTH2", []byte("user=" + auth.username + "\x01auth=Bearer " + auth.token + "\x01\x01"), nil
+}
+
+func (auth *imapXOAUTH2Client) Next([]byte) ([]byte, error) {
+	return []byte{}, nil
 }
 
 func imapUnselectable(attrs []imap.MailboxAttr) bool {

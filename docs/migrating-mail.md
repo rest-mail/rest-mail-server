@@ -15,7 +15,8 @@ for the migration; neither the key nor message contents appear in command output
 
 `import-imap` copies one source account, including all selectable folders, over
 implicit TLS by default, or an explicitly required STARTTLS upgrade. Set
-`RESTMAIL_IMAP_PASSWORD` from your secret manager without
+`RESTMAIL_IMAP_PASSWORD` (password or app password), or `RESTMAIL_IMAP_ACCESS_TOKEN`
+(an OAuth access token you obtain from the source provider), from your secret manager without
 putting its value in a command argument, URL or shell history. For the destination,
 set `RESTMAIL_API_KEY` as described above. A source master-user login can be given
 in `--source-user` using that source server's own syntax.
@@ -34,8 +35,18 @@ For a source that requires STARTTLS, use `--source imap://old.example.com --star
 certificate/hostname verification before any credentials are sent. A refusal,
 invalid certificate, untrusted issuer or canceled upgrade stops the import; the
 command never falls back to unprotected authentication. Do not combine
-`--starttls` with an `imaps://` source. OAuth sources are not supported. This
+`--starttls` with an `imaps://` source. This
 command does not upload source credentials to REST Mail.
+
+For OAuth, set only `RESTMAIL_IMAP_ACCESS_TOKEN` and unset `RESTMAIL_IMAP_PASSWORD`.
+Supplying both is a usage error. The command uses the source's advertised
+`OAUTHBEARER` mechanism, or `XOAUTH2` if `OAUTHBEARER` is not advertised, only after
+verified TLS. It does not fall back to password authentication, run a device flow,
+obtain a token, or refresh one. If sign-in fails or the source stops a copy when
+the token expires, the command exits with an error and the completed import/skip
+counts. Obtain a valid token and rerun the same command to resume; already imported
+messages remain stored. Token lifetime and revocation are enforced by the source;
+the command does not infer an expiry time from an opaque token.
 
 The source is opened with EXAMINE and fetched by UID with BODY.PEEK, so importing
 never marks source messages read, edits their flags, expunges or deletes them.
@@ -163,8 +174,8 @@ Attachment objects live outside the database transaction. A refused transaction
 may leave an unreferenced content-addressed object; it does not leave a message
 or attachment reference, and a rerun reuses the same object content.
 
-Direct IMAP source import is available alongside Maildir/mbox. Persistent Deleted
-and keyword restoration and OAuth source support remain outside this
+Direct IMAP source import, including OAuth, is available alongside Maildir/mbox.
+Persistent Deleted and keyword restoration remain outside this
 implementation. Copying with imapsync also works: the E2E job copies a folder
 from Dovecot with it and compares folders, counts, subjects and flags
 (`scripts/tests/test_imapsync_live.py`). The wider migration outcome

@@ -35,7 +35,7 @@ func TestImportIMAPStartTLSRouting(t *testing.T) {
 				return nil
 			}
 			var out, stderr bytes.Buffer
-			code := runImportIMAPSource(context.Background(), args, "", "fixture-source-password", http.DefaultClient, &out, &stderr, reader)
+			code := runImportIMAPSource(context.Background(), args, "", "fixture-source-password", "", http.DefaultClient, &out, &stderr, reader)
 			if code != exitOK || !called || stderr.Len() != 0 || !strings.Contains(out.String(), `"dry_run":true`) {
 				t.Fatalf("source routing: code=%d called=%v out=%s err=%s", code, called, &out, &stderr)
 			}
