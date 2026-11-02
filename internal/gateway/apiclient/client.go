@@ -433,6 +433,25 @@ func (c *Client) DeleteMessage(token string, msgID uint) error {
 	return c.deleteAuth(fmt.Sprintf("/api/v1/messages/%d?permanent=true", msgID), token)
 }
 
+// ImportRequest is a message for ImportMessage to store.
+type ImportRequest = apitypes.ImportMessageBody
+
+// ImportResponse says where ImportMessage stored the message.
+type ImportResponse struct {
+	Data apitypes.ImportMessageResult `json:"data"`
+}
+
+// ImportMessage stores a message in an account as the signed-in user, without
+// delivery rules: an IMAP client's APPEND or COPY. The same message already in the
+// folder answers with that copy and Imported false.
+func (c *Client) ImportMessage(token string, accountID uint, req *ImportRequest) (*ImportResponse, error) {
+	var resp ImportResponse
+	if err := c.postAuth(fmt.Sprintf("/api/v1/accounts/%d/messages/import", accountID), token, req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // ── Quota ─────────────────────────────────────────────────────────────
 
 type QuotaResponse = endpoint.Data[apitypes.Quota]

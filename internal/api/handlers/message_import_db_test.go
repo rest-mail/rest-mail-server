@@ -23,7 +23,9 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-func TestMessageImportPostgresConcurrencySourceQuotaAndAuditRollback(t *testing.T) {
+// importProofDB is a PostgreSQL schema of its own with the import tables and roles.
+func importProofDB(t *testing.T) *gorm.DB {
+	t.Helper()
 	if os.Getenv("DB_HOST") == "" {
 		t.Skip("PostgreSQL import persistence/concurrency proof runs in CI with DB_HOST; no local database is started")
 	}
@@ -66,11 +68,16 @@ func TestMessageImportPostgresConcurrencySourceQuotaAndAuditRollback(t *testing.
 	if err := bootstrap.EnsureRBAC(db); err != nil {
 		t.Fatal(err)
 	}
+	return db
+}
+
+func TestMessageImportPostgresConcurrencySourceQuotaAndAuditRollback(t *testing.T) {
+	db := importProofDB(t)
 	fx := seedAccountsFixture(t, db)
 	if err := db.Create(&models.QuotaUsage{MailboxID: fx.user.ID}).Error; err != nil {
 		t.Fatal(err)
 	}
-	h := NewMessageImportHandler(db, 4096, nil)
+	h := NewMessageImportHandler(db, 4096, nil, nil)
 	h.directory = t.TempDir()
 	router := importMessageRoutes(h)
 	raw := []byte("Message-ID: <binary-history@example.test>\r\nFrom: Original <old@example.test>\r\nSubject: original\r\nAuthentication-Results: previous.example; spf=pass\r\nContent-Type: multipart/mixed; boundary=OLD\r\n\r\n--OLD\r\nContent-Type: text/plain; charset=iso-8859-1\r\nContent-Transfer-Encoding: 8bit\r\n\r\nbody\xff\x00\r\n--OLD\r\nContent-Type: application/octet-stream; name=empty.bin\r\nContent-Disposition: attachment; filename=empty.bin\r\nContent-Transfer-Encoding: base64\r\n\r\n\r\n--OLD--\r\n")
@@ -116,6 +123,26 @@ func TestMessageImportPostgresConcurrencySourceQuotaAndAuditRollback(t *testing.
 	}
 	if imported != 1 || skipped != 1 {
 		t.Fatalf("concurrent results: imported=%d skipped=%d", imported, skipped)
+	}
+	// The same Message-ID with other octets is a different message, so it is kept.
+	edited := body
+	edited.RawMessage = bytes.Replace(raw, []byte("Subject: ori"), []byte("Subject: edi"), 1)
+	if bytes.Equal(edited.RawMessage, raw) {
+		t.Fatal("the edit changed nothing")
+	}
+	edit := call(edited)
+	var different endpoint.Data[apitypes.ImportMessageResult]
+	if err := json.Unmarshal(edit.Body.Bytes(), &different); err != nil || edit.Code != 200 || !different.Data.Imported || different.Data.ID == id {
+		t.Fatalf("same Message-ID, other content: %d %s %v", edit.Code, edit.Body, err)
+	}
+	if err := db.Delete(&models.Attachment{}, "message_id = ?", different.Data.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Unscoped().Delete(&models.Message{}, different.Data.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&models.QuotaUsage{}).Where("mailbox_id = ?", fx.user.ID).Update("message_count", 1).Error; err != nil {
+		t.Fatal(err)
 	}
 	var stored models.Message
 	if err := db.First(&stored, id).Error; err != nil {
@@ -166,5 +193,37 @@ func TestMessageImportPostgresConcurrencySourceQuotaAndAuditRollback(t *testing.
 	}
 	if err := db.Where("mailbox_id = ?", fx.user.ID).First(&usage).Error; err != nil || usage.MessageCount != 1 {
 		t.Fatalf("audit refusal changed counters: %+v %v", usage, err)
+	}
+}
+
+// An account imports into its own mailbox by default, and nobody else's.
+func TestMessageImportOwnAccountOnly(t *testing.T) {
+	db := importProofDB(t)
+	fx := seedAccountsFixture(t, db)
+	if err := db.Create(&models.QuotaUsage{MailboxID: fx.user.ID}).Error; err != nil {
+		t.Fatal(err)
+	}
+	h := NewMessageImportHandler(db, 4096, nil, nil)
+	h.directory = t.TempDir()
+	router := importMessageRoutes(h)
+	encoded, err := json.Marshal(apitypes.ImportMessageBody{
+		RawMessage:   []byte("Message-ID: <own@example.test>\r\nSubject: mine\r\n\r\nbody\r\n"),
+		InternalDate: time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := func(account, caller uint) int {
+		request := authzRequest(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/messages/import", account), caller, nil, string(encoded))
+		request.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, request)
+		return w.Code
+	}
+	if got := call(fx.user.ID, fx.user.ID); got != http.StatusOK {
+		t.Fatalf("own mailbox: %d, want 200", got)
+	}
+	if got := call(fx.admin.ID, fx.user.ID); got != http.StatusNotFound {
+		t.Fatalf("someone else's mailbox: %d, want 404", got)
 	}
 }

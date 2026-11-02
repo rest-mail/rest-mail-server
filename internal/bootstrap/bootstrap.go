@@ -78,6 +78,7 @@ func EnsureRBAC(database *gorm.DB) error {
 		{Name: "agents:create", Description: "Create owned accounts (agents and sub accounts) on a domain", Resource: "agents", Action: "create"},
 		{Name: models.CapMailRead, Description: "Read a mailbox's mail", Resource: "mail", Action: "read"},
 		{Name: models.CapMailWrite, Description: "Change a mailbox's mail: folders, flags, drafts, contacts, filters", Resource: "mail", Action: "write"},
+		{Name: models.CapMailImport, Description: "Store a message in a mailbox without running delivery rules", Resource: "mail", Action: "import"},
 		{Name: models.CapMailSend, Description: "Send from your own mailbox", Resource: "mail", Action: "send"},
 		{Name: models.CapMailSendAs, Description: "Send as the represented mailbox", Resource: "mail", Action: "send_as"},
 		{Name: models.CapMailSendOnBehalf, Description: "Send on behalf of the represented mailbox, identifying the actor in Sender", Resource: "mail", Action: "send_on_behalf"},
@@ -147,6 +148,7 @@ func EnsureRBAC(database *gorm.DB) error {
 	adminCaps := []string{
 		"domains:read", "domains:write", "domains:delete",
 		"mailboxes:read", "mailboxes:write", "mailboxes:delete",
+		models.CapMailImport,
 		"pipelines:read", "pipelines:write", "pipelines:delete",
 		"users:read", "messages:read",
 		"queue:read", "queue:manage",

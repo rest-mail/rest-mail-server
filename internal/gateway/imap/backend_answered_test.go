@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 	"time"
 
@@ -46,17 +47,17 @@ func TestAnsweredSurvivesStoreFetchCopyAndAppend(t *testing.T) {
 	mux.HandleFunc("/api/v1/messages/41/raw", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("Subject: old\r\n\r\nhistory\r\n"))
 	})
-	mux.HandleFunc("/api/v1/messages/deliver", func(w http.ResponseWriter, r *http.Request) {
-		var delivery apiclient.DeliverRequest
+	mux.HandleFunc("/api/v1/accounts/12/messages/import", func(w http.ResponseWriter, r *http.Request) {
+		var delivery apiclient.ImportRequest
 		if err := json.NewDecoder(r.Body).Decode(&delivery); err != nil {
 			t.Error(err)
 			w.WriteHeader(400)
 			return
 		}
-		if delivery.IsAnswered == nil || !*delivery.IsAnswered {
+		if !slices.Contains(delivery.Flags, `\Answered`) {
 			t.Error("COPY/APPEND dropped Answered")
 		}
-		if deliveries == 0 && (delivery.ReceivedAt == nil || !delivery.ReceivedAt.Equal(date)) {
+		if deliveries == 0 && !delivery.InternalDate.Equal(date) {
 			t.Error("COPY changed INTERNALDATE")
 		}
 		deliveries++

@@ -24,7 +24,7 @@ const importMailUsage = `restmail import-maildir / import-mbox — import histor
   restmail import-maildir --server https://mail.example.com --account-id 12 --path ./Maildir
   restmail import-mbox --server https://mail.example.com --account-id 12 --path ./Inbox.mbox --mbox-format mboxrd
 
-RESTMAIL_API_KEY needs mailboxes:write on the destination account's domain.
+RESTMAIL_API_KEY needs mail:import on the destination account or its domain.
 Messages are imported one at a time, preserving folders, supported flags and
 internal dates. Existing Message-IDs in the same account and folder are skipped
 without changing the first copy. Rerun the same command to resume after failure.
@@ -86,7 +86,7 @@ func runImportMail(ctx context.Context, mode string, args []string, token string
 			return o.fail(exitUsage, "bad_flag", err.Error())
 		}
 		if token == "" {
-			return o.fail(exitUsage, "no_api_key", "set RESTMAIL_API_KEY with mailboxes:write on the destination")
+			return o.fail(exitUsage, "no_api_key", "set RESTMAIL_API_KEY with mail:import on the destination")
 		}
 	}
 	total, imported, skipped := 0, 0, 0

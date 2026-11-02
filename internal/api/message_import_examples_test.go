@@ -101,7 +101,7 @@ func (c *importConnection) QueryContext(ctx context.Context, q string, args []dr
 		if c.mode == "key_ceiling" {
 			scope = "domain:other.test"
 		}
-		permissions, _ := json.Marshal(map[string]any{"permissions": []map[string]string{{"capability": "mailboxes:write", "scope": scope}}})
+		permissions, _ := json.Marshal(map[string]any{"permissions": []map[string]string{{"capability": "mail:import", "scope": scope}}})
 		return importRows(map[string]any{"id": int64(31), "account_id": int64(1), "kind": "api_key", "public_id": c.keyPublic, "secret_hash": c.keyHash, "scope": string(permissions), "revoked_at": nil, "expires_at": nil}), nil
 	}
 	if strings.HasPrefix(q, "WITH RECURSIVE owned") {
@@ -148,9 +148,9 @@ func (c *importConnection) QueryContext(ctx context.Context, q string, args []dr
 			scope = "*"
 		}
 		if c.mode == "read_source" {
-			return grantLookupRows(columns, []driver.Value{scope, "mailboxes:write", nil, nil}, []driver.Value{"*", "mail:read", nil, nil}), nil
+			return grantLookupRows(columns, []driver.Value{scope, "mail:import", nil, nil}, []driver.Value{"*", "mail:read", nil, nil}), nil
 		}
-		return grantLookupRows(columns, []driver.Value{scope, "mailboxes:write", nil, nil}), nil
+		return grantLookupRows(columns, []driver.Value{scope, "mail:import", nil, nil}), nil
 	}
 	if strings.Contains(q, `FROM "messages"`) {
 		if c.mode == "read_failure" {
@@ -381,8 +381,8 @@ func TestMessageImportRealAuthorizationAndRefusals(t *testing.T) {
 		name, mode, account string
 		status              int
 	}{
-		{"anonymous", "", "12", 401}, {"revoked grants", "denied", "12", 403},
-		{"unknown account", "missing", "12", 403}, {"invalid account", "", "0", 403},
+		{"anonymous", "", "12", 401}, {"revoked grants", "denied", "12", 404},
+		{"unknown account", "missing", "12", 404}, {"invalid account", "", "0", 422},
 		{"unavailable scope", "scope_failure", "12", 503},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -424,7 +424,7 @@ func TestMessageImportRealAPIKeyCeilingAndCurrentHolder(t *testing.T) {
 	for _, tc := range []struct {
 		mode   string
 		status int
-	}{{"", 200}, {"key_ceiling", 403}, {"denied", 403}} {
+	}{{"", 200}, {"key_ceiling", 404}, {"denied", 404}} {
 		t.Run(tc.mode, func(t *testing.T) {
 			f := newImportFixture(t, tc.mode)
 			w := f.request(t, importExampleBody(), "12", f.key)

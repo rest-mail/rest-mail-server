@@ -44,8 +44,13 @@ func (RoleCapability) TableName() string { return "role_capabilities" }
 // all of these, with mailbox:session. Receive is an explicit, revocable
 // own-mailbox grant; the others are implicit (grants.Load).
 const (
-	CapMailRead         = "mail:read"
-	CapMailWrite        = "mail:write"
+	CapMailRead  = "mail:read"
+	CapMailWrite = "mail:write"
+	// CapMailImport stores a message the account already has, such as its own
+	// client's IMAP APPEND or a migration: no delivery rules run on it. Every
+	// account holds it on its own mailbox. It is its own capability so that an
+	// owner, an API key's scope or the server ceiling can leave it out.
+	CapMailImport       = "mail:import"
 	CapMailSend         = "mail:send"
 	CapMailReceive      = "mail:receive"
 	CapMailSendAs       = "mail:send_as"
@@ -65,7 +70,7 @@ const (
 )
 
 // OwnerCapabilities are the owner role's: everything on one mailbox.
-var OwnerCapabilities = []string{CapMailRead, CapMailWrite, CapMailSend, CapMailReceive, CapMailSendAs, CapMailSendOnBehalf, CapMailboxManage, CapMailboxSession}
+var OwnerCapabilities = []string{CapMailRead, CapMailWrite, CapMailImport, CapMailSend, CapMailReceive, CapMailSendAs, CapMailSendOnBehalf, CapMailboxManage, CapMailboxSession}
 
 // RoleOwner is the role an account holds on a mailbox it created or linked.
 const RoleOwner = "owner"

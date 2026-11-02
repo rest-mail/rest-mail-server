@@ -86,7 +86,7 @@ func mayKnowOf(held grants.Held, claims *auth.Claims, mailbox *models.Mailbox) b
 		return true
 	}
 	scope := grants.Mailbox(mailbox.Address)
-	for _, capability := range []string{models.CapMailRead, models.CapMailWrite, models.CapMailSend,
+	for _, capability := range []string{models.CapMailRead, models.CapMailWrite, models.CapMailImport, models.CapMailSend,
 		models.CapMailSendAs, models.CapMailSendOnBehalf, models.CapMailboxManage} {
 		if held.Allows(capability, scope) && middleware.CredentialAllows(claims, capability, scope) {
 			return true
@@ -101,10 +101,11 @@ func refusedAccount(err error) bool {
 }
 
 // appPasswordHolds reports whether an app password's scope holds capability:
-// read, write and send on its own mailbox, never mailbox:manage.
+// read, write, import and send on its own mailbox, never mailbox:manage. A mail
+// client's APPEND and COPY are imports, so an app password needs it.
 func appPasswordHolds(capability string) bool {
 	switch capability {
-	case models.CapMailRead, models.CapMailWrite, models.CapMailSend:
+	case models.CapMailRead, models.CapMailWrite, models.CapMailImport, models.CapMailSend:
 		return true
 	}
 	return false

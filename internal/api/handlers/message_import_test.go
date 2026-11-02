@@ -16,12 +16,12 @@ import (
 
 func importMessageRoutes(h *MessageImportHandler) http.Handler {
 	r := chi.NewRouter()
-	h.Register(endpoint.Routes{Router: r, Registry: endpoint.NewRegistry()}, MailboxRouteChecks{OnMailbox: func(string) endpoint.Middleware { return passThrough }})
+	h.Register(endpoint.Routes{Router: r, Registry: endpoint.NewRegistry()})
 	return r
 }
 
 func TestMessageImportValidationAndSizeBeforeDatabase(t *testing.T) {
-	routes := importMessageRoutes(NewMessageImportHandler(nil, 1024, nil))
+	routes := importMessageRoutes(NewMessageImportHandler(nil, 1024, nil, nil))
 	base := apitypes.ImportMessageBody{RawMessage: []byte("Subject: old\r\n\r\nbody\r\n"), InternalDate: time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)}
 	for _, tc := range []struct {
 		name, path, field string

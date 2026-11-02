@@ -20066,11 +20066,11 @@
         "mediaType": "application/json"
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
+            "code": "mailbox_not_found",
+            "message": "Destination account not found"
           }
         },
         "mediaType": "application/json"
@@ -20274,11 +20274,11 @@
         "mediaType": "application/json"
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
+            "code": "mailbox_not_found",
+            "message": "Destination account not found"
           }
         },
         "mediaType": "application/json"
@@ -20470,11 +20470,11 @@
         "mediaType": "application/json"
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
+            "code": "mailbox_not_found",
+            "message": "Destination account not found"
           }
         },
         "mediaType": "application/json"
@@ -20586,11 +20586,16 @@
         "mediaType": "application/json"
       },
       "response": {
-        "status": 403,
+        "status": 422,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "Insufficient permissions"
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
           }
         },
         "mediaType": "application/json"
