@@ -702,6 +702,43 @@ a hosted domain and mailbox for each address a test send probe uses, and,
 - `../e2e/contract_principals_test.go`: the principals, written to
   `.cache/contract-principals.json`.
 
+## Reset and seed helper (Part of #1385)
+
+`reset_seed.py` exposes `reset_and_seed(origin, admin_token,
+api_container="...")` for later hook migrations. It registers no hooks and
+does not change the current sequence. Call it serially, only on the disposable
+`restmail.test` instance, with its surviving fixture administrator's JWT and
+the container serving that origin. It calls `resetTestData`, then the
+idempotent `seedTestData`, then the existing `fixtures/` Go command in that
+container. The default `fixtures=("queue",)` recreates deferred retry/bounce
+entries, held quarantine mail and a suppression. Optional modes are
+`link-account`, `domain-tenants`, `mfa-admin` and `api-keys`, matching that
+command's existing flags; the command reads the shared `fixtureplan`.
+The result contains per-step/total seconds and each fixture command's output.
+HTTP errors (including 429), unexpected status envelopes, fixture exits and
+timeouts raise errors, never skips. After failure, do not send the exchange.
+
+To measure repeated resets on the running topology, supply its admin JWT in
+`CONTRACT_RESET_TOKEN` (not a command-line argument), then run:
+
+```sh
+python3 tests/contract/reset_seed.py --origin http://localhost:8080 \
+  --api-container my-disposable-api --runs 7
+```
+
+This reports every sample, median/worst and their incremental cost across 600
+exchanges, including both API calls and `docker exec`/`go run` fixture startup.
+Image builds and initial server startup are outside those timings.
+
+This is not yet full exchange isolation: the existing reset preserves
+administrators and their credentials/grants, but ordinary accounts and their
+fixture IDs are **not stable** (PostgreSQL sequences are not rewound).
+Reauthenticate ordinary principals and rediscover their IDs after resetting;
+do not reuse `.cache/contract-principals.json` blindly. The reset also does not
+clear every table (for example suppressions), refill in-memory rate-limit
+buckets, drain delivery work or clear SSE subscriptions/replay buffers. Those
+limitations must be handled before wiring every exchange to this helper.
+
 ## Principals
 
 `fixtureplan/defaults.json` is the shared declaration of the existing named
