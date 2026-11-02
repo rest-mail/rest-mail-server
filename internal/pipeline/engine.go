@@ -105,6 +105,14 @@ type StepResult struct {
 // Execute runs the given pipeline configuration against an email.
 // It returns the final result after all filters have been applied.
 func (e *Engine) Execute(ctx context.Context, pipeline *PipelineConfig, email *EmailJSON) (*ExecutionResult, error) {
+	return e.ExecuteStage(ctx, pipeline, email, NewRunState())
+}
+
+// ExecuteStage runs part of a pipeline, carrying what earlier parts decided in state: the
+// authentication verdicts, and the filters an earlier one said to skip. A message's required
+// checks and content checks run apart (Split), possibly on different nodes, and have to
+// behave as one run.
+func (e *Engine) ExecuteStage(ctx context.Context, pipeline *PipelineConfig, email *EmailJSON, state *RunState) (*ExecutionResult, error) {
 	start := time.Now()
 	result := &ExecutionResult{
 		FinalAction: ActionContinue,
@@ -117,10 +125,14 @@ func (e *Engine) Execute(ctx context.Context, pipeline *PipelineConfig, email *E
 	// Every run starts with no verdicts: the authentication filters record theirs
 	// here, and the filters that act on them read only this.
 	auth := &AuthResults{}
+	auth.Add(state.Auth...)
 	ctx = WithAuthResults(ctx, auth)
 
 	// Build the list of active filters
-	skipSet := make(map[string]bool)
+	if state.Skip == nil {
+		state.Skip = map[string]bool{}
+	}
+	skipSet := state.Skip
 
 	// recordStep finalizes a step: it appends it to the result and hands it to
 	// the observer. Observation happens for every step (including skipped and
@@ -238,6 +250,7 @@ Loop:
 
 	result.Duration = Elapsed(time.Since(start))
 	result.Auth = auth.List()
+	state.Auth = result.Auth
 	// One terminal observation per message, once the final action is known. A
 	// non-continue outcome breaks the loop immediately after recording its step,
 	// so the last recorded step IS the terminal step — hand it to the observer so
