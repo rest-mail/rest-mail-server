@@ -18,7 +18,7 @@ type dkimRotationSettings struct {
 	// State is where the domain's key rotation is (#728): stable, with no rotation under
 	// way; awaiting_publication, a staged key whose record has not resolved yet;
 	// waiting_ttl, published and waiting one TTL before signing moves to it; retiring,
-	// signing has moved and the previous key's record stays until it retires.
+	// signing has moved and the previous record is retained, then revoked for one TTL.
 	State string `json:"state" enums:"stable,awaiting_publication,waiting_ttl,retiring"`
 	// Staged is the key signing moves to next, null when there is none.
 	Staged *dkimRotationKey `json:"staged"`
@@ -31,15 +31,18 @@ type dkimRotationSettings struct {
 type dkimRotationKey struct {
 	Selector string `json:"selector"`
 	// RecordName and RecordValue are the TXT record to publish; the value is empty when
-	// the stored key cannot be read.
+	// the unrevoked stored key cannot be read.
 	RecordName  string `json:"record_name"`
 	RecordValue string `json:"record_value"`
 	// PublishedAt is when the record was first seen to resolve, null until then.
 	PublishedAt *time.Time `json:"published_at"`
 	// ActivatesAt, for a published staged key, is when signing moves to it.
 	ActivatesAt *time.Time `json:"activates_at,omitempty"`
-	// RetireAfter, for the previous key, is when its record can be removed.
-	RetireAfter *time.Time `json:"retire_after,omitempty"`
+	// RetireAfter, for the previous key, is when its public key is replaced by an empty p=.
+	RetireAfter           *time.Time `json:"retire_after,omitempty"`
+	RevokedAt             *time.Time `json:"revoked_at,omitempty"`
+	RevocationPublishedAt *time.Time `json:"revocation_published_at,omitempty"`
+	RemovesAfter          *time.Time `json:"removes_after,omitempty"`
 }
 
 // rotationStatus fills in where domain's rotation is, from its staged and previous keys.
@@ -52,14 +55,14 @@ func (h *DKIMHandler) rotationStatus(r *http.Request, domain models.Domain, sett
 	if err != nil {
 		name = domain.Name
 	}
-	settings.State = "stable"
+	settings.State, _ = dkimrotate.Status(keys)
 	for _, key := range keys {
 		status := &dkimRotationKey{
 			Selector:    key.Selector,
 			RecordName:  key.Selector + "._domainkey." + name,
 			PublishedAt: key.PublishedAt,
 		}
-		if value, err := dkimrotate.PublicRecord(key.PrivateKey, h.masterKey); err == nil {
+		if value, err := dkimrotate.RotationRecord(key, h.masterKey); err == nil {
 			status.RecordValue = value
 		}
 		switch key.Slot {
@@ -71,16 +74,14 @@ func (h *DKIMHandler) rotationStatus(r *http.Request, domain models.Domain, sett
 			settings.Staged = status
 		case models.DKIMRotationPrevious:
 			status.RetireAfter = key.RetireAfter
+			status.RevokedAt = key.RevokedAt
+			status.RevocationPublishedAt = key.RevocationPublishedAt
+			if key.RevocationPublishedAt != nil {
+				at := key.RevocationPublishedAt.Add(time.Duration(key.TTLSeconds) * time.Second)
+				status.RemovesAfter = &at
+			}
 			settings.Previous = status
 		}
-	}
-	switch {
-	case settings.Staged != nil && settings.Staged.PublishedAt == nil:
-		settings.State = "awaiting_publication"
-	case settings.Staged != nil:
-		settings.State = "waiting_ttl"
-	case settings.Previous != nil:
-		settings.State = "retiring"
 	}
 	return nil
 }

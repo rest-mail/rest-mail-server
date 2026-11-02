@@ -20,7 +20,7 @@ type fakeDNS struct {
 func (d *fakeDNS) publish(name, value string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.records[name] = append(d.records[name], value)
+	d.records[name] = []string{value}
 }
 
 func (d *fakeDNS) lookup(_ context.Context, name string) ([]string, error) {
@@ -119,12 +119,39 @@ func TestWorker_RotatesADueKeyThroughToRetirement(t *testing.T) {
 
 	// 5. The old key is let go one TTL after the switch, not before.
 	tick(switched.Add(dkimrotate.RecordTTL / 2))
-	if slot(models.DKIMRotationPrevious) == nil {
-		t.Fatal("the old key was retired within the TTL")
+	if previous := slot(models.DKIMRotationPrevious); previous == nil || previous.RevokedAt != nil {
+		t.Fatal("the old key was revoked or removed within the TTL")
 	}
-	tick(switched.Add(dkimrotate.RecordTTL + time.Minute))
+	revoked := switched.Add(3 * dkimrotate.RecordTTL)
+	tick(revoked)
+	previous = slot(models.DKIMRotationPrevious)
+	if previous == nil || previous.RevokedAt == nil || !previous.RevokedAt.Equal(revoked) {
+		t.Fatalf("the old key was not revoked after the TTL: %+v", previous)
+	}
+	if record, err := dkimrotate.RotationRecord(*previous, stageMasterKey); err != nil || record != dkimrotate.RevokedRecord {
+		t.Fatalf("revoked record = %q, %v", record, err)
+	}
+	worker = dkimrotate.NewWorker(database, stageMasterKey, dns.lookup, time.Hour)
+	dkimrotate.SetWorkerClock(worker, func() time.Time { return clock })
+	tick(revoked.Add(2 * dkimrotate.RecordTTL))
+	if previous := slot(models.DKIMRotationPrevious); previous == nil || previous.RevocationPublishedAt != nil {
+		t.Fatal("the previous key was removed before its revocation resolved")
+	}
+	dns.publish(dkim.RecordName("default", "rotate.test"), dkimrotate.RevokedRecord)
+	seen := revoked.Add(3 * dkimrotate.RecordTTL)
+	tick(seen)
+	if previous := slot(models.DKIMRotationPrevious); previous == nil || previous.RevocationPublishedAt == nil || !previous.RevocationPublishedAt.Equal(seen) {
+		t.Fatal("the first observed revocation was not recorded")
+	}
+	worker = dkimrotate.NewWorker(database, stageMasterKey, dns.lookup, time.Hour)
+	dkimrotate.SetWorkerClock(worker, func() time.Time { return clock })
+	tick(seen.Add(dkimrotate.RecordTTL - time.Second))
+	if previous := slot(models.DKIMRotationPrevious); previous == nil || !previous.RevokedAt.Equal(revoked) {
+		t.Fatal("the revocation did not survive restart for a full TTL")
+	}
+	tick(seen.Add(dkimrotate.RecordTTL))
 	if slot(models.DKIMRotationPrevious) != nil {
-		t.Fatal("the old key was not retired after the TTL")
+		t.Fatal("the revoked key was not removed after one more TTL")
 	}
 
 	// 6. The new key is young: nothing is staged until it is due.

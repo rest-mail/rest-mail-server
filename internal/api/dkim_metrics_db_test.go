@@ -14,13 +14,20 @@ import (
 
 func TestMetrics_DKIMAgeSharesTheExistingEndpoint(t *testing.T) {
 	database := createScratchDB(t, "dkim_metrics")
-	if err := database.AutoMigrate(&models.Domain{}); err != nil {
+	if err := database.AutoMigrate(&models.Domain{}, &models.DKIMRotationKey{}); err != nil {
 		t.Fatal(err)
 	}
 	created := time.Now().Add(-time.Hour)
-	if err := database.Create(&models.Domain{
+	domain := models.Domain{
 		Name: "metric-route.test", DKIMSelector: "mail",
-		DKIMPrivateKey: "private-route-sentinel", DKIMCreatedAt: &created,
+		DKIMPrivateKey: "private-route-sentinel", DKIMCreatedAt: &created, DKIMRotationIntervalDays: 90,
+	}
+	if err := database.Create(&domain).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Create(&models.DKIMRotationKey{
+		DomainID: domain.ID, Slot: models.DKIMRotationStaged, Selector: "next",
+		PrivateKey: "private-staged-sentinel", TTLSeconds: 3600, CreatedAt: created,
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -37,13 +44,16 @@ func TestMetrics_DKIMAgeSharesTheExistingEndpoint(t *testing.T) {
 	for _, want := range []string{
 		`restmail_dkim_key_age_seconds{domain="metric-route.test",selector="mail"}`,
 		"# TYPE restmail_dkim_key_age_seconds gauge",
+		`restmail_dkim_rotation_interval_seconds{domain="metric-route.test"}`,
+		`restmail_dkim_rotation_state{domain="metric-route.test",state="awaiting_publication"} 1`,
+		`restmail_dkim_rotation_step_started_seconds{domain="metric-route.test"}`,
 		"restmail_queue_size",
 	} {
 		if !strings.Contains(rr.Body.String(), want) {
 			t.Errorf("scrape missing %s", want)
 		}
 	}
-	if strings.Contains(rr.Body.String(), "private-route-sentinel") {
+	if strings.Contains(rr.Body.String(), "private-route-sentinel") || strings.Contains(rr.Body.String(), "private-staged-sentinel") {
 		t.Fatal("scrape exposed private key material")
 	}
 

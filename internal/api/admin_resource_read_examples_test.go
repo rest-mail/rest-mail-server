@@ -121,20 +121,23 @@ func (c adminResourceReadConnection) QueryContext(ctx context.Context, query str
 		if id == "4" {
 			return nil, errors.New("sensitive rotation key query detail")
 		}
-		r := &authReadSnapshotRows{columns: []string{"domain_id", "slot", "selector", "private_key", "published_at", "ttl_seconds", "retire_after"}}
-		if id == "5" || id == "6" || id == "7" || id == "9" {
+		r := &authReadSnapshotRows{columns: []string{"domain_id", "slot", "selector", "private_key", "published_at", "ttl_seconds", "retire_after", "revoked_at", "revocation_published_at"}}
+		if id == "5" || id == "6" || id == "7" || id == "9" || id == "10" {
 			slot, selector, key := "staged", "restmail-next", adminReadRotationFixtureKey()
-			var published, retire driver.Value
-			if id == "6" || id == "7" {
+			var published, retire, revoked driver.Value
+			if id == "6" || id == "7" || id == "10" {
 				published = stamp
 			}
-			if id == "7" {
+			if id == "7" || id == "10" {
 				slot, selector, retire = "previous", "restmail-previous", stamp.Add(24*time.Hour)
+			}
+			if id == "10" {
+				revoked = stamp.Add(24 * time.Hour)
 			}
 			if id == "9" {
 				key = "unreadable-private-fixture"
 			}
-			r.rows = [][]driver.Value{{n, slot, selector, key, published, int64(3600), retire}}
+			r.rows = [][]driver.Value{{n, slot, selector, key, published, int64(3600), retire, revoked, revoked}}
 		}
 		return r, nil
 	}
@@ -174,7 +177,7 @@ func adminResourceReadRouters(t *testing.T) (map[string]http.Handler, *auth.JWTS
 	grantFailure := makeRouter()
 	return map[string]http.Handler{"rate_limited": apiKeyRefusalLimited(t),
 		"found": global, "disabled": global, "missing": global, "internal_error": global, "domain_unavailable": global,
-		"keys_unavailable": global, "awaiting_publication": global, "waiting_ttl": global, "retiring": global, "unreadable_key": global,
+		"keys_unavailable": global, "awaiting_publication": global, "waiting_ttl": global, "retiring": global, "revoked": global, "unreadable_key": global,
 		"unauthenticated": unavailable, "session_unavailable": unavailable, "request_too_large": global, "invalid_id": global, "invalid_format": global,
 		"domain_scope": domain, "outside_domain": outside, "permission_store_unavailable": grantFailure, "target_lookup_unavailable": domain,
 		// Custom filter 1 belongs to example.com: a grant there reads it, and
@@ -205,6 +208,12 @@ func TestAdminResourceReadExamples(t *testing.T) {
 	pairs, err := examplepairs.Read()
 	if err != nil {
 		t.Fatal(err)
+	}
+	if _, exists := pairs["getDKIMRotation"]["revoked"]; !exists {
+		t.Fatal("the named DKIM revocation example is missing")
+	}
+	if pairs["getDKIMRotation"]["revoked"].Requires["state"] != "dkim_revocation" {
+		t.Fatal("the revocation example must declare the rotation fixture it needs")
 	}
 	for operation, path := range adminResourceReadPaths {
 		if len(pairs[operation]) < 8 {

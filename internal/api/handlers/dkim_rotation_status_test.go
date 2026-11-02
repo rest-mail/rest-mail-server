@@ -107,4 +107,24 @@ func TestDKIMRotationStatus(t *testing.T) {
 		got.Previous.RetireAfter == nil || !got.Previous.RetireAfter.Equal(retire) || got.Previous.RecordValue != want {
 		t.Fatalf("a previous key retiring: %+v", got)
 	}
+	if got.Previous.RevokedAt != nil || got.Previous.RemovesAfter != nil {
+		t.Fatalf("revocation reported before the worker revoked the key: %+v", got.Previous)
+	}
+	if err := tx.Model(&previous).Update("revoked_at", retire).Error; err != nil {
+		t.Fatal(err)
+	}
+	got = read(t)
+	if got.State != "retiring" || got.Previous.RecordValue != "v=DKIM1; p=" ||
+		got.Previous.RevokedAt == nil || !got.Previous.RevokedAt.Equal(retire) || got.Previous.RemovesAfter != nil {
+		t.Fatalf("a revoked previous key: %+v", got.Previous)
+	}
+	seen := retire.Add(time.Hour)
+	if err := tx.Model(&previous).Update("revocation_published_at", seen).Error; err != nil {
+		t.Fatal(err)
+	}
+	got = read(t)
+	if got.Previous.RevocationPublishedAt == nil || !got.Previous.RevocationPublishedAt.Equal(seen) ||
+		got.Previous.RemovesAfter == nil || !got.Previous.RemovesAfter.Equal(seen.Add(time.Hour)) {
+		t.Fatalf("a published revocation: %+v", got.Previous)
+	}
 }

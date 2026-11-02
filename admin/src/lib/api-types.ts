@@ -1126,7 +1126,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read a domain's DKIM rotation interval */
+        /**
+         * Read a domain's DKIM rotation interval
+         * @description Reports the staged TXT record and publication/activation times. After the signing switch, the previous key is retained until retire_after, then revoked with an empty p=. revoked_at records when the worker requested revocation. revocation_published_at records when that record first resolved; removes_after is one TTL later, when it can be removed. These optional fields appear as each step completes. State remains retiring until removal.
+         */
         get: operations["getDKIMRotation"];
         /** Set a domain's DKIM rotation interval */
         put: operations["setDKIMRotation"];
@@ -4849,7 +4852,13 @@ export interface components {
             record_name: string;
             record_value: string;
             /** Format: date-time */
+            removes_after?: string | null;
+            /** Format: date-time */
             retire_after?: string | null;
+            /** Format: date-time */
+            revocation_published_at?: string | null;
+            /** Format: date-time */
+            revoked_at?: string | null;
             selector: string;
         };
         dkimRotationSettings: {
@@ -5166,13 +5175,13 @@ export interface components {
             list_unsubscribe?: components["schemas"]["listUnsubscribe"] | null;
             on_behalf?: boolean;
         };
-        sendMessageRequest: {
+        sendMessageDescription: {
             bcc?: string[];
             body_html?: string;
             body_text?: string;
             calendar_event?: components["schemas"]["CalendarEvent"] | null;
             cc?: string[];
-            from?: string;
+            from: string;
             in_reply_to?: string;
             list_unsubscribe?: components["schemas"]["listUnsubscribe"] | null;
             on_behalf?: boolean;
@@ -22403,7 +22412,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["sendMessageRequest"];
+                "application/json": components["schemas"]["sendMessageDescription"];
             };
         };
         responses: {

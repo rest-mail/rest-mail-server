@@ -52,6 +52,23 @@ helm lint "$CHART_DIR" -f "$DEV_VALUES" --set "api.bootstrapAdminPassword=$TEST_
 echo "== render production defaults =="
 helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" > "$tmp/prod.yaml"
 
+assert_absent "PrometheusRule disabled by default" "$tmp/prod.yaml" 'kind: PrometheusRule'
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set metrics.prometheusRule.enabled=false > "$tmp/metrics-off.yaml"
+assert_absent "PrometheusRule explicitly disabled" "$tmp/metrics-off.yaml" 'kind: PrometheusRule'
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set metrics.prometheusRule.enabled=true --set metrics.prometheusRule.labels.release=monitoring > "$tmp/metrics-on.yaml"
+assert_contains "PrometheusRule enabled" "$tmp/metrics-on.yaml" 'kind: PrometheusRule'
+assert_contains "PrometheusRule selector label" "$tmp/metrics-on.yaml" 'release: monitoring'
+assert_contains "DKIM overdue alert" "$tmp/metrics-on.yaml" 'alert: DKIMKeyOverdue'
+assert_contains "DKIM publication alert" "$tmp/metrics-on.yaml" 'alert: DKIMPublicationStuck'
+[ "$(yq -N e 'select(.kind == "PrometheusRule") | .spec.groups[0].rules | length' "$tmp/metrics-on.yaml")" = 2 ] || fail "expected exactly two DKIM alerts"
+python3 -B "$CHART_DIR/tests/dkim-alerts-test.py" "$tmp/metrics-on.yaml"
+if command -v promtool >/dev/null 2>&1; then
+  yq -N e 'select(.kind == "PrometheusRule") | {"groups": .spec.groups}' "$tmp/metrics-on.yaml" > "$tmp/dkim-alerts-rules.yml"
+  cp "$CHART_DIR/tests/dkim-alerts-test.yml" "$tmp/dkim-alerts-test.yml"
+  promtool check rules "$tmp/dkim-alerts-rules.yml"
+  promtool test rules "$tmp/dkim-alerts-test.yml"
+fi
+
 echo "== render development overlay =="
 helm template restmail "$CHART_DIR" -f "$DEV_VALUES" --set "api.bootstrapAdminPassword=$TEST_PASSWORD" > "$tmp/dev.yaml"
 

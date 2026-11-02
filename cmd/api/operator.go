@@ -431,12 +431,12 @@ func rotationRecords(d models.Domain, keys []models.DKIMRotationKey, masterKey s
 	}
 	var records []dns.DNSRecord
 	for _, key := range keys {
-		value, err := dkimrotate.PublicRecord(key.PrivateKey, masterKey)
+		value, err := dkimrotate.RotationRecord(key, masterKey)
 		if err != nil {
 			continue
 		}
 		records = append(records, dns.DNSRecord{Type: "TXT", Name: key.Selector + "._domainkey." + name,
-			Value: value, TTL: int(dkimrotate.RecordTTL / time.Second)})
+			Value: value, TTL: int(key.TTLSeconds)})
 	}
 	return records
 }

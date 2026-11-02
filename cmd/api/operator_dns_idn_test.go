@@ -121,8 +121,8 @@ func TestRotationRecords_StagedAndPreviousKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 	records := rotationRecords(models.Domain{Name: "bücher.example"}, []models.DKIMRotationKey{
-		{Slot: models.DKIMRotationPrevious, Selector: "default", PrivateKey: stored},
-		{Slot: models.DKIMRotationStaged, Selector: "restmail-1", PrivateKey: stored},
+		{Slot: models.DKIMRotationPrevious, Selector: "default", PrivateKey: stored, TTLSeconds: 3600},
+		{Slot: models.DKIMRotationStaged, Selector: "restmail-1", PrivateKey: stored, TTLSeconds: 3600},
 		{Slot: models.DKIMRotationStaged, Selector: "restmail-9", PrivateKey: "dkim:v1:unreadable"},
 	}, "rotation-records-master-key-0123456789")
 	if len(records) != 2 {

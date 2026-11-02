@@ -34,7 +34,8 @@ process metrics; key inventory is exported only by the API process.
 
 The nullable `domains.dkim_created_at` column is added by the API's existing
 additive migration on startup. There is no backfill or configuration change.
-Key rotation is the worker described below; alert rules on key age are still to come (#728).
+Key rotation is the worker described below; [DKIM rotation alerts](dkim-rotation-alerts.md)
+document the policy, state and step metrics and the optional chart rules.
 
 ## Per-domain rotation policy
 
@@ -55,11 +56,17 @@ and where its rotation stands:
   `staged.record_name` and `staged.record_value` are the TXT record to publish.
 - `waiting_ttl`: the staged record resolved at `staged.published_at`; signing
   moves to it at `staged.activates_at`, one TTL later.
-- `retiring`: signing has moved. `previous` is the old key, whose record stays
-  until `previous.retire_after`.
+- `retiring`: signing has moved. `previous` is the old key, whose public record
+  stays until `previous.retire_after`. The worker then replaces it with
+  `v=DKIM1; p=`. `previous.revoked_at` records that change. Once this record
+  resolves, `previous.revocation_published_at` records its first observation
+  and `previous.removes_after` is one TTL later, when it leaves the list.
+  These optional fields appear as their steps complete; the state stays
+  `retiring` until removal, then returns to `stable`.
 
-Record names use the domain's A-label form. A record value is empty when the
-stored key cannot be read (a wrong master key).
+Record names use the domain's A-label form. An unrevoked record value is empty
+when the stored key cannot be read (a wrong master key). Publishing an empty
+`p=` revocation does not require decrypting the retired private key.
 
 `PUT /api/v1/admin/dkim/{id}/rotation` accepts a single JSON object:
 
@@ -82,8 +89,8 @@ existing domains therefore start with rotation disabled. Changing the interval
 preserves the current selector, encrypted key and installation timestamp.
 Installing or deleting a signing key preserves the saved interval.
 
-The rotation worker (below) acts on a nonzero interval. Alerts, rollback and
-manual-key reconciliation are still to come (#728).
+The rotation worker (below) acts on a nonzero interval. Rollback and manual-key
+reconciliation remain outside the worker's scope.
 
 ## The rotation worker
 
@@ -103,9 +110,12 @@ rotation under way, one step:
 3. **Activate.** One TTL after publication, `dkimrotate.Activate` re-checks
    the record and makes the staged key the signing key. The old key is kept
    as the previous key, still in the record list.
-4. **Retire.** One TTL after the switch, the previous key is let go and its
-   record leaves the record list, so mail signed just before the switch has
-   had a TTL to be verified.
+4. **Revoke, then remove.** One TTL after the switch, the previous record
+   changes to an empty `p=` (RFC 6376 §3.6.1). It stays in the operator's
+   record list until it resolves with an empty `p=` and for one more TTL
+   after that, then is removed. The observation is persisted across restarts;
+   downtime or delayed publication cannot consume the extra TTL. The worker does not write DNS: operators
+   must apply the changed record list, including the revocation and removal.
 
 A step that fails is logged and retried on the next tick. Several API
 replicas can run the worker at once: staging and activation lock the
@@ -113,9 +123,9 @@ domain's row, and recording publication only fills an empty time.
 
 ## Durable rotation key slots
 
-The additive startup migration creates `dkim_rotation_keys` for the planned
+The additive startup migration creates `dkim_rotation_keys` for the
 worker. The current signing key stays in `domains`; writing a rotation row
-cannot change signing. There are no HTTP operations on these slots yet; the
+cannot change signing. HTTP operations do not mutate these slots; the
 worker (above) uses `dkimrotate.Stage` and `dkimrotate.Activate` (below) for
 staging and activation.
 
@@ -123,7 +133,9 @@ Each domain can retain one `staged` key and one `previous` key. A database
 constraint rejects other slots, and unique indexes prevent duplicate slots or
 reuse of a selector (case-insensitively) across these two slots for the same
 domain. Each row stores its selector, private key, original installation time
-(nullable for legacy keys), DNS publication time, DNS TTL in seconds, retirement deadline and row
+(nullable for legacy keys), DNS publication time, DNS TTL in seconds, retirement
+deadline, nullable revocation time (`revoked_at`), first observed revocation
+publication time (`revocation_published_at`) and row
 creation/update times. An unpublished key has a null publication time. A staged
 key has no retirement deadline; a previous key requires one. TTLs must be
 between 1 and 2147483647 seconds. These fields record state; the worker
@@ -178,8 +190,8 @@ key. A staged selector matching the current selector case-insensitively returns
 replacing the current key with a fresh key prevents activation; existing
 staged state is retained for later reconciliation.
 
-Rollback, manual-key reconciliation and rotation status still need to be
-implemented. Should REST Mail ever publish records itself, publication must
+Rollback and manual-key reconciliation remain outside this worker. Should
+REST Mail ever publish records itself, publication must
 preserve the entire existing record set:
 the current dnsmasq and external-dns providers replace their output when
 `EnsureRecords` runs, so passing only a staged TXT record would lose existing
