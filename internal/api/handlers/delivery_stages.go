@@ -62,6 +62,7 @@ func (p localDeliveryParams) stageOf(cfg *pipeline.PipelineConfig, email *pipeli
 			email.Metadata[key] = value
 		}
 		return content, &p.State.Run
+	case deliverWhole:
 	}
 	return cfg, pipeline.NewRunState()
 }
