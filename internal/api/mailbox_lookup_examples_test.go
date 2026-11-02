@@ -132,7 +132,7 @@ func mailboxLookupRouters(t *testing.T) (map[string]http.Handler, *auth.JWTServi
 	scoped := func(scope string, domain bool) http.Handler {
 		heldGrants = func(*grants.Cache) middleware.HeldGrants {
 			return func(uint) (grants.Held, error) {
-				entries := []grants.Entry{{Capability: middleware.CapMailboxesRead, Scope: scope}}
+				entries := []grants.Entry{{Capability: middleware.CapAccountsRead, Scope: scope}}
 				if domain {
 					entries = append(entries, grants.Entry{Capability: middleware.CapDomainsRead, Scope: grants.Domain("example.com")})
 				}

@@ -81,12 +81,12 @@ func (h *AccountHandler) RegisterReads(rs endpoint.Routes) {
 }
 
 // RegisterCreate registers creating an account, behind audit. Its routes take a session or a
-// scoped API key, and the handler checks mailboxes:write on the address's domain.
+// scoped API key, and the handler checks accounts:write on the address's domain.
 func (h *AccountHandler) RegisterCreate(rs endpoint.Routes, audit endpoint.Middleware) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts",
 		OperationID: "createAccount", Summary: "Create an account", Tags: []string{"Accounts"},
 		Status: http.StatusCreated, Errors: []int{http.StatusForbidden, http.StatusConflict, http.StatusServiceUnavailable},
-		Security:   handlerChecked(middleware.CapMailboxesWrite, "CookieAuth", "BearerAuth", "APIKeyAuth"),
+		Security:   handlerChecked(middleware.CapAccountsWrite, "CookieAuth", "BearerAuth", "APIKeyAuth"),
 		Middleware: []endpoint.Middleware{audit}}, h.create)
 }
 
@@ -225,7 +225,7 @@ type createAccountRequest = apitypes.CreateAccountRequest
 const ActionAccountsCreate = "accounts.create"
 
 // CreateAccount creates an account, the same for everyone: it needs
-// mailboxes:write covering the address's domain, and the creator gets the
+// accounts:write covering the address's domain, and the creator gets the
 // owner grant on it. With owned it is an owned account instead (an agent's, or
 // a sub account): that needs agents:create on the domain and a session that
 // signed in with a second factor, and it never holds more than its creator
@@ -272,7 +272,7 @@ func (h *AccountHandler) create(r *http.Request, req createAccountRequest) (acco
 	if err != nil {
 		return accountResponse{}, errPermissionsUnverified
 	}
-	need := middleware.CapMailboxesWrite
+	need := middleware.CapAccountsWrite
 	if req.Owned {
 		need = middleware.CapAgentsCreate
 	}

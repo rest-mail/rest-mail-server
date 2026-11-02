@@ -716,7 +716,7 @@ reaches comes from grants: `GET /api/v1/accounts` lists its own account first,
 then every account it holds a mail grant on.
 
 ```bash
-# Make an account (needs mailboxes:write on its domain). The creator owns it:
+# Make an account (needs accounts:write on its domain). The creator owns it:
 # reads, writes and sends its mail, and manages it. With no password, nothing
 # can sign in to it until one is set or an app password is made for it.
 curl -X POST http://localhost:8080/api/v1/accounts \

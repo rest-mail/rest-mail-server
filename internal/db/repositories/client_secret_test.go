@@ -17,7 +17,7 @@ func TestClientSecretTier(t *testing.T) {
 		{"mailboxes:aliases:write", "domain:example.test", false},
 		{"pipelines:write", "*", false},
 		{"pipelines:write", "mailbox:robot@example.test", false},
-		{"mailboxes:write", "domain:example.test", false},
+		{"accounts:write", "domain:example.test", false},
 		{"mailbox:manage", "mailbox:robot@example.test", false},
 		{"users:write", "domain:example.test", false},
 		{"agents:create", "domain:example.test", false},

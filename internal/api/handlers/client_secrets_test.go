@@ -35,7 +35,7 @@ func TestClientSecretLifecycle(t *testing.T) {
 	if out := create("pipelines:write", grants.Domain(fx.domain.Name), false); out.Code != 403 {
 		t.Fatalf("no second factor: %d %s", out.Code, out.Body)
 	}
-	for _, capability := range []string{"mailboxes:write", "mailbox:manage", "users:write", "audit:read"} {
+	for _, capability := range []string{"accounts:write", "mailbox:manage", "users:write", "audit:read"} {
 		if out := create(capability, grants.Domain(fx.domain.Name), true); out.Code != 422 {
 			t.Fatalf("tier %s: %d %s", capability, out.Code, out.Body)
 		}

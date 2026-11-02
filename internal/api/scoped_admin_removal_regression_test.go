@@ -69,7 +69,7 @@ func scopedAdminRemovalScenarios(t *testing.T, op string) map[string]queueEntryA
 	token := mailboxToken(t, jwt)
 	previous := heldGrants
 	defer func() { heldGrants = previous }()
-	capability, readCapability := middleware.CapMailboxesDel, middleware.CapMailboxesRead
+	capability, readCapability := middleware.CapAccountsDel, middleware.CapAccountsRead
 	if op == "deleteDKIMKey" {
 		capability, readCapability = middleware.CapDomainsWrite, middleware.CapDomainsRead
 	}

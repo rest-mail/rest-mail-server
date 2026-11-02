@@ -346,7 +346,7 @@ func TestRequireCapability_AdminMissingCapability(t *testing.T) {
 		AccountID: 2,
 		Address:   "viewer@example.com",
 	}
-	held := heldBy(map[uint][]grants.Entry{2: atAll("domains:read", "mailboxes:read")})
+	held := heldBy(map[uint][]grants.Entry{2: atAll("domains:read", "accounts:read")})
 	rr := httptest.NewRecorder()
 
 	RequireCapability(held, "domains:delete", nil)(okHandler).ServeHTTP(rr, requestWithClaims(claims))
@@ -397,7 +397,7 @@ func TestRequireCapability_ScopedGrantCoversItsTargetOnly(t *testing.T) {
 	claims := &auth.Claims{AccountID: 5, Address: "a-admin@example.com"}
 	held := heldBy(map[uint][]grants.Entry{5: {
 		{Scope: "domain:a.com", Capability: "domains:read"},
-		{Scope: "domain:a.com", Capability: "mailboxes:read"},
+		{Scope: "domain:a.com", Capability: "accounts:read"},
 	}})
 
 	cases := []struct {
@@ -407,9 +407,9 @@ func TestRequireCapability_ScopedGrantCoversItsTargetOnly(t *testing.T) {
 		want       int
 	}{
 		{"its own domain", "domains:read", scopeIs("domain:a.com"), http.StatusOK},
-		{"a mailbox of its domain", "mailboxes:read", scopeIs("mailbox:x@a.com"), http.StatusOK},
+		{"a mailbox of its domain", "accounts:read", scopeIs("mailbox:x@a.com"), http.StatusOK},
 		{"another domain", "domains:read", scopeIs("domain:b.com"), http.StatusForbidden},
-		{"a mailbox of another domain", "mailboxes:read", scopeIs("mailbox:x@b.com"), http.StatusForbidden},
+		{"a mailbox of another domain", "accounts:read", scopeIs("mailbox:x@b.com"), http.StatusForbidden},
 		{"a capability it lacks there", "domains:write", scopeIs("domain:a.com"), http.StatusForbidden},
 		{"a route that wants *", "domains:read", nil, http.StatusForbidden},
 		{"a target that does not exist", "domains:read", func(*http.Request) (string, bool, error) { return "", false, nil }, http.StatusForbidden},

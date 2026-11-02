@@ -521,7 +521,7 @@ export interface paths {
         put?: never;
         /**
          * Import one historical message
-         * @description Stores original message octets, folder, supported system flags and required internal_date without delivery rules or notifications. Requires mailboxes:write on the destination. A Message-ID already present in that account and folder is skipped without changing its flags or date. Messages without Message-ID use a deterministic SHA-256 import identity; the raw source remains unchanged. Every attempt is audited; successful imports and skips also receive a transactional messages.import audit entry. The decoded message is bounded by SMTP_MAX_MESSAGE_SIZE (10 MiB by default); the general API body limit may be stricter. Deleted-state and keyword flags are unsupported and refused rather than hidden or discarded.
+         * @description Stores original message octets, folder, supported system flags and required internal_date without delivery rules or notifications. Requires accounts:write on the destination. A Message-ID already present in that account and folder is skipped without changing its flags or date. Messages without Message-ID use a deterministic SHA-256 import identity; the raw source remains unchanged. Every attempt is audited; successful imports and skips also receive a transactional messages.import audit entry. The decoded message is bounded by SMTP_MAX_MESSAGE_SIZE (10 MiB by default); the general API body limit may be stricter. Deleted-state and keyword flags are unsupported and refused rather than hidden or discarded.
          */
         post: operations["importMessage"];
         delete?: never;

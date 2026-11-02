@@ -55,7 +55,7 @@ func TestAPIKeys_Authenticate(t *testing.T) {
 	verify := func(key string) (*auth.Claims, error) {
 		switch key {
 		case testAPIKey:
-			return apiKeyClaims(auth.ScopedPermission{Capability: "mailboxes:write", Scope: "domain:a.com"}), nil
+			return apiKeyClaims(auth.ScopedPermission{Capability: "accounts:write", Scope: "domain:a.com"}), nil
 		case "rmk_broken":
 			return nil, &auth.CredentialRefusal{Reason: auth.CredentialMalformed}
 		case "rmk_down":
@@ -161,7 +161,7 @@ func TestAPIKeys_RefusalsAreThrottled(t *testing.T) {
 
 func TestCredentialAllows(t *testing.T) {
 	key := apiKeyClaims(
-		auth.ScopedPermission{Capability: "mailboxes:write", Scope: "domain:a.com"},
+		auth.ScopedPermission{Capability: "accounts:write", Scope: "domain:a.com"},
 		auth.ScopedPermission{Capability: "mail:read", Scope: "mailbox:bob@b.com"},
 	)
 	cases := []struct {
@@ -170,17 +170,17 @@ func TestCredentialAllows(t *testing.T) {
 		scope      string
 		want       bool
 	}{
-		{key, "mailboxes:write", "domain:a.com", true},
-		{key, "mailboxes:write", "mailbox:x@a.com", true},
-		{key, "mailboxes:write", "domain:b.com", false},
-		{key, "mailboxes:write", grants.All, false},
-		{key, "mailboxes:read", "domain:a.com", false},
+		{key, "accounts:write", "domain:a.com", true},
+		{key, "accounts:write", "mailbox:x@a.com", true},
+		{key, "accounts:write", "domain:b.com", false},
+		{key, "accounts:write", grants.All, false},
+		{key, "accounts:read", "domain:a.com", false},
 		{key, "mail:read", "mailbox:bob@b.com", true},
 		{key, "mail:read", "domain:b.com", false},
-		{apiKeyClaims(), "mailboxes:write", "domain:a.com", false},
-		{apiKeyClaims(auth.ScopedPermission{Capability: "*", Scope: "*"}), "mailboxes:write", "domain:a.com", false},
-		{&auth.Claims{AccountID: 1, SessionID: "s"}, "mailboxes:write", grants.All, true},
-		{nil, "mailboxes:write", grants.All, false},
+		{apiKeyClaims(), "accounts:write", "domain:a.com", false},
+		{apiKeyClaims(auth.ScopedPermission{Capability: "*", Scope: "*"}), "accounts:write", "domain:a.com", false},
+		{&auth.Claims{AccountID: 1, SessionID: "s"}, "accounts:write", grants.All, true},
+		{nil, "accounts:write", grants.All, false},
 	}
 	for i, tc := range cases {
 		if got := CredentialAllows(tc.claims, tc.capability, tc.scope); got != tc.want {
@@ -200,35 +200,35 @@ func TestRequireCapability_APIKeyNeedsBothGrantAndPermission(t *testing.T) {
 		target ScopeOf
 		want   int
 	}{
-		{"both at the domain", grants.HeldOf(grants.Entry{Scope: "domain:a.com", Capability: "mailboxes:write"}),
-			apiKeyClaims(auth.ScopedPermission{Capability: "mailboxes:write", Scope: "domain:a.com"}), target("domain:a.com"), http.StatusOK},
+		{"both at the domain", grants.HeldOf(grants.Entry{Scope: "domain:a.com", Capability: "accounts:write"}),
+			apiKeyClaims(auth.ScopedPermission{Capability: "accounts:write", Scope: "domain:a.com"}), target("domain:a.com"), http.StatusOK},
 		{"grant at *, key at the domain", grants.HeldOf(grants.Entry{Scope: "*", Capability: "*"}),
-			apiKeyClaims(auth.ScopedPermission{Capability: "mailboxes:write", Scope: "domain:a.com"}), target("domain:a.com"), http.StatusOK},
+			apiKeyClaims(auth.ScopedPermission{Capability: "accounts:write", Scope: "domain:a.com"}), target("domain:a.com"), http.StatusOK},
 		{"grant at *, key at the domain, other domain", grants.HeldOf(grants.Entry{Scope: "*", Capability: "*"}),
-			apiKeyClaims(auth.ScopedPermission{Capability: "mailboxes:write", Scope: "domain:a.com"}), target("domain:b.com"), http.StatusForbidden},
+			apiKeyClaims(auth.ScopedPermission{Capability: "accounts:write", Scope: "domain:a.com"}), target("domain:b.com"), http.StatusForbidden},
 		{"grant at *, key at the domain, no target", grants.HeldOf(grants.Entry{Scope: "*", Capability: "*"}),
-			apiKeyClaims(auth.ScopedPermission{Capability: "mailboxes:write", Scope: "domain:a.com"}), nil, http.StatusForbidden},
+			apiKeyClaims(auth.ScopedPermission{Capability: "accounts:write", Scope: "domain:a.com"}), nil, http.StatusForbidden},
 		{"grant removed: the key keeps nothing", grants.HeldOf(),
-			apiKeyClaims(auth.ScopedPermission{Capability: "mailboxes:write", Scope: "*"}), target("domain:a.com"), http.StatusForbidden},
-		{"grant at another domain", grants.HeldOf(grants.Entry{Scope: "domain:b.com", Capability: "mailboxes:write"}),
-			apiKeyClaims(auth.ScopedPermission{Capability: "mailboxes:write", Scope: "*"}), target("domain:a.com"), http.StatusForbidden},
+			apiKeyClaims(auth.ScopedPermission{Capability: "accounts:write", Scope: "*"}), target("domain:a.com"), http.StatusForbidden},
+		{"grant at another domain", grants.HeldOf(grants.Entry{Scope: "domain:b.com", Capability: "accounts:write"}),
+			apiKeyClaims(auth.ScopedPermission{Capability: "accounts:write", Scope: "*"}), target("domain:a.com"), http.StatusForbidden},
 		{"key for another capability", grants.HeldOf(grants.Entry{Scope: "*", Capability: "*"}),
-			apiKeyClaims(auth.ScopedPermission{Capability: "mailboxes:read", Scope: "*"}), target("domain:a.com"), http.StatusForbidden},
+			apiKeyClaims(auth.ScopedPermission{Capability: "accounts:read", Scope: "*"}), target("domain:a.com"), http.StatusForbidden},
 		{"key with no permissions", grants.HeldOf(grants.Entry{Scope: "*", Capability: "*"}),
 			apiKeyClaims(), nil, http.StatusForbidden},
-		{"both at *", grants.HeldOf(grants.Entry{Scope: "*", Capability: "mailboxes:write"}),
-			apiKeyClaims(auth.ScopedPermission{Capability: "mailboxes:write", Scope: "*"}), nil, http.StatusOK},
+		{"both at *", grants.HeldOf(grants.Entry{Scope: "*", Capability: "accounts:write"}),
+			apiKeyClaims(auth.ScopedPermission{Capability: "accounts:write", Scope: "*"}), nil, http.StatusOK},
 		{"app password still refused", grants.HeldOf(grants.Entry{Scope: "*", Capability: "*"}),
 			&auth.Claims{AccountID: 7, CredentialID: 3, CredentialKind: "app_password"}, nil, http.StatusForbidden},
 		{"gateway password still refused", grants.HeldOf(grants.Entry{Scope: "*", Capability: "*"}),
 			&auth.Claims{AccountID: 7, CredentialID: 3, CredentialKind: "password"}, nil, http.StatusForbidden},
-		{"session unchanged", grants.HeldOf(grants.Entry{Scope: "domain:a.com", Capability: "mailboxes:write"}),
+		{"session unchanged", grants.HeldOf(grants.Entry{Scope: "domain:a.com", Capability: "accounts:write"}),
 			&auth.Claims{AccountID: 7, SessionID: "s"}, target("domain:a.com"), http.StatusOK},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			held := func(uint) (grants.Held, error) { return tc.held, nil }
-			h := RequireCapability(held, "mailboxes:write", tc.target)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+			h := RequireCapability(held, "accounts:write", tc.target)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 			req := httptest.NewRequest(http.MethodPost, "/", nil)
 			req = req.WithContext(contextOf(req, tc.claims))
 			rec := httptest.NewRecorder()

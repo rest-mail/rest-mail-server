@@ -668,7 +668,7 @@ func TestAppPasswords_CreatingNeedsTheCurrentPassword(t *testing.T) {
 func TestAppPasswords_OldPasswordRefusedAfterAChange(t *testing.T) {
 	f := newCredentialFixture(t)
 	path := fmt.Sprintf("/api/v1/accounts/%d/credentials", f.accountID)
-	admin := adminToken(t, f.jwt, []string{middleware.CapMailboxesWrite})
+	admin := adminToken(t, f.jwt, []string{middleware.CapAccountsWrite})
 	const newPassword = "a-new-password-456"
 	if rr := f.do(http.MethodPatch, fmt.Sprintf("/api/v1/admin/mailboxes/%d", f.mailboxID), "Bearer "+admin,
 		fmt.Sprintf(`{"password":%q}`, newPassword)); rr.Code != http.StatusOK {
@@ -859,7 +859,7 @@ func TestAppPasswords_RevokedByANewPassword(t *testing.T) {
 	srv := httptest.NewServer(f.router)
 	t.Cleanup(srv.Close)
 	api := apiclient.New(srv.URL)
-	admin := adminToken(t, f.jwt, []string{middleware.CapMailboxesWrite})
+	admin := adminToken(t, f.jwt, []string{middleware.CapAccountsWrite})
 	// Each test admin has an id of its own, holding its grants (#345).
 	adminClaims, err := f.jwt.ValidateAccessToken(admin)
 	if err != nil {
@@ -1031,7 +1031,7 @@ func TestAppPasswords_NewPasswordAndItsRevocationsCommitTogether(t *testing.T) {
 		t.Fatalf("create the trigger: %v", err)
 	}
 
-	admin := adminToken(t, f.jwt, []string{middleware.CapMailboxesWrite})
+	admin := adminToken(t, f.jwt, []string{middleware.CapAccountsWrite})
 	rr := f.do(http.MethodPatch, fmt.Sprintf("/api/v1/admin/mailboxes/%d", f.mailboxID), "Bearer "+admin, `{"password":"a-new-password-456"}`)
 	if rr.Code != http.StatusInternalServerError {
 		t.Fatalf("a new password with no audit log: %d %s", rr.Code, rr.Body.String())

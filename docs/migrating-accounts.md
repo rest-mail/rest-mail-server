@@ -1,6 +1,6 @@
 # Importing accounts with their existing password hashes
 
-An operator with `mailboxes:write` on a hosted domain can create an account
+An operator with `accounts:write` on a hosted domain can create an account
 without resetting its password, one at a time or a whole Dovecot passwd-file at
 once. Aliases, forwarding and mail must still be moved separately.
 

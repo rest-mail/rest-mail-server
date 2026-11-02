@@ -5479,7 +5479,7 @@
           "password": "current-password",
           "permissions": [
             {
-              "capability": "mailboxes:write",
+              "capability": "accounts:write",
               "scope": "domain:example.test"
             }
           ]
@@ -12471,7 +12471,7 @@
   "getAlias": {
     "destination_mailbox_scope": {
       "summary": "An individual destination mailbox grant cannot administer aliases",
-      "description": "Alias configuration belongs to the source domain. Holding mailboxes:read for this individual destination mailbox does not grant domain administration.",
+      "description": "Alias configuration belongs to the source domain. Holding accounts:read for this individual destination mailbox does not grant domain administration.",
       "requires": {
         "principal": "without_capability"
       },

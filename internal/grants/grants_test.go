@@ -65,18 +65,18 @@ func TestHeld(t *testing.T) {
 	admin := HeldOf(
 		Entry{All, "domains:read"},
 		Entry{All, "domains:write"},
-		Entry{"domain:a.com", "mailboxes:write"},
+		Entry{"domain:a.com", "accounts:write"},
 	)
 	if !admin.Allows("domains:read", All) || !admin.Allows("domains:read", "domain:b.com") {
 		t.Error("a capability at * should be allowed everywhere")
 	}
-	if admin.Allows("mailboxes:write", All) {
+	if admin.Allows("accounts:write", All) {
 		t.Error("a capability held on one domain should not be allowed at *")
 	}
-	if !admin.Allows("mailboxes:write", "mailbox:x@a.com") || admin.Allows("mailboxes:write", "mailbox:x@b.com") {
+	if !admin.Allows("accounts:write", "mailbox:x@a.com") || admin.Allows("accounts:write", "mailbox:x@b.com") {
 		t.Error("a capability held on a.com should cover a.com's mailboxes only")
 	}
-	if !admin.AllowsSomewhere("mailboxes:write") || admin.AllowsSomewhere("users:write") {
+	if !admin.AllowsSomewhere("accounts:write") || admin.AllowsSomewhere("users:write") {
 		t.Error("AllowsSomewhere wrong")
 	}
 	// Only what is held at * is listed, sorted.
@@ -106,10 +106,10 @@ func TestHeld(t *testing.T) {
 }
 
 func TestCanGrant(t *testing.T) {
-	adminCaps := []string{"domains:read", "domains:write", "mailboxes:read"}
+	adminCaps := []string{"domains:read", "domains:write", "accounts:read"}
 	superadmin := HeldOf(Entry{All, Wildcard})
-	admin := HeldOf(Entry{All, "domains:read"}, Entry{All, "domains:write"}, Entry{All, "mailboxes:read"}, Entry{All, "users:write"})
-	domainAdmin := HeldOf(Entry{"domain:a.com", "domains:read"}, Entry{"domain:a.com", "domains:write"}, Entry{"domain:a.com", "mailboxes:read"})
+	admin := HeldOf(Entry{All, "domains:read"}, Entry{All, "domains:write"}, Entry{All, "accounts:read"}, Entry{All, "users:write"})
+	domainAdmin := HeldOf(Entry{"domain:a.com", "domains:read"}, Entry{"domain:a.com", "domains:write"}, Entry{"domain:a.com", "accounts:read"})
 
 	cases := []struct {
 		name   string

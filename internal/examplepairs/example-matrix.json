@@ -14690,7 +14690,7 @@
   "getAlias": {
     "domain_redacted": {
       "summary": "Mailbox-read permission does not expose domain administration",
-      "description": "The session holds mailboxes:read on example.com but no domains:read capability. The alias remains readable and its domain association is omitted instead of emitting an invalid zero record.",
+      "description": "The session holds accounts:read on example.com but no domains:read capability. The alias remains readable and its domain association is omitted instead of emitting an invalid zero record.",
       "request": {
         "path": {
           "id": 1
@@ -14861,7 +14861,7 @@
     },
     "source_mailbox_scope": {
       "summary": "An individual source mailbox grant cannot administer aliases",
-      "description": "Alias configuration belongs to the source domain. Holding mailboxes:read for this individual source mailbox does not grant domain administration.",
+      "description": "Alias configuration belongs to the source domain. Holding accounts:read for this individual source mailbox does not grant domain administration.",
       "request": {
         "path": {
           "id": 1

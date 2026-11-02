@@ -34,12 +34,12 @@ type listAdminAPIKeysRequest struct {
 }
 
 // RegisterAdmin mounts the view of API keys across accounts. onList limits it to
-// the accounts the administrator's mailboxes:read covers (#1387).
+// the accounts the administrator's accounts:read covers (#1387).
 func (h *CredentialHandler) RegisterAdmin(rs endpoint.Routes, onList func(string) endpoint.Middleware) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/api-keys",
 		OperationID: "listAdminAPIKeys", Summary: "List API keys across accounts", Tags: []string{"Admin: Mailboxes"}, Status: http.StatusOK,
 		Description: "Unrevoked keys of the accounts the caller may read, newest first. Secrets are never returned. Revoke one through its account's own route.",
-		Middleware:  []endpoint.Middleware{onList(middleware.CapMailboxesRead)}}, h.listAdmin)
+		Middleware:  []endpoint.Middleware{onList(middleware.CapAccountsRead)}}, h.listAdmin)
 }
 
 func (h *CredentialHandler) listAdmin(r *http.Request, in listAdminAPIKeysRequest) (endpoint.List[adminAPIKey], error) {
@@ -49,7 +49,7 @@ func (h *CredentialHandler) listAdmin(r *http.Request, in listAdminAPIKeysReques
 	query := h.db.Model(&models.Credential{}).
 		Joins("JOIN mailboxes ON mailboxes.id = credentials.account_id").
 		Where("credentials.kind = ? AND credentials.revoked_at IS NULL", models.CredentialKindAPIKey)
-	query = filterAdminList(query, r, middleware.CapMailboxesRead, "mailboxes")
+	query = filterAdminList(query, r, middleware.CapAccountsRead, "mailboxes")
 	if in.Owner != nil {
 		query = query.Where("lower(mailboxes.address) = ?", strings.ToLower(*in.Owner))
 	}

@@ -68,7 +68,7 @@ export const useMailboxStore = create<MailboxState>((set, get) => ({
 
     try {
       // An account is created the same way for everyone: POST /accounts, which
-      // needs mailboxes:write on its domain and makes the creator its owner.
+      // needs accounts:write on its domain and makes the creator its owner.
       const response = await apiV1.request("/accounts", {
         method: "POST",
         body: JSON.stringify({

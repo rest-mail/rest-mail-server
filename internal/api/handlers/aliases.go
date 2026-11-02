@@ -38,7 +38,7 @@ func (h *AliasHandler) list(r *http.Request, in adminAddressListRequest) (endpoi
 	h = h.forRequest(r)
 	limit, offset := pagination(in.Limit, in.Offset, defaultListLimit, maxListLimit)
 
-	query := filterAdminList(h.db.Model(&models.Alias{}), r, middleware.CapMailboxesRead, "aliases")
+	query := filterAdminList(h.db.Model(&models.Alias{}), r, middleware.CapAccountsRead, "aliases")
 	if in.DomainID != nil {
 		query = query.Where("domain_id = ?", *in.DomainID)
 	}
@@ -109,7 +109,7 @@ func (h *AliasHandler) create(r *http.Request, in createAliasRequest) (Alias, er
 	// Address.String preserves quoting where the parsed local part needs it.
 	req.SourceAddress = strings.TrimSuffix(strings.TrimPrefix(parsed.String(), "<"), ">")
 
-	if !scopedDomainAllowed(r, middleware.CapMailboxesWrite, domainName) {
+	if !scopedDomainAllowed(r, middleware.CapAccountsWrite, domainName) {
 		return Alias{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "Insufficient permissions")
 	}
 	var domain models.Domain

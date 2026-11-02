@@ -231,7 +231,7 @@ func TestFreshInstall_EndToEnd(t *testing.T) {
 
 	// 4. The admin works: its capabilities come from its grants (admin, not
 	// superadmin), and the admin API answers.
-	if !slices.Contains(adminS.Capabilities, "mailboxes:write") || slices.Contains(adminS.Capabilities, "*") {
+	if !slices.Contains(adminS.Capabilities, "accounts:write") || slices.Contains(adminS.Capabilities, "*") {
 		t.Fatalf("the admin's capabilities: %v", adminS.Capabilities)
 	}
 	f.expect(f.do(http.MethodGet, "/api/v1/admin/stats", adminS.bearer(), ""), http.StatusOK, "the admin's stats", nil)

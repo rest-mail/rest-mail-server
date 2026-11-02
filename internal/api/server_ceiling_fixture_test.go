@@ -16,7 +16,7 @@ func defaultServerCeilingRows(query string, args []driver.NamedValue) (*authRead
 	rows := &authReadSnapshotRows{columns: []string{"scope", "capability"}}
 	for _, capability := range []string{
 		"domains:read", "domains:write", "domains:delete",
-		"mailboxes:read", "mailboxes:write", "mailboxes:delete",
+		"accounts:read", "accounts:write", "accounts:delete",
 		"users:read", "users:write", "users:delete",
 		"pipelines:read", "pipelines:write", "pipelines:delete",
 		"messages:send_bulk", "messages:read", "queue:read", "queue:manage",

@@ -147,14 +147,14 @@ func domainAliasReadRouters(t *testing.T) (map[string]http.Handler, *auth.JWTSer
 		return makeRouter()
 	}
 	domainRead := grants.Entry{Capability: middleware.CapDomainsRead, Scope: grants.Domain("example.com")}
-	aliasRead := grants.Entry{Capability: middleware.CapMailboxesRead, Scope: grants.Domain("example.com")}
+	aliasRead := grants.Entry{Capability: middleware.CapAccountsRead, Scope: grants.Domain("example.com")}
 	return map[string]http.Handler{"rate_limited": apiKeyRefusalLimited(t),
 		"found": global, "inactive": global, "missing": global, "internal_error": global, "domain_unavailable": global,
 		"unauthenticated": unavailable, "session_unavailable": unavailable, "request_too_large": global, "invalid_id": global, "invalid_format": global,
 		"domain_scope": scoped(domainRead, aliasRead), "domain_redacted": scoped(aliasRead),
-		"outside_domain":               scoped(grants.Entry{Capability: middleware.CapDomainsRead, Scope: grants.Domain("other.test")}, grants.Entry{Capability: middleware.CapMailboxesRead, Scope: grants.Domain("other.test")}),
-		"destination_mailbox_scope":    scoped(grants.Entry{Capability: middleware.CapMailboxesRead, Scope: grants.Mailbox("owned@destination.test")}),
-		"source_mailbox_scope":         scoped(grants.Entry{Capability: middleware.CapMailboxesRead, Scope: grants.Mailbox("support@example.com")}),
+		"outside_domain":               scoped(grants.Entry{Capability: middleware.CapDomainsRead, Scope: grants.Domain("other.test")}, grants.Entry{Capability: middleware.CapAccountsRead, Scope: grants.Domain("other.test")}),
+		"destination_mailbox_scope":    scoped(grants.Entry{Capability: middleware.CapAccountsRead, Scope: grants.Mailbox("owned@destination.test")}),
+		"source_mailbox_scope":         scoped(grants.Entry{Capability: middleware.CapAccountsRead, Scope: grants.Mailbox("support@example.com")}),
 		"permission_store_unavailable": scoped(domainRead, aliasRead),
 	}, jwt
 }
