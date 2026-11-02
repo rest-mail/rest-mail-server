@@ -63,7 +63,7 @@
       "lane": "attacker",
       "col": 0,
       "type": "external",
-      "label": "Spammer's bot",
+      "label": "Spam bot",
       "sublabel": "scans for open port 25",
       "icon": "person"
     },
@@ -72,7 +72,7 @@
       "lane": "attacker",
       "col": 1,
       "type": "external",
-      "label": "Stolen password",
+      "label": "Password",
       "sublabel": "phished or guessed"
     },
     {
@@ -80,7 +80,7 @@
       "lane": "attacker",
       "col": 2,
       "type": "security",
-      "label": "Relay access denied",
+      "label": "Relay denied",
       "sublabel": "454 or 554: a correct answer",
       "icon": "success"
     },
@@ -107,7 +107,7 @@
       "lane": "server",
       "col": 3,
       "type": "backend",
-      "label": "250 OK, accepted",
+      "label": "250 OK",
       "sublabel": "for a domain not yours",
       "icon": "failure"
     },
@@ -116,7 +116,7 @@
       "lane": "mistakes",
       "col": 2,
       "type": "security",
-      "label": "mynetworks too wide",
+      "label": "mynetworks",
       "sublabel": "0.0.0.0/0 to fix a client"
     },
     {
@@ -132,7 +132,7 @@
       "lane": "mistakes",
       "col": 3,
       "type": "security",
-      "label": "permit before reject",
+      "label": "Early permit",
       "sublabel": "unauth check never runs"
     }
   ],
