@@ -562,7 +562,8 @@ narrowed to that operation, on the normal API, which must be green. Then, for
 each fault, it restarts the API built with the fault's tags (`GOFLAGS=-tags=`,
 through `RESTMAIL_API_BUILD_TAGS`), checks that the API logged `fault injection
 active` for it, and runs the phase again. The fault is caught only if that
-phase's report fails a transaction of the operation's path. A phase that never
+phase's report fails a transaction of the operation's path for its expected
+reason (the limit phases require a typed missing-guard failure). A phase that never
 ran, or a failure elsewhere, does not count. A fault with `known_gap` names the
 issue saying why the run cannot catch it yet: it passes uncaught and fails once
 caught, so the entry goes when the gap closes. The normal API is restored at the end.
@@ -575,15 +576,38 @@ on login, preserving the response body so the status check must notice.
 
 The limit switches disable the real API body cap or shared authentication
 throttle before constructing the router; login is their witness operation,
-not their only affected route. They are explicitly **not caught yet** and name
-#1493 in `known_gap`. Login's 413 and 429 examples require `body: over_cap` and
-`limit: rate`, neither of which the live examples run provides. Its normal
-requests pass even with those guards disabled. The separate limits suite
-spends these limits, but the fault runner does not invoke or judge it yet.
+not their only affected route. The `body_cap` and `auth_throttle` phases send
+narrow login probes directly, using `CONTRACT_ENDPOINT` or `vertrag.yml`'s
+endpoint. This is smaller than invoking the independent E2E limits suite:
+it needs no mailbox/MFA provisioning and can distinguish missing guards from
+transport, setup, or unrelated route failures. No workflow dependency changes
+are needed. Authorization and ownership remain report-only.
+
+Each limit baseline restarts the normal API to give it fresh buckets. The body
+probe streams a space-padded `{}` with a 32 MiB Content-Length (above the
+topology's default 21 MiB cap): the real middleware must refuse it with 413
+`request_too_large`. It may reject the declaration before the upload completes.
+A 422 `validation_failed` instead proves the body reached validation without
+that guard; a timeout or any other answer is an error, not a caught fault.
+This checks the declared-length guard, not the separate streaming cap for
+requests without a Content-Length. A topology configured with a larger cap
+fails the baseline rather than silently claiming proof.
+The throttle probe requires ordinary 401 `unauthorized` refusals followed by
+429 `rate_limited` with a positive Retry-After; only 200 consecutive ordinary
+refusals prove the throttle missing. Neither phase claims to send Vertrag's
+unproven 413/429 examples.
+
+Both entries retain #1493 in `known_gap` pending live end-to-end evidence.
+After merge, dispatch **Contract faults** (`contract-faults.yml`) on main.
+Require green normal-API baselines and both fault reports to contain the
+expected missing-guard failures. A caught fault with `known_gap` deliberately
+fails with **now caught**; this is the proof-review signal, not a green workflow
+claim. Then remove those two markers and rerun the workflow to require green.
+Local mocked HTTP tests and builds alone do not authorize removing the markers.
 
 No secrets fault is claimed here: the normal `contract` command gates on
-`secret_scan.py`, but the fault runner currently judges only examples JUnit,
-not that scan. A schema-valid password or key echo needs a scanner verdict
+`secret_scan.py`, but the fault runner judges examples JUnit and the narrow
+limit probes, not that scan. A schema-valid password or key echo needs a scanner verdict
 integrated into the fault run before it can be required to turn that run red.
 The fixture administrator's password and session token are also redacted in
 HAR bodies, so their echoes alone are not proof for the recording scanner.

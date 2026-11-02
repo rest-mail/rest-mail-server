@@ -11,7 +11,7 @@
 #               no fault code.
 #   operation   the operationId whose answer it breaks
 #   path        that operation's path, which Vertrag's report names it by
-#   phase       the contract phase expected to catch it (examples)
+#   phase       the witness phase (examples, body_cap, auth_throttle)
 #   breaks      what a client would see
 #   known_gap   optional: the issue saying why the run cannot catch it yet. It
 #               then passes uncaught, and fails once caught.
@@ -55,7 +55,7 @@ faults:
     build_tags: faultinject,fault_login_body_cap_removed
     operation: login
     path: /api/v1/auth/login
-    phase: examples
+    phase: body_cap
     breaks: The API body cap is disabled; oversized login bodies reach validation instead of receiving 413
     known_gap: "#1493"
 
@@ -63,6 +63,6 @@ faults:
     build_tags: faultinject,fault_login_rate_limit_disabled
     operation: login
     path: /api/v1/auth/login
-    phase: examples
+    phase: auth_throttle
     breaks: The shared authentication throttle is disabled; repeated refused logins no longer receive 429
     known_gap: "#1493"
