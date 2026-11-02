@@ -51,6 +51,32 @@ tls:
   keyFilename: tls.key
 
 # ── PostgreSQL (mail3) ────────────────────────────────────────────────────
+# Garage: the object store for attachments, bundled so a cluster has no "where is
+# the volume attached" problem. Set enabled=false to use another S3 store through
+# api.attachments.s3, or the filesystem on a single node. Its keys are generated
+# and kept in a Secret across upgrades. It runs one replica for now.
+garage:
+  enabled: true
+  image:
+    repository: dxflrs/garage
+    tag: "v2.4.1@sha256:9c96caa2612d3411acc5b0e6701fb238dbfba33e533a6d7d3d811a4b12d0d020"
+  # Gives Garage its layout, bucket and key before the API starts.
+  bootstrapImage:
+    repository: python
+    tag: "3.13-alpine@sha256:7984cf56ceaddebe4fefeb75d64000b9f45d8b77b11a09b24524da6cdc3af0c8"
+  bucket: restmail
+  persistence:
+    storageClass: ""
+    size: 50Gi
+    accessMode: ReadWriteOnce
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
 postgres:
   enabled: true
   image:
@@ -274,14 +300,16 @@ api:
       cpu: 1000m
       memory: 512Mi
   attachments:
-    # Select s3 to let API pods share private attachment objects without a PVC.
+    # s3 uses the bundled Garage (garage.enabled) unless the settings below name
+    # another store. filesystem needs garage.enabled=false, and suits only a
+    # single node, since the volume has to be attached where the pod runs.
     # Keep persistence enabled during migration; migrate-attachments verifies
     # copies before updating PostgreSQL references and retains source files.
-    storageType: filesystem
+    storageType: s3
     s3:
-      endpoint: "" # empty uses the AWS endpoint; Garage: http://garage-s3.garage.svc:3900
-      region: us-east-1
-      bucket: ""
+      endpoint: "" # empty with garage.enabled=false uses the AWS endpoint
+      region: us-east-1 # ignored with garage.enabled
+      bucket: "" # ignored with garage.enabled
       prefix: attachments/
       forcePathStyle: true
       accessKeyId: ""

@@ -91,7 +91,8 @@ echo "== no workload mounts a CA private key (#193) =="
 # The chart's workloads are Deployments, DaemonSets and StatefulSets; the guard fails if
 # another kind appears, so it cannot slip past these checks.
 workloads='select(.kind == "Deployment" or .kind == "DaemonSet" or .kind == "StatefulSet")'
-MOUNTABLE=" tls.crt tls.key ca.crt server.crt server.key client.crt client.key AuthKey.p8 "
+# garage.toml is Garage's own config, holding its own secrets and no certificate key.
+MOUNTABLE=" tls.crt tls.key ca.crt server.crt server.key client.crt client.key AuthKey.p8 garage.toml "
 # One line per Secret volume: <workload> <volume> <key,key,...>.
 secret_volumes() {
   yq -N e "$workloads"' | .metadata.name as $w | .spec.template.spec.volumes[] | select(has("secret"))
@@ -631,8 +632,25 @@ fi
 pass "guard rejects secure sslMode against a non-TLS bundled Postgres"
 
 echo
+echo "== the bundled Garage =="
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" > "$tmp/garage.yaml"
+assert_contains "Garage runs by default" "$tmp/garage.yaml" 'name: restmail-garage'
+assert_contains "the API uses Garage" "$tmp/garage.yaml" 'ATTACHMENT_S3_ENDPOINT: "http://restmail-garage:3900"'
+assert_contains "the bucket is made before the API starts" "$tmp/garage.yaml" 'name: garage-bootstrap'
+yq 'select(.kind == "ConfigMap")' "$tmp/garage.yaml" > "$tmp/garage-configmaps.yaml"
+assert_absent "Garage's keys never enter a ConfigMap" "$tmp/garage-configmaps.yaml" 'rpc_secret'
+yq 'select(.kind == "Secret" and .metadata.name == "restmail-garage") | .metadata.annotations' "$tmp/garage.yaml" > "$tmp/garage-keep.yaml"
+assert_contains "Garage's keys outlive an uninstall" "$tmp/garage-keep.yaml" 'keep'
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set garage.enabled=false --set api.attachments.storageType=filesystem > "$tmp/nogarage.yaml"
+assert_absent "no Garage when turned off" "$tmp/nogarage.yaml" 'restmail-garage'
+if helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set api.attachments.storageType=filesystem > /dev/null 2>&1; then
+  echo "FAIL: the filesystem was taken with Garage on"; exit 1
+fi
+
 echo "== private S3 attachments and retained migration volume =="
 cat > "$tmp/s3-values.yaml" <<'YAML'
+garage:
+  enabled: false
 api:
   attachments:
     storageType: s3
@@ -669,7 +687,7 @@ helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" -f "$tmp/s3-values.yaml" \
 assert_contains "external S3 Secret is referenced" "$tmp/s3-no-pvc.yaml" 'name: my-s3-secret'
 assert_absent "S3 after migration has no attachment mount" "$tmp/s3-no-pvc.yaml" 'mountPath: /attachments'
 assert_absent "external S3 Secret creates no inline credentials" "$tmp/s3-no-pvc.yaml" 'fixture-private-secret'
-if helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set api.attachments.storageType=s3 > /dev/null 2>&1; then
+if helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set garage.enabled=false --set api.attachments.storageType=s3 > /dev/null 2>&1; then
   fail "S3 without bucket and credentials was accepted"
 fi
 pass "incomplete S3 configuration is refused"
