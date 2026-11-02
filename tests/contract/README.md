@@ -119,6 +119,17 @@ import it became the draft `sendDraft` removes, the example answered 404, and bo
 valid probes were skipped. `delete_a_message_we_made` gives the fixture admin's
 request a message of its own, by changing only the path.
 
+### Bulk queue fixture isolation
+
+The published `empty_filter` exchanges intentionally act on every eligible queue
+entry. In particular, bulk bounce consumes the held retry fixture before the
+linked single-entry retry runs. Its success hook checks the linked row first:
+only a non-retryable entry belonging to the declared retry fixture is replaced
+by a fresh deferred entry from `chore test:contract-fixtures`. The original row
+keeps the bulk action's result. Eligible entries, unrelated IDs, malformed IDs,
+documented refusals, request bodies and caller credentials are unchanged. No
+exchange or probe is excluded, and neither coverage baseline is increased.
+
 ### Attachment download contract
 
 The topology examples send an ordinary download, `Range: bytes=0-0` for a
