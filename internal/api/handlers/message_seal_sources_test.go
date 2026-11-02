@@ -31,7 +31,7 @@ func sealSourceTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { pool.Close() })
+	t.Cleanup(func() { _ = pool.Close() })
 	if err := database.AutoMigrate(append(accountModels, &models.Message{}, &models.Attachment{}, &models.AuditEntry{}, &models.Pipeline{}, &models.Alias{})...); err != nil {
 		t.Fatal(err)
 	}
