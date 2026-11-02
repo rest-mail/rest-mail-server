@@ -10,6 +10,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
 )
 
@@ -24,7 +25,7 @@ func openSuppressionTestDB(t *testing.T) *gorm.DB {
 	}
 	gdb, err := rmdb.Connect(cfg)
 	if err != nil {
-		t.Skipf("suppression DB test skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "suppression DB test skipped: no database reachable (%v)", err)
 	}
 	if err := gdb.AutoMigrate(&models.Domain{}, &models.Mailbox{}, &models.Message{},
 		&models.OutboundQueue{}, &models.Suppression{}); err != nil {

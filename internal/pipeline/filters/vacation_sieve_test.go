@@ -11,6 +11,7 @@ import (
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 )
 
 // A Sieve vacation reply carries the RFC 3834 headers, a subject encoded for its header, and
@@ -48,7 +49,7 @@ func TestVacation_SieveReply(t *testing.T) {
 	}
 	gdb, err := rmdb.Connect(cfg)
 	if err != nil {
-		t.Skipf("vacation DB test skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "vacation DB test skipped: no database reachable (%v)", err)
 	}
 	if err := gdb.AutoMigrate(&models.Domain{}, &models.Mailbox{}, &models.VacationConfig{},
 		&models.VacationResponse{}, &models.OutboundQueue{}); err != nil {

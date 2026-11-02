@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
 )
 
@@ -21,7 +22,7 @@ func openPlusAddrTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	gdb, err := connectTestDB()
 	if err != nil {
-		t.Skipf("restmail plus-addressing DB test skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "restmail plus-addressing DB test skipped: no database reachable (%v)", err)
 	}
 	if err := gdb.AutoMigrate(&models.Domain{}, &models.Mailbox{}, &models.Alias{}, &models.Message{}, &models.QuotaUsage{}, &models.Pipeline{}); err != nil {
 		t.Skipf("restmail plus-addressing DB test skipped: migrate failed (%v)", err)

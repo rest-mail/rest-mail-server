@@ -14,6 +14,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/auth"
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
 )
 
@@ -23,7 +24,7 @@ func mailboxReads(t *testing.T) (*gorm.DB, func() int64) {
 	t.Helper()
 	db, err := rmdb.Connect(testDBConfig())
 	if err != nil {
-		t.Skipf("session cache DB test skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "session cache DB test skipped: no database reachable (%v)", err)
 	}
 	t.Cleanup(func() {
 		if sqlDB, err := db.DB(); err == nil {

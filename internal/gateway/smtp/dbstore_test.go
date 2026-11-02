@@ -10,6 +10,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
 )
 
@@ -43,7 +44,7 @@ func openStoreTestDB(t *testing.T) *gorm.DB {
 	}
 	gdb, err := rmdb.Connect(cfg)
 	if err != nil {
-		t.Skipf("smtp dbStore test skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "smtp dbStore test skipped: no database reachable (%v)", err)
 	}
 	if err := gdb.AutoMigrate(&models.Domain{}, &models.Mailbox{}, &models.Message{}, &models.OutboundQueue{}); err != nil {
 		t.Skipf("smtp dbStore test skipped: migrate failed (%v)", err)

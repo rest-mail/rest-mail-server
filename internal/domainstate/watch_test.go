@@ -12,6 +12,7 @@ import (
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
 )
 
@@ -39,7 +40,7 @@ func openWatchTestDB(t *testing.T) *gorm.DB {
 	}
 	gdb, err := rmdb.Connect(cfg)
 	if err != nil {
-		t.Skipf("domainstate test skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "domainstate test skipped: no database reachable (%v)", err)
 	}
 	if err := gdb.AutoMigrate(&models.Domain{}, &models.Certificate{}); err != nil {
 		t.Skipf("domainstate test skipped: migrate failed (%v)", err)

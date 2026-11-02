@@ -9,6 +9,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
 )
 
@@ -42,7 +43,7 @@ func openDSNTestDB(t *testing.T) *gorm.DB {
 	}
 	gdb, err := rmdb.Connect(cfg)
 	if err != nil {
-		t.Skipf("DSN rate-limit test skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "DSN rate-limit test skipped: no database reachable (%v)", err)
 	}
 	if err := gdb.AutoMigrate(&models.Message{}); err != nil {
 		t.Skipf("DSN rate-limit test skipped: migrate failed (%v)", err)

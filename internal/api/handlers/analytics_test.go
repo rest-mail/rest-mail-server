@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
 )
 
@@ -115,7 +116,7 @@ func openRollupTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	gdb, err := connectTestDB()
 	if err != nil {
-		t.Skipf("pipeline analytics DB test skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "pipeline analytics DB test skipped: no database reachable (%v)", err)
 	}
 	if err := gdb.AutoMigrate(&models.PipelineRollup{}); err != nil {
 		t.Skipf("pipeline analytics DB test skipped: migrate failed (%v)", err)

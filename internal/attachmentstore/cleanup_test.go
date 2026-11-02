@@ -12,6 +12,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/attachmentstore/s3test"
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -20,7 +21,7 @@ func cleanupDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	cfg, err := config.Load()
 	if err != nil {
-		t.Skipf("no database configuration: %v", err)
+		testdb.Unreachable(t, "no database configuration: %v", err)
 	}
 	var ping *sql.DB
 	db, err := gorm.Open(postgres.Open(cfg.DSN()), &gorm.Config{})
@@ -31,7 +32,7 @@ func cleanupDB(t *testing.T) *gorm.DB {
 		err = ping.Ping()
 	}
 	if err != nil {
-		t.Skipf("no database: %v", err)
+		testdb.Unreachable(t, "no database: %v", err)
 	}
 	if err := db.AutoMigrate(&models.Attachment{}); err != nil {
 		t.Fatal(err)

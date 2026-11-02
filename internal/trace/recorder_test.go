@@ -12,6 +12,7 @@ import (
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
 )
 
@@ -106,7 +107,7 @@ func openTraceTestDB(t *testing.T) *gorm.DB {
 	}
 	gdb, err := rmdb.Connect(cfg)
 	if err != nil {
-		t.Skipf("trace recorder DB test skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "trace recorder DB test skipped: no database reachable (%v)", err)
 	}
 	if err := gdb.AutoMigrate(&models.MessageTrace{}); err != nil {
 		t.Skipf("trace recorder DB test skipped: migrate failed (%v)", err)

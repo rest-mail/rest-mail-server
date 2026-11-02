@@ -11,6 +11,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"github.com/rest-mail/rest-mail-server/internal/outbound"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 )
 
 // TestSentMessage_CarriesOneVerifyingDKIMSignature follows a message the way
@@ -201,7 +202,7 @@ func seedSigningDomain(t *testing.T, prefix string) (*MessageHandler, string, dk
 	t.Helper()
 	gdb, err := connectTestDB()
 	if err != nil {
-		t.Skipf("sent-message DKIM test skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "sent-message DKIM test skipped: no database reachable (%v)", err)
 	}
 	if err := gdb.AutoMigrate(&models.Domain{}); err != nil {
 		t.Skipf("sent-message DKIM test skipped: migrate failed (%v)", err)

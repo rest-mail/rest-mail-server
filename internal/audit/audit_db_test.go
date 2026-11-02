@@ -12,6 +12,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
 )
 
@@ -38,7 +39,7 @@ func openAuditDB(t *testing.T) *gorm.DB {
 	}
 	admin, err := rmdb.Connect(&cfg)
 	if err != nil {
-		t.Skipf("audit DB test skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "audit DB test skipped: no database reachable (%v)", err)
 	}
 	name := fmt.Sprintf("restmail_audit_%d_%d", os.Getpid(), time.Now().UnixNano())
 	if err := admin.Exec("CREATE DATABASE " + name).Error; err != nil {

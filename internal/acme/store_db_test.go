@@ -27,6 +27,7 @@ import (
 	rmcrypto "github.com/rest-mail/rest-mail-server/internal/crypto"
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
 )
 
@@ -56,7 +57,7 @@ func openStoreTestDB(t *testing.T) *gorm.DB {
 	}
 	gdb, err := rmdb.Connect(cfg)
 	if err != nil {
-		t.Skipf("acme store test skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "acme store test skipped: no database reachable (%v)", err)
 	}
 	if err := gdb.AutoMigrate(&models.Domain{}, &models.Certificate{}, &models.ACMEAccount{}); err != nil {
 		t.Skipf("acme store test skipped: migrate failed (%v)", err)

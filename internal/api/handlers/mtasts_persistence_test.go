@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -93,7 +94,7 @@ func openMTASTSPersistenceDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	admin, err := connectTestDB()
 	if err != nil {
-		t.Skipf("MTA-STS persistence test: no database reachable (%v)", err)
+		testdb.Unreachable(t, "MTA-STS persistence test: no database reachable (%v)", err)
 	}
 	name := fmt.Sprintf("restmail_mtasts_%d_%d", os.Getpid(), time.Now().UnixNano())
 	if err := admin.Exec("CREATE DATABASE " + name).Error; err != nil {

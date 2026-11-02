@@ -31,6 +31,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
 	"github.com/rest-mail/rest-mail-server/internal/push"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
 )
 
@@ -118,7 +119,7 @@ func newPushEnv(t *testing.T) *pushEnv {
 	t.Helper()
 	db, err := connectTestDB()
 	if err != nil {
-		t.Skipf("push DB test skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "push DB test skipped: no database reachable (%v)", err)
 	}
 	if err := db.AutoMigrate(append(accountModels, &models.Message{}, &models.Attachment{}, &models.PushDevice{})...); err != nil {
 		t.Skipf("push DB test skipped: migrate failed (%v)", err)

@@ -12,6 +12,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
 )
 
@@ -35,7 +36,7 @@ func openReporterDB(t *testing.T) *gorm.DB {
 		DBPass: envOr("DB_PASS", "restmail"),
 	})
 	if err != nil {
-		t.Skipf("DMARC reporter DB test skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "DMARC reporter DB test skipped: no database reachable (%v)", err)
 	}
 	if err := db.AutoMigrate(&models.DMARCAggregateRecord{}, &models.OutboundQueue{}); err != nil {
 		t.Skipf("DMARC reporter DB test skipped: migrate failed (%v)", err)

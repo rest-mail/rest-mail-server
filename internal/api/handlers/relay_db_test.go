@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 )
 
 const relayTestMasterKey = "relay-handler-master-key"
@@ -20,7 +21,7 @@ func relayTestServer(t *testing.T, masterKey string) (http.Handler, *RelayHandle
 	t.Helper()
 	gdb, err := connectTestDB()
 	if err != nil {
-		t.Skipf("relay settings test skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "relay settings test skipped: no database reachable (%v)", err)
 	}
 	if err := gdb.AutoMigrate(&models.Domain{}, &models.DomainRelay{}); err != nil {
 		t.Fatalf("migrate: %v", err)

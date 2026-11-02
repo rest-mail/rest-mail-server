@@ -13,6 +13,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
 )
 
@@ -20,7 +21,7 @@ func openHealthTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	gdb, err := connectTestDB()
 	if err != nil {
-		t.Skipf("health DB test skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "health DB test skipped: no database reachable (%v)", err)
 	}
 	if err := gdb.AutoMigrate(append(accountModels, &models.Certificate{})...); err != nil {
 		t.Skipf("health DB test skipped: migrate failed (%v)", err)

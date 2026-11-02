@@ -9,6 +9,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
 )
 
@@ -60,7 +61,7 @@ func openDownsampleTestDB(t *testing.T) *gorm.DB {
 	}
 	gdb, err := rmdb.Connect(cfg)
 	if err != nil {
-		t.Skipf("downsample DB test skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "downsample DB test skipped: no database reachable (%v)", err)
 	}
 	if err := gdb.AutoMigrate(&models.PipelineRollup{}, &models.PipelineRollupCoarse{}); err != nil {
 		t.Skipf("downsample DB test skipped: migrate failed (%v)", err)

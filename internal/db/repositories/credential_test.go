@@ -11,6 +11,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
 )
 
@@ -28,7 +29,7 @@ func openCredentialTestDB(t *testing.T) *gorm.DB {
 	}
 	gdb, err := rmdb.Connect(cfg)
 	if err != nil {
-		t.Skipf("credential repo test skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "credential repo test skipped: no database reachable (%v)", err)
 	}
 	if err := gdb.AutoMigrate(&models.Mailbox{}, &models.Credential{}); err != nil {
 		t.Skipf("credential repo test skipped: migrate failed (%v)", err)

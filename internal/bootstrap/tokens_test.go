@@ -15,6 +15,7 @@ import (
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
+	"github.com/rest-mail/rest-mail-server/internal/testdb"
 	"gorm.io/gorm"
 )
 
@@ -237,7 +238,7 @@ func openScratchDatabase(t *testing.T) *gorm.DB {
 	}
 	admin, err := rmdb.Connect(&cfg)
 	if err != nil {
-		t.Skipf("scratch database skipped: no database reachable (%v)", err)
+		testdb.Unreachable(t, "scratch database skipped: no database reachable (%v)", err)
 	}
 	name := fmt.Sprintf("restmail_scratch_%d_%d", os.Getpid(), time.Now().UnixNano())
 	if err := admin.Exec("CREATE DATABASE " + name).Error; err != nil {
