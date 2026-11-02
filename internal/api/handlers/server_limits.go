@@ -92,5 +92,5 @@ func (h *GrantHandler) updateServerLimits(r *http.Request, req updateServerLimit
 	if err != nil {
 		return serverLimitsResponse{}, serverLimitsError(err)
 	}
-	return serverLimitsResponse{ContactImportMaxBytes: req.ContactImportMaxBytes}, nil
+	return serverLimitsResponse(req), nil
 }
