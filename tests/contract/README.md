@@ -569,9 +569,26 @@ caught, so the entry goes when the gap closes. The normal API is restored at the
 `.cache/contract/faults.md` has the verdicts, and `faults-<name>-<phase>.xml`
 each run's report.
 
-The first faults break response shapes, which the `examples` phase gates.
-Authorization and ownership faults wait until those phases stop being
-report-only; status and limit faults come later.
+The shape and status faults are caught by `examples`. The status switches
+return 201 instead of 200 on health, or 200 instead of a 422 validation refusal
+on login, preserving the response body so the status check must notice.
+
+The limit switches disable the real API body cap or shared authentication
+throttle before constructing the router; login is their witness operation,
+not their only affected route. They are explicitly **not caught yet** and name
+#1493 in `known_gap`. Login's 413 and 429 examples require `body: over_cap` and
+`limit: rate`, neither of which the live examples run provides. Its normal
+requests pass even with those guards disabled. The separate limits suite
+spends these limits, but the fault runner does not invoke or judge it yet.
+
+No secrets fault is claimed here: the normal `contract` command gates on
+`secret_scan.py`, but the fault runner currently judges only examples JUnit,
+not that scan. A schema-valid password or key echo needs a scanner verdict
+integrated into the fault run before it can be required to turn that run red.
+The fixture administrator's password and session token are also redacted in
+HAR bodies, so their echoes alone are not proof for the recording scanner.
+Authorization and ownership faults still wait until those phases stop being
+report-only. The 200-for-404 status fault also remains part of #654.
 
 ### Adding a fault
 
@@ -580,7 +597,11 @@ report-only; status and limit faults come later.
    the route's method and path, a `Break` that rewrites the recorded answer
    (`renameField`, `replaceField` and `setMediaType` are in
    `faultinject.go`), and an `Example` of the route's normal answer for the
-   package test.
+   package test. Set `ExampleStatus` when that answer is not 200. A switch
+   disabling a real guard uses `Configure` instead of `Break`; only tagged
+   builds apply it to the configuration before constructing the router. The
+   switch check exercises the configured limit middleware as well as the
+   response-rewriting faults. A normal build's configuration hook is a no-op.
 2. Add its entry to `faults.yml`: `name`, `build_tags`
    (`faultinject,fault_<name>`), `operation`, `path`, `phase` and `breaks`.
 
