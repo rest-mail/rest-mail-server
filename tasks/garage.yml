@@ -54,15 +54,18 @@ tasks:
         docker run --detach --name {{.GARAGE_CONTAINER_NAME}} \
           --network {{.GARAGE_NETWORK}} --ip {{.GARAGE_IP}} \
           --restart unless-stopped \
-          --security-opt no-new-privileges:true --cap-drop ALL \
+          --security-opt no-new-privileges:true --cap-drop ALL --cap-add DAC_OVERRIDE \
           --pids-limit 256 --memory 512m --cpus 1 \
           -v {{.GARAGE_DATA_VOLUME}}:/data \
           -v "$config":/etc/garage.toml:ro \
           --entrypoint /garage {{.GARAGE_IMAGE}} server >/dev/null
-      - >-
-        python3 -B scripts/garage-bootstrap.py
-        --admin http://{{.GARAGE_IP}}:3903 --admin-token {{.GARAGE_ADMIN_TOKEN}}
-        --bucket {{.GARAGE_BUCKET}} --access-key {{.GARAGE_ACCESS_KEY}} --secret-key {{.GARAGE_SECRET_KEY}}
+      - |
+        python3 -B scripts/garage-bootstrap.py \
+          --admin http://{{.GARAGE_IP}}:3903 --admin-token {{.GARAGE_ADMIN_TOKEN}} \
+          --bucket {{.GARAGE_BUCKET}} --access-key {{.GARAGE_ACCESS_KEY}} --secret-key {{.GARAGE_SECRET_KEY}} || {
+          docker logs --tail 40 {{.GARAGE_CONTAINER_NAME}} 2>&1
+          exit 1
+        }
 
   down:
     desc: Stop Garage, keeping its data
