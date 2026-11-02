@@ -103,6 +103,13 @@ includes:
       POSTGRES_DB_USER: '{{.RESTMAIL_DB_USER}}'
       POSTGRES_DB_PASS: '{{.RESTMAIL_DB_PASS | default "restmail"}}'
 
+  garage:
+    taskfile: ./tasks/garage.yml
+    vars:
+      GARAGE_PROJECT: '{{.RESTMAIL_PROJECT}}'
+      GARAGE_NETWORK: '{{.RESTMAIL_NETWORK}}'
+      GARAGE_IP: '{{.RESTMAIL_GARAGE_IP | default "10.99.0.44"}}'
+
   js-filter:
     taskfile: ./tasks/js-filter.yml
     vars:
@@ -127,6 +134,7 @@ includes:
       API_MODE: dev
       API_IMAGE_TAG: '{{.RESTMAIL_IMAGE_TAG}}'
       API_REGISTRY: '{{.RESTMAIL_REGISTRY}}'
+      API_GARAGE_ENDPOINT: 'http://{{.RESTMAIL_GARAGE_IP | default "10.99.0.44"}}:3900'
       API_DB_HOST: '{{.RESTMAIL_POSTGRES_IP}}'
       API_DB_NAME: '{{.RESTMAIL_DB_NAME}}'
       API_DB_USER: '{{.RESTMAIL_DB_USER}}'
@@ -1815,6 +1823,7 @@ tasks:
           fi
           sleep 1
         done
+      - task: garage:up
       - task: js-filter:up
       - task: api:up
       - task: health:wait
@@ -1934,6 +1943,7 @@ tasks:
       - task: smtp-gateway:down
       - task: api:down
       - task: js-filter:down
+      - task: garage:down
       - task: js-filter:network:down
       - task: postgres:down
 
