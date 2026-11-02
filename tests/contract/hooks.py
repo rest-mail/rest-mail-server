@@ -925,6 +925,53 @@ def a_certificate_before_going_live(transaction):
     hooks.stash["certified_domains"] = ready
 
 
+@hooks.before("setMtaStsPolicy")
+@hooks.before("getMtaStsPolicy")
+@hooks.before("deleteMtaStsPolicy")
+def prepare_mta_sts_policy_example(transaction):
+    name = transaction.get("name", "")
+    if not any(f" > {status}" in name for status in (200, 201, 204)):
+        return
+    path, _, query = transaction["fullPath"].partition("?")
+    parts = path.split("/")
+    if len(parts) != 7 or parts[-1] != "mta-sts" or not positive_id(parts[5]):
+        return
+    creating = " > 201" in name
+    if creating and parts[5] == "2":
+        domains = hooks.stash.get("mta_sts_create_domains", {})
+        origin = origin_of(transaction)
+        if origin not in domains:
+            domain = fixture_call(
+                transaction,
+                "POST",
+                "/api/v1/admin/domains",
+                {
+                    "name": f"contract-mta-sts-{time.time_ns()}.test",
+                    "server_type": "traditional",
+                },
+            )
+            domains[origin] = domain["id"]
+            hooks.stash["mta_sts_create_domains"] = domains
+        parts[5] = str(domains[origin])
+        path = "/".join(parts)
+        transaction["fullPath"] = path + ("?" + query if query else "")
+    if creating:
+        fixture_call(transaction, "DELETE", path, expect=(204, 404))
+    else:
+        fixture_call(
+            transaction,
+            "PUT",
+            path,
+            {
+                "mode": "testing",
+                "mx_hosts": "mail.example.com",
+                "max_age": 604800,
+                "active": True,
+            },
+            expect=PROBE_REFUSALS,
+        )
+
+
 @hooks.before("mtaStsPolicyFile")
 def ask_for_the_created_domains_policy(transaction):
     # Served at mta-sts.<domain>: the domain is the Host's, not a parameter.
@@ -1614,6 +1661,13 @@ def on_the_added_sender_rule(transaction):
     parent, _, entry_id = path.rpartition("/")
     created = hooks.stash.get("created_sender_rules", {}).get(parent)
     coverage_placeholder = os.environ.get("CONTRACT_COVERAGE") == "1" and entry_id == "1"
+    if (
+        not created
+        and coverage_placeholder
+        and " > 204" in transaction.get("name", "")
+        and sender_rules_path({"fullPath": parent}) is not None
+    ):
+        created = {"id": 1, "body": {"pattern": "contract-remove@restmail.test"}}
     if not created or (entry_id != str(created["id"]) and not coverage_placeholder):
         return
     origin = "{}//{}:{}".format(
@@ -1626,10 +1680,13 @@ def on_the_added_sender_rule(transaction):
         "Authorization": "Bearer " + admin_token(origin),
     }
     pattern = created["body"]["pattern"]
+    rules = sender_rules(origin, parent, headers)
+    if rules is None:
+        return
     rule = next(
         (
             r
-            for r in sender_rules(origin, parent, headers) or []
+            for r in rules
             if r.get("pattern") == pattern
         ),
         None,
