@@ -76,7 +76,9 @@ func cleanResetData(tx *gorm.DB) error {
 	}
 	for _, statement := range statements {
 		var table string
-		fmt.Sscanf(statement, "DELETE FROM %s", &table)
+		if _, err := fmt.Sscanf(statement, "DELETE FROM %s", &table); err != nil {
+			return fmt.Errorf("read the table of retained reset statement %q: %w", statement, err)
+		}
 		if !containsResetTable(tables, table) {
 			continue
 		}
