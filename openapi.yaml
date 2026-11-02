@@ -4971,6 +4971,94 @@ paths:
   # ═══════════════════════════════════════════════════════════════
   # Contacts
   # ═══════════════════════════════════════════════════════════════
+  /api/v1/accounts/{id}/contact-reply-time:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    get:
+      operationId: getContactReplyTimeSetting
+      tags: [Contacts]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - APIKeyAuth: [mail:read]
+        - BasicAuth: [mail:read]
+      summary: Get the account's contact reply-time setting
+      description: Off by default. Only this account's stored mail is used; no history is calculated or returned while disabled. Nothing is sent to contacts or external services.
+      responses:
+        "200":
+          description: Account reply-time preference
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ContactReplyTimeSetting"
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: setContactReplyTimeSetting
+      tags: [Contacts]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - APIKeyAuth: [mail:write]
+        - BasicAuth: [mail:write]
+      summary: Set the account's contact reply-time setting
+      description: Opt in to local estimates in contact lists and suggestions. The median of at least three first replies matched by In-Reply-To (or the final References ID when absent) to this account's Sent messages addressed to that contact, using received_at timestamps. Drafts, deleted mail and nonpositive delays are ignored; each sent Message-ID counts once. No headers, outbound requests or tracking are added. This is not a signal from the contact.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactReplyTimeSetting"
+      responses:
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "200":
+          description: Saved account reply-time preference
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ContactReplyTimeSetting"
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/accounts/{id}/contacts:
     parameters:
       - $ref: "#/components/parameters/AccountId"
@@ -14712,10 +14800,23 @@ components:
     # ─────────────────────────────────────────────────────────────
     # Contact
     # ─────────────────────────────────────────────────────────────
+    ContactReplyTimeSetting:
+      type: object
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+
     Contact:
       type: object
       required: [id, mailbox_id, email, name, trust_level, source, created_at, updated_at]
       properties:
+        usual_reply_seconds:
+          type: [integer, "null"]
+          format: int64
+          minimum: 1
+          example: 7200
+          description: Median first-reply delay in seconds from this account's own history. Omitted when disabled or fewer than three matched replies exist. Not a signal from the contact.
         id:
           type: integer
         mailbox_id:

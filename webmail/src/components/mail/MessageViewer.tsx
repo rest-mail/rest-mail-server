@@ -19,6 +19,7 @@ import { CalendarInvite } from './CalendarInvite';
 import { HtmlMessageBody } from './HtmlMessageBody';
 import { TrustBadge, TrustReceipt } from './signals';
 import { cn } from '@/lib/utils';
+import { SenderReplyTime } from '@/components/contacts/SenderReplyTime';
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -356,6 +357,7 @@ export function MessageViewer() {
                   {msg.sender_name ? `${msg.sender_name} <${displayAddress(msg.sender)}>` : displayAddress(msg.sender)}
                 </span>
                 <TrustBadge headers={msg.headers} compact />
+                {activeAccountId && <SenderReplyTime key={`${activeAccountId}:${msg.sender}`} accountId={activeAccountId} email={msg.sender} />}
               </p>
               <p>
                 <span className="font-medium text-foreground">date:</span>{' '}
