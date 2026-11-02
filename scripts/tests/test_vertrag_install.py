@@ -22,7 +22,7 @@ class VertragInstall(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)
         self.cache = self.root / "cache tools"
-        self.workflow = self.root / "workflow.yml"
+        self.pin = self.root / "vertrag-pin.yml"
         self.binary = b"#!/bin/sh\nexit 0\n"
         self.archive = self.make_archive()
         self.sha = hashlib.sha256(self.archive).hexdigest()
@@ -30,7 +30,7 @@ class VertragInstall(unittest.TestCase):
         self.system, self.machine = "linux", "x86_64"
         self.requests = []
         for patch in [
-            mock.patch.object(vertrag_pin, "WORKFLOW", str(self.workflow)),
+            mock.patch.object(vertrag_pin, "PIN_FILE", str(self.pin)),
             mock.patch.object(
                 vertrag_pin,
                 "this_machine",
@@ -42,7 +42,7 @@ class VertragInstall(unittest.TestCase):
             self.addCleanup(patch.stop)
 
     def write_pin(self, sha):
-        self.workflow.write_text(f"VERTRAG_VERSION: 0.29.1\nVERTRAG_SHA256: {sha}\n")
+        self.pin.write_text(f"VERTRAG_VERSION: 0.29.1\nVERTRAG_SHA256: {sha}\n")
 
     def make_archive(self, link=False):
         output = io.BytesIO()
@@ -146,7 +146,7 @@ class VertragInstall(unittest.TestCase):
 
     def test_other_platform_uses_its_pinned_release_archive_checksum(self):
         self.system, self.machine = "darwin", "arm64"
-        self.write_pin("f" * 64)  # The workflow digest belongs to Linux x86_64.
+        self.write_pin("f" * 64)
         target = self.install()
         self.assertEqual(target.read_bytes(), self.binary)
         self.assertIn("darwin-arm64", self.requests[-1])

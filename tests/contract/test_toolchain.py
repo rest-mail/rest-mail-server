@@ -42,12 +42,11 @@ class Toolchain(unittest.TestCase):
                     tar.addfile(member, io.BytesIO(binary))
                 data = archive.getvalue()
                 sha = hashlib.sha256(data).hexdigest()
-                workflow = root / ".github/workflows/e2e-suite.yml"
-                workflow.parent.mkdir(parents=True)
-                workflow.write_text(f"VERTRAG_VERSION: 0.29.1\nVERTRAG_SHA256: {sha}\n")
+                pin = root / "scripts/vertrag-pin.yml"
+                pin.write_text(f"VERTRAG_VERSION: 0.29.1\nVERTRAG_SHA256: {sha}\n")
                 name = vertrag_pin.asset("0.29.1", *vertrag_pin.this_machine())
                 with (
-                    mock.patch.object(vertrag_pin, "WORKFLOW", str(workflow)),
+                    mock.patch.object(vertrag_pin, "PIN_FILE", str(pin)),
                     mock.patch.object(
                         vertrag_pin,
                         "fetch",

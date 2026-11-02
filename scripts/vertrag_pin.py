@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """The Vertrag release REST Mail's contract run uses, pinned with its checksum (#628).
 
-The pin is VERTRAG_VERSION and VERTRAG_SHA256 in .github/workflows/e2e-suite.yml: the
+The pin is VERTRAG_VERSION and VERTRAG_SHA256 in scripts/vertrag-pin.yml: the
 version CI installs and the sha256 of its linux-x86_64 archive, from that release's own
-checksums.txt.
+checksums.txt. This script owns the file so automated bumps never edit workflows.
 
   vertrag_pin.py version          print the pinned version
   vertrag_pin.py bump             pin the latest release, version and checksum together
@@ -29,28 +29,28 @@ import tempfile
 import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-WORKFLOW = os.path.join(ROOT, ".github", "workflows", "e2e-suite.yml")
+PIN_FILE = os.path.join(ROOT, "scripts", "vertrag-pin.yml")
 REPO = "antimatter-studios/vertrag"
 
 VERSION_LINE = re.compile(r"^(\s*VERTRAG_VERSION:\s*)(\S+)\s*$", re.MULTILINE)
 SHA_LINE = re.compile(r"^(\s*VERTRAG_SHA256:\s*)([0-9a-f]{64})\s*$", re.MULTILINE)
 
 
-def pinned(workflow):
-    """The version and checksum the workflow pins."""
-    version, sha = VERSION_LINE.search(workflow), SHA_LINE.search(workflow)
+def pinned(pin):
+    """The version and checksum in the script-owned pin file."""
+    version, sha = VERSION_LINE.search(pin), SHA_LINE.search(pin)
     if not version or not sha:
         raise ValueError(
-            "e2e-suite.yml has no VERTRAG_VERSION and VERTRAG_SHA256 to pin"
+            "vertrag-pin.yml has no VERTRAG_VERSION and VERTRAG_SHA256 to pin"
         )
     return version.group(2), sha.group(2)
 
 
-def with_pin(workflow, version, sha):
-    """The workflow pinning version and sha instead."""
-    pinned(workflow)
-    workflow = VERSION_LINE.sub(lambda m: m.group(1) + version, workflow, count=1)
-    return SHA_LINE.sub(lambda m: m.group(1) + sha, workflow, count=1)
+def with_pin(pin, version, sha):
+    """The pin file with version and sha replaced together."""
+    pinned(pin)
+    pin = VERSION_LINE.sub(lambda match: match.group(1) + version, pin, count=1)
+    return SHA_LINE.sub(lambda match: match.group(1) + sha, pin, count=1)
 
 
 def asset(version, system="linux", machine="x86_64"):
@@ -89,16 +89,16 @@ def release_checksums(version):
 
 
 def bump():
-    with open(WORKFLOW) as f:
-        workflow = f.read()
-    current, _ = pinned(workflow)
+    with open(PIN_FILE) as stream:
+        pin = stream.read()
+    current, _ = pinned(pin)
     latest = latest_version()
     if latest == current:
         print(f"Vertrag {current} is the latest release; nothing to bump")
         return 0
     sha = checksum_for(release_checksums(latest), asset(latest))
-    with open(WORKFLOW, "w") as f:
-        f.write(with_pin(workflow, latest, sha))
+    with open(PIN_FILE, "w") as stream:
+        stream.write(with_pin(pin, latest, sha))
     print(f"Vertrag {current} -> {latest} ({sha})")
     return 0
 
@@ -126,7 +126,7 @@ def atomic_write(path, data, mode):
 
 
 def install(directory):
-    with open(WORKFLOW) as f:
+    with open(PIN_FILE) as f:
         version, linux_sha = pinned(f.read())
     system, machine = this_machine()
     name = asset(version, system, machine)
@@ -194,7 +194,7 @@ def cached(directory, version, linux_sha, system, machine):
 def ensure(directory):
     """Select only the project cache, never an unrelated executable from PATH."""
     directory = os.path.realpath(directory)
-    with open(WORKFLOW) as stream:
+    with open(PIN_FILE) as stream:
         version, linux_sha = pinned(stream.read())
     system, machine = this_machine()
     if not cached(directory, version, linux_sha, system, machine):
@@ -215,7 +215,7 @@ def ensure(directory):
 
 def main(argv):
     if len(argv) == 2 and argv[1] == "version":
-        with open(WORKFLOW) as f:
+        with open(PIN_FILE) as f:
             print(pinned(f.read())[0])
         return 0
     if len(argv) == 2 and argv[1] == "bump":
