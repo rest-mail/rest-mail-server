@@ -1,20 +1,19 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
+	jwtlib "github.com/golang-jwt/jwt/v5"
 	"github.com/rest-mail/rest-mail-server"
+	"github.com/rest-mail/rest-mail-server/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/config"
 )
 
 func TestInvitationExamplesWithVertrag(t *testing.T) {
@@ -32,10 +31,6 @@ func TestInvitationExamplesWithVertrag(t *testing.T) {
 			continue
 		}
 		for name, pair := range examples {
-			switch name {
-			case "malformed_json", "rate_limited", "recent_two_factor_required", "two_factor_required":
-				continue // Refused before the handler, out of this fixture's reach; proven in process.
-			}
 			t.Run(operation+"/"+name, func(t *testing.T) {
 				mode := map[string]string{"insufficient_permissions": "denied", "missing": "missing_account", "existing_credentials": "established_account", "invalid_token": "expired", "wrong_purpose": "wrong_purpose", "unavailable": "unavailable"}[name]
 				if name == "internal_error" {
@@ -43,6 +38,9 @@ func TestInvitationExamplesWithVertrag(t *testing.T) {
 					if operation == "inviteAccount" {
 						mode = "mint_failure"
 					}
+				}
+				if name == "rate_limited" && operation == "acceptInvitation" {
+					mode = "rate_limited"
 				}
 				f := newInvitationFixture(t, mode)
 				path := "/api/v1/auth/invitation"
@@ -54,110 +52,95 @@ func TestInvitationExamplesWithVertrag(t *testing.T) {
 						uri = strings.ReplaceAll(path, "{id}", "0")
 					}
 				}
-				doc := contractDocument(t, describedRouters(t).pairGenerator(t, "invitation examples"))
-				op := doc["paths"].(map[string]any)[path].(map[string]any)["post"].(map[string]any)
-				doc["paths"] = map[string]any{path: map[string]any{"post": op}}
-				status := strconv.Itoa(pair.Response.Status)
-				response := op["responses"].(map[string]any)[status].(map[string]any)
-				for _, v := range response["content"].(map[string]any) {
-					media := v.(map[string]any)
-					selected := media["examples"].(map[string]any)[name]
-					if selected == nil {
-						t.Fatal("response example missing")
-					}
-					media["examples"] = map[string]any{name: selected}
-				}
-				op["responses"] = map[string]any{status: response}
-				if request, ok := op["requestBody"].(map[string]any); ok {
-					for _, v := range request["content"].(map[string]any) {
-						media := v.(map[string]any)
-						if examples, ok := media["examples"].(map[string]any); ok {
-							media["examples"] = map[string]any{name: examples[name]}
-						}
-					}
-				}
-				// The hook sends the exact published pair, including invalid path/body
-				// examples. Compiler placeholders never change the described constraints.
-				if params, ok := op["parameters"].([]any); ok {
-					for _, v := range params {
-						p := v.(map[string]any)
-						delete(p, "examples")
-						p["example"] = 12
-					}
-				}
-				dir := t.TempDir()
-				data, _ := marshalPairDescription(doc)
-				if err := os.WriteFile(filepath.Join(dir, "openapi.json"), data, 0600); err != nil {
-					t.Fatal(err)
-				}
 				body := ""
 				if len(pair.Request.Body) > 0 {
 					body = string(pair.Request.Body)
 				}
+				if pair.Requires["body"] == "malformed" {
+					body = "{"
+				}
 				if operation == "inviteAccount" && name == "request_too_large" {
 					body = strings.Repeat("x", 513)
 				}
-				hook := "import vertrag_hooks as hooks\n@hooks.before_each\ndef exact_invitation_pair(transaction):\n    transaction['fullPath'] = " + strconv.Quote(uri) + "\n    transaction['request']['body'] = " + strconv.Quote(body) + "\n"
-				if err := os.WriteFile(filepath.Join(dir, "pair.py"), []byte(hook), 0600); err != nil {
-					t.Fatal(err)
+				subject, token := http.Handler(f.handler), f.token
+				switch {
+				case operation == "acceptInvitation" && name == "rate_limited":
+					subject = invitationSpentThrottle(f.handler, uri)
+				case operation == "inviteAccount" && name == "rate_limited":
+					subject = apiKeyRefusalLimited(t)
+				case name == "two_factor_required" || name == "recent_two_factor_required":
+					subject, token = invitationTwoFactorRefusal(t, name)
 				}
-				if err := os.WriteFile(filepath.Join(dir, "vertrag.yml"), []byte("language: python\nhookfiles: ./pair.py\n"), 0600); err != nil {
-					t.Fatal(err)
+				if operation == "acceptInvitation" || name == "unauthenticated" {
+					token = ""
 				}
-				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					rr := httptest.NewRecorder()
-					f.handler.ServeHTTP(rr, r)
-					if operation == "inviteAccount" && rr.Code == 201 {
-						// The dedicated route test verifies entropy, persisted hash, lifetime
-						// and secrecy headers before this volatile illustration is normalized.
-						var payload map[string]any
-						if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
-							t.Error(err)
-							return
-						}
-						data := payload["data"].(map[string]any)
-						data["token"] = invitationExampleToken
-						data["expires_at"] = "2030-01-01T00:15:00Z"
-						normalized, _ := json.Marshal(payload)
-						rr.Body.Reset()
-						_, _ = rr.Body.Write(normalized)
-					}
-					for k, values := range rr.Header() {
-						for _, value := range values {
-							w.Header().Add(k, value)
-						}
-					}
-					w.WriteHeader(rr.Code)
-					_, _ = w.Write(rr.Body.Bytes())
-				}))
-				defer server.Close()
-				args := []string{"run", "--endpoint", server.URL, "--reporter", "json", "--output", "report.json"}
-				if operation == "inviteAccount" && name != "unauthenticated" {
-					args = append(args, "--header", "Authorization: Bearer "+f.token)
-				}
-				args = append(args, "openapi.json")
-				ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
-				defer cancel()
-				cmd := exec.CommandContext(ctx, binary, args...)
-				cmd.Dir = dir
-				output, err := cmd.CombinedOutput()
-				if err != nil {
-					t.Fatalf("invitation exchange failed: %v\n%s", err, output)
-				}
-				data, err = os.ReadFile(filepath.Join(dir, "report.json"))
-				if err != nil {
-					t.Fatal(err)
-				}
-				var report struct {
-					Summary struct{ Total, Passing, Failing, Errors, Skipped int }
-				}
-				if err := json.Unmarshal(data, &report); err != nil {
-					t.Fatal(err)
-				}
-				if report.Summary.Total != 1 || report.Summary.Passing != 1 || report.Summary.Failing != 0 || report.Summary.Errors != 0 || report.Summary.Skipped != 0 {
-					t.Fatalf("invitation exchange did not execute and pass: %s", data)
-				}
+				checkNamedPairWithVertrag(t, binary, invitationNormalizedMint(t, subject, operation), namedPairExchange{
+					method: http.MethodPost, path: path, uri: uri, name: name, status: pair.Response.Status, body: body, token: token,
+				})
 			})
 		}
 	}
+}
+
+// invitationNormalizedMint replaces the volatile values of a minted invitation.
+// The dedicated route test verifies entropy, persisted hash, lifetime and
+// secrecy headers before this illustration is normalized.
+func invitationNormalizedMint(t *testing.T, handler http.Handler, operation string) http.Handler {
+	t.Helper()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, r)
+		if operation == "inviteAccount" && rr.Code == http.StatusCreated {
+			var payload map[string]any
+			if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+				t.Error(err)
+				return
+			}
+			data := payload["data"].(map[string]any)
+			data["token"] = invitationExampleToken
+			data["expires_at"] = "2030-01-01T00:15:00Z"
+			normalized, _ := json.Marshal(payload)
+			rr.Body.Reset()
+			_, _ = rr.Body.Write(normalized)
+		}
+		for k, values := range rr.Header() {
+			for _, value := range values {
+				w.Header().Add(k, value)
+			}
+		}
+		w.WriteHeader(rr.Code)
+		_, _ = w.Write(rr.Body.Bytes())
+	})
+}
+
+// invitationSpentThrottle spends the sign-in throttle from the caller's address
+// before the real request arrives, so that request is the one refused.
+func invitationSpentThrottle(handler http.Handler, uri string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		spend := httptest.NewRequest(http.MethodPost, uri, strings.NewReader("{"))
+		spend.Header.Set("Content-Type", "application/json")
+		spend.RemoteAddr = r.RemoteAddr
+		handler.ServeHTTP(httptest.NewRecorder(), spend)
+		handler.ServeHTTP(w, r)
+	})
+}
+
+// invitationTwoFactorRefusal is the production router with a session the
+// two-factor check refuses: password-only, or signed in longer ago than the
+// fresh window. It uses the same sessions as TestTwoFactorRefusalExamples.
+func invitationTwoFactorRefusal(t *testing.T, name string) (http.Handler, string) {
+	t.Helper()
+	jwt := auth.NewJWTService(routerTestSecret, time.Minute, time.Hour)
+	r := NewRouters(requirementDB(t, &twoFactorRefusalConnection{}), jwt, &config.Config{Environment: "test", MasterKey: accessMasterKey}, nil)
+	t.Cleanup(r.Close)
+	amr, opts := []string{auth.AMRPassword}, []auth.TokenOption(nil)
+	if name == "recent_two_factor_required" {
+		amr = []string{auth.AMRPassword, auth.AMROTP}
+		opts = append(opts, auth.ContinueSession("stale-session"), auth.ContinueAuthentication(jwtlib.NewNumericDate(time.Now().Add(-time.Hour))))
+	}
+	session, err := jwt.GenerateSession(1, "admin@example.test", 0, amr, false, opts...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r.Public, session.AccessToken
 }

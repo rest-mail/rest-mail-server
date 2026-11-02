@@ -278,7 +278,11 @@ func newInvitationFixture(t *testing.T, mode string) *invitationFixture {
 	if err != nil {
 		t.Fatal("could not sign fixture session")
 	}
-	routers := NewRouters(db, jwt, &config.Config{Environment: "test", APIMaxBodyBytes: 512, TOTP2FAEnabled: mode != "unavailable", MasterKey: accessMasterKey}, nil)
+	cfg := &config.Config{Environment: "test", APIMaxBodyBytes: 512, TOTP2FAEnabled: mode != "unavailable", MasterKey: accessMasterKey}
+	if mode == "rate_limited" {
+		cfg.AuthRateLimitEnabled, cfg.AuthRateLimitRPS, cfg.AuthRateLimitBurst = true, 1.0/3600, 1
+	}
+	routers := NewRouters(db, jwt, cfg, nil)
 	t.Cleanup(routers.Close)
 	return &invitationFixture{c, routers.Public, jwt, session.AccessToken}
 }

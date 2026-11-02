@@ -255,12 +255,16 @@ func TestSenderRuleCreateExamplesWithVertrag(t *testing.T) {
 			counts[fmt.Sprint(pair.Response.Status)]++
 		}
 		for status, count := range counts {
-			if status == "400" {
-				continue // A malformed body needs a raw request this check does not send. TestSenderRuleCreateExamples proves it in process.
-			}
 			t.Run(operation+"/"+status, func(t *testing.T) {
 				routers, jwt, _ := senderRuleCreateRouters(t, operation)
 				token := mailboxToken(t, jwt)
+				if status == "400" {
+					// The published malformed body is a raw request, so a hook sends it.
+					checkNamedPairWithVertrag(t, binary, routers["normal"], namedPairExchange{
+						method: http.MethodPost, path: path, uri: strings.ReplaceAll(path, "{id}", "1"), name: "malformed_json", status: http.StatusBadRequest, body: "{", token: token,
+					})
+					return
+				}
 				precondition := map[string]string{"429": "rate_limited", "201": "created", "401": "unauthenticated", "403": "outside_domain", "413": "request_too_large", "503": "session_unavailable"}[status]
 				if precondition == "" {
 					precondition = "normal"
