@@ -62,6 +62,7 @@
     "deleteMessage",
     "getAttachment",
     "getMessage",
+    "verifyMessageSeal",
     "getQuota",
     "getRawMessage",
     "getThread",

@@ -32387,40 +32387,41 @@
         "body": {
           "data": [
             {
-              "id": 1,
               "class": "person",
-              "mailbox_id": 1,
+              "calendar_events": [],
+              "created_at": "2026-10-20T00:00:00Z",
+              "date_header": "2026-10-20T00:00:00Z",
+              "downgraded_size": 137,
               "folder": "INBOX",
-              "message_id": "\u003cmessage@example.net\u003e",
-              "in_reply_to": "",
-              "references": "",
-              "thread_id": "",
-              "sender": "sender@example.net",
-              "sender_name": "Sender",
-              "recipients_to": [
-                "recipient@example.com"
-              ],
-              "recipients_cc": [],
-              "subject": "Subject",
+              "has_attachments": false,
               "headers": {
                 "Subject": [
                   "Subject"
                 ]
               },
-              "calendar_events": [],
-              "size_bytes": 80,
-              "raw_size": 137,
-              "downgraded_size": 137,
-              "has_attachments": false,
-              "is_read": false,
+              "id": 1,
+              "in_reply_to": "",
+              "is_deleted": false,
+              "is_draft": false,
               "is_dsn": false,
               "is_flagged": false,
+              "is_read": false,
               "is_starred": false,
-              "is_draft": false,
-              "is_deleted": false,
+              "mailbox_id": 1,
+              "message_id": "\u003cmessage@example.net\u003e",
+              "raw_size": 137,
               "received_at": "2026-10-20T00:00:00Z",
-              "date_header": "2026-10-20T00:00:00Z",
-              "created_at": "2026-10-20T00:00:00Z",
+              "recipients_cc": [],
+              "recipients_to": [
+                "recipient@example.com"
+              ],
+              "references": "",
+              "sealed_hash": "00ced91ef87007eb619fe4d649ec941257846db0f6aa30fcea744c76902a3eea",
+              "sender": "sender@example.net",
+              "sender_name": "Sender",
+              "size_bytes": 80,
+              "subject": "Subject",
+              "thread_id": "",
               "updated_at": "2026-10-20T00:00:00Z"
             }
           ],
@@ -32943,36 +32944,37 @@
         "status": 201,
         "body": {
           "data": {
-            "id": 13,
             "class": "person",
-            "mailbox_id": 1,
+            "body_text": "Not sent yet.",
+            "created_at": "2026-10-27T07:00:00Z",
+            "date_header": null,
+            "downgraded_size": 200,
             "folder": "Sent",
-            "message_id": "\u003cdraft-sent@restmail.test\u003e",
+            "has_attachments": false,
+            "id": 13,
             "in_reply_to": "",
-            "references": "",
-            "thread_id": "\u003cdraft-sent@restmail.test\u003e",
-            "sender": "admin@restmail.test",
-            "sender_name": "",
+            "is_deleted": false,
+            "is_draft": false,
+            "is_dsn": false,
+            "is_flagged": false,
+            "is_read": true,
+            "is_starred": false,
+            "mailbox_id": 1,
+            "message_id": "\u003cdraft-sent@restmail.test\u003e",
+            "raw_size": 200,
+            "received_at": "2026-10-27T07:00:00Z",
+            "recipients_cc": [],
             "recipients_to": [
               "someone@imap.restmail.test"
             ],
-            "recipients_cc": [],
-            "subject": "Draft",
+            "references": "",
+            "sealed_hash": "c8df0e809a88268049a3d046bf4c17819b16cbf2e5d3845e15368a251710bfb2",
+            "sender": "admin@restmail.test",
+            "sender_name": "",
             "size_bytes": 18,
-            "raw_size": 200,
-            "downgraded_size": 200,
-            "has_attachments": false,
-            "is_read": true,
-            "is_dsn": false,
-            "is_flagged": false,
-            "is_starred": false,
-            "is_draft": false,
-            "is_deleted": false,
-            "received_at": "2026-10-27T07:00:00Z",
-            "date_header": null,
-            "created_at": "2026-10-27T07:00:00Z",
-            "updated_at": "2026-10-27T07:00:00Z",
-            "body_text": "Not sent yet."
+            "subject": "Draft",
+            "thread_id": "\u003cdraft-sent@restmail.test\u003e",
+            "updated_at": "2026-10-27T07:00:00Z"
           }
         },
         "mediaType": "application/json"
@@ -33309,35 +33311,36 @@
         "status": 201,
         "body": {
           "data": {
-            "id": 1,
             "class": "person",
-            "mailbox_id": 2,
+            "body_text": "Sent through the REST API.",
+            "created_at": "2026-10-21T12:00:00Z",
+            "date_header": null,
+            "downgraded_size": 297,
             "folder": "Sent",
-            "sender": "shared@restmail.test",
-            "message_id": "\u003c00000000-0000-4000-8000-000000000001@restmail.test\u003e",
+            "has_attachments": false,
+            "id": 1,
             "in_reply_to": "",
-            "references": "",
-            "thread_id": "\u003c00000000-0000-4000-8000-000000000001@restmail.test\u003e",
-            "sender_name": "",
+            "is_deleted": false,
+            "is_draft": false,
+            "is_dsn": false,
+            "is_flagged": false,
+            "is_read": true,
+            "is_starred": false,
+            "mailbox_id": 2,
+            "message_id": "\u003c00000000-0000-4000-8000-000000000001@restmail.test\u003e",
+            "raw_size": 297,
+            "received_at": "2026-10-21T12:00:00Z",
+            "recipients_cc": [],
             "recipients_to": [
               "recipient@example.net"
             ],
-            "recipients_cc": [],
-            "subject": "Hello",
-            "body_text": "Sent through the REST API.",
+            "references": "",
+            "sealed_hash": "c8df0e809a88268049a3d046bf4c17819b16cbf2e5d3845e15368a251710bfb2",
+            "sender": "shared@restmail.test",
+            "sender_name": "",
             "size_bytes": 31,
-            "raw_size": 297,
-            "downgraded_size": 297,
-            "has_attachments": false,
-            "is_dsn": false,
-            "date_header": null,
-            "is_read": true,
-            "is_flagged": false,
-            "is_starred": false,
-            "is_draft": false,
-            "is_deleted": false,
-            "received_at": "2026-10-21T12:00:00Z",
-            "created_at": "2026-10-21T12:00:00Z",
+            "subject": "Hello",
+            "thread_id": "\u003c00000000-0000-4000-8000-000000000001@restmail.test\u003e",
             "updated_at": "2026-10-21T12:00:00Z"
           }
         }
@@ -33363,35 +33366,36 @@
         "status": 201,
         "body": {
           "data": {
-            "id": 1,
             "class": "person",
-            "mailbox_id": 2,
+            "body_text": "Sent through the REST API.",
+            "created_at": "2026-10-21T12:00:00Z",
+            "date_header": null,
+            "downgraded_size": 297,
             "folder": "Sent",
-            "sender": "shared@restmail.test",
-            "message_id": "\u003c00000000-0000-4000-8000-000000000001@restmail.test\u003e",
+            "has_attachments": false,
+            "id": 1,
             "in_reply_to": "",
-            "references": "",
-            "thread_id": "\u003c00000000-0000-4000-8000-000000000001@restmail.test\u003e",
-            "sender_name": "",
+            "is_deleted": false,
+            "is_draft": false,
+            "is_dsn": false,
+            "is_flagged": false,
+            "is_read": true,
+            "is_starred": false,
+            "mailbox_id": 2,
+            "message_id": "\u003c00000000-0000-4000-8000-000000000001@restmail.test\u003e",
+            "raw_size": 297,
+            "received_at": "2026-10-21T12:00:00Z",
+            "recipients_cc": [],
             "recipients_to": [
               "recipient@example.net"
             ],
-            "recipients_cc": [],
-            "subject": "Hello",
-            "body_text": "Sent through the REST API.",
+            "references": "",
+            "sealed_hash": "c8df0e809a88268049a3d046bf4c17819b16cbf2e5d3845e15368a251710bfb2",
+            "sender": "shared@restmail.test",
+            "sender_name": "",
             "size_bytes": 31,
-            "raw_size": 297,
-            "downgraded_size": 297,
-            "has_attachments": false,
-            "is_dsn": false,
-            "date_header": null,
-            "is_read": true,
-            "is_flagged": false,
-            "is_starred": false,
-            "is_draft": false,
-            "is_deleted": false,
-            "received_at": "2026-10-21T12:00:00Z",
-            "created_at": "2026-10-21T12:00:00Z",
+            "subject": "Hello",
+            "thread_id": "\u003c00000000-0000-4000-8000-000000000001@restmail.test\u003e",
             "updated_at": "2026-10-21T12:00:00Z"
           }
         }
@@ -33494,36 +33498,37 @@
         "status": 201,
         "body": {
           "data": {
-            "id": 1,
             "class": "person",
-            "mailbox_id": 1,
+            "body_text": "Sent through the REST API.",
+            "created_at": "2026-10-21T12:00:00Z",
+            "date_header": null,
+            "downgraded_size": 297,
             "folder": "Sent",
-            "sender": "admin@restmail.test",
-            "message_id": "\u003c00000000-0000-4000-8000-000000000001@restmail.test\u003e",
+            "has_attachments": false,
+            "id": 1,
             "in_reply_to": "",
-            "references": "",
-            "thread_id": "\u003c00000000-0000-4000-8000-000000000001@restmail.test\u003e",
-            "sender_name": "",
+            "is_deleted": false,
+            "is_draft": false,
+            "is_dsn": false,
+            "is_flagged": false,
+            "is_read": true,
+            "is_starred": false,
+            "mailbox_id": 1,
+            "message_id": "\u003c00000000-0000-4000-8000-000000000001@restmail.test\u003e",
+            "raw_size": 297,
+            "received_at": "2026-10-21T12:00:00Z",
+            "recipients_cc": [],
             "recipients_to": [
               "admin@restmail.test",
               "someone@imap.restmail.test"
             ],
-            "recipients_cc": [],
-            "subject": "Hello",
-            "body_text": "Sent through the REST API.",
+            "references": "",
+            "sealed_hash": "c8df0e809a88268049a3d046bf4c17819b16cbf2e5d3845e15368a251710bfb2",
+            "sender": "admin@restmail.test",
+            "sender_name": "",
             "size_bytes": 31,
-            "raw_size": 297,
-            "downgraded_size": 297,
-            "has_attachments": false,
-            "is_dsn": false,
-            "date_header": null,
-            "is_read": true,
-            "is_flagged": false,
-            "is_starred": false,
-            "is_draft": false,
-            "is_deleted": false,
-            "received_at": "2026-10-21T12:00:00Z",
-            "created_at": "2026-10-21T12:00:00Z",
+            "subject": "Hello",
+            "thread_id": "\u003c00000000-0000-4000-8000-000000000001@restmail.test\u003e",
             "updated_at": "2026-10-21T12:00:00Z"
           }
         }
@@ -40102,40 +40107,41 @@
         "status": 200,
         "body": {
           "data": {
-            "id": 1,
             "class": "person",
-            "mailbox_id": 1,
+            "calendar_events": [],
+            "created_at": "2026-10-20T00:00:00Z",
+            "date_header": "2026-10-20T00:00:00Z",
+            "downgraded_size": 137,
             "folder": "INBOX",
-            "message_id": "\u003cmessage@example.net\u003e",
-            "in_reply_to": "",
-            "references": "",
-            "thread_id": "",
-            "sender": "sender@example.net",
-            "sender_name": "Sender",
-            "recipients_to": [
-              "recipient@example.com"
-            ],
-            "recipients_cc": [],
-            "subject": "Subject",
+            "has_attachments": false,
             "headers": {
               "Subject": [
                 "Subject"
               ]
             },
-            "calendar_events": [],
-            "size_bytes": 80,
-            "raw_size": 137,
-            "downgraded_size": 137,
-            "has_attachments": false,
-            "is_read": true,
+            "id": 1,
+            "in_reply_to": "",
+            "is_deleted": false,
+            "is_draft": false,
             "is_dsn": false,
             "is_flagged": true,
+            "is_read": true,
             "is_starred": false,
-            "is_draft": false,
-            "is_deleted": false,
+            "mailbox_id": 1,
+            "message_id": "\u003cmessage@example.net\u003e",
+            "raw_size": 137,
             "received_at": "2026-10-20T00:00:00Z",
-            "date_header": "2026-10-20T00:00:00Z",
-            "created_at": "2026-10-20T00:00:00Z",
+            "recipients_cc": [],
+            "recipients_to": [
+              "recipient@example.com"
+            ],
+            "references": "",
+            "sealed_hash": "00ced91ef87007eb619fe4d649ec941257846db0f6aa30fcea744c76902a3eea",
+            "sender": "sender@example.net",
+            "sender_name": "Sender",
+            "size_bytes": 80,
+            "subject": "Subject",
+            "thread_id": "",
             "updated_at": "2026-10-21T09:30:00Z"
           }
         },
@@ -41827,6 +41833,126 @@
         "query": {
           "timeout": "0s",
           "to": "recipient@example.com"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "verifyMessageSeal": {
+    "intact": {
+      "description": "Receipt integrity is independent of sender authentication and does not establish safety. Source and stored display fields are checked; no historical backfill.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "state": "intact",
+            "algorithm": "restmail-seal-v1",
+            "sealed_hash": "c8df0e809a88268049a3d046bf4c17819b16cbf2e5d3845e15368a251710bfb2",
+            "computed_hash": "c8df0e809a88268049a3d046bf4c17819b16cbf2e5d3845e15368a251710bfb2"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "mismatch": {
+      "description": "Receipt integrity is independent of sender authentication and does not establish safety. Source and stored display fields are checked; no historical backfill.",
+      "request": {
+        "path": {
+          "id": 2
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "state": "mismatch",
+            "algorithm": "restmail-seal-v1",
+            "sealed_hash": "c8df0e809a88268049a3d046bf4c17819b16cbf2e5d3845e15368a251710bfb2",
+            "computed_hash": "6f04bba035151f7cb8ee4cf1102126d259979e7822f364143192e2339ab31259"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "message_not_found",
+            "message": "Message not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "not_sealed": {
+      "description": "Receipt integrity is independent of sender authentication and does not establish safety. Source and stored display fields are checked; no historical backfill.",
+      "request": {
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "state": "not_sealed",
+            "algorithm": "restmail-seal-v1"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
         }
       },
       "response": {

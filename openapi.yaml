@@ -3336,6 +3336,10 @@ paths:
               parameters:
                 id: '$response.body#/data/mailbox_id'
                 threadID: '$response.body#/data/thread_id'
+            verifyMessageSeal:
+              operationId: verifyMessageSeal
+              parameters:
+                id: '$response.body#/data/id'
         "404":
           $ref: "#/components/responses/NotFound"
     patch:
@@ -4279,6 +4283,170 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/messages/{id}/seal:
+    get:
+      summary: Verify a message's receipt seal
+      description: Compares the stored receipt seal with the current source, headers and bodies,
+        without changing the seal. intact means unchanged since this server accepted it, not who
+        wrote it or whether it is safe. not_sealed is distinct from mismatch; historical messages
+        are never backfilled. Uses the same mail:read authorization as reading the message. See
+        docs/message-seals.md for the streaming restmail-seal-v1 algorithm and byte framing.
+      operationId: verifyMessageSeal
+      tags:
+      - Messages
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+        examples:
+          intact:
+            description: Receipt integrity is independent of sender authentication and does not
+              establish safety. Source and stored display fields are checked; no historical backfill.
+            value: 1
+          invalid_id:
+            value: 0
+          mismatch:
+            description: Receipt integrity is independent of sender authentication and does not
+              establish safety. Source and stored display fields are checked; no historical backfill.
+            value: 2
+          missing:
+            value: 2147483647
+          not_sealed:
+            description: Receipt integrity is independent of sender authentication and does not
+              establish safety. Source and stored display fields are checked; no historical backfill.
+            value: 3
+          unauthenticated:
+            value: 1
+            x-requires:
+              principal: anonymous
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              examples:
+                intact:
+                  description: Receipt integrity is independent of sender authentication and does
+                    not establish safety. Source and stored display fields are checked; no historical
+                    backfill.
+                  value:
+                    data:
+                      algorithm: restmail-seal-v1
+                      computed_hash: c8df0e809a88268049a3d046bf4c17819b16cbf2e5d3845e15368a251710bfb2
+                      sealed_hash: c8df0e809a88268049a3d046bf4c17819b16cbf2e5d3845e15368a251710bfb2
+                      state: intact
+                mismatch:
+                  description: Receipt integrity is independent of sender authentication and does
+                    not establish safety. Source and stored display fields are checked; no historical
+                    backfill.
+                  value:
+                    data:
+                      algorithm: restmail-seal-v1
+                      computed_hash: 6f04bba035151f7cb8ee4cf1102126d259979e7822f364143192e2339ab31259
+                      sealed_hash: c8df0e809a88268049a3d046bf4c17819b16cbf2e5d3845e15368a251710bfb2
+                      state: mismatch
+                not_sealed:
+                  description: Receipt integrity is independent of sender authentication and does
+                    not establish safety. Source and stored display fields are checked; no historical
+                    backfill.
+                  value:
+                    data:
+                      algorithm: restmail-seal-v1
+                      state: not_sealed
+              schema:
+                $ref: '#/components/schemas/Data-MessageSeal'
+        '401':
+          description: 'unauthorized, app_password_required or setup_required: a refused session
+            or HTTP Basic credential'
+          content:
+            application/json:
+              examples:
+                unauthenticated:
+                  value:
+                    error:
+                      code: unauthorized
+                      message: Missing authorization header
+                  x-requires:
+                    principal: anonymous
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              examples:
+                missing:
+                  value:
+                    error:
+                      code: message_not_found
+                      message: Message not found
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: 'request_too_large: the body is over the API''s size cap'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              examples:
+                invalid_id:
+                  value:
+                    error:
+                      code: validation_failed
+                      details:
+                        fields:
+                          id: must be at least 1
+                      message: Path parameters failed validation
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '429':
+          description: 'rate_limited: refused API keys or HTTP Basic credentials, throttled at
+            login''s rate'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Retry-After:
+              description: Seconds until a request may be made again
+              required: true
+              schema:
+                type: integer
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: 'unavailable: the credential or session check could not be made'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - CookieAuth:
+        - mail:read
+      - BearerAuth:
+        - mail:read
+      - APIKeyAuth:
+        - mail:read
+      - BasicAuth:
+        - mail:read
 
   /api/v1/messages/{id}/raw:
     parameters:
@@ -14746,6 +14914,39 @@ components:
     # ─────────────────────────────────────────────────────────────
     # Message
     # ─────────────────────────────────────────────────────────────
+    Data-MessageSeal:
+      additionalProperties: false
+      properties:
+        data:
+          $ref: '#/components/schemas/MessageSeal'
+      required:
+      - data
+      type: object
+
+    MessageSeal:
+      additionalProperties: false
+      properties:
+        algorithm:
+          enum:
+          - restmail-seal-v1
+          type: string
+        computed_hash:
+          type: string
+        sealed_hash:
+          type: string
+        state:
+          enum:
+          - intact
+          - mismatch
+          - not_sealed
+          type: string
+      required:
+      - state
+      - algorithm
+      type: object
+      description: A receipt integrity check, not sender authentication or a safety verdict. Historical
+        messages without a seal are not mismatches.
+
     Message:
       type: object
       description: >-
@@ -14812,6 +15013,13 @@ components:
           type: string
         body_html:
           type: string
+        sealed_hash:
+          type: string
+          description: >-
+            SHA-256 receipt seal using restmail-seal-v1 (docs/message-seals.md).
+            Covers the exact stored source and displayed headers and bodies.
+            Absent on historical unsealed messages. Does not authenticate the
+            author or establish safety.
         headers:
           description: >-
             The message's header fields as it arrived, each name with its

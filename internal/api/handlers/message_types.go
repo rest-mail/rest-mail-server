@@ -51,6 +51,7 @@ func messageOf(m models.Message) Message {
 		BodyText:          m.BodyText,
 		BodyHTML:          m.BodyHTML,
 		Headers:           json.RawMessage(m.Headers),
+		SealedHash:        m.SealedHash,
 		CalendarEventsRaw: json.RawMessage(m.CalendarEventsRaw),
 		SizeBytes:         m.SizeBytes,
 		RawSize:           m.RawSize,

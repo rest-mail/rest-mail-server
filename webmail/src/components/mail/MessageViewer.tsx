@@ -14,13 +14,15 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Mail, Paperclip, MessageSquare, Reply, Forward, Trash2, Archive, MoreHorizontal, Image, FileText as FileTextIcon, File } from 'lucide-react';
 import { toast } from 'sonner';
-import type { Attachment, MessageSummary } from '@/types';
+import type { Attachment, MessageDetail, MessageSummary } from '@/types';
 import { CalendarInvite } from './CalendarInvite';
 import { HtmlMessageBody } from './HtmlMessageBody';
 import { ThreadDueControl } from './ThreadDueControl';
 import { TrustBadge, TrustReceipt } from './signals';
 import { cn } from '@/lib/utils';
 import { SenderReplyTime } from '@/components/contacts/SenderReplyTime';
+import type { SealState } from '@/lib/messageSeal';
+import { trustFromStoredResults } from '@/lib/messageTrust';
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -83,6 +85,21 @@ export function MessageViewer() {
   const [showThread, setShowThread] = useState(false);
   const [threadMessages, setThreadMessages] = useState<MessageSummary[]>([]);
   const [loadingThread, setLoadingThread] = useState(false);
+  const [seal, setSeal] = useState<{ message: MessageDetail; state: SealState; hash?: string } | null>(null);
+
+  useEffect(() => {
+    if (!selectedMessage || selectedMessage.is_draft) return;
+    let cancelled = false;
+    const message = selectedMessage;
+    api.verifyMessageSeal(message.id)
+      .then(({ data }) => {
+        if (!cancelled) setSeal({ message, state: data.state, hash: data.sealed_hash });
+      })
+      .catch(() => {
+        if (!cancelled) setSeal({ message, state: 'unavailable' });
+      });
+    return () => { cancelled = true; };
+  }, [selectedMessage]);
 
   useEffect(() => {
     if (!selectedMessage?.has_attachments) {
@@ -359,7 +376,7 @@ export function MessageViewer() {
                 <span className="min-w-0 break-all">
                   {msg.sender_name ? `${msg.sender_name} <${displayAddress(msg.sender)}>` : displayAddress(msg.sender)}
                 </span>
-                <TrustBadge headers={msg.headers} compact />
+                <TrustBadge verdict={trustFromStoredResults(msg.auth_results)} compact />
                 {activeAccountId && <SenderReplyTime key={`${activeAccountId}:${msg.sender}`} accountId={activeAccountId} email={msg.sender} />}
               </p>
               <p>
@@ -409,7 +426,13 @@ export function MessageViewer() {
             </div>
           )}
 
-          <TrustReceipt headers={msg.headers} receivedAt={msg.received_at} className="mt-3" />
+          <TrustReceipt
+            verdict={trustFromStoredResults(msg.auth_results)}
+            receivedAt={msg.received_at}
+            sealedHash={seal?.message === msg ? seal.hash : msg.sealed_hash}
+            sealState={seal?.message === msg ? seal.state : 'checking'}
+            className="mt-3"
+          />
 
           {/* Divider */}
           <div className="h-px bg-border my-4" />

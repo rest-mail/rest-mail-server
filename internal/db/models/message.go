@@ -72,6 +72,8 @@ type Message struct {
 	BodyHTML     string     `gorm:"type:text" json:"body_html,omitempty"`
 	Headers      JSONB      `gorm:"type:jsonb" json:"headers,omitempty"`
 	RawMessage   string     `gorm:"type:text" json:"-"`
+	SealedHash   string     `gorm:"size:64;default:null" json:"sealed_hash,omitempty"`
+	PendingDraft bool       `gorm:"-" json:"-"`
 	// RawOctets preserves imported sources that PostgreSQL text cannot represent.
 	RawOctets         []byte `gorm:"type:bytea" json:"-"`
 	CalendarEventsRaw JSONB  `gorm:"column:calendar_events;type:jsonb" json:"calendar_events,omitempty"`
@@ -137,7 +139,13 @@ func (m *Message) BeforeCreate(*gorm.DB) error {
 	if m.DowngradedSize == 0 && m.RawSize > 0 {
 		m.DowngradedSize = rmail.DowngradedSize(string(m.Source()))
 	}
-	return nil
+	if m.PendingDraft || (m.IsDeleted && m.Sender == "system" && m.Subject == "" && m.BodyText == "" && m.BodyHTML == "" && m.RawMessage == "" && m.RawOctets == nil) {
+		m.SealedHash = ""
+		return nil
+	}
+	var err error
+	m.SealedHash, err = m.SealDigest()
+	return err
 }
 
 // Source returns original octets, including historical non-UTF-8 and NUL data.

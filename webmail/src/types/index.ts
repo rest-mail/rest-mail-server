@@ -45,6 +45,8 @@ export interface MessageSummary {
 }
 
 export interface MessageDetail extends MessageSummary {
+  sealed_hash?: string;
+  auth_results?: components['schemas']['AuthResult'][];
   body_text: string;
   body_html: string;
   headers: Record<string, string> | null;

@@ -74,6 +74,8 @@ func TestSendMessageResponseExamplesUseProductionRouter(t *testing.T) {
 				if data["id"] != float64(sent.ID) || data["mailbox_id"] != float64(f.mailboxID) || data["message_id"] != sent.MsgID || data["thread_id"] != sent.ThreadID || data["raw_size"] != float64(len(sent.RawMessage)) || sent.RawSize != len(sent.RawMessage) {
 					t.Fatal("Sent identity/source and response differ")
 				}
+				assertExampleReceipt(t, data, sent.RawMessage, sent.SealedHash)
+				data["sealed_hash"] = want["data"]["sealed_hash"]
 				var queued []models.OutboundQueue
 				if err := f.db.Where("message_id = ?", sent.ID).Order("id").Find(&queued).Error; err != nil {
 					t.Fatal(err)

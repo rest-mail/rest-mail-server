@@ -266,6 +266,8 @@ func TestDelegatedSendExamples(t *testing.T) {
 			}
 			sent, data := c.state.messages[0], got["data"]
 			raw, _ := c.queue[0]["raw_message"].(string)
+			assertExampleReceipt(t, data, raw, sent["sealed_hash"])
+			data["sealed_hash"] = want["data"]["sealed_hash"]
 			if data["id"] != float64(sent["id"].(int64)) || data["message_id"] != sent["message_id"] || data["thread_id"] != sent["thread_id"] ||
 				raw == "" || data["raw_size"] != float64(len(raw)) || data["downgraded_size"] != float64(len(raw)) {
 				t.Fatalf("response identity differs from the stored message: %s", rr.Body)

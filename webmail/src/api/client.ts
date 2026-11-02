@@ -281,6 +281,12 @@ export async function getMessage(msgId: number): Promise<{ data: MessageDetail }
   return request(`${BASE}/messages/${msgId}`);
 }
 
+export type MessageSealResponse = paths['/api/v1/messages/{id}/seal']['get']['responses'][200]['content']['application/json'];
+
+export async function verifyMessageSeal(msgId: number): Promise<MessageSealResponse> {
+  return request(`${BASE}/messages/${msgId}/seal`);
+}
+
 export async function updateMessage(msgId: number, updates: Record<string, unknown>): Promise<void> {
   await request(`${BASE}/messages/${msgId}`, {
     method: 'PATCH',
