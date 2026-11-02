@@ -10581,6 +10581,7 @@
       }
     },
     "malformed_json": {
+      "summary": "The body is not JSON",
       "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
       "requires": {
         "body": "malformed"
