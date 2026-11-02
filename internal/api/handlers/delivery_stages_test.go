@@ -57,7 +57,8 @@ func stagedHandler(t *testing.T, content pipeline.Action) (*MessageHandler, loca
 	})
 	h := NewMessageHandler(tx, nil, pipeline.NewEngine(registry, nil), "", nil)
 	raw := "From: sender@remote.test\r\nSubject: staged\r\n\r\nbody\r\n"
-	return h, localDeliveryParams{Mailbox: fx.admin, Sender: "sender@remote.test", Subject: "staged", BodyText: "body", RawMessage: raw}, tx, ran
+	child := quotaChild(t, tx, fx.admin, "staged", 0, 0)
+	return h, localDeliveryParams{Mailbox: child, Sender: "sender@remote.test", Subject: "staged", BodyText: "body", RawMessage: raw}, tx, ran
 }
 
 func TestRequiredStageStoresNothing(t *testing.T) {
