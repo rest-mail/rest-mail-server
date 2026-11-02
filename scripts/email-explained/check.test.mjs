@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { test } from "node:test";
-import { anchorsOf, checkGuide, linksOf, outsideLinks } from "./check.mjs";
+import { anchorsOf, checkGuide, checkOutside, linksOf, outsideLinks } from "./check.mjs";
 
 const chapter = (body, front = "title: Open relay\npart: How it goes wrong\nsummary: How it happens.") => `---\n${front}\n---\n\n# Open relay\n\n${body}\n\n## Sources\n\n- [RFC 5321](https://www.rfc-editor.org/rfc/rfc5321)\n`;
 
@@ -134,4 +134,35 @@ test("outside links are collected once each, with every place they are used", ()
     ["https://a.example/p#s", ["docs/email-explained/a.md:1", "docs/email-explained/a.md:3"]],
     ["https://a.example/p#t", ["docs/email-explained/b.md:1"]],
   ]);
+});
+
+test("outside checks distinguish refused requests from broken links without dropping citations", async (context) => {
+  const requests = [];
+  context.mock.method(globalThis, "fetch", async (url) => {
+    requests.push(url);
+    const status = Number(new URL(url).pathname.slice(1));
+    return new Response('<h1 id="present">Source</h1>', { status, headers: { "content-type": "text/html" } });
+  });
+  const links = new Map();
+  for (const status of [200, 401, 403, 429, 404, 410]) {
+    links.set(`https://source.example/${status}#present`, ["docs/email-explained/a.md:1", "docs/email-explained/b.md:2"]);
+    links.set(`https://source.example/${status}#missing`, ["docs/email-explained/c.md:3"]);
+  }
+
+  assert.deepEqual(await checkOutside(links, { concurrency: 1 }), {
+    broken: [
+      { href: "https://source.example/200#missing", why: "no #missing on the page", where: "docs/email-explained/c.md:3" },
+      ...[404, 410].flatMap((status) => [
+        { href: `https://source.example/${status}#present`, why: `HTTP ${status}`, where: "docs/email-explained/a.md:1, docs/email-explained/b.md:2" },
+        { href: `https://source.example/${status}#missing`, why: `HTTP ${status}`, where: "docs/email-explained/c.md:3" },
+      ]),
+    ],
+    refused: [401, 403, 429].map((status) => ({
+      url: `https://source.example/${status}`,
+      status,
+      where: "docs/email-explained/a.md:1, docs/email-explained/b.md:2, docs/email-explained/c.md:3",
+    })),
+    pages: 6,
+  });
+  assert.deepEqual(requests, [200, 401, 403, 429, 404, 410].map((status) => `https://source.example/${status}`));
 });
