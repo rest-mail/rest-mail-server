@@ -569,6 +569,10 @@ func declareOversizedBody(host, method, path, token string) (int, error) {
 	return resp.StatusCode, nil
 }
 
+// probeAttempts is how many times spendThenProbe tries one operation against a
+// spent bucket before it calls the limit missing.
+const probeAttempts = 3
+
 // spendThenProbe spends a bucket with spend until it answers 429, then, for
 // each operation that declares the same limit, spends it again and sends the
 // operation, which must be refused alike. It returns the longest Retry-After.
@@ -591,10 +595,22 @@ func (l *limitsRun) spendThenProbe(t *testing.T, limit string, spend func() *htt
 	}
 	longest := exhaust()
 	for _, op := range ops {
-		exhaust()
-		resp := probe(op)
+		// A bucket keeps refilling, so a token can arrive between the spend and
+		// the probe, and the operation is then rightly let through. That can
+		// happen once by chance, but not every time on a limit that holds.
+		var resp *http.Response
+		for attempt := 0; attempt < probeAttempts; attempt++ {
+			exhaust()
+			resp = probe(op)
+			if resp.StatusCode == http.StatusTooManyRequests {
+				break
+			}
+			if attempt < probeAttempts-1 {
+				resp.Body.Close()
+			}
+		}
 		if resp.StatusCode != http.StatusTooManyRequests {
-			t.Errorf("%s while %s is spent: %d %s, want 429", op, limit, resp.StatusCode, readBody(resp))
+			t.Errorf("%s while %s is spent: %d %s, want 429 (%d attempts)", op, limit, resp.StatusCode, readBody(resp), probeAttempts)
 			continue
 		}
 		longest = max(longest, requireRateLimited(t, resp, op.String()))
