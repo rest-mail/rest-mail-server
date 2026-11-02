@@ -532,6 +532,13 @@ func TestInvitationCanonicalExamples(t *testing.T) {
 			}
 		})
 	}
+	for _, g := range gapGenerators(t) {
+		for _, w := range g.Report() {
+			if w.OperationID == "inviteAccount" {
+				t.Errorf("invitation warning: %v", w)
+			}
+		}
+	}
 	// Optional recording produces an artifact, never rewrites repository files.
 	if path := os.Getenv("RESTMAIL_INVITATION_RECORD"); path != "" {
 		data, err := oapifly.MarshalExamples(recorded)

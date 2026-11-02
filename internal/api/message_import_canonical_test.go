@@ -162,6 +162,48 @@ func TestMessageImportCanonicalExamples(t *testing.T) {
 	}
 }
 
+// malformed_json is not an import scenario: its wire body is the raw byte {,
+// which the scenario request cannot encode and the per-pair Vertrag hook would
+// send JSON-quoted. The production router refuses it before the handler runs.
+func TestMessageImportMalformedBodyExample(t *testing.T) {
+	useRealGrants(t)
+	pairs, err := examplepairs.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pair, ok := pairs["importMessage"]["malformed_json"]
+	if !ok {
+		t.Fatal("importMessage has no malformed_json pair")
+	}
+	t.Run("malformed_json", func(t *testing.T) {
+		examplepairs.Proven(t, "importMessage", "malformed_json")
+		f := newImportFixture(t, "")
+		id := string(mustImportJSON(t, pair.Request.Path["id"]))
+		r := httptest.NewRequest(http.MethodPost, "/api/v1/accounts/"+id+"/messages/import", strings.NewReader("{"))
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("Authorization", "Bearer "+f.token)
+		w := httptest.NewRecorder()
+		f.router.ServeHTTP(w, r)
+		if w.Code != pair.Response.Status {
+			t.Fatalf("got %d %s, want %d", w.Code, w.Body, pair.Response.Status)
+		}
+		if !strings.HasPrefix(w.Header().Get("Content-Type"), pair.Response.MediaType) {
+			t.Fatalf("media type %q, want %q", w.Header().Get("Content-Type"), pair.Response.MediaType)
+		}
+		assertPublicExampleBody(t, pair.Response.Body, w.Body.Bytes())
+		if len(f.c.state.messages) != 0 {
+			t.Fatal("refused request retained mail")
+		}
+	})
+	for _, g := range gapGenerators(t) {
+		for _, w := range g.Report() {
+			if w.OperationID == "importMessage" {
+				t.Errorf("message import warning: %v", w)
+			}
+		}
+	}
+}
+
 func mustImportJSON(t *testing.T, value any) []byte {
 	t.Helper()
 	data, err := json.Marshal(value)

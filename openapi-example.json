@@ -37916,7 +37916,6 @@
             "last_login_at": null,
             "password_change_required": false,
             "two_factor_required": false,
-            "last_password_change": null,
             "created_at": "2026-10-21T12:00:00Z",
             "updated_at": "2026-10-21T12:00:00Z"
           }
