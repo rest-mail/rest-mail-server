@@ -554,8 +554,10 @@ narrowed to that operation, on the normal API, which must be green. Then, for
 each fault, it restarts the API built with the fault's tags (`GOFLAGS=-tags=`,
 through `RESTMAIL_API_BUILD_TAGS`), checks that the API logged `fault injection
 active` for it, and runs the phase again. The fault is caught only if that
-phase's report fails a transaction of the operation. A phase that never ran, or
-a failure elsewhere, does not count. The normal API is restored at the end.
+phase's report fails a transaction of the operation's path. A phase that never
+ran, or a failure elsewhere, does not count. A fault with `known_gap` names the
+issue saying why the run cannot catch it yet: it passes uncaught and fails once
+caught, so the entry goes when the gap closes. The normal API is restored at the end.
 `.cache/contract/faults.md` has the verdicts, and `faults-<name>-<phase>.xml`
 each run's report.
 
@@ -572,7 +574,7 @@ report-only; status and limit faults come later.
    `faultinject.go`), and an `Example` of the route's normal answer for the
    package test.
 2. Add its entry to `faults.yml`: `name`, `build_tags`
-   (`faultinject,fault_<name>`), `operation`, `phase` and `breaks`.
+   (`faultinject,fault_<name>`), `operation`, `path`, `phase` and `breaks`.
 
 `go test ./internal/faultinject` (no tags) holds the catalogue and the
 switches to each other, and requires the `faultinject` tag on every source

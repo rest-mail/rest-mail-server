@@ -55,38 +55,44 @@ def all_tags(faults):
     return ",".join(tags)
 
 
-def failures_for(report, operation):
-    """Names of the failed transactions in a JUnit report that are operation's."""
-    failed = []
+def transactions_of(report, path):
+    """(sent, failed) for a route in a JUnit report: how many of its transactions
+    the report holds, and the names of those that failed. Vertrag names a
+    transaction "<path> > <summary> > <status> > <media type>"."""
+    sent, failed = 0, []
     for case in ET.parse(report).getroot().iter("testcase"):
-        verdict = case.find("failure")
-        if verdict is None:
-            verdict = case.find("error")
-        if verdict is None:
+        name = case.get("name", "")
+        if name.split(" > ", 1)[0] != path:
             continue
-        text = " ".join(
-            [case.get("name", ""), case.get("classname", ""), verdict.get("message", ""), verdict.text or ""]
-        )
-        if operation in text:
-            failed.append(case.get("name", ""))
-    return failed
+        sent += 1
+        if case.find("failure") is not None or case.find("error") is not None:
+            failed.append(name)
+    return sent, failed
 
 
-def judge(report, operation, faulted):
+def judge(report, path, faulted, known_gap=None):
     """(passed, why) for one run's report.
 
-    A faulted run passes when the report fails the operation; a baseline run
-    passes when it does not.
+    A faulted run passes when the report fails the route; a baseline run passes
+    when the route was sent and nothing failed. A fault with a known gap is one
+    the run cannot catch yet: it passes uncaught, and fails once it is caught,
+    so the gap's entry is removed when the gap closes.
     """
     if not Path(report).exists():
         return False, "the phase did not run: no report"
-    failed = failures_for(report, operation)
+    sent, failed = transactions_of(report, path)
     if faulted:
+        if known_gap:
+            if failed:
+                return False, f"now caught, so remove known_gap {known_gap}: " + "; ".join(failed)
+            return True, f"known gap: {known_gap}"
         if failed:
             return True, "caught: " + "; ".join(failed)
-        return False, f"not caught: no failed transaction of {operation}"
+        return False, f"not caught: no failed transaction of {path}"
     if failed:
         return False, "red without a fault: " + "; ".join(failed)
+    if not sent:
+        return False, f"the phase sent no transaction of {path}"
     return True, "green"
 
 
@@ -126,11 +132,11 @@ def run(container):
     rows = ["| Fault | Operation | Phase | Verdict |", "|---|---|---|---|"]
     ok = True
 
-    baselines = {(f["phase"], f["operation"]) for f in faults}
-    for phase, operation in sorted(baselines):
+    baselines = {(f["phase"], f["operation"], f["path"]) for f in faults}
+    for phase, operation, path in sorted(baselines):
         print(f"::group::baseline: {phase} of {operation} on the normal API")
         report = run_phase(phase, operation, f"faults-baseline-{operation}-{phase}.xml")
-        passed, why = judge(report, operation, faulted=False)
+        passed, why = judge(report, path, faulted=False)
         print("::endgroup::")
         rows.append(f"| (none) | {operation} | {phase} | {why} |")
         ok = ok and passed
@@ -145,7 +151,7 @@ def run(container):
                 passed, why = False, f"the API did not log '{ACTIVE}' for {name}: the switch did not take"
             else:
                 report = run_phase(phase, operation, f"faults-{name}-{phase}.xml")
-                passed, why = judge(report, operation, faulted=True)
+                passed, why = judge(report, fault["path"], faulted=True, known_gap=fault.get("known_gap"))
             print("::endgroup::")
             if not passed:
                 print(f"::error::fault {name}: {why}")
@@ -161,6 +167,8 @@ def run(container):
 
 
 def main(argv):
+    # Keep these lines in order with the output of the commands this runs.
+    sys.stdout.reconfigure(line_buffering=True)
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("tags")

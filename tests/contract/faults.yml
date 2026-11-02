@@ -10,23 +10,30 @@
 #               (GOFLAGS=-tags=...). A normal build has neither tag, so it holds
 #               no fault code.
 #   operation   the operationId whose answer it breaks
+#   path        that operation's path, which Vertrag's report names it by
 #   phase       the contract phase expected to catch it (examples)
 #   breaks      what a client would see
+#   known_gap   optional: the issue saying why the run cannot catch it yet. It
+#               then passes uncaught, and fails once caught.
 faults:
   - name: discover_endpoint_renamed
     build_tags: faultinject,fault_discover_endpoint_renamed
     operation: restmailDiscover
+    path: /.well-known/restmail
     phase: examples
+    known_gap: "#1455"
     breaks: GET /.well-known/restmail answers without its required endpoint field (sent as url)
 
   - name: discover_wrong_media_type
     build_tags: faultinject,fault_discover_wrong_media_type
     operation: restmailDiscover
+    path: /.well-known/restmail
     phase: examples
     breaks: GET /.well-known/restmail answers its JSON as text/plain
 
   - name: health_data_as_list
     build_tags: faultinject,fault_health_data_as_list
     operation: getHealth
+    path: /api/health
     phase: examples
     breaks: GET /api/health answers its data object as an empty list
