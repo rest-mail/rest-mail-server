@@ -53,18 +53,26 @@ func TestMessageClassificationAPIAndConstantQueries(t *testing.T) {
 		t.Fatal(tx.Error)
 	}
 	t.Cleanup(func() { tx.Rollback() })
-	fixture := seedMsgDeleteFixture(t, tx, 0)
+	domain := models.Domain{Name: fmt.Sprintf("classification-%d.test", time.Now().UnixNano())}
+	if err := tx.Create(&domain).Error; err != nil {
+		t.Fatal(err)
+	}
+	mailbox := models.Mailbox{DomainID: domain.ID, LocalPart: "owner", Address: "owner@" + domain.Name, Active: true, QuotaBytes: 1 << 30}
+	if err := tx.Create(&mailbox).Error; err != nil {
+		t.Fatal(err)
+	}
+	seedReceiveFixture(t, tx, mailbox)
 	counter := &classificationQueryCounter{Interface: logger.Default.LogMode(logger.Silent)}
 	counted := tx.Session(&gorm.Session{Logger: counter})
 	router := chi.NewRouter()
 	router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-			ctx := context.WithValue(request.Context(), middleware.ClaimsKey, &auth.Claims{AccountID: fixture.mailbox.ID})
+			ctx := context.WithValue(request.Context(), middleware.ClaimsKey, &auth.Claims{AccountID: mailbox.ID})
 			next.ServeHTTP(w, request.WithContext(ctx))
 		})
 	})
 	NewMessageHandler(counted, nil, nil, "", nil).RegisterMessages(endpoint.Routes{Router: router, Registry: endpoint.NewRegistry()})
-	listPath := fmt.Sprintf("/api/v1/accounts/%d/folders/INBOX/messages", fixture.mailbox.ID)
+	listPath := fmt.Sprintf("/api/v1/accounts/%d/folders/INBOX/messages", mailbox.ID)
 	read := func(path string) []byte {
 		t.Helper()
 		recorder := httptest.NewRecorder()
@@ -82,7 +90,7 @@ func TestMessageClassificationAPIAndConstantQueries(t *testing.T) {
 		{`{"List-Unsubscribe":["<https://example.test/leave>"]}`, "newsletter"},
 		{`{"Auto-Submitted":["auto-generated"]}`, "notification"},
 	} {
-		message := models.Message{MailboxID: fixture.mailbox.ID, Folder: "INBOX", Headers: models.JSONB(sample.headers)}
+		message := models.Message{MailboxID: mailbox.ID, Folder: "INBOX", Headers: models.JSONB(sample.headers)}
 		if err := tx.Create(&message).Error; err != nil {
 			t.Fatal(err)
 		}
