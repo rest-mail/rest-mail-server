@@ -565,7 +565,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		// #184: cap the request body across the authenticated surface (send,
 		// drafts, contacts import, sieve PUT, …) so an unbounded JSON upload
 		// cannot exhaust memory. cfg.APIMaxBodyBytes <= 0 makes this a no-op.
-		r.Use(middleware.MaxBodyBytes(cfg.APIMaxBodyBytes))
+		// A contact import goes to disk and is held to its own limit.
+		r.Use(middleware.MaxBodyBytesExcept(cfg.APIMaxBodyBytes, handlers.ContactImportRoute))
 
 		// Finishing an account's setup, and managing its own 2FA (OSI-19):
 		// the only routes a session still in setup reaches.

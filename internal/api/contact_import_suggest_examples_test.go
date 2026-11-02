@@ -44,7 +44,11 @@ func TestContactImportSuggestExamples(t *testing.T) {
 				if name == "malformed_json" {
 					body = []byte("{")
 				}
-				if name == "request_too_large" {
+				if name == "request_too_large" && op == "importContacts" {
+					// A valid file one size past the server's limit.
+					entry := `{"email":"new@example.com","name":"New"}`
+					body = []byte(`{"contacts":[` + strings.TrimSuffix(strings.Repeat(entry+",", contactImportExampleLimit/len(entry)+1), ",") + `]}`)
+				} else if name == "request_too_large" {
 					body = bytes.Repeat([]byte("x"), 513)
 				}
 				before := len(f.store.snapshot())

@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/mail"
+	"regexp"
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
@@ -101,7 +103,7 @@ func (h *ContactHandler) RegisterContacts(rs endpoint.Routes) {
 		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.block)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/contacts/import",
 		OperationID: "importContacts", Summary: "Bulk import contacts", Tags: tags, DescribedRequest: importContactsRequest{},
-		Description: "As many contacts as fit the API's request size limit. Every entry is checked first, and contacts the account already has are skipped.",
+		Description: "As many contacts as fit the server's contact import limit, 10 MiB unless an administrator changes it. Every entry is checked first, and contacts the account already has are skipped.",
 		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.importContacts)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/contacts/suggest",
 		OperationID: "suggestContacts", Summary: "Autocomplete contacts by query", Tags: tags,
@@ -447,11 +449,39 @@ type importContactEntry struct {
 	Name  string `json:"name,omitempty" maxLength:"255"`
 }
 
+var errContactImportTooLarge = endpoint.Refuse(http.StatusRequestEntityTooLarge, "request_too_large", "Request body too large")
+
+// ContactImportRoute says a request is a contact import, which has a limit of its own that an
+// administrator can set above the API's general one.
+func ContactImportRoute(r *http.Request) bool {
+	return r.Method == http.MethodPost && contactImportPath.MatchString(r.URL.Path)
+}
+
+var contactImportPath = regexp.MustCompile(`^/api/v1/accounts/[^/]+/contacts/import/?$`)
+
 // importContacts bulk-imports contacts for a mailbox. The upload goes to a file first and
 // is read an entry at a time, twice: a check of every entry, then the writes. Its size
 // never sits in memory.
 // POST /api/v1/accounts/{id}/contacts/import
 func (h *ContactHandler) importContacts(r *http.Request, in contactsPath) (ContactsImported, error) {
+	// This route is outside the API's general body limit (ContactImportRoute), so it is held
+	// to its own here, before any of the upload is read. An upload within the default takes
+	// no database read yet: a bad one is refused without one.
+	allowed := defaultContactImportMaxBytes
+	if r.ContentLength < 0 || r.ContentLength > allowed {
+		// When a higher limit can't be confirmed, the upload is held to the default.
+		if stored, err := contactImportMaxBytes(h.db.WithContext(r.Context())); err != nil {
+			slog.Error("could not read the contact import limit", "error", err)
+		} else {
+			allowed = stored
+		}
+	}
+	if r.ContentLength > allowed {
+		return ContactsImported{}, errContactImportTooLarge
+	}
+	if r.Body != nil {
+		r.Body = http.MaxBytesReader(nil, r.Body, allowed)
+	}
 	file, done, err := endpoint.SpoolBody(r, "application/json")
 	if err != nil {
 		return ContactsImported{}, err
@@ -482,6 +512,18 @@ func (h *ContactHandler) importContacts(r *http.Request, in contactsPath) (Conta
 	mailboxID, err := h.resolveMailboxID(r, in.ID, models.CapMailWrite)
 	if err != nil {
 		return ContactsImported{}, err
+	}
+	// An administrator may have set the limit below the default.
+	limit, err := contactImportMaxBytes(h.db.WithContext(r.Context()))
+	if err != nil {
+		return ContactsImported{}, err
+	}
+	size, err := file.Seek(0, io.SeekEnd)
+	if err != nil {
+		return ContactsImported{}, fmt.Errorf("measure the contact import: %w", err)
+	}
+	if size > limit {
+		return ContactsImported{}, errContactImportTooLarge
 	}
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
 		return ContactsImported{}, fmt.Errorf("rewind the contact import: %w", err)

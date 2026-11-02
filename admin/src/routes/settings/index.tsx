@@ -30,6 +30,12 @@ function SettingsPage() {
       link: '/settings/two-factor',
     },
     {
+      title: 'Server limits',
+      description: 'Set the largest contact import file the server takes',
+      icon: '📏',
+      link: '/settings/limits',
+    },
+    {
       title: 'DKIM Keys',
       description: 'Manage DKIM signing keys for email authentication',
       icon: '🔑',

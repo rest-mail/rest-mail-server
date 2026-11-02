@@ -24,9 +24,15 @@ import "net/http"
 //
 // limit <= 0 disables the cap (leaves the body untouched).
 func MaxBodyBytes(limit int64) func(http.Handler) http.Handler {
+	return MaxBodyBytesExcept(limit, func(*http.Request) bool { return false })
+}
+
+// MaxBodyBytesExcept is MaxBodyBytes for every request but those exempt says hold themselves
+// to a limit of their own.
+func MaxBodyBytesExcept(limit int64, exempt func(*http.Request) bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if limit > 0 {
+			if limit > 0 && !exempt(r) {
 				if r.ContentLength > limit {
 					writeError(w, http.StatusRequestEntityTooLarge, "request_too_large", "Request body too large")
 					return

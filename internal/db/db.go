@@ -83,6 +83,7 @@ func autoMigrate(db *gorm.DB) error {
 		&models.ScheduledSend{},
 		// Accepted messages waiting for their content checks and delivery.
 		&models.InboundMessage{},
+		&models.ServerLimits{},
 		&models.SendLimitPolicy{},
 		&models.SendLimitCounter{},
 		&models.SendLimitNotice{},

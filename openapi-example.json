@@ -16314,6 +16314,106 @@
       }
     }
   },
+  "getServerLimits": {
+    "available": {
+      "summary": "A superadmin reads the server's limits",
+      "request": {},
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "contact_import_max_bytes": 10485760
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "summary": "A database fault is not a client error",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {},
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "not_superadmin": {
+      "summary": "An administrator who is not superadmin is refused",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {},
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "superadmin_required",
+            "message": "only a superadmin can read or change the server's limits"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "The shared throttle is spent",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {},
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {},
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "getSieveScript": {
     "found": {
       "summary": "A linked account is readable through its mailbox grant",
@@ -17265,7 +17365,7 @@
       }
     },
     "request_too_large": {
-      "description": "The configured route cap is512 bytes; the route and Vertrag transport hook send513 bytes to exercise its real body guard.",
+      "description": "The file is larger than the server's contact import limit, which an administrator sets (updateServerLimits).",
       "requires": {
         "body": "over_cap"
       },
@@ -35028,7 +35128,7 @@
       }
     },
     "request_too_large": {
-      "description": "The configured route cap is512 bytes; the route and Vertrag transport hook send513 bytes to exercise its real body guard.",
+      "description": "The file is larger than the server's contact import limit, which an administrator sets (updateServerLimits).",
       "requires": {
         "body": "over_cap"
       },
@@ -39347,6 +39447,153 @@
                 "capabilities": "unknown capability \"mail:reed\""
               }
             }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "updateServerLimits": {
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "not_superadmin": {
+      "summary": "An administrator who is not superadmin is refused",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "body": {
+          "contact_import_max_bytes": 20971520
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "superadmin_required",
+            "message": "only a superadmin can read or change the server's limits"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "summary": "The shared throttle is spent",
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "body": {
+          "contact_import_max_bytes": 20971520
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "summary": "The request exceeds the transport body cap",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {},
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "summary": "The current-session lookup fails",
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "body": {
+          "contact_import_max_bytes": 20971520
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "too_small": {
+      "summary": "A limit must be at least one byte",
+      "request": {
+        "body": {
+          "contact_import_max_bytes": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "contact_import_max_bytes": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "updated": {
+      "summary": "A superadmin changes the contact import limit",
+      "description": "Changing it needs a session that signed in with a second factor.",
+      "requires": {
+        "state": "two_factor_session"
+      },
+      "request": {
+        "body": {
+          "contact_import_max_bytes": 20971520
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "contact_import_max_bytes": 20971520
           }
         },
         "mediaType": "application/json"
