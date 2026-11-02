@@ -345,6 +345,61 @@
       }
     }
   },
+  "acmeChallenge": {
+    "issued_token": {
+      "description": "ACME is enabled and the active HTTP-01 responder holds issued-token with key authorization issued-token.key-authorization. HEAD has no response body on the wire.",
+      "requires": {
+        "state": "acme_issued_token"
+      },
+      "request": {
+        "path": {
+          "token": "issued-token"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": "issued-token.key-authorization",
+        "mediaType": "text/plain"
+      }
+    },
+    "responder_unavailable": {
+      "description": "The ACME responder dependency answers 503 rather than 200 or 404; the registered endpoint translates that unexpected status to its internal error. HEAD has no response body on the wire.",
+      "requires": {
+        "fault": "acme_responder"
+      },
+      "request": {
+        "path": {
+          "token": "issued-token"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unknown_token": {
+      "description": "ACME is enabled; no pending challenge holds unknown-token. HEAD has no response body on the wire.",
+      "requires": {
+        "state": "acme_enabled"
+      },
+      "request": {
+        "path": {
+          "token": "unknown-token"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": "404 page not found\n",
+        "mediaType": "text/plain"
+      }
+    }
+  },
   "activateGrant": {
     "activated": {
       "summary": "An eligible grant is switched on for an hour",
@@ -5465,6 +5520,37 @@
         "mediaType": "application/json"
       }
     },
+    "storage_unavailable": {
+      "description": "An authenticated human session with a second factor reaches unavailable storage; the account lookup fails, or the server-ceiling transaction cannot start.",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Invoice robot",
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "pipelines:write",
+              "scope": "domain:example.test"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "tier_refused": {
       "summary": "Account creation is beyond the client-secret tier",
       "requires": {
@@ -5496,6 +5582,36 @@
                 "permissions": "client secrets may hold mailbox capabilities and ordinary domain administration, never human-2FA-only capabilities"
               }
             }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "name": "Invoice robot",
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "pipelines:write",
+              "scope": "domain:example.test"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
           }
         },
         "mediaType": "application/json"
@@ -11812,6 +11928,33 @@
         "mediaType": "application/json"
       }
     },
+    "capability_removed": {
+      "description": "Message 12 belongs to the signed-in account 1 (admin@restmail.test). It is a draft for draft operations. The server capability ceiling permits mailbox:session but not mail:write or mail:read. The account can know its own mailbox exists, so refusal is 403, not a foreign-resource 404.",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "from": "admin@restmail.test",
+          "to": [
+            "recipient@example.net"
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "discarded": {
       "summary": "The outbound pipeline discards it",
       "requires": {
@@ -16357,6 +16500,22 @@
         "mediaType": "application/json"
       }
     },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {},
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "unregistered": {
       "request": {},
       "response": {
@@ -16487,6 +16646,22 @@
           "error": {
             "code": "unavailable",
             "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {},
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
           }
         },
         "mediaType": "application/json"
@@ -17275,6 +17450,53 @@
           }
         },
         "mediaType": "application/json"
+      }
+    }
+  },
+  "headAcmeChallenge": {
+    "issued_token": {
+      "description": "ACME is enabled and the active HTTP-01 responder holds issued-token with key authorization issued-token.key-authorization. HEAD has no response body on the wire.",
+      "requires": {
+        "state": "acme_issued_token"
+      },
+      "request": {
+        "path": {
+          "token": "issued-token"
+        }
+      },
+      "response": {
+        "status": 200,
+        "mediaType": "text/plain"
+      }
+    },
+    "responder_unavailable": {
+      "description": "The ACME responder dependency answers 503 rather than 200 or 404; the registered endpoint translates that unexpected status to its internal error. HEAD has no response body on the wire.",
+      "requires": {
+        "fault": "acme_responder"
+      },
+      "request": {
+        "path": {
+          "token": "issued-token"
+        }
+      },
+      "response": {
+        "status": 500,
+        "mediaType": "application/json"
+      }
+    },
+    "unknown_token": {
+      "description": "ACME is enabled; no pending challenge holds unknown-token. HEAD has no response body on the wire.",
+      "requires": {
+        "state": "acme_enabled"
+      },
+      "request": {
+        "path": {
+          "token": "unknown-token"
+        }
+      },
+      "response": {
+        "status": 404,
+        "mediaType": "text/plain"
       }
     }
   },
@@ -18267,6 +18489,24 @@
         "body": {
           "error": "invalid_scope",
           "error_description": "Permissions are selected when creating the credential"
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "storage_unavailable": {
+      "description": "The client-secret lookup fails. The OAuth error retains Cache-Control: no-store and Pragma: no-cache.",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "body": "grant_type=client_credentials\u0026client_id=9Hm3yU1cNp5Q\u0026client_secret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "mediaType": "application/x-www-form-urlencoded"
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": "server_error",
+          "error_description": "Could not verify client credentials"
         },
         "mediaType": "application/json"
       }
@@ -20890,6 +21130,47 @@
           "error": {
             "code": "setup_required",
             "message": "Finish setting up this account first: a new password and two-factor authentication"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "storage_unavailable": {
+      "description": "An authenticated human session with a second factor reaches unavailable storage; the account lookup fails, or the server-ceiling transaction cannot start.",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
           }
         },
         "mediaType": "application/json"
@@ -26530,6 +26811,27 @@
         }
       }
     },
+    "storage_unavailable": {
+      "description": "HTTP Basic authentication succeeds for admin@restmail.test with fixture-password; the subsequent protocol account read fails. A credential-verification fault would instead answer 503.",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "body": {
+          "protocol": "imap"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to load the account"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "unauthenticated": {
       "summary": "No credential is sent",
       "requires": {
@@ -31406,6 +31708,49 @@
         },
         "mediaType": "application/json"
       }
+    },
+    "storage_unavailable": {
+      "description": "An authenticated human session with a second factor reaches unavailable storage; the account lookup fails, or the server-ceiling transaction cannot start.",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "credential_id": 34,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "credential_id": 34,
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
     }
   },
   "revokeCredential": {
@@ -32134,6 +32479,27 @@
     }
   },
   "sendDraft": {
+    "capability_removed": {
+      "description": "Message 12 belongs to the signed-in account 1 (admin@restmail.test). It is a draft for draft operations. The server capability ceiling permits mailbox:session but not mail:write or mail:read. The account can know its own mailbox exists, so refusal is 403, not a foreign-resource 404.",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 12
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "discarded": {
       "description": "The outbound Sieve policy discards the message. The draft is removed without creating Sent or recipient queue work.",
       "requires": {
@@ -32469,6 +32835,7 @@
       }
     },
     "from_missing": {
+      "description": "The description requires from, as the handler does after authentication and before sender lookup. Its existing validation order and field error are unchanged.",
       "request": {
         "body": {
           "to": [
@@ -32847,6 +33214,7 @@
       }
     },
     "unsubscribe_not_allowed": {
+      "description": "A schema-valid request from admin@restmail.test, whose domain has transactional sending policy, is refused by that stored policy. This is not schema invalidity.",
       "request": {
         "body": {
           "from": "admin@restmail.test",
@@ -32859,8 +33227,7 @@
           "list_unsubscribe": {
             "mailto": "unsubscribe@restmail.test"
           }
-        },
-        "invalid": true
+        }
       },
       "response": {
         "status": 422,
@@ -32869,7 +33236,8 @@
             "code": "list_unsubscribe_not_allowed",
             "message": "The sender domain sends transactional mail, which carries no List-Unsubscribe field: omit list_unsubscribe"
           }
-        }
+        },
+        "mediaType": "application/json"
       }
     },
     "valid": {
@@ -38818,6 +39186,30 @@
     }
   },
   "updateDraft": {
+    "capability_removed": {
+      "description": "Message 12 belongs to the signed-in account 1 (admin@restmail.test). It is a draft for draft operations. The server capability ceiling permits mailbox:session but not mail:write or mail:read. The account can know its own mailbox exists, so refusal is 403, not a foreign-resource 404.",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "subject": "Not authorized"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "example": {
       "summary": "The operation's example",
       "request": {
@@ -40183,6 +40575,53 @@
           "error": {
             "code": "unavailable",
             "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "storage_unavailable": {
+      "description": "An authenticated human session with a second factor reaches unavailable storage; the account lookup fails, or the server-ceiling transaction cannot start.",
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "body": {
+          "capabilities": [
+            "mail:read",
+            "mail:send"
+          ]
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Failed to change grants"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "body": {
+          "capabilities": [
+            "mail:read",
+            "mail:send"
+          ]
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
           }
         },
         "mediaType": "application/json"

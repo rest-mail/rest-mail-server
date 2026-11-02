@@ -143,7 +143,7 @@ func TestRequirementExamplesThroughTheProductionRouter(t *testing.T) {
 						req.Header.Set(key, text)
 					}
 				}
-				if requirement != "principal=anonymous" && req.Header.Get("Authorization") == "" {
+				if requirement != "principal=anonymous" && op != "issueClientCredentialsToken" && req.Header.Get("Authorization") == "" {
 					req.Header.Set("Authorization", "Bearer "+credential)
 				}
 				if op == "protocolSignIn" && requirement == "fault=database" {

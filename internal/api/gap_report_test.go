@@ -20,6 +20,7 @@ import (
 	"time"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
+	acmeclient "github.com/rest-mail/rest-mail-server/internal/acme"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"github.com/rest-mail/rest-mail-server/internal/config"
 )
@@ -38,7 +39,7 @@ type gapReport struct {
 	Warnings   []oapifly.Warning `json:"warnings"`
 }
 
-// gapGenerators includes disabled-by-default push routes and non-production
+// gapGenerators includes disabled-by-default push and ACME routes and non-production
 // testing routes. A production-only snapshot must never close their issues.
 // No network or live database is needed to construct these actual registrations.
 func gapGenerators(t *testing.T) []*oapifly.Generator {
@@ -71,7 +72,7 @@ func gapRouters(t *testing.T) []*Routers {
 	var all []*Routers
 	for _, environment := range []string{"production", "test"} {
 		jwt := auth.NewJWTService(routerTestSecret, 5*time.Minute, 24*time.Hour)
-		routers := NewRouters(newFailingGormDB(t), jwt, &config.Config{Environment: environment}, nil)
+		routers := NewRouters(newFailingGormDB(t), jwt, &config.Config{Environment: environment}, nil, acmeclient.NewClient(acmeclient.ClientConfig{}))
 		t.Cleanup(routers.Close)
 		all = append(all, routers)
 	}
