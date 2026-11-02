@@ -209,6 +209,41 @@ class SenderRuleProbes(AdminAPITestCase):
             hooks.on_the_added_sender_rule(transaction)
             self.assertEqual(transaction["fullPath"], path)
 
+    def test_coverage_placeholder_restores_the_consumed_rule(self):
+        self.enterContext(mock.patch.dict(os.environ, {"CONTRACT_COVERAGE": "1"}))
+        for kind in ("allowlist", "blocklist"):
+            with self.subTest(kind=kind):
+                parent = "/api/v1/admin/domains/1/" + kind
+                example = {"pattern": "@partner.example.com"}
+                rule = self.created("rules", domain_id=1, list=kind, **example)
+                hooks.keep_the_added_sender_rule(dict(self.transaction(parent, example),
+                    real={"body": json.dumps({"data": rule})}))
+                self.server.state["rules"] = []
+                transaction = self.transaction(parent + "/1?keep=yes")
+                transaction["name"] = "coverage: " + parent + "/{eid} > Remove entry > 204"
+                hooks.on_the_added_sender_rule(transaction)
+                restored = self.server.state["rules"][-1]
+                self.assertEqual(transaction["fullPath"], parent + "/%d?keep=yes" % restored["id"])
+                self.assertEqual(restored["pattern"], example["pattern"])
+
+    def test_coverage_keeps_other_rule_ids_and_domains(self):
+        self.enterContext(mock.patch.dict(os.environ, {"CONTRACT_COVERAGE": "1"}))
+        vertrag_hooks.stash["created_sender_rules"] = {self.PATH: {"id": 101, "body": {"pattern": "@partner.example.com"}}}
+        for path in (self.PATH + "/0", self.PATH + "/x", self.PATH + "/2147483647",
+                     "/api/v1/admin/domains/0/allowlist/1", "/api/v1/admin/domains/x/allowlist/1"):
+            transaction = self.transaction(path)
+            before = json.loads(json.dumps(transaction))
+            hooks.on_the_added_sender_rule(transaction)
+            self.assertEqual(transaction, before)
+
+    def test_noncoverage_placeholder_keeps_its_target(self):
+        self.enterContext(mock.patch.dict(os.environ, {"CONTRACT_COVERAGE": "0"}))
+        vertrag_hooks.stash["created_sender_rules"] = {self.PATH: {"id": 101, "body": {"pattern": "@partner.example.com"}}}
+        transaction = self.transaction(self.PATH + "/1")
+        before = json.loads(json.dumps(transaction))
+        hooks.on_the_added_sender_rule(transaction)
+        self.assertEqual(transaction, before)
+
 
 class AliasProbes(AdminAPITestCase):
     PATH = "/api/v1/admin/aliases"
@@ -294,6 +329,42 @@ class AliasProbes(AdminAPITestCase):
         transaction = self.transaction("%s/3" % self.PATH)
         hooks.on_the_created_alias(transaction)
         self.assertEqual(transaction["fullPath"], "%s/3" % self.PATH)
+
+    def test_coverage_placeholder_restores_the_consumed_alias(self):
+        self.enterContext(mock.patch.dict(os.environ, {"CONTRACT_COVERAGE": "1"}))
+        example = {"source_address": "sales@restmail.test", "destination_address": "admin@restmail.test"}
+        alias = self.created("aliases", domain_id=1, **example)
+        hooks.keep_the_created_alias(dict(self.transaction(self.PATH, example),
+            real={"body": json.dumps({"data": alias})}))
+        self.server.state["aliases"] = []
+        for method in ("GET", "PATCH", "DELETE"):
+            with self.subTest(method=method):
+                transaction = self.transaction(self.PATH + "/1?keep=yes")
+                transaction["request"]["method"] = method
+                transaction["name"] = "coverage: " + self.PATH + "/{id} > Alias > 200"
+                hooks.on_the_created_alias(transaction)
+                restored = self.server.state["aliases"][-1]
+                self.assertEqual(transaction["fullPath"], self.PATH + "/%d?keep=yes" % restored["id"])
+                self.assertEqual(restored["source_address"], example["source_address"])
+                self.server.state["aliases"] = []
+
+    def test_coverage_keeps_other_alias_ids_and_bodies(self):
+        self.enterContext(mock.patch.dict(os.environ, {"CONTRACT_COVERAGE": "1"}))
+        vertrag_hooks.stash["created_alias"] = {"id": 101, "body": {"source_address": "sales@restmail.test"}}
+        for target in ("0", "-1", "x", "2147483647", "3"):
+            transaction = self.transaction(self.PATH + "/" + target, {"active": "not-a-boolean"})
+            transaction["name"] = "coverage: /aliases/{id} > Alias > 200"
+            before = json.loads(json.dumps(transaction))
+            hooks.on_the_created_alias(transaction)
+            self.assertEqual(transaction, before)
+
+    def test_noncoverage_placeholder_keeps_its_target(self):
+        self.enterContext(mock.patch.dict(os.environ, {"CONTRACT_COVERAGE": "0"}))
+        vertrag_hooks.stash["created_alias"] = {"id": 101, "body": {"source_address": "sales@restmail.test"}}
+        transaction = self.transaction(self.PATH + "/1")
+        before = json.loads(json.dumps(transaction))
+        hooks.on_the_created_alias(transaction)
+        self.assertEqual(transaction, before)
 
 
 if __name__ == "__main__":
