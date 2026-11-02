@@ -31394,6 +31394,12 @@
               ],
               "recipients_cc": [],
               "subject": "Subject",
+              "headers": {
+                "Subject": [
+                  "Subject"
+                ]
+              },
+              "calendar_events": [],
               "size_bytes": 80,
               "raw_size": 137,
               "downgraded_size": 137,
@@ -31411,7 +31417,8 @@
             }
           ],
           "pagination": {
-            "has_more": false
+            "has_more": false,
+            "total": 1
           }
         },
         "mediaType": "application/json"
@@ -37915,16 +37922,59 @@
         "mediaType": "application/json"
       }
     },
-    "example": {
-      "summary": "The operation's example",
+    "flags_set": {
+      "summary": "The message is marked read and flagged",
+      "description": "The answer is the message as stored, read back in the change's own transaction; flags left out of the body keep their value.",
       "request": {
+        "path": {
+          "id": 1
+        },
         "body": {
           "is_read": true,
           "is_flagged": true
         }
       },
       "response": {
-        "status": 200
+        "status": 200,
+        "body": {
+          "data": {
+            "id": 1,
+            "mailbox_id": 1,
+            "folder": "INBOX",
+            "message_id": "\u003cmessage@example.net\u003e",
+            "in_reply_to": "",
+            "references": "",
+            "thread_id": "",
+            "sender": "sender@example.net",
+            "sender_name": "Sender",
+            "recipients_to": [
+              "recipient@example.com"
+            ],
+            "recipients_cc": [],
+            "subject": "Subject",
+            "headers": {
+              "Subject": [
+                "Subject"
+              ]
+            },
+            "calendar_events": [],
+            "size_bytes": 80,
+            "raw_size": 137,
+            "downgraded_size": 137,
+            "has_attachments": false,
+            "is_read": true,
+            "is_dsn": false,
+            "is_flagged": true,
+            "is_starred": false,
+            "is_draft": false,
+            "is_deleted": false,
+            "received_at": "2026-10-20T00:00:00Z",
+            "date_header": "2026-10-20T00:00:00Z",
+            "created_at": "2026-10-20T00:00:00Z",
+            "updated_at": "2026-10-21T09:30:00Z"
+          }
+        },
+        "mediaType": "application/json"
       }
     },
     "internal_error": {
