@@ -93,6 +93,7 @@ const (
 	sendsPerMinute       = 20
 	streamsPerAccount    = 8
 	recoveryFailures     = 5
+	recoveryEmails       = 5
 	tlsrptMaxBodyBytes   = 512 << 10
 	overEveryBodyCap     = 1 << 30
 	unknownLimitsAddress = "nobody-limits@restmail.test"
@@ -110,6 +111,7 @@ type limitsRun struct {
 	aID, bID       uint
 	aAddr, bAddr   string
 	limits         map[string][]limitsOperation // 429 description → operations
+	declares       map[string]map[string]bool   // operation → the statuses it declares
 	capped         []limitsOperation            // operations that declare a 413
 	apiKeyLimited  []limitsOperation            // the operations behind the refused API keys' throttle
 	sendsRetryFrom time.Time                    // when the send limit may be spent again
@@ -132,6 +134,7 @@ func newLimitsRun(t *testing.T) *limitsRun {
 	}
 	requireNoError(t, decodeJSON(resp, &doc))
 	l.limits = map[string][]limitsOperation{}
+	l.declares = map[string]map[string]bool{}
 	for path, item := range doc.Paths {
 		for method, raw := range item {
 			var op struct {
@@ -143,6 +146,10 @@ func newLimitsRun(t *testing.T) *limitsRun {
 				continue
 			}
 			o := limitsOperation{strings.ToUpper(method), path}
+			l.declares[o.String()] = map[string]bool{}
+			for status := range op.Responses {
+				l.declares[o.String()][status] = true
+			}
 			if r, ok := op.Responses["429"]; ok {
 				l.limits[r.Description] = append(l.limits[r.Description], o)
 			}
@@ -241,9 +248,27 @@ func (l *limitsRun) recipients(t *testing.T) {
 	for i := range to {
 		to[i] = fmt.Sprintf("r%03d@limits.example", i)
 	}
-	resp, err := l.a.post("/api/v1/messages/send", map[string]any{"from": l.aAddr, "to": to, "subject": "too many", "body_text": "x"})
+	// The cap is a validation refusal: the 422 the send declares, naming the field.
+	send := limitsOperation{"POST", "/api/v1/messages/send"}
+	if !l.declares[send.String()][strconv.Itoa(http.StatusUnprocessableEntity)] {
+		t.Fatalf("%s does not declare the 422 its recipient cap answers", send)
+	}
+	resp, err := l.a.post(send.path, map[string]any{"from": l.aAddr, "to": to, "subject": "too many", "body_text": "x"})
 	requireNoError(t, err)
-	requireRefusal(t, resp, http.StatusUnprocessableEntity, "validation_failed")
+	body := readBody(resp)
+	var refusal struct {
+		Error struct {
+			Code    string `json:"code"`
+			Details struct {
+				Fields map[string]string `json:"fields"`
+			} `json:"details"`
+		} `json:"error"`
+	}
+	_ = json.Unmarshal([]byte(body), &refusal)
+	if resp.StatusCode != http.StatusUnprocessableEntity || refusal.Error.Code != "validation_failed" ||
+		!strings.Contains(refusal.Error.Details.Fields["to"], "too many recipients") {
+		t.Fatalf("%d %s, want 422 validation_failed naming too many recipients in \"to\"", resp.StatusCode, body)
+	}
 }
 
 func (l *limitsRun) send(t *testing.T, c *apiClient, from, to string) *http.Response {
@@ -392,16 +417,18 @@ func (l *limitsRun) recoveryEmailRequests(t *testing.T) {
 	ask := func(address string) *http.Response {
 		return l.call(t, nil, limitsOperation{"POST", "/api/v1/auth/recover/email"}, map[string]any{"email": address})
 	}
-	for i := 0; i < 200; i++ {
+	for i := 0; i < recoveryEmails; i++ {
 		resp := ask("limits-recovery@restmail.test")
-		if resp.StatusCode == http.StatusTooManyRequests {
-			requireRateLimited(t, resp, "recovery emails for one address")
-			l.requireNotLimited(t, "recovery emails for another address", ask("limits-recovery-other@restmail.test"))
-			return
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("recovery email %d of the %d an address may ask for: %d %s", i+1, recoveryEmails, resp.StatusCode, readBody(resp))
 		}
 		resp.Body.Close()
 	}
-	t.Fatal("recovery emails for one address answered no 429 in 200 requests")
+	retry := requireRateLimited(t, ask("limits-recovery@restmail.test"), "the recovery email after five")
+	if retry < time.Minute {
+		t.Errorf("Retry-After %s after five recovery emails; the budget gives one back every 15 minutes", retry)
+	}
+	l.requireNotLimited(t, "recovery emails for another address", ask("limits-recovery-other@restmail.test"))
 }
 
 // recoveryFailures spends one address's recovery failures, from an IP whose
