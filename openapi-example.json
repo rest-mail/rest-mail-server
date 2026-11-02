@@ -13826,6 +13826,39 @@
         "mediaType": "application/json"
       }
     },
+    "revoked": {
+      "summary": "The previous selector is revoked for one more TTL",
+      "requires": {
+        "state": "dkim_revocation"
+      },
+      "request": {
+        "path": {
+          "id": 10
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "domain_id": 10,
+            "rotation_interval_days": 90,
+            "state": "retiring",
+            "staged": null,
+            "previous": {
+              "selector": "restmail-previous",
+              "record_name": "restmail-previous._domainkey.example.com",
+              "record_value": "v=DKIM1; p=",
+              "published_at": "2026-10-20T00:00:00Z",
+              "retire_after": "2026-10-21T00:00:00Z",
+              "revoked_at": "2026-10-21T00:00:00Z",
+              "revocation_published_at": "2026-10-21T00:00:00Z",
+              "removes_after": "2026-10-21T01:00:00Z"
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "session_unavailable": {
       "summary": "The current-session lookup fails",
       "description": "The database-backed current-session lookup fails. The production session-cache builder and stale-session middleware produce this refusal.",

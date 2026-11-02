@@ -87,6 +87,17 @@ func Published(ctx context.Context, lookup LookupTXT, domain, selector, want str
 	if wantKey == "" {
 		return fmt.Errorf("the expected DKIM record has no public key")
 	}
+	return published(ctx, lookup, domain, selector, wantTags)
+}
+
+func Revoked(ctx context.Context, lookup LookupTXT, domain, selector string) error {
+	if lookup == nil {
+		return fmt.Errorf("dkim rotation: revocation requires a DNS resolver")
+	}
+	return published(ctx, lookup, domain, selector, recordTags(RevokedRecord))
+}
+
+func published(ctx context.Context, lookup LookupTXT, domain, selector string, wantTags map[string]string) error {
 	// DKIM key records live under the A-label domain even when the hosted
 	// domain is stored as Unicode. Invalid IDNs must never reach DNS.
 	asciiDomain, err := rmail.DomainASCII(domain)
@@ -103,7 +114,8 @@ func Published(ctx context.Context, lookup LookupTXT, domain, selector, want str
 		if v, ok := tags["v"]; ok && v != "DKIM1" {
 			continue
 		}
-		if keyType(tags) == keyType(wantTags) && tags["p"] == wantKey {
+		key, present := tags["p"]
+		if present && key == wantTags["p"] && (key == "" || keyType(tags) == keyType(wantTags)) {
 			return nil
 		}
 	}

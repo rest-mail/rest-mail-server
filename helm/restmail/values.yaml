@@ -10,6 +10,11 @@
 #
 # For local kind/k3s development against rest-mail/testbed see values-dev.yaml.
 
+metrics:
+  prometheusRule:
+    enabled: false
+    labels: {}
+
 # ── Global ────────────────────────────────────────────────────────────────
 global:
   # Image registry (override per-image with .image.repository if needed).

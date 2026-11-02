@@ -1,0 +1,60 @@
+rule_files:
+  - dkim-alerts-rules.yml
+evaluation_interval: 1h
+tests:
+  - interval: 1h
+    input_series:
+      - series: 'restmail_dkim_key_age_seconds{domain="overdue.test",selector="mail",job="api",instance="one"}'
+        values: '7948800+3600x25'
+      - series: 'restmail_dkim_rotation_interval_seconds{domain="overdue.test",job="api",instance="one"}'
+        values: '7776000+0x25'
+      - series: 'restmail_dkim_key_age_seconds{domain="overdue.test",selector="mail",job="api",instance="two"}'
+        values: '0+3600x25'
+      - series: 'restmail_dkim_rotation_interval_seconds{domain="overdue.test",job="api",instance="two"}'
+        values: '7776000+0x25'
+      - series: 'restmail_dkim_key_age_seconds{domain="disabled.test",selector="mail",job="api",instance="one"}'
+        values: '99999999+3600x25'
+      - series: 'restmail_dkim_rotation_interval_seconds{domain="legacy.test",job="api",instance="one"}'
+        values: '7776000+0x25'
+      - series: 'restmail_dkim_rotation_step_started_seconds{domain="stuck.test",job="api",instance="one"}'
+        values: '0+0x25'
+      - series: 'restmail_dkim_rotation_state{domain="stuck.test",state="awaiting_publication",job="api",instance="one"}'
+        values: '1+0x25'
+      - series: 'restmail_dkim_rotation_step_started_seconds{domain="stuck.test",job="api",instance="two"}'
+        values: '0+0x25'
+      - series: 'restmail_dkim_rotation_state{domain="stuck.test",state="waiting_ttl",job="api",instance="two"}'
+        values: '1+0x25'
+      - series: 'restmail_dkim_rotation_step_started_seconds{domain="retiring.test",job="api",instance="one"}'
+        values: '0+0x25'
+      - series: 'restmail_dkim_rotation_state{domain="retiring.test",state="retiring",job="api",instance="one"}'
+        values: '1+0x25'
+    alert_rule_test:
+      - eval_time: 0h
+        alertname: DKIMKeyOverdue
+        exp_alerts: []
+      - eval_time: 1h
+        alertname: DKIMKeyOverdue
+        exp_alerts:
+          - exp_labels:
+              domain: overdue.test
+              selector: mail
+              job: api
+              instance: one
+              severity: warning
+            exp_annotations:
+              summary: DKIM key for overdue.test is overdue
+              description: The current key exceeds its configured rotation interval plus two days. Check the rotation status and DNS records.
+      - eval_time: 24h
+        alertname: DKIMPublicationStuck
+        exp_alerts: []
+      - eval_time: 25h
+        alertname: DKIMPublicationStuck
+        exp_alerts:
+          - exp_labels:
+              domain: stuck.test
+              job: api
+              instance: one
+              severity: warning
+            exp_annotations:
+              summary: DKIM publication for stuck.test is stuck
+              description: The staged record has not resolved for more than 24 hours. Publish the TXT record reported by the rotation status endpoint.

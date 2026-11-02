@@ -78,6 +78,12 @@ func TestDomainLookups_DocumentedMissingExamples(t *testing.T) {
 			if tc.operation == "getMtaStsPolicy" {
 				parameterCount, refusalCount = 3, 2
 			}
+			if tc.operation == "getDKIMRotation" {
+				parameterCount = 3
+				if contractPathExampleID(t, parameter.Examples["revoked"].Value) != 10 {
+					t.Fatalf("unexpected revoked-key path example: %+v", parameter.Examples)
+				}
+			}
 			if parameter.Name != "id" || parameter.In != "path" || !parameter.Required || len(parameter.Examples) != parameterCount {
 				t.Fatalf("unexpected ID parameter: %+v", parameter)
 			}

@@ -1,0 +1,29 @@
+{{- if .Values.metrics.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "restmail.fullname" . }}-dkim
+  labels:
+    {{- include "restmail.labels" . | nindent 4 }}
+    {{- with .Values.metrics.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: restmail-dkim
+      rules:
+        - alert: DKIMKeyOverdue
+          expr: restmail_dkim_key_age_seconds > on(domain, job, instance) group_left() (restmail_dkim_rotation_interval_seconds + 2 * 24 * 60 * 60)
+          labels:
+            severity: warning
+          annotations:
+            summary: {{ "DKIM key for {{ $labels.domain }} is overdue" | quote }}
+            description: "The current key exceeds its configured rotation interval plus two days. Check the rotation status and DNS records."
+        - alert: DKIMPublicationStuck
+          expr: (time() - restmail_dkim_rotation_step_started_seconds > 24 * 60 * 60) and on(domain, job, instance) (restmail_dkim_rotation_state{state="awaiting_publication"} == 1)
+          labels:
+            severity: warning
+          annotations:
+            summary: {{ "DKIM publication for {{ $labels.domain }} is stuck" | quote }}
+            description: "The staged record has not resolved for more than 24 hours. Publish the TXT record reported by the rotation status endpoint."
+{{- end }}

@@ -33,11 +33,13 @@ type DKIMRotationKey struct {
 	// TTLSeconds is the DNS TTL to wait after publication or a signing switch.
 	// RFC 2181 bounds a TTL to 31 bits. Require a positive value here so
 	// rotation always has an explicit overlap period.
-	TTLSeconds  int64      `gorm:"not null;check:dkim_rotation_ttl,ttl_seconds > 0 AND ttl_seconds <= 2147483647" json:"ttl_seconds"`
-	RetireAfter *time.Time `gorm:"check:dkim_rotation_retirement,(slot <> 'staged' OR retire_after IS NULL) AND (slot <> 'previous' OR retire_after IS NOT NULL)" json:"retire_after"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-	Domain      Domain     `gorm:"constraint:OnDelete:CASCADE" json:"-"`
+	TTLSeconds            int64      `gorm:"not null;check:dkim_rotation_ttl,ttl_seconds > 0 AND ttl_seconds <= 2147483647" json:"ttl_seconds"`
+	RetireAfter           *time.Time `gorm:"check:dkim_rotation_retirement,(slot <> 'staged' OR retire_after IS NULL) AND (slot <> 'previous' OR retire_after IS NOT NULL)" json:"retire_after"`
+	RevokedAt             *time.Time `json:"revoked_at"`
+	RevocationPublishedAt *time.Time `json:"revocation_published_at"`
+	CreatedAt             time.Time  `json:"created_at"`
+	UpdatedAt             time.Time  `json:"updated_at"`
+	Domain                Domain     `gorm:"constraint:OnDelete:CASCADE" json:"-"`
 }
 
 // SetPrivateKey encrypts keyPEM using the same at-rest policy as the current

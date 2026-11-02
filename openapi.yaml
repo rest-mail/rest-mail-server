@@ -9939,7 +9939,10 @@ paths:
         cover this domain. Besides the interval, it reports where the rotation
         worker has the domain: the staged key's TXT record to publish, when it
         was seen resolving and when signing moves to it, and the previous key
-        kept until its retirement deadline.
+        retained through its retirement deadline, then published with an empty
+        p= until that record resolves and for one more TTL before removal.
+        revoked_at records the request; revocation_published_at records its
+        first observation and removes_after is one TTL later. The state remains retiring.
       # Links fill the successful lookup; this named ID stays absent.
       parameters:
         - name: id
@@ -9953,6 +9956,8 @@ paths:
               value: 1
             missing:
               value: 2147483647
+            revoked:
+              value: 10
       responses:
         "200":
           description: DKIM rotation settings
@@ -9964,6 +9969,26 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/DKIMRotationSettings"
+              examples:
+                revoked:
+                  summary: The previous selector is revoked for one more TTL
+                  x-requires:
+                    state: dkim_revocation
+                  value:
+                    data:
+                      domain_id: 10
+                      rotation_interval_days: 90
+                      state: retiring
+                      staged: null
+                      previous:
+                        selector: restmail-previous
+                        record_name: restmail-previous._domainkey.example.com
+                        record_value: "v=DKIM1; p="
+                        published_at: "2026-10-20T00:00:00Z"
+                        retire_after: "2026-10-21T00:00:00Z"
+                        revoked_at: "2026-10-21T00:00:00Z"
+                        revocation_published_at: "2026-10-21T00:00:00Z"
+                        removes_after: "2026-10-21T01:00:00Z"
         "404":
           description: Domain not found
           content:
@@ -16419,7 +16444,10 @@ components:
             stable: no rotation under way. awaiting_publication: a staged key whose
             record has not resolved yet. waiting_ttl: published, and waiting one TTL
             before signing moves to it. retiring: signing has moved, and the previous
-            key's record stays until it retires.
+            key's record stays until it retires, then carries an empty p= for one
+            more TTL after the revocation resolves before removal. revoked_at,
+            revocation_published_at and removes_after appear as those steps
+            complete; the state stays retiring.
         staged:
           description: The key signing moves to next; null when there is none.
           type: ["null", "object"]
@@ -16433,7 +16461,7 @@ components:
               description: The TXT record's name, `<selector>._domainkey.<domain>` in A-label form.
             record_value:
               type: string
-              description: The TXT record's value; empty when the stored key cannot be read.
+              description: The TXT record's value; an empty p= revokes a previous key. Empty when an unrevoked stored key cannot be read.
             published_at:
               type: ["null", "string"]
               format: date-time
@@ -16445,7 +16473,19 @@ components:
             retire_after:
               type: ["null", "string"]
               format: date-time
-              description: For the previous key, when its record can be removed.
+              description: For the previous key, when its public key is replaced by an empty p=.
+            revoked_at:
+              type: ["null", "string"]
+              format: date-time
+              description: When the previous record changed to an empty p= revocation; absent before revocation.
+            removes_after:
+              type: ["null", "string"]
+              format: date-time
+              description: When the revoked record can be removed, one TTL after revocation_published_at; absent until the revocation resolves.
+            revocation_published_at:
+              type: ["null", "string"]
+              format: date-time
+              description: When the empty p= record was first seen to resolve; absent until then.
         previous:
           description: The key signing moved from; null when there is none.
           type: ["null", "object"]
@@ -16459,7 +16499,7 @@ components:
               description: The TXT record's name, `<selector>._domainkey.<domain>` in A-label form.
             record_value:
               type: string
-              description: The TXT record's value; empty when the stored key cannot be read.
+              description: The TXT record's value; an empty p= revokes a previous key. Empty when an unrevoked stored key cannot be read.
             published_at:
               type: ["null", "string"]
               format: date-time
@@ -16471,7 +16511,19 @@ components:
             retire_after:
               type: ["null", "string"]
               format: date-time
-              description: For the previous key, when its record can be removed.
+              description: For the previous key, when its public key is replaced by an empty p=.
+            revoked_at:
+              type: ["null", "string"]
+              format: date-time
+              description: When the previous record changed to an empty p= revocation; absent before revocation.
+            removes_after:
+              type: ["null", "string"]
+              format: date-time
+              description: When the revoked record can be removed, one TTL after revocation_published_at; absent until the revocation resolves.
+            revocation_published_at:
+              type: ["null", "string"]
+              format: date-time
+              description: When the empty p= record was first seen to resolve; absent until then.
 
     SetDKIMKeyRequest:
       type: object

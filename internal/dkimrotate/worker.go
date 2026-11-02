@@ -14,6 +14,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/outbound"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"gorm.io/gorm/logger"
 )
 
@@ -169,19 +170,52 @@ func (w *Worker) notePublication(ctx context.Context, domainID, stagedID uint) e
 	return nil
 }
 
-// retire lets the previous key go once its retirement deadline has passed: mail it signed
-// before the switch has had one TTL to be verified.
+// retire revokes the previous key at its deadline, then retains the revocation for one TTL.
 func (w *Worker) retire(ctx context.Context, domainID uint) error {
-	result := w.db.WithContext(ctx).
-		Where("domain_id = ? AND slot = ? AND retire_after <= ?", domainID, models.DKIMRotationPrevious, w.now()).
-		Delete(&models.DKIMRotationKey{})
-	if result.Error != nil {
-		return result.Error
+	return w.db.Session(&gorm.Session{Logger: logger.Discard}).WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var previous models.DKIMRotationKey
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("domain_id = ? AND slot = ?", domainID, models.DKIMRotationPrevious).Take(&previous).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		now := w.now()
+		if previous.RetireAfter == nil || now.Before(*previous.RetireAfter) {
+			return nil
+		}
+		if previous.RevokedAt == nil {
+			return tx.Model(&previous).Update("revoked_at", now).Error
+		}
+		if previous.RevocationPublishedAt == nil {
+			var domain models.Domain
+			if err := tx.Select("name").Take(&domain, domainID).Error; err != nil {
+				return err
+			}
+			if err := Revoked(ctx, w.lookup, domain.Name, previous.Selector); err != nil {
+				if errors.Is(err, ErrNotPublished) {
+					return nil
+				}
+				return err
+			}
+			return tx.Model(&previous).Update("revocation_published_at", w.now()).Error
+		}
+		if now.Before(previous.RevocationPublishedAt.Add(time.Duration(previous.TTLSeconds) * time.Second)) {
+			return nil
+		}
+		return tx.Delete(&previous).Error
+	})
+}
+
+const RevokedRecord = "v=DKIM1; p="
+
+func RotationRecord(key models.DKIMRotationKey, masterKey string) (string, error) {
+	if key.Slot == models.DKIMRotationPrevious && key.RevokedAt != nil {
+		return RevokedRecord, nil
 	}
-	if result.RowsAffected > 0 {
-		slog.Info("dkim rotation: the previous key is retired; its record can go", "domain_id", domainID)
-	}
-	return nil
+	return PublicRecord(key.PrivateKey, masterKey)
 }
 
 // PublicRecord is the DKIM record value (RFC 6376 §3.6.1) that publishes the public half of

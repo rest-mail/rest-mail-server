@@ -21,7 +21,8 @@ func (h *DKIMHandler) Register(rs endpoint.Routes, checks DKIMRouteChecks) {
 		Middleware: []endpoint.Middleware{checks.At(middleware.CapDomainsRead)}}, h.listKeys)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/dkim/{id}/rotation",
 		OperationID: "getDKIMRotation", Summary: "Read a domain's DKIM rotation interval", Tags: tags, Errors: missing,
-		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsRead)}}, h.getRotation)
+		Description: "Reports the staged TXT record and publication/activation times. After the signing switch, the previous key is retained until retire_after, then revoked with an empty p=. revoked_at records when the worker requested revocation. revocation_published_at records when that record first resolved; removes_after is one TTL later, when it can be removed. These optional fields appear as each step completes. State remains retiring until removal.",
+		Middleware:  []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsRead)}}, h.getRotation)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPut, Path: "/api/v1/admin/dkim/{id}/rotation",
 		OperationID: "setDKIMRotation", Summary: "Set a domain's DKIM rotation interval", Tags: tags,
 		Errors:     []int{http.StatusNotFound},
