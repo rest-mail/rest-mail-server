@@ -7,11 +7,14 @@ accounts (#388), so nothing clears what an earlier probe made.
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import os
+from pathlib import Path
 import re
 import sys
 import threading
 import types
 import unittest
+from unittest import mock
 import urllib.parse
 
 
@@ -227,6 +230,38 @@ class AliasProbes(AdminAPITestCase):
     def test_leaves_an_alias_it_did_not_create(self):
         self.probe_alias({"source_address": "postmaster@restmail.test", "destination_address": "a@b.c"})
         self.assertEqual(self.server.state["deleted"], [])
+
+    def create_over_the_seeded_alias(self, name, leftovers):
+        """Create the alias the fixture already holds, in a run that does or
+        does not clear leftovers."""
+        body = {"source_address": "postmaster@restmail.test", "destination_address": "a@b.example"}
+        transaction = self.transaction(self.PATH, body)
+        transaction["name"] = name
+        with mock.patch.dict(os.environ):
+            os.environ.pop("CONTRACT_REMOVE_LEFTOVERS", None)
+            if leftovers:
+                os.environ["CONTRACT_REMOVE_LEFTOVERS"] = "1"
+            hooks.remove_a_previous_alias_probe(transaction)
+
+    def test_an_ownership_run_clears_a_leftover_for_a_documented_create(self):
+        self.create_over_the_seeded_alias(self.PATH + " > Create an alias > 201 > application/json", True)
+        self.assertEqual(self.server.state["deleted"], [3])
+
+    def test_an_ownership_run_leaves_the_object_a_conflict_example_names(self):
+        self.create_over_the_seeded_alias(self.PATH + " > Create an alias > 409 > application/json", True)
+        self.assertEqual(self.server.state["deleted"], [])
+
+    def test_other_runs_leave_a_leftover_alone(self):
+        self.create_over_the_seeded_alias(self.PATH + " > Create an alias > 201 > application/json", False)
+        self.assertEqual(self.server.state["deleted"], [])
+
+    def test_only_the_ownership_phase_turns_on_clearing_leftovers(self):
+        script = (Path(__file__).resolve().parents[2] / "tests/contract/run.sh").read_text()
+        self.assertEqual(script.count("export CONTRACT_REMOVE_LEFTOVERS=1"), 1)
+        ownership = script.index("\nownership)\n")
+        next_phase = re.compile(r"^[a-z|* ]+\)$", re.M).search(script, ownership + len("\nownership)\n"))
+        self.assertLess(script.index("export CONTRACT_REMOVE_LEFTOVERS=1"), next_phase.start())
+        self.assertGreater(script.index("export CONTRACT_REMOVE_LEFTOVERS=1"), ownership)
 
     def test_leaves_malformed_and_unhostable_addresses_to_the_probe(self):
         for body in ({}, [], {"source_address": ""}, {"source_address": "not-an-email"},

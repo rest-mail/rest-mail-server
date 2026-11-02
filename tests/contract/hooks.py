@@ -1398,11 +1398,32 @@ def sign_in_a_mail_client(transaction):
     )
 
 
+def a_leftover_to_remove(transaction):
+    """Whether a create may remove an object of the same value that this
+    process did not make.
+
+    The ownership runs (tests/contract/run.sh sets CONTRACT_REMOVE_LEFTOVERS)
+    come after the examples, coverage and authorization runs of the same job,
+    in vertrag processes of their own, so the objects those runs made from the
+    documented examples are still there and this process's stash does not
+    know them: new-account@restmail.test, created@example.com and
+    sales@restmail.test answered 409, and every check linked from them went
+    unsent (#657). Only a create documented to succeed (201) clears its way;
+    a 409 example names an object on purpose (admin@restmail.test), and every
+    other run leaves objects it did not make alone.
+    """
+    if os.environ.get("CONTRACT_REMOVE_LEFTOVERS") != "1":
+        return False
+    parts = transaction.get("name", "").split(" > ")
+    return len(parts) > 2 and parts[2].split(" ")[0] == "201"
+
+
 @hooks.before("createContact")
 def remove_a_previous_contact_probe(transaction):
     # Coverage calls before hooks only. Claim an absent email before its first
     # create, then remove only that probe's contact when generated bodies repeat.
-    # Existing contacts and all generated request bytes stay untouched.
+    # Existing contacts and all generated request bytes stay untouched, but
+    # for an ownership run's leftovers (a_leftover_to_remove).
     from urllib.error import HTTPError
     from urllib.parse import urlencode
 
@@ -1439,7 +1460,7 @@ def remove_a_previous_contact_probe(transaction):
         contacts = page.get("data") or []
         contact = next((item for item in contacts if item.get("email") == email), None)
         if contact:
-            if key not in owned:
+            if key not in owned and not a_leftover_to_remove(transaction):
                 return
             request = urllib.request.Request(
                 origin + parent + "/" + str(contact["id"]),
@@ -1712,7 +1733,8 @@ def remove_a_previous_alias_probe(transaction):
     # repeat it, which meets the alias an earlier probe made (409). Host the
     # domain, claim an absent source before its first create, and remove only
     # that probe's alias when generated bodies repeat it. Existing aliases and
-    # all generated request bytes stay untouched.
+    # all generated request bytes stay untouched, but for an ownership run's
+    # leftovers (a_leftover_to_remove).
     body = hooks.get_json(transaction)
     source = body.get("source_address") if isinstance(body, dict) else None
     if not isinstance(source, str) or source.count("@") != 1:
@@ -1751,7 +1773,7 @@ def remove_a_previous_alias_probe(transaction):
         owned[key] = True
         hooks.stash["created_alias_probes"] = owned
         return
-    if key not in owned:
+    if key not in owned and not a_leftover_to_remove(transaction):
         return
     request = urllib.request.Request(
         origin + "/api/v1/admin/aliases/{:d}".format(alias["id"]),
@@ -1886,7 +1908,8 @@ def host_the_account_probe_domain(transaction):
     # (someone@example.com), which the handler rightly refuses with 422.
     # Host the domain, claim an absent address before its first create, and
     # remove only that probe's account when generated bodies repeat it.
-    # Existing accounts and all generated request bytes stay untouched.
+    # Existing accounts and all generated request bytes stay untouched, but
+    # for an ownership run's leftovers (a_leftover_to_remove).
     from urllib.error import HTTPError
 
     body = hooks.get_json(transaction)
@@ -1952,7 +1975,7 @@ def host_the_account_probe_domain(transaction):
         owned[key] = True
         hooks.stash["created_account_probes"] = owned
         return
-    if key not in owned:
+    if key not in owned and not a_leftover_to_remove(transaction):
         return
     # Deleting an account always takes a session signed in with 2FA.
     request = urllib.request.Request(
