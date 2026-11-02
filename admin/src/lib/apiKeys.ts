@@ -3,7 +3,12 @@
  * is never in these answers: the server shows it once, when the key is made.
  */
 import { apiV1 } from "./api";
-import { expectSuccess, readJSON } from "./api-contract";
+import { expectSuccess, readJSON, type JsonResponse } from "./api-contract";
+
+export interface APIKeyPermission {
+  capability: string;
+  scope: string;
+}
 
 export interface AdminAPIKey {
   id: number;
@@ -13,7 +18,7 @@ export interface AdminAPIKey {
   created_at: string;
   last_used_at: string | null;
   expires_at: string | null;
-  permissions: { capability: string; scope: string }[];
+  permissions: APIKeyPermission[];
   account_id: number;
   account_address: string;
 }
@@ -62,4 +67,81 @@ export async function revokeAPIKey(key: Pick<AdminAPIKey, "id" | "account_id">):
     await apiV1.request(`/accounts/${key.account_id}/api-keys/${key.id}`, { method: "DELETE" }),
     "Could not revoke the API key",
   );
+}
+
+/** The names a permission can use. The server still decides what a key may hold. */
+export async function listCapabilityNames(): Promise<string[]> {
+  const body = await readJSON<JsonResponse<"listCapabilities", 200>>(
+    await apiV1.request("/admin/capabilities"),
+    "Could not load the capabilities",
+  );
+  return body.data.map((capability) => capability.name);
+}
+
+/** A refused change to a key's permissions. `code` is the API's error code. */
+export class APIKeyRefusal extends Error {
+  constructor(
+    public readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "APIKeyRefusal";
+  }
+
+  /** Only a new sign-in gets past this: nothing on the form is at fault. */
+  get needsSignIn(): boolean {
+    return (
+      this.code === "recent_two_factor_required" ||
+      this.code === "two_factor_required"
+    );
+  }
+}
+
+// What to tell the administrator for each refusal that has one cause. The password is the
+// administrator's own, whichever account the key belongs to. "forbidden" is not here: it is how
+// the server refuses permissions over the ceiling, but other checks answer with it too, so the
+// server's own message is the one that cannot name the wrong cause.
+const refusals: Record<string, string> = {
+  recent_two_factor_required:
+    "Your two-factor sign-in is no longer recent enough for this change. Sign in again with your code, then make the change again.",
+  two_factor_required:
+    "This change needs a session signed in with two-factor authentication. Sign in again with your code, then make the change again.",
+  reauth_required: "Enter your current password to change this key's permissions.",
+  invalid_password:
+    "That is not your current password. Enter the password you sign in with, not the key owner's.",
+  not_found:
+    "This API key no longer exists, or you may not manage its account. Nothing was changed.",
+};
+
+async function toRefusal(response: Response): Promise<APIKeyRefusal> {
+  const fallback = "Could not change the API key's permissions";
+  try {
+    const { error } = await response.json();
+    const code: string = error?.code || "unknown";
+    // A validation failure's message only says the body failed; its fields say why.
+    const fields: Record<string, string> = error?.details?.fields ?? {};
+    const reasons = Object.entries(fields).map(([field, reason]) => `${field}: ${reason}`);
+    return new APIKeyRefusal(code, refusals[code] || reasons.join("; ") || error?.message || fallback);
+  } catch {
+    // A proxy or an empty error response may not carry the API's JSON envelope.
+    return new APIKeyRefusal("unknown", fallback);
+  }
+}
+
+/**
+ * Replaces a key's permissions and returns them as the server stored them. The key's secret, name
+ * and expiry stay as they are. `password` is the current password of the signed-in administrator.
+ */
+export async function updateAPIKeyPermissions(
+  key: Pick<AdminAPIKey, "id" | "account_id">,
+  password: string,
+  permissions: APIKeyPermission[],
+): Promise<APIKeyPermission[]> {
+  const response = await apiV1.request(`/accounts/${key.account_id}/api-keys/${key.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ password, permissions }),
+  });
+  if (!response.ok) throw await toRefusal(response);
+  const body: { data: { permissions: APIKeyPermission[] } } = await response.json();
+  return body.data.permissions;
 }

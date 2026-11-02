@@ -1,7 +1,8 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { EditAPIKeyPermissions } from '../../components/apiKeys/EditAPIKeyPermissions'
 import { AppShell } from '../../components/layout/AppShell'
-import { type AdminAPIKey, type APIKeyFilters, type APIKeyPage, listAdminAPIKeys, revokeAPIKey } from '../../lib/apiKeys'
+import { type AdminAPIKey, type APIKeyFilters, type APIKeyPage, type APIKeyPermission, listAdminAPIKeys, revokeAPIKey } from '../../lib/apiKeys'
 import { useAuthStore } from '../../lib/stores/authStore'
 
 export const Route = createFileRoute('/api-keys/')({
@@ -18,13 +19,16 @@ function when(time: string | null, none: string) {
 // Every API key the administrator's grants reach, whichever account it belongs to.
 // Secrets are never shown: the server gives one out only when the key is made.
 function APIKeysPage() {
-  const { accessToken } = useAuthStore()
+  const { accessToken, logout } = useAuthStore()
+  const navigate = useNavigate()
   const [draft, setDraft] = useState<APIKeyFilters>({})
   const [filters, setFilters] = useState<APIKeyFilters>({})
   const [offset, setOffset] = useState(0)
   const [page, setPage] = useState<APIKeyPage>(EMPTY_PAGE)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const [editing, setEditing] = useState<AdminAPIKey | null>(null)
   const latest = useRef(0)
 
   const load = useCallback(async () => {
@@ -33,7 +37,10 @@ function APIKeysPage() {
     setIsLoading(true)
     try {
       const next = await listAdminAPIKeys(filters, PAGE_SIZE, offset)
-      if (request === latest.current) setPage(next)
+      if (request !== latest.current) return
+      // Revoking a page's last key, or editing it out of a permission filter, empties that page.
+      if (next.keys.length === 0 && offset > 0) setOffset(Math.max(0, offset - PAGE_SIZE))
+      else setPage(next)
     } catch (err) {
       if (request === latest.current) setError(err instanceof Error ? err.message : 'Could not load the API keys')
     } finally {
@@ -55,14 +62,31 @@ function APIKeysPage() {
   const handleRevoke = async (key: AdminAPIKey) => {
     if (!confirm(`Revoke the API key "${key.name}" of ${key.account_address}? Anything using it stops working at once.`)) return
     setError('')
+    setNotice('')
     try {
       await revokeAPIKey(key)
-      // Revoking the last key on a later page leaves that page empty, so step back.
-      if (page.keys.length === 1 && offset > 0) setOffset(Math.max(0, offset - PAGE_SIZE))
-      else await load()
+      await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not revoke the API key')
     }
+  }
+
+  const handleSaved = (key: AdminAPIKey, permissions: APIKeyPermission[]) => {
+    setEditing(null)
+    setError('')
+    setNotice(`Saved the permissions of "${key.name}". Its secret has not changed.`)
+    // Show what the server stored at once, so a list that then fails to reload is still right.
+    setPage((current) => ({
+      ...current,
+      keys: current.keys.map((row) => (row.id === key.id ? { ...row, permissions } : row)),
+    }))
+    void load()
+  }
+
+  // A new sign-in is the only way to a new two-factor proof: refreshing a session keeps the old one.
+  const handleSignInAgain = () => {
+    logout()
+    void navigate({ to: '/login' })
   }
 
   const field = 'h-10 px-3 border text-sm rounded'
@@ -76,8 +100,18 @@ function APIKeysPage() {
       <div className="flex flex-col gap-6">
         <p className="text-sm" style={labelStyle}>
           The API keys of the accounts you can read, newest first. Revoking one needs a session signed in with two-factor
-          authentication and access to manage its account.
+          authentication and access to manage its account. Changing its permissions also needs a recent two-factor sign-in
+          and your current password.
         </p>
+
+        {notice && (
+          <div role="status" className="p-4 border flex items-center justify-between rounded" style={{ borderColor: '#22C55E', backgroundColor: '#F0FDF4' }}>
+            <span className="text-sm" style={{ color: '#166534' }}>{notice}</span>
+            <button type="button" onClick={() => setNotice('')} className="text-sm" style={{ color: '#166534' }}>
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {error && (
           <div className="p-4 border flex items-center justify-between rounded" style={{ borderColor: '#EF4444', backgroundColor: '#FEF2F2' }}>
@@ -142,7 +176,10 @@ function APIKeysPage() {
                   </td>
                   <td className="py-2">{when(key.last_used_at, 'Never')}</td>
                   <td className="py-2">{when(key.expires_at, 'Never')}</td>
-                  <td className="py-2 text-right">
+                  <td className="py-2 text-right whitespace-nowrap">
+                    <button type="button" onClick={() => { setNotice(''); setEditing(key) }} className="text-sm mr-3" style={{ color: 'var(--black-soft)' }}>
+                      Edit
+                    </button>
                     <button type="button" onClick={() => handleRevoke(key)} className="text-sm" style={{ color: '#B91C1C' }}>
                       Revoke
                     </button>
@@ -169,6 +206,17 @@ function APIKeysPage() {
           </div>
         )}
       </div>
+
+      {editing && (
+        <EditAPIKeyPermissions
+          key={editing.id}
+          apiKey={editing}
+          onSaved={(permissions) => handleSaved(editing, permissions)}
+          onClose={() => setEditing(null)}
+          onGone={() => void load()}
+          onSignInAgain={handleSignInAgain}
+        />
+      )}
     </AppShell>
   )
 }
