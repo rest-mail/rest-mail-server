@@ -801,14 +801,38 @@ This reports every sample, median/worst and their incremental cost across 600
 exchanges, including both API calls and `docker exec`/`go run` fixture startup.
 Image builds and initial server startup are outside those timings.
 
-This is not yet full exchange isolation: the existing reset preserves
-administrators and their credentials/grants, but ordinary accounts and their
-fixture IDs are **not stable** (PostgreSQL sequences are not rewound).
-Reauthenticate ordinary principals and rediscover their IDs after resetting;
-do not reuse `.cache/contract-principals.json` blindly. The reset also does not
-clear every table (for example suppressions), refill in-memory rate-limit
-buckets, drain delivery work or clear SSE subscriptions/replay buffers. Those
-limitations must be handled before wiring every exchange to this helper.
+Initialize the reset **before creating test principals**. Its first successful
+call pins the existing installation administrators in `test_reset_baseline`.
+Administrators created afterward (including the MFA fixture) are ordinary test
+data and are removed on the next reset. Initial administrator accounts, their
+domains, credentials and own grants survive, as do the server capability ceiling,
+system/retained roles and their capability definitions, the installed capability
+catalog, installation owner recovery keys and the append-only audit log. These
+are the complete retained-table allow-list; the implementation records a reason
+for each in `resetRetainedTables`. Every other table, including suppressions,
+refresh-token ledgers and newly migrated tables, is emptied. Identity sequences
+restart transactionally above the retained rows before seeding.
+
+For the same fixture selection and command order, IDs are stable across resets.
+The API-key fixture uses a stable address after reset initialization; its legacy
+standalone mode still creates a fresh account. A JWT issued after initialization
+keeps naming the same recreated account if its credential epoch matches the
+default fixture epoch. The first normalization may change IDs allocated by older
+seed commands; discard pre-initialization tokens and cached principal files.
+Reauthenticate after changing fixture selections or credential epochs, and never
+reuse refresh tokens across resets. MFA enrollment and nondefault passwords on
+ordinary fixtures are deliberately removed, so later hooks must recreate them.
+
+Reset refills all API token buckets and recovery budgets, invalidates authorization
+and session caches, closes old SSE subscriptions and clears stream caps, counters
+and replay. The non-production delivery worker holds a cross-process database
+barrier from before claiming mail through all delivery/DSN/suppression effects.
+Reset waits for that barrier with a **30-second bound**, excludes new claims while
+cleaning, and fails rather than reporting success when the drain times out. A
+failed SQL reset rolls back fixture rows and sequence restarts and does not clear
+memory. Run API and gateway with the same non-production environment; production
+has neither reset routes nor worker-barrier behavior. Exchanges and fixture
+subprocesses must still be serialized; this is not a concurrency-isolation API.
 
 ## Principals
 

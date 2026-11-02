@@ -87,13 +87,27 @@ func newSSEBroker(maxStreams int) *SSEBroker {
 // successful AcquireStream MUST be paired with exactly one ReleaseStream (on
 // disconnect) so the slot is returned.
 func (b *SSEBroker) AcquireStream(mailboxID uint) bool {
+	_, ok := b.acquireStream(mailboxID)
+	return ok
+}
+
+func (b *SSEBroker) acquireStream(mailboxID uint) (func(), bool) {
 	b.activeMu.Lock()
 	defer b.activeMu.Unlock()
 	if b.active[mailboxID] >= b.maxStreams {
-		return false
+		return nil, false
 	}
 	b.active[mailboxID]++
-	return true
+	active := b.active
+	return func() {
+		b.activeMu.Lock()
+		defer b.activeMu.Unlock()
+		if active[mailboxID] <= 1 {
+			delete(active, mailboxID)
+		} else {
+			active[mailboxID]--
+		}
+	}, true
 }
 
 // ReleaseStream returns a slot previously taken by AcquireStream. It is safe to
@@ -128,6 +142,11 @@ func (b *SSEBroker) Subscribe(mailboxID uint) chan numberedEvent {
 // SubscribeWithReplay creates a subscription and replays events after lastEventID.
 func (b *SSEBroker) SubscribeWithReplay(mailboxID uint, lastEventID uint64) chan numberedEvent {
 	ch := b.Subscribe(mailboxID)
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	if _, ok := b.subscribers[mailboxID][ch]; !ok {
+		return ch
+	}
 
 	if lastEventID == 0 {
 		return ch
@@ -177,18 +196,23 @@ func (b *SSEBroker) Unsubscribe(mailboxID uint, ch chan numberedEvent) {
 	defer b.mu.Unlock()
 
 	if subs, ok := b.subscribers[mailboxID]; ok {
+		if _, registered := subs[ch]; !registered {
+			return
+		}
 		delete(subs, ch)
 		if len(subs) == 0 {
 			delete(b.subscribers, mailboxID)
 		}
+		close(ch)
 	}
-	close(ch)
 }
 
 // Publish sends an event to all subscribers for the given mailbox ID.
 // The send is non-blocking: if a subscriber's channel buffer is full,
 // the event is dropped for that subscriber.
 func (b *SSEBroker) Publish(mailboxID uint, event SSEEvent) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
 	// Get or create state for this mailbox
 	val, _ := b.states.LoadOrStore(mailboxID, &mailboxState{})
 	state := val.(*mailboxState)
@@ -203,9 +227,6 @@ func (b *SSEBroker) Publish(mailboxID uint, event SSEEvent) {
 	state.mu.Unlock()
 
 	// Fan out to subscribers
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-
 	for ch := range b.subscribers[mailboxID] {
 		select {
 		case ch <- numbered:
@@ -213,6 +234,29 @@ func (b *SSEBroker) Publish(mailboxID uint, event SSEEvent) {
 			// Drop event if subscriber is not keeping up
 		}
 	}
+}
+
+func (b *SSEBroker) reset() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.activeMu.Lock()
+	defer b.activeMu.Unlock()
+	for _, subscribers := range b.subscribers {
+		for channel := range subscribers {
+		draining:
+			for {
+				select {
+				case <-channel:
+				default:
+					break draining
+				}
+			}
+			close(channel)
+		}
+	}
+	clear(b.subscribers)
+	b.states.Clear()
+	b.active = make(map[uint]int)
 }
 
 // EventHandler serves Server-Sent Events for real-time push notifications.
@@ -290,7 +334,8 @@ func (h *EventHandler) events(r *http.Request, in accountPath) (endpoint.Stream,
 	// this mailbox so one account (or a stolen token) cannot open unbounded streams and
 	// exhaust goroutines/FDs. The slot is held until the stream is over (Done); over the cap
 	// the answer is 503 rather than a stream without bound.
-	if !h.broker.AcquireStream(mailboxID) {
+	release, acquired := h.broker.acquireStream(mailboxID)
+	if !acquired {
 		return endpoint.Stream{}, endpoint.Refuse(http.StatusServiceUnavailable, "too_many_streams", "Too many concurrent event streams for this account")
 	}
 
@@ -311,7 +356,7 @@ func (h *EventHandler) events(r *http.Request, in accountPath) (endpoint.Stream,
 		Send:        func(w io.Writer, flush func()) { h.send(r, claims, ch, w, flush) },
 		Done: func() {
 			h.broker.Unsubscribe(mailboxID, ch)
-			h.broker.ReleaseStream(mailboxID)
+			release()
 		},
 	}, nil
 }
@@ -324,7 +369,10 @@ func (h *EventHandler) send(r *http.Request, claims *auth.Claims, ch chan number
 
 	for {
 		select {
-		case event := <-ch:
+		case event, open := <-ch:
+			if !open {
+				return
+			}
 			if !h.stillCurrent(claims) {
 				return
 			}

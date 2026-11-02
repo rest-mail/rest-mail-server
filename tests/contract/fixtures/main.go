@@ -90,6 +90,13 @@ func prepareAPIKeyFixture(database *gorm.DB, domain string) (*models.Mailbox, er
 		return nil, err
 	}
 	local := fmt.Sprintf("contract-api-keys-%d", time.Now().UnixNano())
+	var resetInitialized bool
+	if err := database.Raw("SELECT to_regclass(current_schema() || '.test_reset_baseline') IS NOT NULL").Scan(&resetInitialized).Error; err != nil {
+		return nil, err
+	}
+	if resetInitialized {
+		local = "contract-api-keys-reset"
+	}
 	account := models.Mailbox{DomainID: hosted.ID, LocalPart: local, Address: local + "@" + domain,
 		DisplayName: "Contract API keys", Active: true, QuotaBytes: hosted.DefaultQuotaBytes}
 	err := database.Transaction(func(tx *gorm.DB) error {

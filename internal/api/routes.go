@@ -205,6 +205,13 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	dkimH := handlers.NewDKIMHandler(db, cfg.MasterKey)
 	certH := handlers.NewCertificateHandler(db, cfg.MasterKey)
 	testH := handlers.NewTestHandler(db, cfg)
+	testH.ResetRuntime(broker, sessions, authH, recoveryEmailH)
+	testH.OnReset(grantCache.Invalidate)
+	rateLimit := func(settings middleware.RateLimitConfig) func(http.Handler) http.Handler {
+		throttle, reset := middleware.ResettableRateLimit(settings)
+		testH.OnReset(reset)
+		return throttle
+	}
 	mtastsH := handlers.NewMTASTSHandler(db)
 	relayH := handlers.NewRelayHandler(db, cfg.MasterKey)
 	tlsrptH := handlers.NewTLSReportHandler(db)
@@ -394,7 +401,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// ═══════════════════════════════════════════════════════════════
 	tlsrptThrottle := func(next http.Handler) http.Handler { return next }
 	if cfg.TLSRPTRateLimitEnabled {
-		tlsrptThrottle = middleware.RateLimit(middleware.RateLimitConfig{
+		tlsrptThrottle = rateLimit(middleware.RateLimitConfig{
 			RPS:   cfg.TLSRPTRateLimitRPS,
 			Burst: cfg.TLSRPTRateLimitBurst,
 		})
@@ -417,7 +424,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// ═══════════════════════════════════════════════════════════════
 	authThrottle := func(next http.Handler) http.Handler { return next }
 	if cfg.AuthRateLimitEnabled {
-		authThrottle = middleware.RateLimit(middleware.RateLimitConfig{
+		authThrottle = rateLimit(middleware.RateLimitConfig{
 			RPS:   cfg.AuthRateLimitRPS,
 			Burst: cfg.AuthRateLimitBurst,
 		})
@@ -452,7 +459,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// to start on keys that do not parse.
 	ownerThrottle := func(next http.Handler) http.Handler { return next }
 	if cfg.AuthRateLimitEnabled {
-		ownerThrottle = middleware.RateLimit(middleware.RateLimitConfig{
+		ownerThrottle = rateLimit(middleware.RateLimitConfig{
 			RPS:   cfg.AuthRateLimitRPS,
 			Burst: cfg.AuthRateLimitBurst,
 		})
@@ -476,7 +483,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// limiter (separate bucket from auth) and its own config knobs.
 	pipelineTestThrottle := func(next http.Handler) http.Handler { return next }
 	if cfg.PipelineTestRateLimitEnabled {
-		pipelineTestThrottle = middleware.RateLimit(middleware.RateLimitConfig{
+		pipelineTestThrottle = rateLimit(middleware.RateLimitConfig{
 			RPS:   cfg.PipelineTestRateLimitRPS,
 			Burst: cfg.PipelineTestRateLimitBurst,
 		})

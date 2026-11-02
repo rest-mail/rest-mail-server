@@ -1,9 +1,12 @@
 """Opt-in reset/seed primitive for hooks on one disposable restmail.test API.
 
-No hook is registered here. Calls must be serialized with exchanges: this resets
-database fixtures, not API rate limits, event streams, or delivery workers.
-The existing reset retains administrators but replaces ordinary account IDs;
-ordinary sessions and account IDs must not be cached across calls.
+No hook is registered here. Calls must be serialized with exchanges. The guarded
+reset drains delivery (failing after 30 seconds), clears API limits and streams,
+and rewinds fixture identities. Its first call pins the existing administrators;
+initialize it before creating test principals. JWTs minted for ordinary fixtures
+after that initialization keep naming the same accounts across resets, provided
+their credential epoch is unchanged. Refresh-token ledgers are cleared, so hooks
+must reauthenticate rather than retain refresh tokens or modified-epoch sessions.
 """
 
 import argparse

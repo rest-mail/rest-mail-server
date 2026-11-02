@@ -92,13 +92,17 @@ func TestTestDataMutationExamples(t *testing.T) {
 						}
 					}
 					if op == "resetTestData" {
-						for _, table := range []string{"quota_usage", "quarantine", "domain_sender_rules"} {
+						for _, table := range []string{"quota_usage", "quarantine", "domain_sender_rules", "suppressions", "refresh_tokens"} {
 							if !deleted[table] {
 								t.Fatalf("reset did not target actual model table%s", table)
 							}
 						}
-						if clears != 22 {
-							t.Fatalf("clear statements%d want22", clears)
+						expectedClears := len(testResetScenarioTables) - 4
+						if name == "missing_table" {
+							expectedClears--
+						}
+						if clears != expectedClears {
+							t.Fatalf("clear statements%d want%d", clears, expectedClears)
 						}
 					} else if clears != 0 {
 						t.Fatal("seed cleared existing data")
