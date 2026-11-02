@@ -7008,6 +7008,67 @@ paths:
   # ═══════════════════════════════════════════════════════════════
   # Admin: Aliases
   # ═══════════════════════════════════════════════════════════════
+  /api/v1/admin/api-keys:
+    get:
+      x-restmail-scope: filtered-domain-list
+      operationId: listAdminAPIKeys
+      tags: ["Admin: Mailboxes"]
+      security:
+        - CookieAuth: [mailboxes:read]
+        - BearerAuth: [mailboxes:read]
+        - APIKeyAuth: [mailboxes:read]
+      summary: List API keys across accounts
+      description: Unrevoked keys of the accounts the caller may read, newest first. Secrets are never returned. Revoke one through its account's own route.
+      parameters:
+        - name: owner
+          in: query
+          schema:
+            type: string
+            format: idn-email
+        - name: capability
+          in: query
+          schema:
+            type: string
+        - name: last_used_before
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: expires_before
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        "429":
+          description: Too many requests
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "200":
+          description: API key list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: ["account_address","account_id","created_at","expires_at","id","kind","last_used_at","name","permissions","public_id"]
+                      properties: {"account_address":{"type":"string"},"account_id":{"type":"integer"},"created_at":{"format":"date-time","type":"string"},"expires_at":{"format":"date-time","type":["null","string"]},"id":{"type":"integer"},"kind":{"type":"string"},"last_used_at":{"format":"date-time","type":["null","string"]},"name":{"type":"string"},"permissions":{"items":{"additionalProperties":false,"properties":{"capability":{"type":"string"},"scope":{"type":"string"}},"required":["capability","scope"],"type":"object"},"type":"array"},"public_id":{"type":"string"}}
   /api/v1/admin/aliases:
     get:
       x-restmail-scope: filtered-domain-list

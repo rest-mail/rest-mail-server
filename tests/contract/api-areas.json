@@ -172,6 +172,7 @@
     "endMailboxSessions",
     "getAlias",
     "getMailbox",
+    "listAdminAPIKeys",
     "listAliases",
     "listMailboxes",
     "updateAlias",

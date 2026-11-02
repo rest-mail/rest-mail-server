@@ -25,6 +25,7 @@ import (
 
 var paginatedReadPaths = map[string]string{
 	"getDeliveryLogs":   "/api/v1/admin/logs/delivery",
+	"listAdminAPIKeys":  "/api/v1/admin/api-keys",
 	"listAliases":       "/api/v1/admin/aliases",
 	"listAuditEntries":  "/api/v1/admin/audit",
 	"listBans":          "/api/v1/admin/bans",
@@ -66,7 +67,7 @@ func (c paginatedReadConnection) QueryContext(_ context.Context, query string, _
 	if !strings.HasPrefix(q, "select ") {
 		return nil, errors.New("list fixture accepts only reads")
 	}
-	for _, table := range []string{"aliases", "audit_log", "bans", "certificates", "custom_filters", "domains", "grants", "grant_activations", "mailboxes", "pipelines", "message_traces", "outbound_queue", "tls_reports"} {
+	for _, table := range []string{"credentials", "aliases", "audit_log", "bans", "certificates", "custom_filters", "domains", "grants", "grant_activations", "mailboxes", "pipelines", "message_traces", "outbound_queue", "tls_reports"} {
 		if strings.Contains(q, `"`+table+`"`) {
 			if strings.HasPrefix(q, "select count(*)") {
 				return &authReadSnapshotRows{columns: []string{"count"}, rows: [][]driver.Value{{int64(0)}}}, nil
