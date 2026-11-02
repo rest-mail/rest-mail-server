@@ -91,7 +91,8 @@ echo "== no workload mounts a CA private key (#193) =="
 # The chart's workloads are Deployments, DaemonSets and StatefulSets; the guard fails if
 # another kind appears, so it cannot slip past these checks.
 workloads='select(.kind == "Deployment" or .kind == "DaemonSet" or .kind == "StatefulSet")'
-MOUNTABLE=" tls.crt tls.key ca.crt server.crt server.key client.crt client.key AuthKey.p8 "
+# garage.toml is Garage's own config, holding its own secrets and no certificate key.
+MOUNTABLE=" tls.crt tls.key ca.crt server.crt server.key client.crt client.key AuthKey.p8 garage.toml "
 # One line per Secret volume: <workload> <volume> <key,key,...>.
 secret_volumes() {
   yq -N e "$workloads"' | .metadata.name as $w | .spec.template.spec.volumes[] | select(has("secret"))
