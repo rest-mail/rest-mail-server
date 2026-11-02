@@ -166,6 +166,12 @@ class AuthorizationConfig(unittest.TestCase):
         self.assertEqual(config["output"], ["", str(self.report)])
         self.assertEqual(yaml.safe_load(self.config.read_text()), self.settings)
 
+    def test_a_refusal_may_be_the_404_that_hides_someone_elses_object(self):
+        # Decided on #672: only 404, added to the status each cell requires. The
+        # statuses a cell already requires stay out, so 401 and 403 do not start
+        # standing in for each other.
+        self.assertEqual(self.generate()["authorization"], {"refuse": [404]})
+
     def test_own_account_operations_are_left_out_with_a_reason(self):
         self.settings["skip"] = [{"name": "/kept > Kept > 200", "reason": "kept"}]
         self.config.write_text(yaml.safe_dump(self.settings))
