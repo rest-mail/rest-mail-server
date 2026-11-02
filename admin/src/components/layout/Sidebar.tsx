@@ -10,6 +10,7 @@ import {
   Forward,
   Filter,
   Code,
+  KeyRound,
 } from 'lucide-react';
 import { useUIStore } from '../../lib/stores/uiStore';
 import { useAuthStore } from '../../lib/stores/authStore';
@@ -29,6 +30,7 @@ const navItems: NavItem[] = [
   { to: '/pipelines', icon: Filter, label: 'Pipelines' },
   { to: '/custom-filters', icon: Code, label: 'Custom Filters' },
   { to: '/grants', icon: Users, label: 'Grants' },
+  { to: '/api-keys', icon: KeyRound, label: 'API keys' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];
 

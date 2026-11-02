@@ -9,80 +9,46 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as SettingsIndexRouteImport } from './routes/settings/index'
-import { Route as QueueIndexRouteImport } from './routes/queue/index'
-import { Route as PipelinesIndexRouteImport } from './routes/pipelines/index'
-import { Route as MailboxesIndexRouteImport } from './routes/mailboxes/index'
-import { Route as DomainsIndexRouteImport } from './routes/domains/index'
-import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
-import { Route as CustomFiltersIndexRouteImport } from './routes/custom-filters/index'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as AliasesIndexRouteImport } from './routes/aliases/index'
-import { Route as GrantsIndexRouteImport } from './routes/grants/index'
-import { Route as SettingsTwoFactorRouteImport } from './routes/settings/two-factor'
-import { Route as SettingsTlsReportsRouteImport } from './routes/settings/tls-reports'
-import { Route as SettingsMtaStsRouteImport } from './routes/settings/mta-sts'
-import { Route as SettingsDkimRouteImport } from './routes/settings/dkim'
-import { Route as SettingsCertificatesRouteImport } from './routes/settings/certificates'
-import { Route as SettingsBansRouteImport } from './routes/settings/bans'
-import { Route as QueueIdRouteImport } from './routes/queue/$id'
-import { Route as PipelinesNewRouteImport } from './routes/pipelines/new'
-import { Route as PipelinesLogsRouteImport } from './routes/pipelines/logs'
-import { Route as PipelinesIdRouteImport } from './routes/pipelines/$id'
-import { Route as MailboxesNewRouteImport } from './routes/mailboxes/new'
-import { Route as MailboxesIdRouteImport } from './routes/mailboxes/$id'
-import { Route as DomainsNewRouteImport } from './routes/domains/new'
-import { Route as DomainsIdRouteImport } from './routes/domains/$id'
-import { Route as CustomFiltersNewRouteImport } from './routes/custom-filters/new'
-import { Route as CustomFiltersIdRouteImport } from './routes/custom-filters/$id'
-import { Route as AliasesNewRouteImport } from './routes/aliases/new'
 import { Route as AliasesIdRouteImport } from './routes/aliases/$id'
+import { Route as AliasesNewRouteImport } from './routes/aliases/new'
+import { Route as ApiKeysIndexRouteImport } from './routes/api-keys/index'
+import { Route as CustomFiltersIndexRouteImport } from './routes/custom-filters/index'
+import { Route as CustomFiltersIdRouteImport } from './routes/custom-filters/$id'
+import { Route as CustomFiltersNewRouteImport } from './routes/custom-filters/new'
+import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
+import { Route as DomainsIndexRouteImport } from './routes/domains/index'
+import { Route as DomainsIdRouteImport } from './routes/domains/$id'
+import { Route as DomainsNewRouteImport } from './routes/domains/new'
+import { Route as GrantsIndexRouteImport } from './routes/grants/index'
+import { Route as MailboxesIndexRouteImport } from './routes/mailboxes/index'
+import { Route as MailboxesIdRouteImport } from './routes/mailboxes/$id'
+import { Route as MailboxesNewRouteImport } from './routes/mailboxes/new'
+import { Route as PipelinesIndexRouteImport } from './routes/pipelines/index'
+import { Route as PipelinesIdRouteImport } from './routes/pipelines/$id'
+import { Route as PipelinesLogsRouteImport } from './routes/pipelines/logs'
+import { Route as PipelinesNewRouteImport } from './routes/pipelines/new'
+import { Route as QueueIndexRouteImport } from './routes/queue/index'
+import { Route as QueueIdRouteImport } from './routes/queue/$id'
+import { Route as SettingsIndexRouteImport } from './routes/settings/index'
+import { Route as SettingsBansRouteImport } from './routes/settings/bans'
+import { Route as SettingsCertificatesRouteImport } from './routes/settings/certificates'
+import { Route as SettingsDkimRouteImport } from './routes/settings/dkim'
+import { Route as SettingsMtaStsRouteImport } from './routes/settings/mta-sts'
+import { Route as SettingsTlsReportsRouteImport } from './routes/settings/tls-reports'
+import { Route as SettingsTwoFactorRouteImport } from './routes/settings/two-factor'
 import { Route as MessagesIdTraceRouteImport } from './routes/messages/$id/trace'
 
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SettingsIndexRoute = SettingsIndexRouteImport.update({
-  id: '/settings/',
-  path: '/settings/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const QueueIndexRoute = QueueIndexRouteImport.update({
-  id: '/queue/',
-  path: '/queue/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PipelinesIndexRoute = PipelinesIndexRouteImport.update({
-  id: '/pipelines/',
-  path: '/pipelines/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const MailboxesIndexRoute = MailboxesIndexRouteImport.update({
-  id: '/mailboxes/',
-  path: '/mailboxes/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DomainsIndexRoute = DomainsIndexRouteImport.update({
-  id: '/domains/',
-  path: '/domains/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DashboardIndexRoute = DashboardIndexRouteImport.update({
-  id: '/dashboard/',
-  path: '/dashboard/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CustomFiltersIndexRoute = CustomFiltersIndexRouteImport.update({
-  id: '/custom-filters/',
-  path: '/custom-filters/',
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AliasesIndexRoute = AliasesIndexRouteImport.update({
@@ -90,89 +56,9 @@ const AliasesIndexRoute = AliasesIndexRouteImport.update({
   path: '/aliases/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const GrantsIndexRoute = GrantsIndexRouteImport.update({
-  id: '/grants/',
-  path: '/grants/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SettingsTwoFactorRoute = SettingsTwoFactorRouteImport.update({
-  id: '/settings/two-factor',
-  path: '/settings/two-factor',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SettingsTlsReportsRoute = SettingsTlsReportsRouteImport.update({
-  id: '/settings/tls-reports',
-  path: '/settings/tls-reports',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SettingsMtaStsRoute = SettingsMtaStsRouteImport.update({
-  id: '/settings/mta-sts',
-  path: '/settings/mta-sts',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SettingsDkimRoute = SettingsDkimRouteImport.update({
-  id: '/settings/dkim',
-  path: '/settings/dkim',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SettingsCertificatesRoute = SettingsCertificatesRouteImport.update({
-  id: '/settings/certificates',
-  path: '/settings/certificates',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SettingsBansRoute = SettingsBansRouteImport.update({
-  id: '/settings/bans',
-  path: '/settings/bans',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const QueueIdRoute = QueueIdRouteImport.update({
-  id: '/queue/$id',
-  path: '/queue/$id',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PipelinesNewRoute = PipelinesNewRouteImport.update({
-  id: '/pipelines/new',
-  path: '/pipelines/new',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PipelinesLogsRoute = PipelinesLogsRouteImport.update({
-  id: '/pipelines/logs',
-  path: '/pipelines/logs',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PipelinesIdRoute = PipelinesIdRouteImport.update({
-  id: '/pipelines/$id',
-  path: '/pipelines/$id',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const MailboxesNewRoute = MailboxesNewRouteImport.update({
-  id: '/mailboxes/new',
-  path: '/mailboxes/new',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const MailboxesIdRoute = MailboxesIdRouteImport.update({
-  id: '/mailboxes/$id',
-  path: '/mailboxes/$id',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DomainsNewRoute = DomainsNewRouteImport.update({
-  id: '/domains/new',
-  path: '/domains/new',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DomainsIdRoute = DomainsIdRouteImport.update({
-  id: '/domains/$id',
-  path: '/domains/$id',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CustomFiltersNewRoute = CustomFiltersNewRouteImport.update({
-  id: '/custom-filters/new',
-  path: '/custom-filters/new',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CustomFiltersIdRoute = CustomFiltersIdRouteImport.update({
-  id: '/custom-filters/$id',
-  path: '/custom-filters/$id',
+const AliasesIdRoute = AliasesIdRouteImport.update({
+  id: '/aliases/$id',
+  path: '/aliases/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AliasesNewRoute = AliasesNewRouteImport.update({
@@ -180,9 +66,129 @@ const AliasesNewRoute = AliasesNewRouteImport.update({
   path: '/aliases/new',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AliasesIdRoute = AliasesIdRouteImport.update({
-  id: '/aliases/$id',
-  path: '/aliases/$id',
+const ApiKeysIndexRoute = ApiKeysIndexRouteImport.update({
+  id: '/api-keys/',
+  path: '/api-keys/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CustomFiltersIndexRoute = CustomFiltersIndexRouteImport.update({
+  id: '/custom-filters/',
+  path: '/custom-filters/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CustomFiltersIdRoute = CustomFiltersIdRouteImport.update({
+  id: '/custom-filters/$id',
+  path: '/custom-filters/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CustomFiltersNewRoute = CustomFiltersNewRouteImport.update({
+  id: '/custom-filters/new',
+  path: '/custom-filters/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DashboardIndexRoute = DashboardIndexRouteImport.update({
+  id: '/dashboard/',
+  path: '/dashboard/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DomainsIndexRoute = DomainsIndexRouteImport.update({
+  id: '/domains/',
+  path: '/domains/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DomainsIdRoute = DomainsIdRouteImport.update({
+  id: '/domains/$id',
+  path: '/domains/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DomainsNewRoute = DomainsNewRouteImport.update({
+  id: '/domains/new',
+  path: '/domains/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GrantsIndexRoute = GrantsIndexRouteImport.update({
+  id: '/grants/',
+  path: '/grants/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MailboxesIndexRoute = MailboxesIndexRouteImport.update({
+  id: '/mailboxes/',
+  path: '/mailboxes/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MailboxesIdRoute = MailboxesIdRouteImport.update({
+  id: '/mailboxes/$id',
+  path: '/mailboxes/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MailboxesNewRoute = MailboxesNewRouteImport.update({
+  id: '/mailboxes/new',
+  path: '/mailboxes/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PipelinesIndexRoute = PipelinesIndexRouteImport.update({
+  id: '/pipelines/',
+  path: '/pipelines/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PipelinesIdRoute = PipelinesIdRouteImport.update({
+  id: '/pipelines/$id',
+  path: '/pipelines/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PipelinesLogsRoute = PipelinesLogsRouteImport.update({
+  id: '/pipelines/logs',
+  path: '/pipelines/logs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PipelinesNewRoute = PipelinesNewRouteImport.update({
+  id: '/pipelines/new',
+  path: '/pipelines/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const QueueIndexRoute = QueueIndexRouteImport.update({
+  id: '/queue/',
+  path: '/queue/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const QueueIdRoute = QueueIdRouteImport.update({
+  id: '/queue/$id',
+  path: '/queue/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsIndexRoute = SettingsIndexRouteImport.update({
+  id: '/settings/',
+  path: '/settings/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsBansRoute = SettingsBansRouteImport.update({
+  id: '/settings/bans',
+  path: '/settings/bans',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsCertificatesRoute = SettingsCertificatesRouteImport.update({
+  id: '/settings/certificates',
+  path: '/settings/certificates',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsDkimRoute = SettingsDkimRouteImport.update({
+  id: '/settings/dkim',
+  path: '/settings/dkim',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsMtaStsRoute = SettingsMtaStsRouteImport.update({
+  id: '/settings/mta-sts',
+  path: '/settings/mta-sts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsTlsReportsRoute = SettingsTlsReportsRouteImport.update({
+  id: '/settings/tls-reports',
+  path: '/settings/tls-reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsTwoFactorRoute = SettingsTwoFactorRouteImport.update({
+  id: '/settings/two-factor',
+  path: '/settings/two-factor',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MessagesIdTraceRoute = MessagesIdTraceRouteImport.update({
@@ -212,11 +218,12 @@ export interface FileRoutesByFullPath {
   '/settings/mta-sts': typeof SettingsMtaStsRoute
   '/settings/tls-reports': typeof SettingsTlsReportsRoute
   '/settings/two-factor': typeof SettingsTwoFactorRoute
-  '/grants/': typeof GrantsIndexRoute
   '/aliases/': typeof AliasesIndexRoute
+  '/api-keys/': typeof ApiKeysIndexRoute
   '/custom-filters/': typeof CustomFiltersIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/domains/': typeof DomainsIndexRoute
+  '/grants/': typeof GrantsIndexRoute
   '/mailboxes/': typeof MailboxesIndexRoute
   '/pipelines/': typeof PipelinesIndexRoute
   '/queue/': typeof QueueIndexRoute
@@ -244,11 +251,12 @@ export interface FileRoutesByTo {
   '/settings/mta-sts': typeof SettingsMtaStsRoute
   '/settings/tls-reports': typeof SettingsTlsReportsRoute
   '/settings/two-factor': typeof SettingsTwoFactorRoute
-  '/grants': typeof GrantsIndexRoute
   '/aliases': typeof AliasesIndexRoute
+  '/api-keys': typeof ApiKeysIndexRoute
   '/custom-filters': typeof CustomFiltersIndexRoute
   '/dashboard': typeof DashboardIndexRoute
   '/domains': typeof DomainsIndexRoute
+  '/grants': typeof GrantsIndexRoute
   '/mailboxes': typeof MailboxesIndexRoute
   '/pipelines': typeof PipelinesIndexRoute
   '/queue': typeof QueueIndexRoute
@@ -277,11 +285,12 @@ export interface FileRoutesById {
   '/settings/mta-sts': typeof SettingsMtaStsRoute
   '/settings/tls-reports': typeof SettingsTlsReportsRoute
   '/settings/two-factor': typeof SettingsTwoFactorRoute
-  '/grants/': typeof GrantsIndexRoute
   '/aliases/': typeof AliasesIndexRoute
+  '/api-keys/': typeof ApiKeysIndexRoute
   '/custom-filters/': typeof CustomFiltersIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/domains/': typeof DomainsIndexRoute
+  '/grants/': typeof GrantsIndexRoute
   '/mailboxes/': typeof MailboxesIndexRoute
   '/pipelines/': typeof PipelinesIndexRoute
   '/queue/': typeof QueueIndexRoute
@@ -311,11 +320,12 @@ export interface FileRouteTypes {
     | '/settings/mta-sts'
     | '/settings/tls-reports'
     | '/settings/two-factor'
-    | '/grants/'
     | '/aliases/'
+    | '/api-keys/'
     | '/custom-filters/'
     | '/dashboard/'
     | '/domains/'
+    | '/grants/'
     | '/mailboxes/'
     | '/pipelines/'
     | '/queue/'
@@ -343,11 +353,12 @@ export interface FileRouteTypes {
     | '/settings/mta-sts'
     | '/settings/tls-reports'
     | '/settings/two-factor'
-    | '/grants'
     | '/aliases'
+    | '/api-keys'
     | '/custom-filters'
     | '/dashboard'
     | '/domains'
+    | '/grants'
     | '/mailboxes'
     | '/pipelines'
     | '/queue'
@@ -375,11 +386,12 @@ export interface FileRouteTypes {
     | '/settings/mta-sts'
     | '/settings/tls-reports'
     | '/settings/two-factor'
-    | '/grants/'
     | '/aliases/'
+    | '/api-keys/'
     | '/custom-filters/'
     | '/dashboard/'
     | '/domains/'
+    | '/grants/'
     | '/mailboxes/'
     | '/pipelines/'
     | '/queue/'
@@ -408,11 +420,12 @@ export interface RootRouteChildren {
   SettingsMtaStsRoute: typeof SettingsMtaStsRoute
   SettingsTlsReportsRoute: typeof SettingsTlsReportsRoute
   SettingsTwoFactorRoute: typeof SettingsTwoFactorRoute
-  GrantsIndexRoute: typeof GrantsIndexRoute
   AliasesIndexRoute: typeof AliasesIndexRoute
+  ApiKeysIndexRoute: typeof ApiKeysIndexRoute
   CustomFiltersIndexRoute: typeof CustomFiltersIndexRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
   DomainsIndexRoute: typeof DomainsIndexRoute
+  GrantsIndexRoute: typeof GrantsIndexRoute
   MailboxesIndexRoute: typeof MailboxesIndexRoute
   PipelinesIndexRoute: typeof PipelinesIndexRoute
   QueueIndexRoute: typeof QueueIndexRoute
@@ -422,13 +435,6 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/': {
       id: '/'
       path: '/'
@@ -436,53 +442,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/settings/': {
-      id: '/settings/'
-      path: '/settings'
-      fullPath: '/settings/'
-      preLoaderRoute: typeof SettingsIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/queue/': {
-      id: '/queue/'
-      path: '/queue'
-      fullPath: '/queue/'
-      preLoaderRoute: typeof QueueIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/pipelines/': {
-      id: '/pipelines/'
-      path: '/pipelines'
-      fullPath: '/pipelines/'
-      preLoaderRoute: typeof PipelinesIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/mailboxes/': {
-      id: '/mailboxes/'
-      path: '/mailboxes'
-      fullPath: '/mailboxes/'
-      preLoaderRoute: typeof MailboxesIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/domains/': {
-      id: '/domains/'
-      path: '/domains'
-      fullPath: '/domains/'
-      preLoaderRoute: typeof DomainsIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/dashboard/': {
-      id: '/dashboard/'
-      path: '/dashboard'
-      fullPath: '/dashboard/'
-      preLoaderRoute: typeof DashboardIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/custom-filters/': {
-      id: '/custom-filters/'
-      path: '/custom-filters'
-      fullPath: '/custom-filters/'
-      preLoaderRoute: typeof CustomFiltersIndexRouteImport
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/aliases/': {
@@ -492,123 +456,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AliasesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/grants/': {
-      id: '/grants/'
-      path: '/grants'
-      fullPath: '/grants/'
-      preLoaderRoute: typeof GrantsIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/settings/two-factor': {
-      id: '/settings/two-factor'
-      path: '/settings/two-factor'
-      fullPath: '/settings/two-factor'
-      preLoaderRoute: typeof SettingsTwoFactorRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/settings/tls-reports': {
-      id: '/settings/tls-reports'
-      path: '/settings/tls-reports'
-      fullPath: '/settings/tls-reports'
-      preLoaderRoute: typeof SettingsTlsReportsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/settings/mta-sts': {
-      id: '/settings/mta-sts'
-      path: '/settings/mta-sts'
-      fullPath: '/settings/mta-sts'
-      preLoaderRoute: typeof SettingsMtaStsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/settings/dkim': {
-      id: '/settings/dkim'
-      path: '/settings/dkim'
-      fullPath: '/settings/dkim'
-      preLoaderRoute: typeof SettingsDkimRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/settings/certificates': {
-      id: '/settings/certificates'
-      path: '/settings/certificates'
-      fullPath: '/settings/certificates'
-      preLoaderRoute: typeof SettingsCertificatesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/settings/bans': {
-      id: '/settings/bans'
-      path: '/settings/bans'
-      fullPath: '/settings/bans'
-      preLoaderRoute: typeof SettingsBansRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/queue/$id': {
-      id: '/queue/$id'
-      path: '/queue/$id'
-      fullPath: '/queue/$id'
-      preLoaderRoute: typeof QueueIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/pipelines/new': {
-      id: '/pipelines/new'
-      path: '/pipelines/new'
-      fullPath: '/pipelines/new'
-      preLoaderRoute: typeof PipelinesNewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/pipelines/logs': {
-      id: '/pipelines/logs'
-      path: '/pipelines/logs'
-      fullPath: '/pipelines/logs'
-      preLoaderRoute: typeof PipelinesLogsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/pipelines/$id': {
-      id: '/pipelines/$id'
-      path: '/pipelines/$id'
-      fullPath: '/pipelines/$id'
-      preLoaderRoute: typeof PipelinesIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/mailboxes/new': {
-      id: '/mailboxes/new'
-      path: '/mailboxes/new'
-      fullPath: '/mailboxes/new'
-      preLoaderRoute: typeof MailboxesNewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/mailboxes/$id': {
-      id: '/mailboxes/$id'
-      path: '/mailboxes/$id'
-      fullPath: '/mailboxes/$id'
-      preLoaderRoute: typeof MailboxesIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/domains/new': {
-      id: '/domains/new'
-      path: '/domains/new'
-      fullPath: '/domains/new'
-      preLoaderRoute: typeof DomainsNewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/domains/$id': {
-      id: '/domains/$id'
-      path: '/domains/$id'
-      fullPath: '/domains/$id'
-      preLoaderRoute: typeof DomainsIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/custom-filters/new': {
-      id: '/custom-filters/new'
-      path: '/custom-filters/new'
-      fullPath: '/custom-filters/new'
-      preLoaderRoute: typeof CustomFiltersNewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/custom-filters/$id': {
-      id: '/custom-filters/$id'
-      path: '/custom-filters/$id'
-      fullPath: '/custom-filters/$id'
-      preLoaderRoute: typeof CustomFiltersIdRouteImport
+    '/aliases/$id': {
+      id: '/aliases/$id'
+      path: '/aliases/$id'
+      fullPath: '/aliases/$id'
+      preLoaderRoute: typeof AliasesIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/aliases/new': {
@@ -618,11 +470,179 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AliasesNewRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/aliases/$id': {
-      id: '/aliases/$id'
-      path: '/aliases/$id'
-      fullPath: '/aliases/$id'
-      preLoaderRoute: typeof AliasesIdRouteImport
+    '/api-keys/': {
+      id: '/api-keys/'
+      path: '/api-keys'
+      fullPath: '/api-keys/'
+      preLoaderRoute: typeof ApiKeysIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/custom-filters/': {
+      id: '/custom-filters/'
+      path: '/custom-filters'
+      fullPath: '/custom-filters/'
+      preLoaderRoute: typeof CustomFiltersIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/custom-filters/$id': {
+      id: '/custom-filters/$id'
+      path: '/custom-filters/$id'
+      fullPath: '/custom-filters/$id'
+      preLoaderRoute: typeof CustomFiltersIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/custom-filters/new': {
+      id: '/custom-filters/new'
+      path: '/custom-filters/new'
+      fullPath: '/custom-filters/new'
+      preLoaderRoute: typeof CustomFiltersNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dashboard/': {
+      id: '/dashboard/'
+      path: '/dashboard'
+      fullPath: '/dashboard/'
+      preLoaderRoute: typeof DashboardIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/domains/': {
+      id: '/domains/'
+      path: '/domains'
+      fullPath: '/domains/'
+      preLoaderRoute: typeof DomainsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/domains/$id': {
+      id: '/domains/$id'
+      path: '/domains/$id'
+      fullPath: '/domains/$id'
+      preLoaderRoute: typeof DomainsIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/domains/new': {
+      id: '/domains/new'
+      path: '/domains/new'
+      fullPath: '/domains/new'
+      preLoaderRoute: typeof DomainsNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/grants/': {
+      id: '/grants/'
+      path: '/grants'
+      fullPath: '/grants/'
+      preLoaderRoute: typeof GrantsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mailboxes/': {
+      id: '/mailboxes/'
+      path: '/mailboxes'
+      fullPath: '/mailboxes/'
+      preLoaderRoute: typeof MailboxesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mailboxes/$id': {
+      id: '/mailboxes/$id'
+      path: '/mailboxes/$id'
+      fullPath: '/mailboxes/$id'
+      preLoaderRoute: typeof MailboxesIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mailboxes/new': {
+      id: '/mailboxes/new'
+      path: '/mailboxes/new'
+      fullPath: '/mailboxes/new'
+      preLoaderRoute: typeof MailboxesNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pipelines/': {
+      id: '/pipelines/'
+      path: '/pipelines'
+      fullPath: '/pipelines/'
+      preLoaderRoute: typeof PipelinesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pipelines/$id': {
+      id: '/pipelines/$id'
+      path: '/pipelines/$id'
+      fullPath: '/pipelines/$id'
+      preLoaderRoute: typeof PipelinesIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pipelines/logs': {
+      id: '/pipelines/logs'
+      path: '/pipelines/logs'
+      fullPath: '/pipelines/logs'
+      preLoaderRoute: typeof PipelinesLogsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pipelines/new': {
+      id: '/pipelines/new'
+      path: '/pipelines/new'
+      fullPath: '/pipelines/new'
+      preLoaderRoute: typeof PipelinesNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/queue/': {
+      id: '/queue/'
+      path: '/queue'
+      fullPath: '/queue/'
+      preLoaderRoute: typeof QueueIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/queue/$id': {
+      id: '/queue/$id'
+      path: '/queue/$id'
+      fullPath: '/queue/$id'
+      preLoaderRoute: typeof QueueIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/': {
+      id: '/settings/'
+      path: '/settings'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof SettingsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/bans': {
+      id: '/settings/bans'
+      path: '/settings/bans'
+      fullPath: '/settings/bans'
+      preLoaderRoute: typeof SettingsBansRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/certificates': {
+      id: '/settings/certificates'
+      path: '/settings/certificates'
+      fullPath: '/settings/certificates'
+      preLoaderRoute: typeof SettingsCertificatesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/dkim': {
+      id: '/settings/dkim'
+      path: '/settings/dkim'
+      fullPath: '/settings/dkim'
+      preLoaderRoute: typeof SettingsDkimRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/mta-sts': {
+      id: '/settings/mta-sts'
+      path: '/settings/mta-sts'
+      fullPath: '/settings/mta-sts'
+      preLoaderRoute: typeof SettingsMtaStsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/tls-reports': {
+      id: '/settings/tls-reports'
+      path: '/settings/tls-reports'
+      fullPath: '/settings/tls-reports'
+      preLoaderRoute: typeof SettingsTlsReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/two-factor': {
+      id: '/settings/two-factor'
+      path: '/settings/two-factor'
+      fullPath: '/settings/two-factor'
+      preLoaderRoute: typeof SettingsTwoFactorRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/messages/$id/trace': {
@@ -656,11 +676,12 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsMtaStsRoute: SettingsMtaStsRoute,
   SettingsTlsReportsRoute: SettingsTlsReportsRoute,
   SettingsTwoFactorRoute: SettingsTwoFactorRoute,
-  GrantsIndexRoute: GrantsIndexRoute,
   AliasesIndexRoute: AliasesIndexRoute,
+  ApiKeysIndexRoute: ApiKeysIndexRoute,
   CustomFiltersIndexRoute: CustomFiltersIndexRoute,
   DashboardIndexRoute: DashboardIndexRoute,
   DomainsIndexRoute: DomainsIndexRoute,
+  GrantsIndexRoute: GrantsIndexRoute,
   MailboxesIndexRoute: MailboxesIndexRoute,
   PipelinesIndexRoute: PipelinesIndexRoute,
   QueueIndexRoute: QueueIndexRoute,
