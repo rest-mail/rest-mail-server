@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -16,16 +17,19 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/config"
 )
 
-func newStore(t *testing.T) *Store {
+// adapters runs a test against both stores, which have to behave alike.
+func adapters(t *testing.T, test func(t *testing.T, store Store)) {
 	t.Helper()
-	fake := s3test.New(t)
-	fake.Config.S3Prefix = "messages/"
-	return &Store{bucket: attachmentstore.NewS3(fake.Config), spoolDir: t.TempDir()}
+	t.Run("filesystem", func(t *testing.T) { test(t, NewFilesystem(t.TempDir())) })
+	t.Run("s3", func(t *testing.T) {
+		fake := s3test.New(t)
+		fake.Config.S3Prefix = "messages/"
+		test(t, newS3(attachmentstore.NewS3(fake.Config), t.TempDir()))
+	})
 }
 
 func TestRoundTrip(t *testing.T) {
-	{
-		store := newStore(t)
+	adapters(t, func(t *testing.T, store Store) {
 		ctx := context.Background()
 		data := []byte("From: a@example.org\r\n\r\nbinary \x00\xff bytes survive\r\n")
 		object, err := store.Put(ctx, bytes.NewReader(data), 1024)
@@ -72,7 +76,7 @@ func TestRoundTrip(t *testing.T) {
 		if err := store.Delete(ctx, object.Ref); err != nil {
 			t.Fatalf("deleting what is gone: %v", err)
 		}
-	}
+	})
 }
 
 func TestNamesAreInOrderAndUnguessable(t *testing.T) {
@@ -92,8 +96,7 @@ func TestNamesAreInOrderAndUnguessable(t *testing.T) {
 }
 
 func TestEmptyAndExactlyTheLimit(t *testing.T) {
-	{
-		store := newStore(t)
+	adapters(t, func(t *testing.T, store Store) {
 		ctx := context.Background()
 		if object, err := store.Put(ctx, strings.NewReader(""), 8); err != nil || object.Size != 0 {
 			t.Fatalf("empty: %+v, %v", object, err)
@@ -101,34 +104,57 @@ func TestEmptyAndExactlyTheLimit(t *testing.T) {
 		if object, err := store.Put(ctx, strings.NewReader("12345678"), 8); err != nil || object.Size != 8 {
 			t.Fatalf("at the limit: %+v, %v", object, err)
 		}
-	}
+	})
 }
 
 func TestOverTheLimitKeepsNothing(t *testing.T) {
-	store := newStore(t)
-	if _, err := store.Put(context.Background(), strings.NewReader("123456789"), 8); !errors.Is(err, ErrTooLarge) {
-		t.Fatalf("got %v", err)
-	}
-	if left, err := os.ReadDir(store.spoolDir); err != nil || len(left) != 0 {
-		t.Fatalf("left behind %v, %v", left, err)
-	}
+	t.Run("filesystem", func(t *testing.T) {
+		directory := t.TempDir()
+		_, err := NewFilesystem(directory).Put(context.Background(), strings.NewReader("123456789"), 8)
+		if !errors.Is(err, ErrTooLarge) {
+			t.Fatalf("got %v", err)
+		}
+		left, err := os.ReadDir(directory)
+		if err != nil || len(left) != 0 {
+			t.Fatalf("left behind %v, %v", left, err)
+		}
+	})
+	t.Run("s3", func(t *testing.T) {
+		fake := s3test.New(t)
+		fake.Config.S3Prefix = "messages/"
+		spool := t.TempDir()
+		_, err := newS3(attachmentstore.NewS3(fake.Config), spool).Put(context.Background(), strings.NewReader("123456789"), 8)
+		if !errors.Is(err, ErrTooLarge) {
+			t.Fatalf("got %v", err)
+		}
+		left, err := os.ReadDir(spool)
+		if err != nil || len(left) != 0 {
+			t.Fatalf("left behind %v, %v", left, err)
+		}
+	})
 }
 
 func TestCancelledPutKeepsNothing(t *testing.T) {
-	store := newStore(t)
+	directory := t.TempDir()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := store.Put(ctx, strings.NewReader("message"), 64); !errors.Is(err, context.Canceled) {
+	if _, err := NewFilesystem(directory).Put(ctx, strings.NewReader("message"), 64); !errors.Is(err, context.Canceled) {
 		t.Fatalf("got %v", err)
 	}
-	if left, _ := os.ReadDir(store.spoolDir); len(left) != 0 {
+	if left, _ := os.ReadDir(directory); len(left) != 0 {
 		t.Fatalf("left behind %v", left)
 	}
 }
 
 func TestReferencesCannotEscape(t *testing.T) {
-	store := newStore(t)
-	for _, ref := range []string{"../secret", "/etc/passwd", "", "ab/cd", "messages/../attachments/x", "attachments/2026/11/02/00000000000a-" + strings.Repeat("A", 26), "messages/2026/11/02/../../../secret"} {
+	directory := t.TempDir()
+	secret := filepath.Join(filepath.Dir(directory), "secret")
+	if err := os.WriteFile(secret, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Remove(secret) })
+	store := NewFilesystem(directory)
+	for _, ref := range []string{"../secret", "/etc/passwd", "", "ab/cd", strings.Repeat("a", 64), "2026/11/02/../../../secret", "2026/11/02/00000000000a-" + strings.Repeat("A", 25) + "/"} {
 		if _, err := store.Open(context.Background(), ref); !errors.Is(err, ErrInvalidRef) {
 			t.Errorf("Open(%q): %v", ref, err)
 		}
@@ -162,31 +188,38 @@ func allocated(run func()) uint64 {
 	return after.TotalAlloc - before.TotalAlloc
 }
 
-// The point of the store: a big message costs disk, and memory stays flat. The fake bucket holds
-// what it is given, so this measures the part that is the store's own: reaching the temporary
-// file, which is what a signed upload is sent from.
+// The point of the store: a big message costs disk, and memory stays flat.
 func TestABigMessageDoesNotGoThroughMemory(t *testing.T) {
 	const size, budget = 64 << 20, 8 << 20
-	store := &Store{spoolDir: t.TempDir()}
+	store := NewFilesystem(t.TempDir())
 	ctx := context.Background()
+	var object Object
 	if used := allocated(func() {
-		file, got, _, done, err := store.spool(ctx, &endless{left: size}, size)
+		var err error
+		if object, err = store.Put(ctx, &endless{left: size}, size); err != nil {
+			t.Fatal(err)
+		}
+	}); used > budget {
+		t.Fatalf("writing %d bytes allocated %d", int64(size), used)
+	}
+	if object.Size != size {
+		t.Fatalf("size %d", object.Size)
+	}
+	if used := allocated(func() {
+		reader, err := store.Open(ctx, object.Ref)
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer done()
-		if got != size {
-			t.Fatalf("size %d", got)
-		}
-		if n, err := io.Copy(io.Discard, file); err != nil || n != size {
-			t.Fatalf("read back %d, %v", n, err)
+		defer func() { _ = reader.Close() }()
+		if n, err := io.Copy(io.Discard, reader); err != nil || n != size {
+			t.Fatalf("read %d, %v", n, err)
 		}
 	}); used > budget {
-		t.Fatalf("spooling %d bytes allocated %d", int64(size), used)
+		t.Fatalf("reading %d bytes allocated %d", int64(size), used)
 	}
 	// The limit is held as the bytes pass, not after reading them all.
 	if used := allocated(func() {
-		if _, _, _, _, err := store.spool(ctx, &endless{left: 1 << 40}, 1<<20); !errors.Is(err, ErrTooLarge) {
+		if _, err := store.Put(ctx, &endless{left: 1 << 40}, 1<<20); !errors.Is(err, ErrTooLarge) {
 			t.Fatalf("got %v", err)
 		}
 	}); used > budget {
@@ -194,13 +227,17 @@ func TestABigMessageDoesNotGoThroughMemory(t *testing.T) {
 	}
 }
 
-func TestNewNeedsABucket(t *testing.T) {
-	messages := config.MessageStorageConfig{S3Prefix: "messages/"}
-	if _, err := New(messages, config.AttachmentStorageConfig{Type: "filesystem"}); err == nil {
-		t.Fatal("it took a filesystem")
+func TestNewFollowsTheAttachmentsStorageType(t *testing.T) {
+	messages := config.MessageStorageConfig{Directory: t.TempDir(), S3Prefix: "messages/"}
+	store, err := New(messages, config.AttachmentStorageConfig{Type: "filesystem"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := store.(*Filesystem); !ok {
+		t.Fatalf("got %T", store)
 	}
 	fake := s3test.New(t)
-	store, err := New(messages, fake.Config)
+	store, err = New(messages, fake.Config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,5 +247,8 @@ func TestNewNeedsABucket(t *testing.T) {
 	}
 	if !strings.HasPrefix(object.Ref, "messages/") {
 		t.Fatalf("a message is among the attachments: %q", object.Ref)
+	}
+	if _, err := New(messages, config.AttachmentStorageConfig{Type: "tape"}); err == nil {
+		t.Fatal("an unknown type was taken")
 	}
 }

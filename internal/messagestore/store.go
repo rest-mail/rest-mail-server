@@ -1,5 +1,5 @@
-// Package messagestore holds the original bytes of email and uploads in an S3 bucket, so they
-// never have to sit in memory (#1437). An email is untrusted text: it is streamed
+// Package messagestore holds the original bytes of email and uploads on disk or in an object
+// store, so they never have to sit in memory (#1437). An email is untrusted text: it is streamed
 // here as it arrives, and from here on whatever needs it reads what it needs by reference.
 //
 // Every object gets a new name of the store's own: the day and time it arrived, then 128 random
@@ -43,16 +43,31 @@ type Reader interface {
 	Size() int64
 }
 
-// New is the store the configuration names. Storage is an S3 bucket on every installation:
-// a network service answers from whichever node asks, with no volume to attach to it. Its
-// objects sit beside attachments, never among them, because the attachment cleaner removes
-// what no attachment refers to.
-func New(c config.MessageStorageConfig, attachments config.AttachmentStorageConfig) (*Store, error) {
-	if attachments.Type != "s3" {
-		return nil, fmt.Errorf("message storage needs an S3 bucket; attachment storage is %q", attachments.Type)
+// Store is where messages are kept. Both adapters behave alike; which one an installation uses
+// is its choice.
+type Store interface {
+	// Put streams source into the store, taking at most limit bytes. An object appears only
+	// once all of it has been written, and past limit it is ErrTooLarge and nothing is kept.
+	Put(ctx context.Context, source io.Reader, limit int64) (Object, error)
+	// Open reads an object. A missing one is ErrNotFound.
+	Open(ctx context.Context, ref string) (Reader, error)
+	// Delete removes an object. A missing one is not an error.
+	Delete(ctx context.Context, ref string) error
+}
+
+// New is the store the configuration names: S3 where attachments are in S3, which a cluster
+// uses because it answers from whichever node asks, and the filesystem otherwise, for a single
+// server with a volume every container can reach. Its objects sit beside attachments, never among them, because the attachment
+// cleaner removes what no attachment refers to.
+func New(c config.MessageStorageConfig, attachments config.AttachmentStorageConfig) (Store, error) {
+	switch attachments.Type {
+	case "s3":
+		attachments.S3Prefix = c.S3Prefix
+		return newS3(attachmentstore.NewS3(attachments), c.SpoolDir), nil
+	case "filesystem":
+		return NewFilesystem(c.Directory), nil
 	}
-	attachments.S3Prefix = c.S3Prefix
-	return &Store{bucket: attachmentstore.NewS3(attachments), spoolDir: c.SpoolDir}, nil
+	return nil, fmt.Errorf("unknown storage type %q", attachments.Type)
 }
 
 // objectName matches newName's names, and nothing else can reach a path or a key.
@@ -84,17 +99,4 @@ func (l *limited) Read(p []byte) (int, error) {
 		return 0, ErrTooLarge
 	}
 	return n, err
-}
-
-// contextReader stops a long copy when its request is cancelled.
-type contextReader struct {
-	ctx    context.Context
-	source io.Reader
-}
-
-func (c contextReader) Read(p []byte) (int, error) {
-	if err := c.ctx.Err(); err != nil {
-		return 0, err
-	}
-	return c.source.Read(p)
 }
