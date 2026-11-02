@@ -10,7 +10,7 @@ import (
 	"io"
 	"os"
 	"path"
-	"strings"
+	"time"
 )
 
 // Filesystem keeps objects under a directory, normally storage attached to every container that
@@ -57,15 +57,14 @@ func (f *Filesystem) Put(ctx context.Context, source io.Reader, limit int64) (Ob
 	if closeErr != nil {
 		return Object{}, closeErr
 	}
-	checksum := hex.EncodeToString(hash.Sum(nil))
-	ref := checksum[:2] + "/" + checksum
-	if err := root.MkdirAll(checksum[:2], 0o750); err != nil {
+	ref := newName(time.Now())
+	if err := root.MkdirAll(path.Dir(ref), 0o750); err != nil {
 		return Object{}, err
 	}
 	if err := root.Rename(temporary, ref); err != nil {
 		return Object{}, err
 	}
-	return Object{Ref: ref, Size: size, Checksum: checksum}, nil
+	return Object{Ref: ref, Size: size, Checksum: hex.EncodeToString(hash.Sum(nil))}, nil
 }
 
 // contextReader stops a long copy when its request is cancelled.
@@ -81,12 +80,6 @@ func (c contextReader) Read(p []byte) (int, error) {
 	return c.source.Read(p)
 }
 
-func validFilesystemRef(ref string) bool {
-	dir, name := path.Split(ref)
-	decoded, err := hex.DecodeString(name)
-	return err == nil && len(decoded) == sha256.Size && name == strings.ToLower(name) && dir == name[:2]+"/"
-}
-
 type fileReader struct {
 	*os.File
 	size int64
@@ -96,7 +89,7 @@ func (r fileReader) Size() int64 { return r.size }
 
 // Open reads an object.
 func (f *Filesystem) Open(ctx context.Context, ref string) (Reader, error) {
-	if !validFilesystemRef(ref) {
+	if !objectName.MatchString(ref) {
 		return nil, ErrInvalidRef
 	}
 	if err := ctx.Err(); err != nil {
@@ -124,7 +117,7 @@ func (f *Filesystem) Open(ctx context.Context, ref string) (Reader, error) {
 
 // Delete removes an object.
 func (f *Filesystem) Delete(ctx context.Context, ref string) error {
-	if !validFilesystemRef(ref) {
+	if !objectName.MatchString(ref) {
 		return ErrInvalidRef
 	}
 	if err := ctx.Err(); err != nil {

@@ -86,9 +86,27 @@ func (s *S3) Delete(ctx context.Context, ref string) error {
 	if !s.validRef(ref) {
 		return fmt.Errorf("invalid attachment object reference")
 	}
-	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(ref)})
+	return s.DeleteNamed(ctx, ref)
+}
+
+// PutNamed uploads source under a key its caller chose and has checked, which is not an
+// attachment reference. The source must stay unchanged until the upload completes.
+func (s *S3) PutNamed(ctx context.Context, key string, source io.ReadSeeker, size int64) error {
+	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket: aws.String(s.bucket), Key: aws.String(key), Body: source,
+		ContentLength: aws.Int64(size), ContentType: aws.String("application/octet-stream"),
+	})
 	return err
 }
+
+// DeleteNamed removes the object at a key its caller has checked.
+func (s *S3) DeleteNamed(ctx context.Context, key string) error {
+	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(key)})
+	return err
+}
+
+// Prefix is where this client's objects sit in the bucket.
+func (s *S3) Prefix() string { return s.prefix }
 
 func (s *S3) validRef(ref string) bool {
 	if !strings.HasPrefix(ref, s.prefix) {
@@ -127,6 +145,11 @@ func (s *S3) Open(ctx context.Context, ref string) (*Reader, error) {
 	if !s.validRef(ref) {
 		return nil, fmt.Errorf("invalid attachment object reference")
 	}
+	return s.OpenNamed(ctx, ref)
+}
+
+// OpenNamed reads the object at a key its caller has checked. A missing one is os.ErrNotExist.
+func (s *S3) OpenNamed(ctx context.Context, ref string) (*Reader, error) {
 	head, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(ref)})
 	if err != nil {
 		var response *smithyhttp.ResponseError

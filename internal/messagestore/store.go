@@ -2,15 +2,19 @@
 // store, so they never have to sit in memory (#1437). An email is untrusted text: it is streamed
 // here as it arrives, and from here on whatever needs it reads what it needs by reference.
 //
-// A store is content addressed: the same bytes are one object. It never takes a name from a
-// message, so nothing a sender writes reaches a path or an object key.
+// Every object gets a new name of the store's own: the day and time it arrived, then 128 random
+// bits. So objects are recorded in order, can't be guessed, and can be removed by age, one
+// message's removal never touches another's, and nothing a sender writes reaches a path or a key.
 package messagestore
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
+	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/attachmentstore"
 	"github.com/rest-mail/rest-mail-server/internal/config"
@@ -63,6 +67,15 @@ func New(c config.MessageStorageConfig, attachments config.AttachmentStorageConf
 		return NewFilesystem(c.Directory), nil
 	}
 	return nil, fmt.Errorf("unknown storage type %q", attachments.Type)
+}
+
+// objectName matches newName's names, and nothing else can reach a path or a key.
+var objectName = regexp.MustCompile(`^[0-9]{4}/[0-9]{2}/[0-9]{2}/[0-9a-f]{12}-[A-Z2-7]{26}$`)
+
+// newName is a name for an object arriving at now: in order of arrival, and unguessable.
+func newName(now time.Time) string {
+	now = now.UTC()
+	return fmt.Sprintf("%s/%012x-%s", now.Format("2006/01/02"), now.UnixMilli(), rand.Text())
 }
 
 // limited reads source, failing with ErrTooLarge once it passes limit.

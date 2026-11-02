@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/attachmentstore"
 	"github.com/rest-mail/rest-mail-server/internal/attachmentstore/s3test"
@@ -39,8 +40,12 @@ func TestRoundTrip(t *testing.T) {
 			t.Fatalf("object %+v", object)
 		}
 		again, err := store.Put(ctx, bytes.NewReader(data), 1024)
-		if err != nil || again != object {
-			t.Fatalf("the same bytes are one object: %+v, %v", again, err)
+		if err != nil || again.Ref == object.Ref || again.Checksum != object.Checksum {
+			t.Fatalf("the same bytes twice are two objects: %+v, %+v, %v", object, again, err)
+		}
+		// Removing one message never touches another's.
+		if err := store.Delete(ctx, again.Ref); err != nil {
+			t.Fatal(err)
 		}
 		reader, err := store.Open(ctx, object.Ref)
 		if err != nil {
@@ -72,6 +77,22 @@ func TestRoundTrip(t *testing.T) {
 			t.Fatalf("deleting what is gone: %v", err)
 		}
 	})
+}
+
+func TestNamesAreInOrderAndUnguessable(t *testing.T) {
+	earlier, later := newName(time.UnixMilli(1000)), newName(time.UnixMilli(2000))
+	if !objectName.MatchString(earlier) || !objectName.MatchString(later) {
+		t.Fatalf("%q, %q", earlier, later)
+	}
+	if earlier >= later {
+		t.Fatalf("%q sorts after %q", earlier, later)
+	}
+	if same := newName(time.UnixMilli(1000)); same == earlier {
+		t.Fatalf("two objects at one moment share %q", same)
+	}
+	if !strings.HasPrefix(newName(time.Date(2026, 11, 2, 23, 0, 0, 0, time.FixedZone("", -3600))), "2026/11/03/") {
+		t.Fatal("the day is not UTC's")
+	}
 }
 
 func TestEmptyAndExactlyTheLimit(t *testing.T) {
@@ -133,7 +154,7 @@ func TestReferencesCannotEscape(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Remove(secret) })
 	store := NewFilesystem(directory)
-	for _, ref := range []string{"../secret", "/etc/passwd", "", "ab/cd", strings.Repeat("a", 64), "ab/" + strings.Repeat("a", 64)} {
+	for _, ref := range []string{"../secret", "/etc/passwd", "", "ab/cd", strings.Repeat("a", 64), "2026/11/02/../../../secret", "2026/11/02/00000000000a-" + strings.Repeat("A", 25) + "/"} {
 		if _, err := store.Open(context.Background(), ref); !errors.Is(err, ErrInvalidRef) {
 			t.Errorf("Open(%q): %v", ref, err)
 		}

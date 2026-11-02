@@ -2,9 +2,13 @@ package messagestore
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/attachmentstore"
 )
@@ -35,18 +39,19 @@ func (s *S3) Put(ctx context.Context, source io.Reader, limit int64) (Object, er
 		_ = file.Close()
 		_ = os.Remove(file.Name())
 	}()
-	size, err := io.Copy(file, limitReader(contextReader{ctx, source}, limit))
+	hash := sha256.New()
+	size, err := io.Copy(io.MultiWriter(file, hash), limitReader(contextReader{ctx, source}, limit))
 	if err != nil {
 		return Object{}, err
 	}
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
 		return Object{}, err
 	}
-	ref, checksum, err := s.bucket.PutReader(ctx, file, size)
-	if err != nil {
+	ref := s.bucket.Prefix() + newName(time.Now())
+	if err := s.bucket.PutNamed(ctx, ref, file, size); err != nil {
 		return Object{}, err
 	}
-	return Object{Ref: ref, Size: size, Checksum: checksum}, nil
+	return Object{Ref: ref, Size: size, Checksum: hex.EncodeToString(hash.Sum(nil))}, nil
 }
 
 type s3Reader struct{ *attachmentstore.Reader }
@@ -55,7 +60,10 @@ func (r s3Reader) Size() int64 { return r.Reader.Size }
 
 // Open reads an object, streaming it from the bucket.
 func (s *S3) Open(ctx context.Context, ref string) (Reader, error) {
-	reader, err := s.bucket.Open(ctx, ref)
+	if !s.validRef(ref) {
+		return nil, ErrInvalidRef
+	}
+	reader, err := s.bucket.OpenNamed(ctx, ref)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, ErrNotFound
 	}
@@ -67,5 +75,13 @@ func (s *S3) Open(ctx context.Context, ref string) (Reader, error) {
 
 // Delete removes an object.
 func (s *S3) Delete(ctx context.Context, ref string) error {
-	return s.bucket.Delete(ctx, ref)
+	if !s.validRef(ref) {
+		return ErrInvalidRef
+	}
+	return s.bucket.DeleteNamed(ctx, ref)
+}
+
+func (s *S3) validRef(ref string) bool {
+	name, inside := strings.CutPrefix(ref, s.bucket.Prefix())
+	return inside && objectName.MatchString(name)
 }
