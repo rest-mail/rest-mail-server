@@ -637,7 +637,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.Use(middleware.RejectStaleSessions(sessionCurrent))
 		r.Use(middleware.SetupDone)
 		r.Use(middleware.CSRF())
-		r.Use(middleware.MaxBodyBytes(cfg.APIMaxBodyBytes))
+		// A contact import goes to disk and is held to its own limit.
+		r.Use(middleware.MaxBodyBytesExcept(cfg.APIMaxBodyBytes, handlers.ContactImportRoute))
 
 		// A protocol gateway signs a mail client in with what it gave as its
 		// password, sent with HTTP Basic. Throttled like login; a refused

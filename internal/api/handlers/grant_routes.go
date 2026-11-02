@@ -86,4 +86,13 @@ func (h *GrantHandler) Register(rs endpoint.Routes, checks GrantRouteChecks) {
 		OperationID: "updateServerCapabilities", Summary: "Replace the server capability ceiling", Tags: tags,
 		Errors:     []int{http.StatusForbidden, http.StatusConflict},
 		Middleware: []endpoint.Middleware{checks.SessionOnly, checks.At(middleware.CapUsersWrite), twoFactor}}, h.updateServerCapabilities)
+	// What an administrator can set for the whole server, guarded as the ceiling is.
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/server-limits",
+		OperationID: "getServerLimits", Summary: "The server's limits", Tags: tags,
+		Errors:     []int{http.StatusForbidden},
+		Middleware: []endpoint.Middleware{checks.SessionOnly, checks.At(middleware.CapUsersRead)}}, h.serverLimits)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPut, Path: "/api/v1/admin/server-limits",
+		OperationID: "updateServerLimits", Summary: "Change the server's limits", Tags: tags,
+		Errors:     []int{http.StatusForbidden},
+		Middleware: []endpoint.Middleware{checks.SessionOnly, checks.At(middleware.CapUsersWrite), twoFactor}}, h.updateServerLimits)
 }

@@ -1,8 +1,10 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -163,4 +165,96 @@ func TestServerCapabilitiesExamples(t *testing.T) {
 		}
 		refused(t, f, before)
 	})
+
+	limitsPath := "/api/v1/admin/server-limits"
+	stored := func(f serverCapabilitiesExampleFixture) int64 {
+		f.t.Helper()
+		var n int64
+		if err := f.db.Model(&models.ServerLimits{}).Count(&n).Error; err != nil {
+			f.t.Fatal(err)
+		}
+		return n
+	}
+
+	t.Run("getServerLimits/available", func(t *testing.T) {
+		examplepairs.Proven(t, "getServerLimits", "available")
+		pair := pairs["getServerLimits"]["available"]
+		f := newServerCapabilitiesExampleFixture(t)
+		assertRequirementResponse(t, pair, f.do(http.MethodGet, limitsPath, f.superadmin, ""))
+	})
+
+	t.Run("getServerLimits/not_superadmin", func(t *testing.T) {
+		examplepairs.Proven(t, "getServerLimits", "not_superadmin")
+		pair := pairs["getServerLimits"]["not_superadmin"]
+		f := newServerCapabilitiesExampleFixture(t)
+		assertRequirementResponse(t, pair, f.do(http.MethodGet, limitsPath, f.admin, ""))
+	})
+
+	t.Run("updateServerLimits/not_superadmin", func(t *testing.T) {
+		examplepairs.Proven(t, "updateServerLimits", "not_superadmin")
+		pair := pairs["updateServerLimits"]["not_superadmin"]
+		f := newServerCapabilitiesExampleFixture(t)
+		assertRequirementResponse(t, pair, f.do(http.MethodPut, limitsPath, f.admin, string(pair.Request.Body)))
+		if n := stored(f); n != 0 {
+			t.Fatalf("a refused change stored %d rows", n)
+		}
+	})
+
+	t.Run("updateServerLimits/too_small", func(t *testing.T) {
+		examplepairs.Proven(t, "updateServerLimits", "too_small")
+		pair := pairs["updateServerLimits"]["too_small"]
+		f := newServerCapabilitiesExampleFixture(t)
+		assertRequirementResponse(t, pair, f.do(http.MethodPut, limitsPath, f.superadmin, string(pair.Request.Body)))
+		if n := stored(f); n != 0 {
+			t.Fatalf("a refused change stored %d rows", n)
+		}
+	})
+
+	t.Run("updateServerLimits/updated", func(t *testing.T) {
+		examplepairs.Proven(t, "updateServerLimits", "updated")
+		pair := pairs["updateServerLimits"]["updated"]
+		f := newServerCapabilitiesExampleFixture(t)
+		assertRequirementResponse(t, pair, f.do(http.MethodPut, limitsPath, f.superadmin, string(pair.Request.Body)))
+		// Reading it back, and changing it again, keep the one row.
+		assertRequirementResponse(t, pair, f.do(http.MethodPut, limitsPath, f.superadmin, string(pair.Request.Body)))
+		if n := stored(f); n != 1 {
+			t.Fatalf("stored %d rows, want 1", n)
+		}
+		if rr := f.do(http.MethodGet, limitsPath, f.superadmin, ""); rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), `"contact_import_max_bytes":20971520`) {
+			t.Fatalf("read back %d %s", rr.Code, rr.Body.String())
+		}
+		entries := f.entries("server_limits.update")
+		if len(entries) != 2 || entries[0].Target["contact_import_max_bytes"] != "20971520" {
+			t.Fatalf("audit entries %+v", entries)
+		}
+	})
+}
+
+// A contact import is held to the server's limit, not the API's general one: a file above the
+// general limit is taken while the limit allows it, and refused once it is set lower.
+func TestContactImportFollowsTheServerLimit(t *testing.T) {
+	f := newCredentialFixtureWith(t, &config.Config{Environment: "test", APIMaxBodyBytes: 2048})
+	var entries []string
+	for i := range 100 {
+		entries = append(entries, fmt.Sprintf(`{"email":"person%d@example.org","name":"Person"}`, i))
+	}
+	body := `{"contacts":[` + strings.Join(entries, ",") + `]}`
+	if len(body) <= 2048 {
+		t.Fatalf("the file is %d bytes, not above the general limit", len(body))
+	}
+	path := fmt.Sprintf("/api/v1/accounts/%d/contacts/import", f.mailboxID)
+	f.own(f.mailboxID, f.address)
+	if rr := f.do(http.MethodPost, path, f.session, body); rr.Code != http.StatusOK {
+		t.Fatalf("under the server's limit: %d %s", rr.Code, rr.Body.String())
+	}
+	if err := f.db.Save(&models.ServerLimits{ID: 1, ContactImportMaxBytes: int64(len(body) - 1)}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if rr := f.do(http.MethodPost, path, f.session, body); rr.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("over the server's limit: %d %s", rr.Code, rr.Body.String())
+	}
+	// Another route keeps the general limit.
+	if rr := f.do(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/contacts", f.mailboxID), f.session, body); rr.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("another route past the general limit: %d %s", rr.Code, rr.Body.String())
+	}
 }

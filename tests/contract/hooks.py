@@ -100,6 +100,7 @@ def as_the_two_factor_admin(transaction):
 
 @hooks.before("listAPIKeys")
 @hooks.before("revokeAPIKey")
+@hooks.before("updateServerLimits")
 @hooks.before("confirmTwoFactor")
 @hooks.before("createGrant")
 @hooks.before("deleteGrant")

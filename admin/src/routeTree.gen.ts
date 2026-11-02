@@ -36,6 +36,7 @@ import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as SettingsBansRouteImport } from './routes/settings/bans'
 import { Route as SettingsCertificatesRouteImport } from './routes/settings/certificates'
 import { Route as SettingsDkimRouteImport } from './routes/settings/dkim'
+import { Route as SettingsLimitsRouteImport } from './routes/settings/limits'
 import { Route as SettingsMtaStsRouteImport } from './routes/settings/mta-sts'
 import { Route as SettingsTlsReportsRouteImport } from './routes/settings/tls-reports'
 import { Route as SettingsTwoFactorRouteImport } from './routes/settings/two-factor'
@@ -176,6 +177,11 @@ const SettingsDkimRoute = SettingsDkimRouteImport.update({
   path: '/settings/dkim',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsLimitsRoute = SettingsLimitsRouteImport.update({
+  id: '/settings/limits',
+  path: '/settings/limits',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsMtaStsRoute = SettingsMtaStsRouteImport.update({
   id: '/settings/mta-sts',
   path: '/settings/mta-sts',
@@ -215,6 +221,7 @@ export interface FileRoutesByFullPath {
   '/settings/bans': typeof SettingsBansRoute
   '/settings/certificates': typeof SettingsCertificatesRoute
   '/settings/dkim': typeof SettingsDkimRoute
+  '/settings/limits': typeof SettingsLimitsRoute
   '/settings/mta-sts': typeof SettingsMtaStsRoute
   '/settings/tls-reports': typeof SettingsTlsReportsRoute
   '/settings/two-factor': typeof SettingsTwoFactorRoute
@@ -248,6 +255,7 @@ export interface FileRoutesByTo {
   '/settings/bans': typeof SettingsBansRoute
   '/settings/certificates': typeof SettingsCertificatesRoute
   '/settings/dkim': typeof SettingsDkimRoute
+  '/settings/limits': typeof SettingsLimitsRoute
   '/settings/mta-sts': typeof SettingsMtaStsRoute
   '/settings/tls-reports': typeof SettingsTlsReportsRoute
   '/settings/two-factor': typeof SettingsTwoFactorRoute
@@ -282,6 +290,7 @@ export interface FileRoutesById {
   '/settings/bans': typeof SettingsBansRoute
   '/settings/certificates': typeof SettingsCertificatesRoute
   '/settings/dkim': typeof SettingsDkimRoute
+  '/settings/limits': typeof SettingsLimitsRoute
   '/settings/mta-sts': typeof SettingsMtaStsRoute
   '/settings/tls-reports': typeof SettingsTlsReportsRoute
   '/settings/two-factor': typeof SettingsTwoFactorRoute
@@ -317,6 +326,7 @@ export interface FileRouteTypes {
     | '/settings/bans'
     | '/settings/certificates'
     | '/settings/dkim'
+    | '/settings/limits'
     | '/settings/mta-sts'
     | '/settings/tls-reports'
     | '/settings/two-factor'
@@ -350,6 +360,7 @@ export interface FileRouteTypes {
     | '/settings/bans'
     | '/settings/certificates'
     | '/settings/dkim'
+    | '/settings/limits'
     | '/settings/mta-sts'
     | '/settings/tls-reports'
     | '/settings/two-factor'
@@ -383,6 +394,7 @@ export interface FileRouteTypes {
     | '/settings/bans'
     | '/settings/certificates'
     | '/settings/dkim'
+    | '/settings/limits'
     | '/settings/mta-sts'
     | '/settings/tls-reports'
     | '/settings/two-factor'
@@ -417,6 +429,7 @@ export interface RootRouteChildren {
   SettingsBansRoute: typeof SettingsBansRoute
   SettingsCertificatesRoute: typeof SettingsCertificatesRoute
   SettingsDkimRoute: typeof SettingsDkimRoute
+  SettingsLimitsRoute: typeof SettingsLimitsRoute
   SettingsMtaStsRoute: typeof SettingsMtaStsRoute
   SettingsTlsReportsRoute: typeof SettingsTlsReportsRoute
   SettingsTwoFactorRoute: typeof SettingsTwoFactorRoute
@@ -624,6 +637,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsDkimRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings/limits': {
+      id: '/settings/limits'
+      path: '/settings/limits'
+      fullPath: '/settings/limits'
+      preLoaderRoute: typeof SettingsLimitsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings/mta-sts': {
       id: '/settings/mta-sts'
       path: '/settings/mta-sts'
@@ -673,6 +693,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsBansRoute: SettingsBansRoute,
   SettingsCertificatesRoute: SettingsCertificatesRoute,
   SettingsDkimRoute: SettingsDkimRoute,
+  SettingsLimitsRoute: SettingsLimitsRoute,
   SettingsMtaStsRoute: SettingsMtaStsRoute,
   SettingsTlsReportsRoute: SettingsTlsReportsRoute,
   SettingsTwoFactorRoute: SettingsTwoFactorRoute,

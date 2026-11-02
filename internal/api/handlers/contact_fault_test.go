@@ -78,6 +78,9 @@ func (d *contactFaultDB) QueryContext(ctx context.Context, q string, _ []driver.
 		}
 		return &deliveryReadRows{columns: []string{"id", "address", "active"}, values: []driver.Value{id, "reader@example.test", true}}, nil
 	}
+	if strings.Contains(q, `FROM "server_limits"`) {
+		return &deliveryReadRows{columns: []string{"id", "contact_import_max_bytes"}}, nil
+	}
 	if strings.Contains(q, `count(*)`) {
 		return &deliveryReadRows{columns: []string{"count"}, values: []driver.Value{int64(1)}}, nil
 	}

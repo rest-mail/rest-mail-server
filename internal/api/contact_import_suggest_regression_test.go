@@ -51,6 +51,9 @@ func (tx *contactImportTx) Rollback() error {
 }
 
 func (c *contactImportSuggestConnection) QueryContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
+	if strings.Contains(q, `FROM "server_limits"`) {
+		return &authReadSnapshotRows{columns: []string{"id", "contact_import_max_bytes"}, rows: [][]driver.Value{{int64(1), int64(contactImportExampleLimit)}}}, nil
+	}
 	if strings.HasPrefix(q, `INSERT INTO "contacts"`) {
 		if c.tx != nil && !c.tx.relevant {
 			c.record("BEGIN", nil)
@@ -110,6 +113,9 @@ func (c *contactImportSuggestConnection) QueryContext(ctx context.Context, q str
 func (c *contactImportSuggestConnection) ExecContext(context.Context, string, []driver.NamedValue) (driver.Result, error) {
 	return nil, errors.New("unexpected ancillary import/suggest write")
 }
+
+// contactImportExampleLimit is the server's contact import limit in these examples.
+const contactImportExampleLimit = 512
 
 func newContactImportSuggestScenarios(t *testing.T) mailRemovalScenarios {
 	f := newMailRulesWriteScenarios(t, func(base mailRemovalConnection) driver.Connector {

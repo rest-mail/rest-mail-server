@@ -122,12 +122,14 @@
     "deactivateGrant",
     "deleteGrant",
     "getServerCapabilities",
+    "getServerLimits",
     "listCapabilities",
     "listGrants",
     "listMyGrants",
     "listRoles",
     "makeGrantEligible",
-    "updateServerCapabilities"
+    "updateServerCapabilities",
+    "updateServerLimits"
   ],
   "645": [
     "createDomain",

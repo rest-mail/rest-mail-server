@@ -11538,6 +11538,86 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/admin/server-limits:
+    get:
+      operationId: getServerLimits
+      tags: ["Admin: Roles & Grants"]
+      security:
+        - CookieAuth: [users:read]
+        - BearerAuth: [users:read]
+      summary: The server's limits
+      description: >-
+        What an administrator can set for the whole server. Today that is
+        `contact_import_max_bytes`, the largest contact import file, 10 MiB
+        until it is changed. Superadmin only (`403 superadmin_required`).
+      responses:
+        "200":
+          description: The limits in force
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ServerLimits"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Not a superadmin (superadmin_required)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Refused API keys are throttled at login's rate (rate_limited)
+    put:
+      operationId: updateServerLimits
+      tags: ["Admin: Roles & Grants"]
+      security:
+        - CookieAuth: [users:write]
+        - BearerAuth: [users:write]
+      summary: Change the server's limits
+      description: >-
+        Sets `contact_import_max_bytes`, which can be any size of at least one
+        byte, above the API's general body limit too. The upload goes to disk
+        as it arrives, so its size never sits in memory. Superadmin only, in a
+        session signed in with two-factor authentication (`403
+        superadmin_required` or `two_factor_required` otherwise). The change
+        and its audit entry (`server_limits.update`, with the value before and
+        after) commit together.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServerLimits"
+      responses:
+        "200":
+          description: The new limits
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ServerLimits"
+        "400":
+          description: The body is not valid JSON (bad_request)
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Not a superadmin (superadmin_required), or a session without a second factor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          description: Refused API keys are throttled at login's rate (rate_limited)
+
   /api/v1/admin/server-capabilities:
     get:
       operationId: getServerCapabilities
@@ -14491,6 +14571,17 @@ components:
           type: string
           description: "`*`, `domain:<name>` or `mailbox:<address>`; covers everything beneath it"
           example: "mailbox:robot@example.com"
+
+    ServerLimits:
+      type: object
+      required: [contact_import_max_bytes]
+      properties:
+        contact_import_max_bytes:
+          type: integer
+          format: int64
+          minimum: 1
+          description: The largest contact import file, in bytes
+          example: 10485760
 
     APIKey:
       type: object

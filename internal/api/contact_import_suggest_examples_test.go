@@ -44,7 +44,11 @@ func TestContactImportSuggestExamples(t *testing.T) {
 				if name == "malformed_json" {
 					body = []byte("{")
 				}
-				if name == "request_too_large" {
+				if name == "request_too_large" && op == "importContacts" {
+					// A valid file one size past the server's limit.
+					entry := `{"email":"new@example.com","name":"New"}`
+					body = []byte(`{"contacts":[` + strings.TrimSuffix(strings.Repeat(entry+",", contactImportExampleLimit/len(entry)+1), ",") + `]}`)
+				} else if name == "request_too_large" {
 					body = bytes.Repeat([]byte("x"), 513)
 				}
 				before := len(f.store.snapshot())
@@ -142,7 +146,13 @@ func TestContactImportSuggestExamplesWithVertrag(t *testing.T) {
 				if op == "suggestContacts" {
 					method = http.MethodGet
 				}
-				checkQueueMutationPairWithVertrag(t, binary, bulkQueueExampleScenario{s, nil}, method, path, name, pair, 513)
+				// A declared size past the default limit is refused before anything is read,
+				// whatever the body is; a smaller one is read and checked first.
+				oversized := 513
+				if op == "importContacts" {
+					oversized = 10<<20 + 1
+				}
+				checkQueueMutationPairWithVertrag(t, binary, bulkQueueExampleScenario{s, nil}, method, path, name, pair, oversized)
 			})
 		}
 	}
