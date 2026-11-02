@@ -68,6 +68,7 @@ type TestSnapshotMessage struct {
 	BodyText          string              `json:"body_text,omitempty"`
 	BodyHTML          string              `json:"body_html,omitempty"`
 	Headers           json.RawMessage     `json:"headers,omitempty"`
+	SealedHash        string              `json:"sealed_hash,omitempty"`
 	CalendarEventsRaw json.RawMessage     `json:"calendar_events,omitempty"`
 	SizeBytes         int                 `json:"size_bytes"`
 	RawSize           int                 `json:"raw_size"`
@@ -200,6 +201,7 @@ type RestoreSnapshotMessage struct {
 	BodyText          string                 `json:"body_text,omitempty"`
 	BodyHTML          string                 `json:"body_html,omitempty"`
 	Headers           json.RawMessage        `json:"headers,omitempty"`
+	SealedHash        string                 `json:"sealed_hash,omitempty"`
 	CalendarEventsRaw json.RawMessage        `json:"calendar_events,omitempty"`
 	SizeBytes         int                    `json:"size_bytes,omitempty"`
 	RawSize           int                    `json:"raw_size,omitempty"`

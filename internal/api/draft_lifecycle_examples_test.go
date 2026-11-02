@@ -69,7 +69,7 @@ func newDraftExampleFixture(t *testing.T, operation, name string) draftExampleFi
 	if err := f.db.Create(&other).Error; err != nil {
 		t.Fatal(err)
 	}
-	seed := models.Message{ID: 12, MailboxID: f.mailboxID, Folder: "Drafts", IsDraft: true, IsRead: true,
+	seed := models.Message{ID: 12, MailboxID: f.mailboxID, Folder: "Drafts", IsDraft: true, IsRead: true, PendingDraft: true,
 		Sender: f.address, RecipientsTo: models.JSONB(`["admin@restmail.test"]`), RecipientsCc: models.JSONB(`[]`),
 		Subject: "Draft", BodyText: "Not sent yet.", SizeBytes: len("Draft") + len("Not sent yet.")}
 	if operation == "sendDraft" {
@@ -175,6 +175,8 @@ func (fx draftExampleFixture) verify(t *testing.T, operation, name string, pair 
 			data[field] = want[field]
 		}
 		if name == "sent" {
+			assertExampleReceipt(t, data, stored.RawMessage, stored.SealedHash)
+			data["sealed_hash"] = want["sealed_hash"]
 			if data["message_id"] != stored.MsgID || data["thread_id"] != stored.ThreadID || stored.MsgID == "" {
 				t.Fatal("sent identities differ from storage")
 			}

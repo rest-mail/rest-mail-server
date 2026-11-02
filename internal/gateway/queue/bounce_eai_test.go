@@ -61,4 +61,8 @@ func TestGenerateBounce_EAISender(t *testing.T) {
 	if !dsn.IsDSN || dsn.Folder != "INBOX" {
 		t.Errorf("DSN folder = %q, is_dsn = %v; want INBOX, true", dsn.Folder, dsn.IsDSN)
 	}
+	digest, err := dsn.SealDigest()
+	if err != nil || dsn.SealedHash == "" || digest != dsn.SealedHash {
+		t.Fatalf("DSN receipt not sealed: stored %q, computed %q, error %v", dsn.SealedHash, digest, err)
+	}
 }

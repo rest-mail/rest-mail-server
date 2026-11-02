@@ -14457,6 +14457,7 @@
             "body_text": "please review\n\n---------- Forwarded message ----------\nFrom: old@example.test\nSubject: receipt\n\noriginal receipt",
             "created_at": "2030-01-02T03:04:05Z",
             "date_header": null,
+            "downgraded_size": 1714,
             "folder": "Sent",
             "has_attachments": true,
             "id": 41,
@@ -14470,13 +14471,13 @@
             "mailbox_id": 1,
             "message_id": "\u003c00000000-0000-4000-8000-000000000001@example.test\u003e",
             "raw_size": 1714,
-            "downgraded_size": 1714,
             "received_at": "2030-01-02T03:04:05Z",
             "recipients_cc": [],
             "recipients_to": [
               "target@remote.test"
             ],
             "references": "",
+            "sealed_hash": "c8df0e809a88268049a3d046bf4c17819b16cbf2e5d3845e15368a251710bfb2",
             "sender": "sender@example.test",
             "sender_name": "",
             "size_bytes": 285,

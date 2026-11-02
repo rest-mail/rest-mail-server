@@ -187,6 +187,10 @@ func (h *MessageHandler) RegisterMessages(rs endpoint.Routes) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/messages/{id}",
 		OperationID: "getMessage", Summary: "Get a message by ID", Tags: tags,
 		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.getMessage)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/messages/{id}/seal",
+		OperationID: "verifyMessageSeal", Summary: "Verify a message's receipt seal", Tags: tags,
+		Description: "Compares the stored receipt seal with the current source, headers and bodies, without changing the seal. intact means unchanged since this server accepted it, not who wrote it or whether it is safe. not_sealed is distinct from mismatch; historical messages are never backfilled. Uses the same mail:read authorization as reading the message. See docs/message-seals.md for the streaming restmail-seal-v1 algorithm and byte framing.",
+		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.verifyMessageSeal)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPatch, Path: "/api/v1/messages/{id}",
 		OperationID: "updateMessage", Summary: "Update message flags or move to a folder", Tags: tags,
 		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.updateMessage)
@@ -925,22 +929,6 @@ func (h *MessageHandler) sendMessageWithParts(r *http.Request, req sendMessageRe
 		return h.commitForward(r, req, &senderMailbox, &sentMsg, parts, extraHeaders, queuedTrace)
 	}
 
-	if err := h.db.Create(&sentMsg).Error; err != nil {
-		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to save sent message")
-	}
-
-	// ── Record the queued trace ──────────────────────────────────────
-	// The outbound pipeline said continue and the sent Message row now exists —
-	// record it as "queued" (handed to the outbound delivery queue) with
-	// message_id non-nil and the generated RFC Message-ID.
-	if queuedTrace != nil {
-		queuedTrace.Outcome = outcomeQueued
-		queuedTrace.RFCMessageID = sentMsg.MsgID
-		mid := sentMsg.ID
-		queuedTrace.MessageID = &mid
-		h.recordTrace(buildTrace(*queuedTrace))
-	}
-
 	// Build raw RFC 2822 message for outbound queue entries.
 	rawMessage, rawErr := buildOutboundRaw(outboundMessage{
 		Sender:    req.Sender,
@@ -978,11 +966,17 @@ func (h *MessageHandler) sendMessageWithParts(r *http.Request, req sendMessageRe
 
 	// The Sent copy keeps the source that was sent, as a delivered copy does,
 	// so its raw source can be read (GET /messages/{id}/raw, IMAP, POP3).
-	if err := h.db.Model(&sentMsg).Updates(map[string]any{"raw_message": rawMessage, "raw_size": len(rawMessage), "downgraded_size": rmail.DowngradedSize(rawMessage)}).Error; err != nil {
-		slog.Warn("failed to store the sent message's raw source", "message_id", sentMsg.ID, "error", err)
-		if h.draftSend != nil {
-			return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to save sent message")
-		}
+	sentMsg.RawMessage, sentMsg.RawSize = rawMessage, len(rawMessage)
+	if err := h.db.Create(&sentMsg).Error; err != nil {
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to save sent message")
+	}
+
+	if queuedTrace != nil {
+		queuedTrace.Outcome = outcomeQueued
+		queuedTrace.RFCMessageID = sentMsg.MsgID
+		mid := sentMsg.ID
+		queuedTrace.MessageID = &mid
+		h.recordTrace(buildTrace(*queuedTrace))
 	}
 
 	// Deliver to each recipient in to + cc + bcc
@@ -1571,6 +1565,7 @@ func (h *MessageHandler) saveDraft(r *http.Request, req saveDraftBody) (Message,
 	}
 
 	draft := models.Message{
+		PendingDraft: true,
 		MailboxID:    mailboxID,
 		Folder:       "Drafts",
 		Sender:       req.From,

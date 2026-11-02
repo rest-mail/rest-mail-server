@@ -3,6 +3,7 @@ import { ChevronDown, ImageOff, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { trustFromHeaders, type AuthOutcome, type MailHeaders, type TrustVerdict } from '@/lib/mailTrust';
 import { TrustBadge } from './TrustBadge';
+import { SEAL_LABELS, type SealState } from '@/lib/messageSeal';
 
 function outcomeColor(result: AuthOutcome): string {
   if (result === 'pass') return 'var(--color-success)';
@@ -28,6 +29,7 @@ export interface TrustReceiptProps {
   verdict?: TrustVerdict;
   receivedAt?: string;
   sealedHash?: string | null;
+  sealState?: SealState;
   remoteImagesBlocked?: number;
   defaultOpen?: boolean;
   className?: string;
@@ -38,6 +40,7 @@ export function TrustReceipt({
   verdict,
   receivedAt,
   sealedHash,
+  sealState,
   remoteImagesBlocked = 0,
   defaultOpen = false,
   className,
@@ -45,7 +48,8 @@ export function TrustReceipt({
   const trust = verdict ?? trustFromHeaders(headers);
   const [open, setOpen] = useState(defaultOpen);
 
-  const hasContent = trust.state !== 'unchecked' || Boolean(sealedHash) || remoteImagesBlocked > 0;
+  const currentSealState = sealState ?? (sealedHash ? 'checking' : undefined);
+  const hasContent = trust.state !== 'unchecked' || Boolean(currentSealState) || remoteImagesBlocked > 0;
   if (!hasContent) return null;
 
   return (
@@ -95,13 +99,15 @@ export function TrustReceipt({
             </div>
           )}
 
-          {sealedHash && (
-            <div className="flex items-center gap-2 font-mono text-[11px]">
-              <Lock className="h-3 w-3 shrink-0" style={{ color: 'var(--color-success)' }} />
-              <span className="text-foreground">headers unchanged since receipt</span>
-              <span className="ml-auto shrink-0 text-muted-foreground">
-                {sealedHash.slice(0, 8)}…{sealedHash.slice(-4)}
-              </span>
+          {currentSealState && (
+            <div className="flex items-center gap-2 font-mono text-[11px]" data-seal-state={currentSealState} role="status">
+              <Lock className="h-3 w-3 shrink-0" style={{ color: currentSealState === 'mismatch' ? 'var(--color-danger)' : undefined }} />
+              <span className="text-foreground">{SEAL_LABELS[currentSealState]}</span>
+              {sealedHash && (
+                <span className="ml-auto shrink-0 text-muted-foreground" title={sealedHash}>
+                  {sealedHash.slice(0, 8)}…{sealedHash.slice(-4)}
+                </span>
+              )}
             </div>
           )}
 
@@ -116,7 +122,7 @@ export function TrustReceipt({
           )}
 
           <p className="border-t border-border pt-2 font-mono text-[10.5px] leading-relaxed text-muted-foreground">
-            {trust.detail} This says who sent it and whether it changed on the way — not whether the content is safe.
+            {trust.detail} A receipt seal only checks for changes since this server accepted the message; it does not identify the author or establish that the content is safe.
           </p>
         </div>
       )}

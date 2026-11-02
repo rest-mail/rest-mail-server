@@ -57,6 +57,9 @@ func (d *draftSendDB) QueryContext(_ context.Context, q string, args []driver.Na
 		}
 		return &deliveryReadRows{columns: []string{"id", "mailbox_id", "sender", "subject", "is_draft", "recipients_to", "recipients_cc"}, values: []driver.Value{int64(5), int64(7), "owner@example.test", "hello", true, []byte(`["far@remote.example"]`), []byte(`[]`)}}, nil
 	case strings.HasPrefix(q, `INSERT INTO "messages"`):
+		if d.failRaw {
+			return nil, errors.New("private raw storage failure")
+		}
 		s.sent++
 		return &deliveryReadRows{columns: []string{"id"}, values: []driver.Value{int64(60)}}, nil
 	case strings.HasPrefix(q, `INSERT INTO "outbound_queue"`):
@@ -85,9 +88,6 @@ func (d *draftSendDB) ExecContext(_ context.Context, q string, _ []driver.NamedV
 			return nil, errors.New("private draft deletion failure")
 		}
 		d.state().draft = false
-	}
-	if d.failRaw && strings.HasPrefix(q, `UPDATE "messages"`) {
-		return nil, errors.New("private raw storage failure")
 	}
 	return driver.RowsAffected(1), nil
 }

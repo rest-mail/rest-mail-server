@@ -257,6 +257,7 @@ type Message struct {
 	BodyText          string                `json:"body_text,omitempty"`
 	BodyHTML          string                `json:"body_html,omitempty"`
 	Headers           json.RawMessage       `json:"headers,omitempty"`
+	SealedHash        string                `json:"sealed_hash,omitempty" description:"SHA-256 receipt seal (restmail-seal-v1); covers the exact stored source and displayed headers and bodies. Absent on historical unsealed messages. Does not authenticate the author or establish safety"`
 	CalendarEventsRaw json.RawMessage       `json:"calendar_events,omitempty"`
 	SizeBytes         int                   `json:"size_bytes"`
 	RawSize           int                   `json:"raw_size" description:"The exact octet count of the stored raw message; 0 when none is stored"`

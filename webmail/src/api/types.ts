@@ -2359,6 +2359,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messages/{id}/seal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Verify a message's receipt seal
+         * @description Compares the stored receipt seal with the current source, headers and bodies, without changing the seal. intact means unchanged since this server accepted it, not who wrote it or whether it is safe. not_sealed is distinct from mismatch; historical messages are never backfilled. Uses the same mail:read authorization as reading the message. See docs/message-seals.md for the streaming restmail-seal-v1 algorithm and byte framing.
+         */
+        get: operations["verifyMessageSeal"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messages/{id}/raw": {
         parameters: {
             query?: never;
@@ -2839,6 +2859,9 @@ export interface components {
         };
         "Data-Message": {
             data: components["schemas"]["Message"];
+        };
+        "Data-MessageSeal": {
+            data: components["schemas"]["MessageSeal"];
         };
         "Data-MessageTrace": {
             data: components["schemas"]["MessageTrace"];
@@ -3331,6 +3354,7 @@ export interface components {
             recipients_cc: unknown;
             recipients_to: unknown;
             references: string;
+            sealed_hash?: string;
             sender: string;
             sender_name: string;
             size_bytes: number;
@@ -3343,6 +3367,14 @@ export interface components {
             tls_version?: string;
             /** Format: date-time */
             updated_at: string;
+        };
+        MessageSeal: {
+            /** @enum {string} */
+            algorithm: "restmail-seal-v1";
+            computed_hash?: string;
+            sealed_hash?: string;
+            /** @enum {string} */
+            state: "intact" | "mismatch" | "not_sealed";
         };
         MessageAttachment: {
             checksum: string;
@@ -3683,6 +3715,7 @@ export interface components {
             recipients_cc?: unknown;
             recipients_to?: unknown;
             references?: string;
+            sealed_hash?: string;
             sender?: string;
             sender_name?: string;
             size_bytes?: number;
@@ -4089,6 +4122,7 @@ export interface components {
             recipients_cc: unknown;
             recipients_to: unknown;
             references: string;
+            sealed_hash?: string;
             sender: string;
             sender_name: string;
             size_bytes: number;
@@ -19428,6 +19462,102 @@ export interface operations {
                 };
             };
             /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    verifyMessageSeal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-MessageSeal"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
             503: {
                 headers: {
                     [name: string]: unknown;

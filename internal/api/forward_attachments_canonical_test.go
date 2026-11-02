@@ -39,6 +39,8 @@ func normalizeForwardExample(t *testing.T, f *forwardFixture, status int, raw []
 		}
 		sent := f.c.state.messages[0]
 		source := sent["raw_message"].(string)
+		assertExampleReceipt(t, data, source, sent["sealed_hash"])
+		data["sealed_hash"] = normalizedReceiptHash
 		parsed, err := rmime.Parse([]byte(source))
 		if err != nil {
 			t.Fatal(err)

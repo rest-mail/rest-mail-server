@@ -1266,25 +1266,25 @@ func (w *Worker) generateBounce(item models.OutboundQueue, smtpErr *SMTPError) {
 	// our own bounces, never inbound mail that merely claims a mailer-daemon@
 	// envelope-from (which an external sender could use to inflate the counter and
 	// suppress a target user's legitimate bounces).
-	bounceMsg := map[string]interface{}{
-		"mailbox_id":    senderMailbox.ID,
-		"folder":        "INBOX",
-		"sender":        "mailer-daemon@" + w.hostname,
-		"sender_name":   "Mail Delivery System",
-		"recipients_to": fmt.Sprintf(`[%q]`, rmail.SanitizeHeaderValue(item.Sender)),
-		"recipients_cc": "[]",
-		"subject":       dsn.subject,
-		"body_text":     dsn.humanPart,
-		"raw_message":   dsn.raw,
-		"is_read":       false,
-		"is_dsn":        true,
-		"size_bytes":    len(dsn.raw),
-		"received_at":   now,
-		"created_at":    now,
-		"updated_at":    now,
+	bounceMsg := models.Message{
+		MailboxID:    senderMailbox.ID,
+		Folder:       "INBOX",
+		Sender:       "mailer-daemon@" + w.hostname,
+		SenderName:   "Mail Delivery System",
+		RecipientsTo: models.JSONB(fmt.Sprintf(`[%q]`, rmail.SanitizeHeaderValue(item.Sender))),
+		RecipientsCc: models.JSONB("[]"),
+		Subject:      dsn.subject,
+		BodyText:     dsn.humanPart,
+		RawMessage:   dsn.raw,
+		RawSize:      len(dsn.raw),
+		IsDSN:        true,
+		SizeBytes:    len(dsn.raw),
+		ReceivedAt:   now,
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 
-	if err := w.db.Table("messages").Create(bounceMsg).Error; err != nil {
+	if err := w.db.Create(&bounceMsg).Error; err != nil {
 		slog.Error("queue: failed to insert bounce DSN", "sender", item.Sender, "error", err)
 		return
 	}
