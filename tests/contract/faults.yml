@@ -36,3 +36,33 @@ faults:
     path: /api/health
     phase: examples
     breaks: GET /api/health answers its data object as an empty list
+
+  - name: health_status_created
+    build_tags: faultinject,fault_health_status_created
+    operation: getHealth
+    path: /api/health
+    phase: examples
+    breaks: GET /api/health answers 201 instead of 200 without changing its JSON
+
+  - name: login_validation_removed
+    build_tags: faultinject,fault_login_validation_removed
+    operation: login
+    path: /api/v1/auth/login
+    phase: examples
+    breaks: POST /api/v1/auth/login answers a validation refusal with 200 instead of 422
+
+  - name: login_body_cap_removed
+    build_tags: faultinject,fault_login_body_cap_removed
+    operation: login
+    path: /api/v1/auth/login
+    phase: examples
+    breaks: The API body cap is disabled; oversized login bodies reach validation instead of receiving 413
+    known_gap: "#1493"
+
+  - name: login_rate_limit_disabled
+    build_tags: faultinject,fault_login_rate_limit_disabled
+    operation: login
+    path: /api/v1/auth/login
+    phase: examples
+    breaks: The shared authentication throttle is disabled; repeated refused logins no longer receive 429
+    known_gap: "#1493"

@@ -16,21 +16,33 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sort"
+
+	"github.com/rest-mail/rest-mail-server/internal/config"
 )
 
-// A Fault breaks the answer to one route.
+// A Fault breaks the contract, with one route as its witness.
 type Fault struct {
 	Name   string
 	Method string
 	Path   string
 	// Break rewrites the recorded answer before it is sent.
-	Break func(*httptest.ResponseRecorder)
+	Break     func(*httptest.ResponseRecorder)
+	Configure func(*config.Config)
 	// Example is an answer the route gives without the fault, for the
 	// package's own test that the fault changes it.
-	Example string
+	Example       string
+	ExampleStatus int
 }
 
 var registry = map[string]Fault{}
+
+func Configure(cfg *config.Config) {
+	for _, name := range Active() {
+		if change := registry[name].Configure; change != nil {
+			change(cfg)
+		}
+	}
+}
 
 // register is called from the init of each fault's file.
 func register(f Fault) {
@@ -81,7 +93,9 @@ func wrap(next http.Handler, faults []Fault) http.Handler {
 		rec := httptest.NewRecorder()
 		next.ServeHTTP(rec, r)
 		for _, f := range matched {
-			f.Break(rec)
+			if f.Break != nil {
+				f.Break(rec)
+			}
 		}
 		for key, values := range rec.Header() {
 			w.Header()[key] = values

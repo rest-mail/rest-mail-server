@@ -236,6 +236,7 @@ func main() {
 	// the gateway-facing routes for the dedicated mTLS listener and they are
 	// withheld from the public handler; otherwise those routes live on Public
 	// (tokenless), preserving pre-mTLS behavior.
+	configureFaults(cfg)
 	routers := api.NewRouters(database, jwtService, cfg, dnsProvider, acmeClientPtr)
 	router := routers.Public
 
