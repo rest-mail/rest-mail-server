@@ -18,7 +18,9 @@ type catalogueEntry struct {
 	Name      string `yaml:"name"`
 	BuildTags string `yaml:"build_tags"`
 	Operation string `yaml:"operation"`
+	Path      string `yaml:"path"`
 	Phase     string `yaml:"phase"`
+	KnownGap  string `yaml:"known_gap"`
 	Breaks    string `yaml:"breaks"`
 }
 
@@ -80,6 +82,9 @@ func TestEveryCatalogueFaultHasItsSwitch(t *testing.T) {
 		}
 		if !regexp.MustCompile(`Name:\s+"` + regexp.QuoteMeta(f.Name) + `"`).Match(body) {
 			t.Errorf("%s does not register a fault named %s", file, f.Name)
+		}
+		if !regexp.MustCompile(`Path:\s+"` + regexp.QuoteMeta(f.Path) + `"`).Match(body) {
+			t.Errorf("%s does not break the catalogue's path %q", file, f.Path)
 		}
 		if !judgedPhases[f.Phase] {
 			t.Errorf("%s: phase %q is not one the fault run judges", f.Name, f.Phase)
