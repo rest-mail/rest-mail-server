@@ -1063,26 +1063,17 @@
 # Outbound queue (#650)
 
 - operation: bulkBounceQueue
-  difference: "request body application/json.properties.filter.type: openapi.yaml \"object\", generated [\"null\",\"object\"]"
-  reason: A null filter counts as no filter, as before; the request type's AnyOf then requires nonempty ids.
-- operation: bulkBounceQueue
   difference: "request body application/json.properties.ids.items.minimum: openapi.yaml 0, generated absent"
   reason: The uint element type enforces non-negative IDs during binding, but go-oapifly does not emit the implicit unsigned minimum.
 - operation: bulkBounceQueue
   difference: "response 200 application/json.properties.data.properties.affected.format: openapi.yaml absent, generated \"int64\""
   reason: The counter is an int64 in Go; generated documentation states its width without changing its JSON integer representation.
 - operation: bulkDeleteQueue
-  difference: "request body application/json.properties.filter.type: openapi.yaml \"object\", generated [\"null\",\"object\"]"
-  reason: A null filter counts as no filter, as before; the request type's AnyOf then requires nonempty ids.
-- operation: bulkDeleteQueue
   difference: "request body application/json.properties.ids.items.minimum: openapi.yaml 0, generated absent"
   reason: The uint element type enforces non-negative IDs during binding, but go-oapifly does not emit the implicit unsigned minimum.
 - operation: bulkDeleteQueue
   difference: "response 200 application/json.properties.data.properties.affected.format: openapi.yaml absent, generated \"int64\""
   reason: The counter is an int64 in Go; generated documentation states its width without changing its JSON integer representation.
-- operation: bulkRetryQueue
-  difference: "request body application/json.properties.filter.type: openapi.yaml \"object\", generated [\"null\",\"object\"]"
-  reason: A null filter counts as no filter, as before; the request type's AnyOf then requires nonempty ids.
 - operation: bulkRetryQueue
   difference: "request body application/json.properties.ids.items.minimum: openapi.yaml 0, generated absent"
   reason: The uint element type enforces non-negative IDs during binding, but go-oapifly does not emit the implicit unsigned minimum.

@@ -104,7 +104,7 @@ func bulkQueueExampleScenarios(t *testing.T) map[string]bulkQueueExampleScenario
 	all := []grants.Entry{{Capability: grants.Wildcard, Scope: grants.All}}
 	normal := makeRouter(all, false, false, false)
 	out := map[string]bulkQueueExampleScenario{}
-	for _, name := range []string{"malformed_json", "by_ids", "invalid_body", "invalid_ids", "selection_missing", "empty_ids", "null_filter", "by_filter", "ids_take_precedence", "empty_filter", "no_match", "negative_id", "too_many_ids", "unknown_field", "null_body", "invalid_sender", "invalid_recipient"} {
+	for _, name := range []string{"malformed_json", "by_ids", "invalid_body", "invalid_ids", "selection_missing", "empty_ids", "null_filter", "ids_null_filter", "by_filter", "ids_take_precedence", "empty_filter", "no_match", "negative_id", "too_many_ids", "unknown_field", "null_body", "invalid_sender", "invalid_recipient"} {
 		out[name] = normal
 	}
 	out["internal_error"] = makeRouter(all, false, true, false)

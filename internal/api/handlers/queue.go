@@ -217,7 +217,7 @@ func (h *QueueHandler) queueStats(r *http.Request, _ struct{}) (QueueStatistics,
 
 type bulkQueueRequest struct {
 	IDs    []uint `json:"ids,omitempty" maxItems:"1000" message:"max 1000 IDs per request"`
-	Filter *struct {
+	Filter struct {
 		Status    string `json:"status,omitempty"`
 		Domain    string `json:"domain,omitempty"`
 		Sender    string `json:"sender,omitempty"`
@@ -227,7 +227,7 @@ type bulkQueueRequest struct {
 
 // AnyOf states the rule no one field can: a bulk action selects by nonempty ids or by a
 // filter, an empty filter included (go-oapifly#68). The binder refuses a body meeting
-// neither with 422, before the handler's own check.
+// neither with 422, before queue access.
 func (bulkQueueRequest) AnyOf() oapifly.AnyOfRule {
 	return oapifly.AnyOfRule{
 		Alternatives: []oapifly.Alternative{
@@ -244,19 +244,17 @@ func (h *QueueHandler) buildBulkQuery(ctx context.Context, req bulkQueueRequest)
 	if len(req.IDs) > 0 {
 		return query.Where("id IN ?", req.IDs)
 	}
-	if req.Filter != nil {
-		if req.Filter.Status != "" {
-			query = query.Where("status = ?", req.Filter.Status)
-		}
-		if req.Filter.Domain != "" {
-			query = query.Where("domain = ?", req.Filter.Domain)
-		}
-		if req.Filter.Sender != "" {
-			query = query.Where("sender ILIKE ? ESCAPE '\\'", "%"+escapeLike(req.Filter.Sender)+"%")
-		}
-		if req.Filter.Recipient != "" {
-			query = query.Where("recipient ILIKE ? ESCAPE '\\'", "%"+escapeLike(req.Filter.Recipient)+"%")
-		}
+	if req.Filter.Status != "" {
+		query = query.Where("status = ?", req.Filter.Status)
+	}
+	if req.Filter.Domain != "" {
+		query = query.Where("domain = ?", req.Filter.Domain)
+	}
+	if req.Filter.Sender != "" {
+		query = query.Where("sender ILIKE ? ESCAPE '\\'", "%"+escapeLike(req.Filter.Sender)+"%")
+	}
+	if req.Filter.Recipient != "" {
+		query = query.Where("recipient ILIKE ? ESCAPE '\\'", "%"+escapeLike(req.Filter.Recipient)+"%")
 	}
 	return query
 }
@@ -264,10 +262,6 @@ func (h *QueueHandler) buildBulkQuery(ctx context.Context, req bulkQueueRequest)
 // bulkRetry forces immediate retry for multiple queue entries.
 // POST /api/v1/admin/queue/bulk-retry
 func (h *QueueHandler) bulkRetry(r *http.Request, req bulkQueueRequest) (BulkQueueResult, error) {
-	if len(req.IDs) == 0 && req.Filter == nil {
-		return BulkQueueResult{}, endpoint.Invalid(map[string]string{"ids": "ids or filter required", "filter": "ids or filter required"})
-	}
-
 	result := h.buildBulkQuery(r.Context(), req).
 		Where("status IN ?", []string{"deferred", "pending"}).
 		Updates(map[string]interface{}{
@@ -284,10 +278,6 @@ func (h *QueueHandler) bulkRetry(r *http.Request, req bulkQueueRequest) (BulkQue
 // bulkBounce forces a bounce for multiple queue entries.
 // POST /api/v1/admin/queue/bulk-bounce
 func (h *QueueHandler) bulkBounce(r *http.Request, req bulkQueueRequest) (BulkQueueResult, error) {
-	if len(req.IDs) == 0 && req.Filter == nil {
-		return BulkQueueResult{}, endpoint.Invalid(map[string]string{"ids": "ids or filter required", "filter": "ids or filter required"})
-	}
-
 	// Only bounce mail that is still in flight. Without this guard a bulk bounce
 	// by filter would also flip already-delivered (or expired/bounced) rows to
 	// "bounced", corrupting their final state.
@@ -307,9 +297,6 @@ func (h *QueueHandler) bulkBounce(r *http.Request, req bulkQueueRequest) (BulkQu
 // bulkDelete removes multiple queue entries.
 // DELETE /api/v1/admin/queue/bulk-delete
 func (h *QueueHandler) bulkDelete(r *http.Request, req bulkQueueRequest) (BulkQueueResult, error) {
-	if len(req.IDs) == 0 && req.Filter == nil {
-		return BulkQueueResult{}, endpoint.Invalid(map[string]string{"ids": "ids or filter required", "filter": "ids or filter required"})
-	}
 	query := h.buildBulkQuery(r.Context(), req)
 	// An empty filter has no conditions, so it selects every entry, as the
 	// description says and as retry and bounce read it. GORM refuses a delete
@@ -375,6 +362,8 @@ type QueueRouteChecks struct {
 	At func(string) endpoint.Middleware
 }
 
+const bulkQueueDescription = "Select entries by nonempty IDs (which take precedence) or by an explicit filter object. An empty filter object selects all entries subject to the action's status eligibility. A supplied filter must never be null, even with IDs; null is refused with 422 before queue access. Database work follows the HTTP request context, including cancellation and deadlines."
+
 func (h *QueueHandler) Register(rs endpoint.Routes, checks QueueRouteChecks) {
 	tags := []string{"Admin: Queue"}
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/queue",
@@ -382,11 +371,11 @@ func (h *QueueHandler) Register(rs endpoint.Routes, checks QueueRouteChecks) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/queue/stats",
 		OperationID: "getQueueStats", Summary: "Get queue status counts", Description: "Database work follows the HTTP request context, including cancellation and deadlines.", Tags: tags, Middleware: []endpoint.Middleware{checks.At(middleware.CapQueueRead)}}, h.queueStats)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/queue/bulk-retry",
-		OperationID: "bulkRetryQueue", Summary: "Retry multiple queue entries", Description: "Database work follows the HTTP request context, including cancellation and deadlines.", Tags: tags, Middleware: []endpoint.Middleware{checks.At(middleware.CapQueueManage)}}, h.bulkRetry)
+		OperationID: "bulkRetryQueue", Summary: "Retry multiple queue entries", Description: bulkQueueDescription, Tags: tags, Middleware: []endpoint.Middleware{checks.At(middleware.CapQueueManage)}}, h.bulkRetry)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/queue/bulk-bounce",
-		OperationID: "bulkBounceQueue", Summary: "Bounce multiple queue entries", Description: "Database work follows the HTTP request context, including cancellation and deadlines.", Tags: tags, Middleware: []endpoint.Middleware{checks.At(middleware.CapQueueManage)}}, h.bulkBounce)
+		OperationID: "bulkBounceQueue", Summary: "Bounce multiple queue entries", Description: bulkQueueDescription, Tags: tags, Middleware: []endpoint.Middleware{checks.At(middleware.CapQueueManage)}}, h.bulkBounce)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/admin/queue/bulk-delete",
-		OperationID: "bulkDeleteQueue", Summary: "Delete multiple queue entries", Description: "Database work follows the HTTP request context, including cancellation and deadlines.", Tags: tags, Middleware: []endpoint.Middleware{checks.At(middleware.CapQueueManage)}}, h.bulkDelete)
+		OperationID: "bulkDeleteQueue", Summary: "Delete multiple queue entries", Description: bulkQueueDescription, Tags: tags, Middleware: []endpoint.Middleware{checks.At(middleware.CapQueueManage)}}, h.bulkDelete)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/queue/{id}",
 		OperationID: "getQueueEntry", Summary: "Get a single queue entry", Description: "Database work follows the HTTP request context, including cancellation and deadlines.", Tags: tags, Errors: []int{http.StatusNotFound}, Middleware: []endpoint.Middleware{checks.At(middleware.CapQueueRead)}}, h.getQueueEntry)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/queue/{id}/retry",

@@ -1887,6 +1887,23 @@
         "mediaType": "application/json"
       }
     },
+    "empty_filter": {
+      "description": "An explicit empty filter object intentionally selects every entry eligible for the action. Null is not an empty filter. Controlled SQL proves route wiring, not PostgreSQL persistence.",
+      "request": {
+        "body": {
+          "filter": {}
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "affected": 3
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "empty_ids": {
       "request": {
         "body": {
@@ -1903,6 +1920,33 @@
             "details": {
               "fields": {
                 "ids": "ids or filter required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "ids_null_filter": {
+      "description": "A supplied filter must be an object, never null, even when nonempty IDs are present. Binding refuses null with 422 before any queue SQL.",
+      "request": {
+        "body": {
+          "ids": [
+            987654
+          ],
+          "filter": null
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "filter": "must not be null"
               }
             }
           }
@@ -1990,6 +2034,30 @@
           "error": {
             "code": "bad_request",
             "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "null_filter": {
+      "description": "A supplied filter must be an object, never null, even when nonempty IDs are present. Binding refuses null with 422 before any queue SQL.",
+      "request": {
+        "body": {
+          "filter": null
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "filter": "must not be null"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -2133,6 +2201,23 @@
         "mediaType": "application/json"
       }
     },
+    "empty_filter": {
+      "description": "An explicit empty filter object intentionally selects every entry eligible for the action. Null is not an empty filter. Controlled SQL proves route wiring, not PostgreSQL persistence.",
+      "request": {
+        "body": {
+          "filter": {}
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "affected": 3
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "empty_ids": {
       "request": {
         "body": {
@@ -2149,6 +2234,33 @@
             "details": {
               "fields": {
                 "ids": "ids or filter required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "ids_null_filter": {
+      "description": "A supplied filter must be an object, never null, even when nonempty IDs are present. Binding refuses null with 422 before any queue SQL.",
+      "request": {
+        "body": {
+          "ids": [
+            987654
+          ],
+          "filter": null
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "filter": "must not be null"
               }
             }
           }
@@ -2236,6 +2348,30 @@
           "error": {
             "code": "bad_request",
             "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "null_filter": {
+      "description": "A supplied filter must be an object, never null, even when nonempty IDs are present. Binding refuses null with 422 before any queue SQL.",
+      "request": {
+        "body": {
+          "filter": null
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "filter": "must not be null"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -2379,6 +2515,23 @@
         "mediaType": "application/json"
       }
     },
+    "empty_filter": {
+      "description": "An explicit empty filter object intentionally selects every entry eligible for the action. Null is not an empty filter. Controlled SQL proves route wiring, not PostgreSQL persistence.",
+      "request": {
+        "body": {
+          "filter": {}
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "affected": 3
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "empty_ids": {
       "request": {
         "body": {
@@ -2395,6 +2548,33 @@
             "details": {
               "fields": {
                 "ids": "ids or filter required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "ids_null_filter": {
+      "description": "A supplied filter must be an object, never null, even when nonempty IDs are present. Binding refuses null with 422 before any queue SQL.",
+      "request": {
+        "body": {
+          "ids": [
+            987654
+          ],
+          "filter": null
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "filter": "must not be null"
               }
             }
           }
@@ -2482,6 +2662,30 @@
           "error": {
             "code": "bad_request",
             "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "null_filter": {
+      "description": "A supplied filter must be an object, never null, even when nonempty IDs are present. Binding refuses null with 422 before any queue SQL.",
+      "request": {
+        "body": {
+          "filter": null
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "filter": "must not be null"
+              }
+            }
           }
         },
         "mediaType": "application/json"
