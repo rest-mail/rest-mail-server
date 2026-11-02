@@ -16,7 +16,7 @@ import (
 // gets. IPs are allocated in this order within the instance's block.
 var scaffoldComponents = []string{
 	"postgres", "api", "smtp-gateway", "imap-gateway",
-	"pop3-gateway", "js-filter", "webmail", "admin",
+	"pop3-gateway", "js-filter", "webmail", "admin", "garage",
 }
 
 const (
@@ -312,6 +312,7 @@ db:
 # ── binding: components on the substrate (IPs allocated at scaffold time) ─
 components:
   - { name: postgres, ip: {{index .IP "postgres"}} }
+  - { name: garage, ip: {{index .IP "garage"}} }
   - name: api
     ip: {{index .IP "api"}}
     port: 8080
@@ -409,6 +410,7 @@ db:
 # standard mail defaults.
 components:
   - { name: postgres }
+  - { name: garage }
   - name: api
     port: 8080
   - name: smtp-gateway

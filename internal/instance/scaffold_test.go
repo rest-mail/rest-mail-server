@@ -62,7 +62,7 @@ func TestScaffoldEndToEnd(t *testing.T) {
 	want := map[string]string{
 		"postgres": "10.99.0.50", "api": "10.99.0.51", "smtp-gateway": "10.99.0.52",
 		"imap-gateway": "10.99.0.53", "pop3-gateway": "10.99.0.54", "js-filter": "10.99.0.55",
-		"webmail": "10.99.0.56", "admin": "10.99.0.57",
+		"webmail": "10.99.0.56", "admin": "10.99.0.57", "garage": "10.99.0.58",
 	}
 	for name, ip := range want {
 		if res.IPs[name] != ip {
@@ -130,8 +130,8 @@ func TestScaffoldAvoidsExistingIPs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second.IPs["postgres"] != "10.99.0.58" {
-		t.Errorf("second postgres IP = %s, want 10.99.0.58 (after first's 50-57 block)", second.IPs["postgres"])
+	if second.IPs["postgres"] != "10.99.0.59" {
+		t.Errorf("second postgres IP = %s, want 10.99.0.59 (after first's 50-58 block)", second.IPs["postgres"])
 	}
 }
 
@@ -197,7 +197,7 @@ func TestScaffoldHostGolden(t *testing.T) {
 		}
 	}
 	// Component IPs are unset — the deployer assigns addresses on their network.
-	for _, name := range []string{"postgres", "api", "smtp-gateway", "imap-gateway", "pop3-gateway", "js-filter", "webmail", "admin"} {
+	for _, name := range []string{"postgres", "garage", "api", "smtp-gateway", "imap-gateway", "pop3-gateway", "js-filter", "webmail", "admin"} {
 		if res.IPs[name] != "" {
 			t.Errorf("host IPs[%s] = %q, want unset", name, res.IPs[name])
 		}

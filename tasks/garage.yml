@@ -1,0 +1,73 @@
+version: "3"
+
+# rest-mail/tasks/garage — Taskfile
+#
+# Drives the Garage object store, where an instance keeps attachments and message
+# bytes (#1437), with plain `docker run` (no compose). Included by the main Taskfile
+# under namespace `garage`. Data lives in a named volume, so the container can be
+# recreated without losing it.
+#
+# The credentials here are for a disposable testbed, like the API's dev secrets.
+
+silent: true
+
+vars:
+  GARAGE_PROJECT: '{{.GARAGE_PROJECT | default "rest-mail"}}'
+  GARAGE_NETWORK: '{{.GARAGE_NETWORK | default "testbed_mailnet"}}'
+  GARAGE_IP: '{{.GARAGE_IP | default "10.99.0.44"}}'
+  GARAGE_IMAGE: '{{.GARAGE_IMAGE | default "dxflrs/garage:v2.4.1"}}'
+  GARAGE_CONTAINER_NAME: '{{.GARAGE_PROJECT}}-garage'
+  GARAGE_DATA_VOLUME: '{{.GARAGE_PROJECT}}-garage-data'
+  GARAGE_BUCKET: '{{.GARAGE_BUCKET | default "restmail"}}'
+  GARAGE_ACCESS_KEY: '{{.GARAGE_ACCESS_KEY | default "GK0123456789abcdef01234567"}}'
+  GARAGE_SECRET_KEY: '{{.GARAGE_SECRET_KEY | default "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}}'
+  GARAGE_RPC_SECRET: '{{.GARAGE_RPC_SECRET | default "0000000000000000000000000000000000000000000000000000000000000000"}}'
+  GARAGE_ADMIN_TOKEN: '{{.GARAGE_ADMIN_TOKEN | default "dev-garage-admin-token"}}'
+
+tasks:
+
+  up:
+    desc: Start Garage, and make its layout, bucket and key if they are missing
+    cmds:
+      - |
+        docker volume create {{.GARAGE_DATA_VOLUME}} >/dev/null
+        mkdir -p .cache
+        config="$(pwd)/.cache/{{.GARAGE_CONTAINER_NAME}}.toml"
+        cat > "$config" <<CONFIG
+        metadata_dir = "/data/meta"
+        data_dir = "/data/objects"
+        db_engine = "lmdb"
+        replication_factor = 1
+        rpc_bind_addr = "[::]:3901"
+        rpc_public_addr = "{{.GARAGE_IP}}:3901"
+        rpc_secret = "{{.GARAGE_RPC_SECRET}}"
+        [s3_api]
+        s3_region = "garage"
+        api_bind_addr = "[::]:3900"
+        [admin]
+        api_bind_addr = "[::]:3903"
+        admin_token = "{{.GARAGE_ADMIN_TOKEN}}"
+        CONFIG
+        chmod 600 "$config"
+        echo "  starting garage ({{.GARAGE_CONTAINER_NAME}} @ {{.GARAGE_IP}})"
+        docker rm -f {{.GARAGE_CONTAINER_NAME}} >/dev/null 2>&1 || true
+        docker run --detach --name {{.GARAGE_CONTAINER_NAME}} \
+          --network {{.GARAGE_NETWORK}} --ip {{.GARAGE_IP}} \
+          --restart unless-stopped \
+          --security-opt no-new-privileges:true --cap-drop ALL --cap-add DAC_OVERRIDE \
+          --pids-limit 256 --memory 512m --cpus 1 \
+          -v {{.GARAGE_DATA_VOLUME}}:/data \
+          -v "$config":/etc/garage.toml:ro \
+          --entrypoint /garage {{.GARAGE_IMAGE}} server >/dev/null
+      - |
+        python3 -B scripts/garage-bootstrap.py \
+          --admin http://{{.GARAGE_IP}}:3903 --admin-token {{.GARAGE_ADMIN_TOKEN}} \
+          --bucket {{.GARAGE_BUCKET}} --access-key {{.GARAGE_ACCESS_KEY}} --secret-key {{.GARAGE_SECRET_KEY}} || {
+          docker logs --tail 40 {{.GARAGE_CONTAINER_NAME}} 2>&1
+          exit 1
+        }
+
+  down:
+    desc: Stop Garage, keeping its data
+    cmds:
+      - docker rm -f {{.GARAGE_CONTAINER_NAME}} >/dev/null 2>&1 || true

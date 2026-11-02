@@ -63,6 +63,7 @@ db:
 # ── binding: components on the substrate (IPs allocated at scaffold time) ─
 components:
   - { name: postgres, ip: 10.99.0.50 }
+  - { name: garage, ip: 10.99.0.58 }
   - name: api
     ip: 10.99.0.51
     port: 8080
