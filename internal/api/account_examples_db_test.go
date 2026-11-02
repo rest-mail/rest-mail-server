@@ -273,10 +273,11 @@ func TestAccountExamples(t *testing.T) {
 		if verified.Scope.Permissions[0] != wantStored[0] {
 			t.Fatalf("the next request would run with %+v", verified.Scope.Permissions)
 		}
-		var entry models.AuditEntry
-		if err := f.db.Where("action = ?", "api_keys.update").Order("id DESC").First(&entry).Error; err != nil {
-			t.Fatalf("no audit entry: %v", err)
+		entries := f.entries("api_keys.update")
+		if len(entries) != 1 {
+			t.Fatalf("%d audit entries, want 1", len(entries))
 		}
+		entry := entries[0]
 		if entry.Target["previous_permissions"] != `[{"capability":"mail:read","scope":"mailbox:robot@example.com"}]` ||
 			entry.Target["permissions"] != `[{"capability":"mail:send","scope":"mailbox:robot@example.com"}]` ||
 			entry.ActorID == nil || *entry.ActorID != f.mailboxID {

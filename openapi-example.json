@@ -36775,7 +36775,7 @@
         "body": {
           "error": {
             "code": "two_factor_required",
-            "message": "Changing grants needs a session signed in with two-factor authentication: sign in again with your code"
+            "message": "This action needs a session signed in with two-factor authentication: sign in again with your code"
           }
         },
         "mediaType": "application/json"
