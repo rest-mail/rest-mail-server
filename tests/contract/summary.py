@@ -50,7 +50,12 @@ def summary(directory, phases=None):
         report = Path(directory) / (name + ".xml")
         if not report.exists():
             continue
-        total, failed, skipped = counts(report)
+        try:
+            total, failed, skipped = counts(report)
+        except ET.ParseError:
+            # The phase stopped before it reported. Its own exit status says why.
+            rows.append(f"| {label} | no report | | | |")
+            continue
         rows.append(
             f"| {label} | {total} | {total - failed - skipped} | {failed} | {skipped} |"
         )

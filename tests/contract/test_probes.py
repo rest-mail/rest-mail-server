@@ -23,6 +23,14 @@ class ProbeConfig(unittest.TestCase):
         self.assertEqual(probes.main(self.source, self.output, self.report), 0)
         self.config = yaml.safe_load(self.output.read_text())
 
+    def test_no_pin_leaves_the_signing_key_out(self):
+        self.assertEqual(self.config["fuzz"]["pin"].keys(), {"private_key"})
+        self.assertEqual(
+            probes.main(self.source, self.output, self.report, pin=False), 0
+        )
+        config = yaml.safe_load(self.output.read_text())
+        self.assertFalse(config.get("fuzz", {}).get("pin"))
+
     def test_full_examples_keep_their_surface_gate_and_have_no_pins(self):
         self.assertEqual(self.source.read_text(), self.before)
         self.assertEqual(self.base["surface"]["require"], 100)
@@ -104,7 +112,10 @@ class ProbeConfig(unittest.TestCase):
         )
         script = (ROOT / "tests/contract/run.sh").read_text()
         examples = script.index("--sequence --phases examples")
-        generated = script.index("python3 -B tests/contract/probes.py")
+        # The phases run in the case at the end; the helper above it only defines.
+        generated = script.index(
+            "python3 -B tests/contract/probes.py", script.index('case "$phase" in')
+        )
         coverage = script.index("--sequence --phases coverage")
         repeated = script.index("python3 -B tests/contract/repeat_fixtures.py")
         queue = script.index("chore test:contract-fixtures", repeated)

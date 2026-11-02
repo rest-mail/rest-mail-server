@@ -22,7 +22,14 @@ SELECTIONS = (
 
 class SelectedGate(unittest.TestCase):
     def run_gate(
-        self, selection=(), *, examples=0, coverage=0, ratchet=0, complete=False
+        self,
+        selection=(),
+        *,
+        examples=0,
+        coverage=0,
+        ratchet=0,
+        complete=False,
+        nothing_to_pin=False,
     ):
         with tempfile.TemporaryDirectory(prefix="selected contract ") as directory:
             work = Path(directory)
@@ -87,6 +94,12 @@ class SelectedGate(unittest.TestCase):
                 "f.write(json.dumps({'phase':phase,'args':args})+'\\n')\n"
                 "config=yaml.safe_load(Path(args[args.index('--config')+1]).read_text())\n"
                 "code=int(os.environ.get(phase.upper()+'_CODE','0'))\n"
+                "if os.environ.get('NOTHING_TO_PIN') and config.get('fuzz',{}).get('pin'):\n"
+                " for out in config['output']:\n"
+                "  if out: Path(out).write_text('')\n"
+                " print('vertrag: fuzz.pin names a field or argument nothing in "
+                "this description declares: private_key')\n"
+                " sys.exit(1)\n"
                 "for out in config['output']:\n"
                 " if not out: continue\n"
                 " path=Path(out)\n"
@@ -120,6 +133,8 @@ class SelectedGate(unittest.TestCase):
                 CALLS=str(calls_file),
             )
             env.pop("CONTRACT_LOGS", None)
+            if nothing_to_pin:
+                env["NOTHING_TO_PIN"] = "1"
             if complete:
                 command = yaml.safe_load((ROOT / "chores.yml").read_text())["tasks"][
                     "contract"
@@ -188,6 +203,20 @@ class SelectedGate(unittest.TestCase):
                     )
                     self.assertIn("ratchet", [c["phase"] for c in calls])
                     self.assertIn("| coverage | 1 | 0 | 1 | 0 |", report)
+
+    def test_selection_with_nothing_to_pin_runs_without_the_pin(self):
+        result, calls, report = self.run_gate(SELECTIONS[1], nothing_to_pin=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual([c["phase"] for c in calls].count("coverage"), 2)
+        self.assertIn("| coverage | 1 | 1 | 0 | 0 |", report)
+        self.assertNotIn("Traceback", result.stderr)
+
+    def test_full_gate_still_refuses_a_pin_that_matches_nothing(self):
+        result, calls, report = self.run_gate(nothing_to_pin=True)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertEqual([c["phase"] for c in calls].count("coverage"), 1)
+        self.assertIn("| coverage | no report | | | |", report)
+        self.assertNotIn("Traceback", result.stderr)
 
     def test_nonprobe_errors_are_not_interpreted_as_baseline_findings(self):
         for code in (1, 3, 17):
