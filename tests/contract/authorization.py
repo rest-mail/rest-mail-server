@@ -4,7 +4,7 @@
 The phase sends every operation's documented request once as every principal
 and checks the answer against the operation's `security`: a principal holding
 one requirement's roles gets the documented success, one with no credential
-401, one without the roles 403.
+401, one without the roles 403, or the 404 that hides someone else's object.
 
 The principals are the ones tests/e2e/contract_principals_test.go makes and
 writes to .cache/contract-principals.json. The app password is minted fresh by
@@ -51,6 +51,11 @@ from reports import spec_location
 METHODS = ("get", "put", "post", "delete", "patch", "head", "options", "trace")
 LOGIN = "/api/v1/auth/login"
 BEARER = "Authorization: Bearer {$response.body#/data/access_token}"
+# A refusal says only what the caller may already know (#672): someone else's
+# account or message answers the same 404 as one that does not exist. Vertrag
+# accepts this beside the status a cell requires, on every cell, so
+# authorization_refusals.py holds it to the routes that decision covers.
+HIDING_REFUSAL = [404]
 # Operations whose request names no mailbox: they act on the caller's own
 # account, where every signed-in principal holds the capability they declare.
 OWN_ACCOUNT = [
@@ -116,6 +121,7 @@ def main(spec_path, config_path, principals_path, out_path, report_path, run_spe
     config["hookfiles"] = os.path.join(here, config["hookfiles"])
     config.pop("surface", None)
     config["skip"] = list(config.get("skip") or []) + OWN_ACCOUNT
+    config["authorization"] = {"refuse": HIDING_REFUSAL}
     config["reporter"] = ["cli", "junit"]
     config["output"] = ["", os.path.abspath(report_path)]
     config["principals"] = [

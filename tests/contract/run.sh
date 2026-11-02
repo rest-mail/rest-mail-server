@@ -157,6 +157,12 @@ authorization)
   "$CONTRACT_VERTRAG" run --config "$out/vertrag-authorization.yml" --sequence --phases authorization "${select[@]}" \
     >"$logs/contract-authorization.log" 2>&1 || code=$?
   cat "$logs/contract-authorization.log"
+  # Vertrag's refuse list covers every cell; this holds a 404 to the routes the
+  # owner's decision covers. A run that wrote no report has already failed.
+  if [ -f "$out/authorization.json" ]; then
+    python3 -B tests/contract/authorization_refusals.py "$CONTRACT_SPEC" "$out/authorization.json" \
+      2>&1 | tee -a "$logs/contract-authorization.log" || code=$?
+  fi
   echo "vertrag authorization exited $code (report only)"
   exit "$code"
   ;;
