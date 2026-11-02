@@ -9,7 +9,7 @@ import urllib.request
 
 import vertrag_hooks as hooks
 
-THREAD = "thread/2026@example.net"
+THREAD = "<thread/2026@example.net>"
 
 
 def register_thread_snooze_hook(admin_token):
@@ -35,7 +35,7 @@ def register_thread_snooze_hook(admin_token):
             f"{transaction['protocol']}//{transaction['host']}:{transaction['port']}"
         )
         raw = (
-            f"Message-ID: <{THREAD}>\r\n"
+            f"Message-ID: {THREAD}\r\n"
             "From: sender@example.test\r\n"
             "To: recipient@restmail.test\r\n"
             "Date: Mon, 2 Nov 2026 12:00:00 +0000\r\n"

@@ -37,7 +37,7 @@ class ThreadSnoozeFixtureTests(unittest.TestCase):
             "protocol": "http:",
             "host": "fixture.test",
             "port": "8080",
-            "fullPath": "/api/v1/accounts/7/threads/thread%2F2026%40example.net/snooze",
+            "fullPath": "/api/v1/accounts/7/threads/%3Cthread%2F2026%40example.net%3E/snooze",
             "request": {
                 "method": "POST",
                 "headers": {"Authorization": "Bearer original-session"},
@@ -62,7 +62,9 @@ class ThreadSnoozeFixtureTests(unittest.TestCase):
             request.full_url,
             "http://fixture.test:8080/api/v1/accounts/7/messages/import",
         )
-        self.assertEqual(request.get_header("Authorization"), "Bearer private-setup-session")
+        self.assertEqual(
+            request.get_header("Authorization"), "Bearer private-setup-session"
+        )
         body = json.loads(request.data)
         self.assertEqual(body["folder"], "Contract snooze")
         self.assertIn(
@@ -74,7 +76,7 @@ class ThreadSnoozeFixtureTests(unittest.TestCase):
         for field, value in (
             ("status", "404"),
             ("status", "422"),
-            ("path", "/api/v1/accounts/0/threads/thread%2F2026%40example.net/snooze"),
+            ("path", "/api/v1/accounts/0/threads/%3Cthread%2F2026%40example.net%3E/snooze"),
             ("path", "/api/v1/accounts/7/threads/missing/snooze"),
             ("headers", {}),
             ("method", "GET"),

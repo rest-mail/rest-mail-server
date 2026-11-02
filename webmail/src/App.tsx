@@ -52,7 +52,9 @@ function App() {
 
   // SSE event handler
   const handleSSEEvent = useCallback((event: SSEEvent) => {
-    if (event.type === 'new_message') {
+    if (event.type === 'stream_ready') {
+      refresh();
+    } else if (event.type === 'new_message') {
       const data = event.data as { sender?: string; subject?: string };
       toast.info(`New message from ${data.sender || 'unknown'}`, {
         description: data.subject || '(no subject)',
