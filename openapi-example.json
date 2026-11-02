@@ -10538,6 +10538,7 @@
         "status": 201,
         "body": {
           "data": {
+            "class": "person",
             "id": 1,
             "mailbox_id": 1,
             "folder": "INBOX",
@@ -14705,6 +14706,114 @@
     }
   },
   "getMessage": {
+    "classification_newsletter": {
+      "description": "Classification is derived from the stored headers, with no delivery changes. Only newsletter is list-shaped; person is never hidden. Commercial receipts without list signals use notification when automated, otherwise person.",
+      "request": {
+        "path": {
+          "id": 101
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
+            "body_text": "Hello café",
+            "class": "newsletter",
+            "created_at": "2026-10-20T00:00:00Z",
+            "date_header": null,
+            "downgraded_size": 0,
+            "folder": "INBOX",
+            "has_attachments": true,
+            "headers": {
+              "List-Id": [
+                "\u003cnews.example.test\u003e"
+              ]
+            },
+            "id": 101,
+            "in_reply_to": "",
+            "is_deleted": false,
+            "is_draft": false,
+            "is_dsn": false,
+            "is_flagged": false,
+            "is_read": false,
+            "is_starred": false,
+            "mailbox_id": 1,
+            "message_id": "\u003cmessage@example.net\u003e",
+            "raw_size": 137,
+            "received_at": "2026-10-20T00:00:00Z",
+            "received_tls": true,
+            "recipients_cc": [],
+            "recipients_to": [
+              "recipient@example.com"
+            ],
+            "references": "",
+            "sender": "sender@example.net",
+            "sender_name": "Sender café",
+            "size_bytes": 80,
+            "subject": "Subject café",
+            "thread_id": "",
+            "tls_version": "TLS1.3",
+            "updated_at": "2026-10-20T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "classification_notification": {
+      "description": "Classification is derived from the stored headers, with no delivery changes. Only newsletter is list-shaped; person is never hidden. Commercial receipts without list signals use notification when automated, otherwise person.",
+      "request": {
+        "path": {
+          "id": 102
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
+            "body_text": "Hello café",
+            "class": "notification",
+            "created_at": "2026-10-20T00:00:00Z",
+            "date_header": null,
+            "downgraded_size": 0,
+            "folder": "INBOX",
+            "has_attachments": true,
+            "headers": {
+              "Auto-Submitted": [
+                "auto-generated"
+              ]
+            },
+            "id": 102,
+            "in_reply_to": "",
+            "is_deleted": false,
+            "is_draft": false,
+            "is_dsn": false,
+            "is_flagged": false,
+            "is_read": false,
+            "is_starred": false,
+            "mailbox_id": 1,
+            "message_id": "\u003cmessage@example.net\u003e",
+            "raw_size": 137,
+            "received_at": "2026-10-20T00:00:00Z",
+            "received_tls": true,
+            "recipients_cc": [],
+            "recipients_to": [
+              "recipient@example.com"
+            ],
+            "references": "",
+            "sender": "sender@example.net",
+            "sender_name": "Sender café",
+            "size_bytes": 80,
+            "subject": "Subject café",
+            "thread_id": "",
+            "tls_version": "TLS1.3",
+            "updated_at": "2026-10-20T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "found": {
       "description": "The production message lookup, credential verification and current holder ceilings are used. Controlled SQL proves wiring, not PostgreSQL semantics or audit persistence. JSON omits raw source and unloaded mailboxes; the source route preserves every octet, repeated headers, CRLF, UTF-8 and a leading dot.",
       "request": {
@@ -14717,6 +14826,7 @@
         "body": {
           "data": {
             "id": 1,
+            "class": "person",
             "mailbox_id": 1,
             "folder": "INBOX",
             "message_id": "\u003cmessage@example.net\u003e",
@@ -16710,6 +16820,7 @@
           "data": [
             {
               "id": 52,
+              "class": "person",
               "mailbox_id": 1,
               "folder": "INBOX",
               "message_id": "\u003cmessage-52@example.net\u003e",
@@ -16740,6 +16851,7 @@
             },
             {
               "id": 53,
+              "class": "person",
               "mailbox_id": 1,
               "folder": "INBOX",
               "message_id": "\u003cmessage-53@example.net\u003e",
@@ -16768,6 +16880,7 @@
             },
             {
               "id": 51,
+              "class": "person",
               "mailbox_id": 1,
               "folder": "INBOX",
               "message_id": "\u003cmessage-51@example.net\u003e",
@@ -22540,6 +22653,7 @@
           "data": [
             {
               "id": 51,
+              "class": "person",
               "mailbox_id": 1,
               "folder": "INBOX",
               "message_id": "\u003cmessage-51@example.net\u003e",
@@ -22590,6 +22704,7 @@
             },
             {
               "id": 53,
+              "class": "person",
               "mailbox_id": 1,
               "folder": "INBOX",
               "message_id": "\u003cmessage-53@example.net\u003e",
@@ -22618,6 +22733,7 @@
             },
             {
               "id": 52,
+              "class": "person",
               "mailbox_id": 1,
               "folder": "INBOX",
               "message_id": "\u003cmessage-52@example.net\u003e",
@@ -31603,6 +31719,7 @@
         "body": {
           "data": {
             "id": 12,
+            "class": "person",
             "mailbox_id": 1,
             "folder": "Drafts",
             "message_id": "",
@@ -31809,6 +31926,7 @@
           "data": [
             {
               "id": 1,
+              "class": "person",
               "mailbox_id": 1,
               "folder": "INBOX",
               "message_id": "\u003cmessage@example.net\u003e",
@@ -32343,6 +32461,7 @@
         "body": {
           "data": {
             "id": 13,
+            "class": "person",
             "mailbox_id": 1,
             "folder": "Sent",
             "message_id": "\u003cdraft-sent@restmail.test\u003e",
@@ -32707,6 +32826,7 @@
         "body": {
           "data": {
             "id": 1,
+            "class": "person",
             "mailbox_id": 2,
             "folder": "Sent",
             "sender": "shared@restmail.test",
@@ -32760,6 +32880,7 @@
         "body": {
           "data": {
             "id": 1,
+            "class": "person",
             "mailbox_id": 2,
             "folder": "Sent",
             "sender": "shared@restmail.test",
@@ -32889,6 +33010,7 @@
         "body": {
           "data": {
             "id": 1,
+            "class": "person",
             "mailbox_id": 1,
             "folder": "Sent",
             "sender": "admin@restmail.test",
@@ -38838,6 +38960,7 @@
         "body": {
           "data": {
             "id": 12,
+            "class": "person",
             "mailbox_id": 1,
             "folder": "Drafts",
             "message_id": "",
@@ -39471,6 +39594,7 @@
         "body": {
           "data": {
             "id": 1,
+            "class": "person",
             "mailbox_id": 1,
             "folder": "INBOX",
             "message_id": "\u003cmessage@example.net\u003e",

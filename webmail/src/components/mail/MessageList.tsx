@@ -1,5 +1,6 @@
 import { displayAddress } from '@/lib/addressDisplay';
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
+import { visibleMessages } from '@/lib/messageClass';
 import { useMailStore } from '@/stores/mailStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useUIStore } from '@/stores/uiStore';
@@ -27,7 +28,10 @@ export function MessageList() {
   const unreadCount = useUnreadCount();
 
   const isInSearch = searchResults !== null;
-  const displayMessages = isInSearch ? searchResults : messages;
+  const [collapseLists, setCollapseLists] = useState(false);
+  const allMessages = isInSearch ? searchResults : messages;
+  const displayMessages = visibleMessages(allMessages, collapseLists && !isInSearch, selectedMessageId);
+  const listCount = allMessages.filter(message => message.class === 'newsletter').length;
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (!displayMessages.length) return;
@@ -88,7 +92,7 @@ export function MessageList() {
   }
 
   // Empty state
-  if (displayMessages.length === 0) {
+  if (allMessages.length === 0) {
     if (isInSearch) {
       return (
         <div className={cn('flex flex-col items-center justify-center h-full text-muted-foreground gap-3', TYPEFACE_CLASS[v.listType])}>
@@ -132,6 +136,15 @@ export function MessageList() {
         </div>
 
         {/* Divider */}
+        {!isInSearch && listCount > 0 && (
+          <button
+            onClick={() => setCollapseLists(collapsed => !collapsed)}
+            aria-pressed={collapseLists}
+            className="w-full px-3 py-2 text-xs text-primary text-left hover:bg-secondary/30"
+          >
+            {collapseLists ? 'Show' : 'Collapse'} list mail ({listCount})
+          </button>
+        )}
         <div className="h-px bg-border" />
 
         {/* Messages */}

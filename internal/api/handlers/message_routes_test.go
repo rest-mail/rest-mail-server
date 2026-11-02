@@ -48,6 +48,10 @@ func TestMessageResponseJSONParity(t *testing.T) {
 				t.Fatal(err)
 			}
 			delete(oldFields, "mailbox") // These two model fixtures have no loaded mailbox.
+			if string(currentFields["class"]) != `"person"` {
+				t.Fatalf("class = %s, want person", currentFields["class"])
+			}
+			delete(currentFields, "class")
 			if !reflect.DeepEqual(oldFields, currentFields) {
 				t.Fatalf("response JSON changed:\nold %s\nnew %s", old, current)
 			}

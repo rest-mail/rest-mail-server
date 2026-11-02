@@ -1,3 +1,5 @@
+import type { components } from '../api/types';
+
 export interface User {
   id: number;
   email: string;
@@ -21,6 +23,7 @@ export interface Folder {
 }
 
 export interface MessageSummary {
+  class: components['schemas']['Message']['class'];
   id: number;
   mailbox_id: number;
   thread_id: string;

@@ -48,7 +48,7 @@ func (c messageSourceReadConnection) QueryContext(ctx context.Context, query str
 	if id == "5" {
 		mailbox = 3
 	}
-	if id == "6" || id == "7" {
+	if id == "6" || id == "7" || id == "101" || id == "102" {
 		mailbox = 1
 	}
 	raw := messageSourceReadRaw
@@ -59,7 +59,14 @@ func (c messageSourceReadConnection) QueryContext(ctx context.Context, query str
 		raw = "\r\n"
 	}
 	stamp := time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC)
-	r.rows = [][]driver.Value{{n, mailbox, "INBOX", "<message@example.net>", "sender@example.net", "Sender café", []byte(`["recipient@example.com"]`), nil, "Subject café", "Hello café", "<p>Hello café</p>", []byte(`{"X-Trace":["one","two"]}`), nil, int64(80), int64(len(raw)), true, "TLS1.3", true, false, false, id == "7", stamp, nil, stamp, stamp, raw}}
+	headers := []byte(`{"X-Trace":["one","two"]}`)
+	if id == "101" {
+		headers = []byte(`{"List-Id":["<news.example.test>"]}`)
+	}
+	if id == "102" {
+		headers = []byte(`{"Auto-Submitted":["auto-generated"]}`)
+	}
+	r.rows = [][]driver.Value{{n, mailbox, "INBOX", "<message@example.net>", "sender@example.net", "Sender café", []byte(`["recipient@example.com"]`), nil, "Subject café", "Hello café", "<p>Hello café</p>", headers, nil, int64(80), int64(len(raw)), true, "TLS1.3", true, false, false, id == "7", stamp, nil, stamp, stamp, raw}}
 	return r, nil
 }
 
@@ -70,7 +77,7 @@ func messageSourceReadScenarios(t *testing.T) map[string]accountReadScenario {
 	})
 	out["domain_grant"] = out["domain_manager"]
 	out["app_password_other"] = out["app_password"]
-	for _, name := range []string{"mailbox_unavailable", "source_missing", "minimal_source", "deleted_message"} {
+	for _, name := range []string{"mailbox_unavailable", "source_missing", "minimal_source", "deleted_message", "classification_newsletter", "classification_notification"} {
 		out[name] = out["found"]
 	}
 	return out

@@ -14661,8 +14661,19 @@ components:
         Public message metadata and bodies; raw source is served separately.
         An unloaded mailbox association is omitted rather than serialized as
         an empty mailbox.
-      required: [id, mailbox_id, folder, sender, subject, is_read, is_flagged, is_starred, is_draft, is_deleted, received_at, created_at, updated_at]
+      required: [class, id, mailbox_id, folder, sender, subject, is_read, is_flagged, is_starred, is_draft, is_deleted, received_at, created_at, updated_at]
       properties:
+        class:
+          type: string
+          enum: [newsletter, receipt, notification, person]
+          description: >-
+            Derived on read from stored headers. newsletter: valid List-Id or
+            HTTP(S)/mailto List-Unsubscribe (list-shaped); notification: otherwise
+            Auto-Submitted auto-generated/auto-replied or Precedence bulk/list/junk;
+            person: otherwise, including malformed signals. receipt is reserved:
+            these headers cannot distinguish commercial receipts from other
+            automated mail. Only newsletter may collapse; person must never be
+            hidden. Not an authenticity or safety verdict.
         is_answered:
           type: boolean
         id:

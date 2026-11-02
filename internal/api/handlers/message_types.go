@@ -6,6 +6,7 @@ import (
 
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
@@ -17,6 +18,10 @@ import (
 type Message = apitypes.Message
 
 func messageOf(m models.Message) Message {
+	var headers map[string][]string
+	if err := json.Unmarshal(m.Headers, &headers); err != nil {
+		headers = nil
+	}
 	var mailbox *Mailbox
 	if m.Mailbox.ID != 0 {
 		loaded := mailboxOf(m.Mailbox)
@@ -28,6 +33,7 @@ func messageOf(m models.Message) Message {
 		authVerdict = pipeline.AuthVerdict(authResults)
 	}
 	return Message{
+		Class:             rmail.ClassifyHeaders(headers),
 		ID:                m.ID,
 		MailboxID:         m.MailboxID,
 		Folder:            m.Folder,
