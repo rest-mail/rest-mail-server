@@ -220,7 +220,10 @@ The chart runs on any conformant Kubernetes cluster (1.27+) and assumes:
    - `restmail-postgres` — keys `POSTGRES_USER`, `POSTGRES_PASSWORD`,
      `POSTGRES_DB`.
    - `restmail-api` — keys `JWT_SECRET`, `MASTER_KEY`, `JS_FILTER_TOKEN`
-     (what the API authenticates to the JS filter sidecar with).
+     (what the API authenticates to the JS filter sidecar with), `SRS_SECRET`
+     (what the SMTP gateway signs the SRS addresses of forwards with, 32 bytes or
+     more), and after a rotation `SRS_PREVIOUS_SECRET`. See
+     [Forwarding and the SRS secret](../../docs/MANUAL.md#710-forwarding-and-the-srs-secret).
 4. **LoadBalancer support** for SMTP/IMAP/POP3 Services — typically a cloud
    LB (AWS NLB, GCE LB, MetalLB on bare metal). For kind/k3s without a LB
    driver, override `*.service.type` to `NodePort` (the dev values file
@@ -347,7 +350,8 @@ first alone.
    kubectl create secret generic restmail-api \
      --from-literal=JWT_SECRET="$(openssl rand -base64 64)" \
      --from-literal=MASTER_KEY="$(openssl rand -base64 32)" \
-     --from-literal=JS_FILTER_TOKEN="$(openssl rand -base64 32)"
+     --from-literal=JS_FILTER_TOKEN="$(openssl rand -base64 32)" \
+     --from-literal=SRS_SECRET="$(openssl rand -hex 32)"
    ```
 
 2. Install:

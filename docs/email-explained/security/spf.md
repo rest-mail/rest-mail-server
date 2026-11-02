@@ -151,10 +151,13 @@ includes into the records they name. The total must be 10 or fewer.
   field ([RFC 8601](https://www.rfc-editor.org/rfc/rfc8601)), and any field that
   arrived claiming to be from this server is removed first, so a sender cannot
   forge a pass ([`internal/mime/authresults.go`](../../../internal/mime/authresults.go)).
-- **Forwarding:** REST Mail's Sieve redirects keep the original envelope sender,
-  so forwarded mail can fail SPF at the next hop. Rewriting it with SRS, and
-  bouncing failed forwards correctly, is discussed in
-  [#715](https://github.com/rest-mail/rest-mail-server/issues/715).
+- **Forwarding:** a forward from a sender elsewhere leaves with an SRS address
+  under the forwarding domain as its envelope sender, so SPF passes at the next
+  hop with no new DNS. A bounce to that address is checked, then passed on to the
+  sender with a null reverse path, and a forged or expired one is refused
+  ([`internal/srs/`](../../../internal/srs/),
+  [#775](https://github.com/rest-mail/rest-mail-server/issues/775),
+  [Forwarding mail](../../forwarding-mail.md#sieve-redirects-spf-and-srs)).
 
 ## Sources
 

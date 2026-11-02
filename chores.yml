@@ -181,6 +181,9 @@ includes:
       # decrypts the same at-rest DKIM keys the API encrypted and can DKIM-sign
       # SMTP-submitted outbound mail (#171). They can never diverge.
       SMTP_GATEWAY_MASTER_KEY: '{{.RESTMAIL_MASTER_KEY | default "dev-master-key-change-in-production"}}'
+      # Signs and checks the SRS addresses of forwards (#775). Only this gateway uses it.
+      SMTP_GATEWAY_SRS_SECRET: '{{.RESTMAIL_SRS_SECRET | default "dev-srs-secret-change-in-production-only"}}'
+      SMTP_GATEWAY_SRS_PREVIOUS_SECRET: '{{.RESTMAIL_SRS_PREVIOUS_SECRET}}'
       SMTP_GATEWAY_PORT_INBOUND: '{{.RESTMAIL_SMTP_PORT_INBOUND}}'
       SMTP_GATEWAY_PORT_SUBMISSION_TLS: '{{.RESTMAIL_SMTP_PORT_SUBMISSION_TLS}}'
       SMTP_GATEWAY_LOG_LEVEL: '{{.RESTMAIL_LOG_LEVEL}}'
@@ -1476,6 +1479,11 @@ tasks:
           exit 2
         fi
         go run ./cmd/instance scaffold {{.DOMAIN}}
+
+  config:srs:rotate:
+    desc: "Give CONFIG a new SRS secret, keeping the old one as the previous one (#775). Restart the SMTP gateway after."
+    cmds:
+      - go run ./cmd/instance srs-rotate {{.CONFIG_DIR}}/secrets.env
 
   instance:certs:issue:
     desc: "Issue/validate CONFIG's serving cert into the certs volume (provider = cert_provider: testbed-certgen | manual | acme)"

@@ -22,6 +22,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"github.com/rest-mail/rest-mail-server/internal/ratelimit"
+	"github.com/rest-mail/rest-mail-server/internal/srs"
 )
 
 // defaultMaxMessageSize is the maximum accepted message size, in bytes, when
@@ -48,6 +49,12 @@ type session struct {
 	hostname     string                       // this server's host name, stamped into the Received header
 	isSubmission bool                         // port 465 requires AUTH
 
+	// srs checks SRS addresses (nil: no secret configured). srsBounceMax and
+	// srsWindow are the per-recipient DSN limit a bounce to one is held to.
+	srs          *srs.Signer
+	srsBounceMax int
+	srsWindow    time.Duration
+
 	// Anti-abuse tarpit: the connection-scoped context is cancelled on server
 	// shutdown so an in-flight tarpit sleep aborts rather than blocking the
 	// shutdown or outliving the connection. sleep is the (injectable) delay
@@ -71,6 +78,9 @@ type session struct {
 	// Current transaction.
 	mailFrom string
 	rcptTo   []string
+	// srsRelays maps a recipient accepted as a valid SRS address to the sender it
+	// carries, who is told of the bounce. Reset with rcptTo.
+	srsRelays map[string]string
 	// bodyType is the SMTP BODY= parameter the client declared on MAIL FROM
 	// (7BIT/8BITMIME/BINARYMIME, or empty). It is threaded onto each outbound
 	// queue row so the delivery worker never relays 8-bit content to a next hop
@@ -417,6 +427,7 @@ func (s *session) Mail(from string, opts *gosmtp.MailOptions) error {
 
 	s.mailFrom = from
 	s.rcptTo = nil
+	s.srsRelays = nil
 	// Remember the declared BODY= type so the outbound path can honor RFC 6152
 	// (never relay 8-bit content to a 7-bit-only next hop). Reset per transaction.
 	s.bodyType = ""
@@ -524,6 +535,9 @@ func (s *session) Rcpt(to string, _ *gosmtp.RcptOptions) error {
 	if err := validateUTF8Address(to, s.smtpUTF8, 553); err != nil {
 		return err
 	}
+	if handled, err := s.rcptSRS(to); handled {
+		return err
+	}
 	resp, err := s.api.CheckMailbox(to)
 	if err != nil {
 		// If the API is unreachable, temp fail.
@@ -550,6 +564,47 @@ func (s *session) Rcpt(to string, _ *gosmtp.RcptOptions) error {
 
 	s.rcptTo = append(s.rcptTo, to)
 	return nil
+}
+
+// rcptSRS handles an inbound recipient that is an SRS address under a domain this
+// server hosts, where a bounce for mail it forwarded comes back (#775). It is
+// accepted only when its hash and age check out, and a forged or expired one is
+// refused as an unknown recipient is, feeding the tarpit. It reports handled false
+// for any other recipient. An authenticated submission is not a bounce coming back:
+// its recipient goes out as any other does, and is checked at the MX it reaches.
+func (s *session) rcptSRS(to string) (handled bool, err error) {
+	if s.srs == nil || (s.isSubmission && s.authenticated) || !srs.IsAddress(to) {
+		return false, nil
+	}
+	forwardingDomain := rmail.DomainFromAddress(to)
+	hosted, err := s.store.HostedDomain(forwardingDomain)
+	if err != nil {
+		slog.Error("smtp: could not check the domain of an SRS address", "domain", forwardingDomain, "error", err)
+		return true, &gosmtp.SMTPError{
+			Code:         451,
+			EnhancedCode: gosmtp.EnhancedCode{4, 3, 0},
+			Message:      "Temporary service failure",
+		}
+	}
+	if !hosted {
+		return false, nil
+	}
+	original, err := s.srs.Reverse(to, time.Now())
+	if err != nil {
+		slog.Info("smtp: refusing an SRS address", "remote", s.remoteAddr(), "reason", err)
+		s.tarpitReject()
+		return true, &gosmtp.SMTPError{
+			Code:         550,
+			EnhancedCode: gosmtp.EnhancedCode{5, 1, 1},
+			Message:      "No such user",
+		}
+	}
+	if s.srsRelays == nil {
+		s.srsRelays = make(map[string]string)
+	}
+	s.srsRelays[to] = original
+	s.rcptTo = append(s.rcptTo, to)
+	return true, nil
 }
 
 // Data receives the message and handles every recipient of the transaction:
@@ -697,6 +752,25 @@ func (s *session) Data(r io.Reader) error {
 	var localErr error
 
 	for _, rcpt := range s.rcptTo {
+		// A bounce to a valid SRS address goes on to the sender it carries.
+		if original, ok := s.srsRelays[rcpt]; ok {
+			err := s.store.RelayBounce(BounceRelay{
+				Recipient:       original,
+				SendingDomain:   rmail.DomainFromAddress(rcpt),
+				RawMessage:      string(data),
+				BodyType:        s.bodyType,
+				MaxPerRecipient: s.srsBounceMax,
+				Window:          s.srsWindow,
+			})
+			if err != nil {
+				slog.Error("smtp: failed to queue a bounce for an SRS address", "error", err)
+				failed++
+				continue
+			}
+			accepted++
+			continue
+		}
+
 		// Check if this is a local recipient.
 		check, err := s.api.CheckMailbox(rcpt)
 		if err != nil {
@@ -876,6 +950,7 @@ func (s *session) Data(r io.Reader) error {
 func (s *session) Reset() {
 	s.mailFrom = ""
 	s.rcptTo = nil
+	s.srsRelays = nil
 	s.bodyType = ""
 	s.smtpUTF8 = false
 	s.requireTLS = false

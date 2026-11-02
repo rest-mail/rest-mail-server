@@ -2,6 +2,7 @@ package smtp
 
 import (
 	"errors"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -156,6 +157,52 @@ func (s *dbStore) SendingPolicy(address string) (string, error) {
 		return "", err
 	}
 	return policies[0], nil
+}
+
+// HostedDomain looks the domain up as the rest of the server does.
+func (s *dbStore) HostedDomain(domain string) (bool, error) {
+	return repositories.IsHostedDomain(s.db, domain)
+}
+
+// RelayBounce queues the bounce as queueRemoteDSN queues a DSN (#715): a null
+// reverse path, marked as a DSN, sent as a hosted domain and held to the same
+// per-recipient limit. The limit ignores case, since an SRS address is valid in
+// any case and its holder could otherwise pick a new spelling for each message.
+func (s *dbStore) RelayBounce(msg BounceRelay) error {
+	now := time.Now()
+	if msg.MaxPerRecipient > 0 {
+		var recent int64
+		err := s.db.Model(&models.OutboundQueue{}).
+			Where("is_dsn = ? AND LOWER(recipient) = LOWER(?) AND created_at > ?", true, msg.Recipient, now.Add(-msg.Window)).
+			Count(&recent).Error
+		if err != nil {
+			return err
+		}
+		if recent >= int64(msg.MaxPerRecipient) {
+			slog.Warn("smtp: DSN rate limit exceeded for an SRS bounce, dropping it",
+				"recipient", msg.Recipient, "recent", recent, "max", msg.MaxPerRecipient, "window", msg.Window)
+			return nil
+		}
+	}
+	// The address may arrive in any case, and a domain's key and relay are found by
+	// its stored name. It passed HostedDomain, so it has one.
+	sendingDomain, err := rmail.DomainASCII(msg.SendingDomain)
+	if err != nil {
+		return err
+	}
+	entry := models.OutboundQueue{
+		Sender:        "",
+		SendingDomain: sendingDomain,
+		Recipient:     msg.Recipient,
+		Domain:        rmail.DomainFromAddress(msg.Recipient),
+		RawMessage:    msg.RawMessage,
+		BodyType:      msg.BodyType,
+		IsDSN:         true,
+		Status:        "pending",
+		MaxRetries:    models.DefaultMaxRetries,
+		ExpiresAt:     now.Add(models.QueueLifetime),
+	}
+	return s.db.Create(&entry).Error
 }
 
 // EnqueueOutbound inserts the message into the outbound queue with the same

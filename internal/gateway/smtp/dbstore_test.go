@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -146,5 +147,102 @@ func TestDBStore_PersistSubmittedMessageNoSenderMailbox(t *testing.T) {
 	}
 	if ref != nil {
 		t.Errorf("PersistSubmittedMessage (no mailbox) returned id %d, want nil", *ref)
+	}
+}
+
+// TestDBStore_RelayBounce: a bounce to an SRS address becomes a queue row like the
+// DSN #715 queues for a sender outside: a null reverse path, marked as a DSN, sent
+// as the forwarding domain, and held to the per-recipient limit in any spelling.
+func TestDBStore_RelayBounce(t *testing.T) {
+	gdb := openStoreTestDB(t)
+	tx := gdb.Begin()
+	t.Cleanup(func() { tx.Rollback() })
+	store := NewStore(tx, "")
+
+	recipient := fmt.Sprintf("alice-%d@orig.example", time.Now().UnixNano())
+	msg := BounceRelay{
+		// A next hop may have changed the case of the address the domain comes from.
+		Recipient: recipient, SendingDomain: "FORWARD.Example",
+		RawMessage: "Subject: Undelivered\r\n\r\nNo such user.\r\n", BodyType: "8BITMIME",
+		MaxPerRecipient: 2, Window: time.Hour,
+	}
+	if err := store.RelayBounce(msg); err != nil {
+		t.Fatal(err)
+	}
+	var rows []models.OutboundQueue
+	if err := tx.Where("recipient = ?", recipient).Find(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("queued %d rows, want 1", len(rows))
+	}
+	row := rows[0]
+	if row.Sender != "" || !row.IsDSN || row.SendingDomain != "forward.example" || row.Domain != "orig.example" ||
+		row.Status != "pending" || row.RawMessage != msg.RawMessage || row.BodyType != "8BITMIME" ||
+		row.MaxRetries != models.DefaultMaxRetries || !row.ExpiresAt.After(time.Now()) {
+		t.Fatalf("row = %+v", row)
+	}
+
+	// An address is valid in any case, so another spelling is the same recipient.
+	upper := msg
+	upper.Recipient = strings.ToUpper(recipient)
+	for i := 0; i < 3; i++ {
+		if err := store.RelayBounce(upper); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var n int64
+	if err := tx.Model(&models.OutboundQueue{}).Where("LOWER(recipient) = ?", strings.ToLower(recipient)).Count(&n).Error; err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Fatalf("queued %d rows, want the limit of 2", n)
+	}
+
+	// No limit configured means none.
+	unlimited := msg
+	unlimited.MaxPerRecipient = 0
+	if err := store.RelayBounce(unlimited); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Model(&models.OutboundQueue{}).Where("LOWER(recipient) = ?", strings.ToLower(recipient)).Count(&n).Error; err != nil {
+		t.Fatal(err)
+	}
+	if n != 3 {
+		t.Fatalf("queued %d rows with no limit, want 3", n)
+	}
+}
+
+// TestDBStore_HostedDomain finds a hosted domain in any spelling, Unicode included,
+// whether or not it is in service, and answers no for anything else.
+func TestDBStore_HostedDomain(t *testing.T) {
+	gdb := openStoreTestDB(t)
+	tx := gdb.Begin()
+	t.Cleanup(func() { tx.Rollback() })
+	stamp := time.Now().UnixNano()
+	plain := fmt.Sprintf("hosted-%d.test", stamp)
+	idn := fmt.Sprintf("xn--bcher-kva.hosted-%d.test", stamp)
+	for _, name := range []string{plain, idn} {
+		if err := tx.Create(&models.Domain{Name: name}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	store := NewStore(tx, "")
+	for domain, want := range map[string]bool{
+		plain:                  true,
+		strings.ToUpper(plain): true,
+		idn:                    true,
+		fmt.Sprintf("bücher.hosted-%d.test", stamp): true,
+		"elsewhere.example":                         false,
+		"":                                          false,
+		"not a domain":                              false,
+	} {
+		got, err := store.HostedDomain(domain)
+		if err != nil {
+			t.Errorf("HostedDomain(%q): %v", domain, err)
+		}
+		if got != want {
+			t.Errorf("HostedDomain(%q) = %v, want %v", domain, got, want)
+		}
 	}
 }

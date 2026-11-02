@@ -85,7 +85,8 @@ func relayFailure(ctx context.Context, stage, host string, err error) error {
 
 // deliverToRelay submits one already-prepared, CRLF-terminated message without
 // signing, stripping headers or choosing a route. The envelope is the queue
-// row's envelope, including an empty reverse path. No direct-MX or RESTMAIL
+// row's envelope, including an empty reverse path, with a forward's sender
+// rewritten (forwardSender). No direct-MX or RESTMAIL
 // fallback is permitted. AUTH PLAIN is optional, but only over verified TLS.
 func (w *Worker) deliverToRelay(parent context.Context, settings relaySettings, item models.OutboundQueue) error {
 	if err := settings.validate(); err != nil {
@@ -97,6 +98,11 @@ func (w *Worker) deliverToRelay(parent context.Context, settings relaySettings, 
 	if !validRelayHost(w.hostname) {
 		return errors.New("relay: invalid EHLO hostname")
 	}
+	envelopeSender, err := w.forwardSender(item)
+	if err != nil {
+		return err
+	}
+	item.Sender = envelopeSender
 	sender, recipient, err := smtpEnvelope(item)
 	if err != nil {
 		return err

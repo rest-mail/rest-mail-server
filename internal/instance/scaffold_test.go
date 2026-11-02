@@ -101,9 +101,9 @@ func TestScaffoldEndToEnd(t *testing.T) {
 	if !bytes.Contains(res.Config, []byte("RESTMAIL_INTERNAL_MTLS=true\n")) {
 		t.Error("scaffolded config.env should set RESTMAIL_INTERNAL_MTLS=true")
 	}
-	// Four distinct 64-hex-char secrets.
-	if n := bytes.Count(res.Secrets, []byte("RESTMAIL_")); n != 4 {
-		t.Errorf("expected 4 secret lines, got %d", n)
+	// Five distinct 64-hex-char secrets.
+	if n := bytes.Count(res.Secrets, []byte("RESTMAIL_")); n != 5 {
+		t.Errorf("expected 5 secret lines, got %d", n)
 	}
 	if !bytes.Contains(res.Secrets, []byte("RESTMAIL_JS_FILTER_TOKEN=")) {
 		t.Error("scaffolded secrets should carry the JS filter sidecar's token")

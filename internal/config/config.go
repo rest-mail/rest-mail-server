@@ -133,6 +133,13 @@ type Config struct {
 	// Master key for encrypting private keys at rest
 	MasterKey string
 
+	// SRSSecret signs the SRS addresses a forward's envelope sender is rewritten to,
+	// and SRSPreviousSecret, the one before a rotation, is also accepted when
+	// checking them, so a rotation invalidates nothing in flight (#775). Only the
+	// SMTP gateway uses them.
+	SRSSecret         string
+	SRSPreviousSecret string
+
 	// The first account of a fresh install, admin@<mail domain>, holding
 	// superadmin: created at startup only while no admin exists
 	// (internal/bootstrap). Empty password: no bootstrap account.
@@ -515,6 +522,9 @@ func Load() (*Config, error) {
 		PipelineTestRateLimitBurst:   getEnvInt("PIPELINE_TEST_RATE_LIMIT_BURST", DefaultPipelineTestRateLimitBurst),
 
 		MasterKey: getEnv("MASTER_KEY", ""),
+
+		SRSSecret:         getEnv("SRS_SECRET", ""),
+		SRSPreviousSecret: getEnv("SRS_PREVIOUS_SECRET", ""),
 
 		// The chart sets it to admin@ its mailserver.domain.
 		BootstrapAdminAddress:  getEnv("RESTMAIL_BOOTSTRAP_ADMIN_ADDRESS", ""),
@@ -1396,6 +1406,14 @@ const MinJWTSecretLength = 32
 // guessability; 16 bytes is a conservative floor (instance:new generates 64).
 const MinMasterKeyLength = 16
 
+// MinSRSSecretLength is the minimum accepted SRS_SECRET length in bytes (#775),
+// the same floor as JWT_SECRET: it is an HMAC key too.
+const MinSRSSecretLength = 32
+
+// devDefaultSRSSecret is the development default the chores give SRS_SECRET. It is
+// public in the source tree, so production refuses it as it refuses a blank one.
+const devDefaultSRSSecret = "dev-srs-secret-change-in-production-only"
+
 // devDefaultJWTSecret is the compiled-in development JWT secret. Shipping it
 // outside development is equivalent to having no secret at all (it is public in
 // the source tree), so it is rejected the same as a blank secret. It matches the
@@ -1760,6 +1778,7 @@ func (c *Config) ValidateListenerSecurity(role ListenerRole) error {
 	switch role {
 	case RoleSMTPGateway:
 		findings = append(findings, c.smtpListenerFindings()...)
+		findings = append(findings, c.srsSecretFindings()...)
 		findings = append(findings, queueTLSInsecureFindings()...)
 		findings = append(findings, removedCleartextPortFindings("SMTP_PORT_SUBMISSION", 587, "SMTP_PORT_SUBMISSION_TLS", 465)...)
 	case RoleIMAPGateway:
@@ -1826,6 +1845,21 @@ func (c *Config) smtpListenerFindings() []string {
 	return []string{fmt.Sprintf(
 		"SMTP gateway has no TLS keypair (TLS_CERT_PATH/TLS_KEY_PATH): STARTTLS cannot be advertised on port %d (inbound), which would leave it refusing every message, implicit TLS cannot run on port %d, and AUTH would be accepted before TLS — provide a certificate/key",
 		c.SMTPPortInbound, c.SMTPPortSubmissionTLS)}
+}
+
+// srsSecretFindings flags an SMTP gateway with no usable SRS_SECRET. Without one
+// every forward keeps its sender and so can fail SPF at the next hop, and a bounce to
+// an SRS address is refused (#775).
+func (c *Config) srsSecretFindings() []string {
+	switch {
+	case c.SRSSecret == "":
+		return []string{fmt.Sprintf("SRS_SECRET is empty, so forwards would not be rewritten; set a random secret of at least %d bytes", MinSRSSecretLength)}
+	case c.SRSSecret == devDefaultSRSSecret:
+		return []string{fmt.Sprintf("SRS_SECRET is the built-in development default; set a unique random secret of at least %d bytes", MinSRSSecretLength)}
+	case len(c.SRSSecret) < MinSRSSecretLength:
+		return []string{fmt.Sprintf("SRS_SECRET is too short (%d bytes); use at least %d bytes of randomness", len(c.SRSSecret), MinSRSSecretLength)}
+	}
+	return nil
 }
 
 // imapListenerFindings flags an IMAP gateway with its listener enabled but no TLS

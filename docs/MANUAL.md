@@ -859,6 +859,8 @@ gateways: run the instance task before restarting a gateway with a broken pair.
 | `SMTP_TRANSFER_STALL_TIMEOUT` | `300` | Seconds a body transfer may deliver zero bytes before the connection is dropped |
 | `IMAP_TLS_PORT` | `993` | |
 | `POP3_TLS_PORT` | `995` | |
+| `SRS_SECRET` | *(empty)* | Signs the SRS addresses forwards are sent with. **Required for the SMTP gateway in prod**, 32 bytes or more. Empty elsewhere: forwards keep their sender, and a bounce to an SRS address is refused. See [§7.10](#710-forwarding-and-the-srs-secret). |
+| `SRS_PREVIOUS_SECRET` | *(empty)* | The SRS secret before the last rotation, still accepted when checking an address. |
 | `QUEUE_WORKERS` | `4` | |
 | `QUEUE_POLL_INTERVAL` | `5s` | |
 | `SUPPRESSION_TTL` | `2160h` (90 days) | How long a recipient that hard bounced (no such mailbox or domain) stays suppressed for the sending domain |
@@ -994,7 +996,7 @@ The production image ships only `restmail-api` — no seed tool, so no known pas
 
 #### What a Helm install needs
 
-A hostname, a domain, and the first admin's password (`api.bootstrapAdminPassword`, 16 characters or more; the chart will not render without it). The chart makes the API's `JWT_SECRET` and `MASTER_KEY`, and the embedded Postgres's credentials, on the first install. It keeps them across every upgrade, and keeps them when the release is uninstalled, so reinstalling under the same name finds them again. `MASTER_KEY` encrypts private keys at rest, and a new one would leave every stored key unreadable, which is why it is never regenerated.
+A hostname, a domain, and the first admin's password (`api.bootstrapAdminPassword`, 16 characters or more; the chart will not render without it). The chart makes the API's `JWT_SECRET` and `MASTER_KEY`, the SMTP gateway's `SRS_SECRET`, and the embedded Postgres's credentials, on the first install. It keeps them across every upgrade, and keeps them when the release is uninstalled, so reinstalling under the same name finds them again. `MASTER_KEY` encrypts private keys at rest, and a new one would leave every stored key unreadable, which is why it is never regenerated.
 
 ```sh
 helm install restmail oci://ghcr.io/rest-mail/charts/restmail \
@@ -1138,6 +1140,41 @@ curl -s -X POST $API/admin/grants/<id>/activate -H "Authorization: Bearer $TOKEN
 After that the account is an ordinary admin that can switch superadmin on, except that **2FA cannot be disabled on it** (`403 two_factor_required`): the requirement is a rule, not a one-time gate. The bootstrap password no longer signs in, and can be removed from the Secret — though leaving it does nothing, since an admin now exists.
 
 ---
+
+### 7.10 Forwarding and the SRS secret
+
+A forward from a sender outside this server leaves with an SRS address under the forwarding domain as its envelope sender, so SPF passes at the next hop, and a bounce to that address is passed on to the sender. [Forwarding mail](forwarding-mail.md#sieve-redirects-spf-and-srs) describes what is rewritten and how a bounce is checked. It needs no DNS and no per-domain setup, and it has no off switch.
+
+`SRS_SECRET` signs the addresses. Only the SMTP gateway reads it. A production gateway refuses to start when it is empty, shorter than 32 bytes, or the development default. It is a secret like `JWT_SECRET`, kept where that one is:
+
+| Install | Generated | Stored |
+|---------|-----------|--------|
+| Helm, chart-made Secret | On install, or on the first upgrade that knows it | Key `SRS_SECRET` of the `restmail-api` Secret, kept across upgrades and uninstalls |
+| Helm, `api.existingSecret` | By you: `openssl rand -hex 32` | Key `SRS_SECRET` of your Secret |
+| `chore config:scaffold` | When the config is scaffolded | `RESTMAIL_SRS_SECRET` in `config/<domain>/secrets.env` |
+
+**Upgrading to the first version with SRS.** The chart's own Secret needs nothing. With `api.existingSecret`, add the `SRS_SECRET` key before you upgrade, because the gateway pods will not start without it. A scaffolded instance from before SRS runs `chore config:srs:rotate CONFIG=<domain>` once to get its first secret, because a production gateway will not start without that either.
+
+**Rotating.** Rotation is an administrator's action on the secret store, with no API. Signing uses the current secret, and checking accepts the current or the previous one, so a rotation invalidates no address in flight:
+
+```sh
+# A scaffolded instance: moves the current secret to RESTMAIL_SRS_PREVIOUS_SECRET
+# and generates a new one. Prints no secret.
+chore config:srs:rotate CONFIG=<domain>
+chore smtp-gateway:restart
+
+# Helm: the same two keys, in the Secret. An upgrade keeps them.
+name=restmail-api        # or your api.existingSecret
+old=$(kubectl get secret "$name" -o jsonpath='{.data.SRS_SECRET}')
+new=$(openssl rand -hex 32 | tr -d '\n' | base64 | tr -d '\n')
+kubectl patch secret "$name" --type merge \
+  -p "{\"data\":{\"SRS_PREVIOUS_SECRET\":\"$old\",\"SRS_SECRET\":\"$new\"}}"
+kubectl rollout restart deployment/restmail-smtp-gateway   # or daemonset/, as you deploy it
+```
+
+Only one previous secret is kept, and an address lives 21 days. So leave at least 21 days between rotations, or addresses signed two rotations ago are refused with `550 5.1.1` and their bounces do not reach the sender. To rotate because a secret leaked, rotate twice, and accept that loss: the first rotation alone leaves the leaked secret accepted as the previous one. Restart every SMTP gateway at about the same time, since one still on the old secrets refuses an address signed with the new one.
+
+Addresses have a four-character hash, about a million values. An attacker needs a good guess per address, and each refused RCPT feeds the connection's tarpit. A good address only sends a message to the sender it carries, held to the per-recipient DSN limit.
 
 ## 8. Test stack IPs (dev testbed on `10.99.0.0/16`)
 

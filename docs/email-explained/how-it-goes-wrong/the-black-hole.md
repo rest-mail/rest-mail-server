@@ -127,7 +127,9 @@ It can be lost too:
   them ([`internal/digest/`](../../../internal/digest/)).
 - **Bounces for REST Mail's own users** go straight into their inbox; a sender
   elsewhere, whose mail a forward failed to deliver, is sent one by mail
-  ([#715](https://github.com/rest-mail/rest-mail-server/issues/715)).
+  ([#715](https://github.com/rest-mail/rest-mail-server/issues/715)). So is one
+  a later hop sends back to the forward's SRS address
+  ([#775](https://github.com/rest-mail/rest-mail-server/issues/775)).
 - **Not yet right:** mail to a domain that does not exist is retried for days
   instead of failing at
   once ([#713](https://github.com/rest-mail/rest-mail-server/issues/713)), and

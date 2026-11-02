@@ -13,6 +13,7 @@ import (
 
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	"github.com/rest-mail/rest-mail-server/internal/ratelimit"
+	"github.com/rest-mail/rest-mail-server/internal/srs"
 )
 
 // Server listens for SMTP connections and serves them with go-smtp, one
@@ -32,6 +33,11 @@ type Server struct {
 	// tarpitSleep is the delay primitive handed to each session; tests swap it
 	// for a fake so escalation is asserted without real multi-second sleeps.
 	tarpitSleep func(context.Context, time.Duration)
+	// srs checks SRS addresses; nil means no secret is configured. srsBounceMax
+	// and srsBounceWindow are the per-recipient limit a bounce to one is held to.
+	srs             *srs.Signer
+	srsBounceMax    int
+	srsBounceWindow time.Duration
 	// ctx is cancelled by Shutdown so in-flight tarpit sleeps abort promptly
 	// instead of holding a goroutine past the server's life.
 	ctx     context.Context
@@ -56,6 +62,13 @@ func NewServer(hostname string, api Backend, tlsConfig *tls.Config, store Store,
 		ctx:             ctx,
 		cancel:          cancel,
 	}
+}
+
+// SetSRS gives the server the signer that checks SRS addresses (#775), and the
+// per-recipient DSN limit a bounce to one is held to (#715). A nil signer means no
+// secret is configured: an SRS address is then an unknown recipient like any other.
+func (s *Server) SetSRS(signer *srs.Signer, maxPerRecipient int, window time.Duration) {
+	s.srs, s.srsBounceMax, s.srsBounceWindow = signer, maxPerRecipient, window
 }
 
 // SetProxyProtocol configures PROXY protocol support with the given trusted CIDRs.
@@ -172,6 +185,9 @@ func (s *Server) newSMTPServer(isSubmission bool) *smtpserver.Server {
 			subLimiter:   s.subLimiter,
 			hostname:     s.hostname,
 			isSubmission: isSubmission,
+			srs:          s.srs,
+			srsBounceMax: s.srsBounceMax,
+			srsWindow:    s.srsBounceWindow,
 			ctx:          s.ctx,
 			tarpit:       s.tarpit,
 			sleep:        s.tarpitSleep,

@@ -182,6 +182,13 @@ type mockStore struct {
 	persistErr error // forced PersistSubmittedMessage error
 	prepareErr error // forced PrepareSubmitted error
 
+	// hosted names the domains HostedDomain reports; hostedErr is a forced
+	// HostedDomain error, and relayErr a forced RelayBounce error.
+	hosted    map[string]bool
+	hostedErr error
+	relayErr  error
+	relayed   []BounceRelay
+
 	enqueued  []OutboundMessage
 	persisted []SubmittedMessage
 	prepared  int  // PrepareSubmitted calls
@@ -290,6 +297,28 @@ func (s *mockStore) EnqueueOutbound(msg OutboundMessage) error {
 	}
 	s.enqueued = append(s.enqueued, msg)
 	return nil
+}
+
+func (s *mockStore) HostedDomain(domain string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.hosted[domain], s.hostedErr
+}
+
+func (s *mockStore) RelayBounce(msg BounceRelay) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.relayErr != nil {
+		return s.relayErr
+	}
+	s.relayed = append(s.relayed, msg)
+	return nil
+}
+
+func (s *mockStore) relayedBounces() []BounceRelay {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]BounceRelay(nil), s.relayed...)
 }
 
 func (s *mockStore) queued() []OutboundMessage {
