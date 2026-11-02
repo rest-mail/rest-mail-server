@@ -35,6 +35,8 @@ func messageOf(m models.Message) Message {
 		InReplyTo:         m.InReplyTo,
 		References:        m.References,
 		ThreadID:          m.ThreadID,
+		Due:               m.Due,
+		DueSource:         m.DueSource,
 		Sender:            m.Sender,
 		SenderName:        m.SenderName,
 		RecipientsTo:      storedList(m.RecipientsTo),

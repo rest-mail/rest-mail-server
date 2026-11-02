@@ -57,19 +57,21 @@ type Message struct {
 	// message_id doubles as GORM's conventional FK-column name for relations
 	// referencing Message, so an ambiguous association elsewhere can hijack
 	// this column during AutoMigrate — see the note on OutboundQueue.
-	MsgID        string `gorm:"column:message_id;size:995;index" json:"message_id"`
-	InReplyTo    string `gorm:"size:995" json:"in_reply_to"`
-	References   string `gorm:"type:text" json:"references"`
-	ThreadID     string `gorm:"size:995;index" json:"thread_id"`
-	Sender       string `gorm:"size:255;not null" json:"sender"`
-	SenderName   string `gorm:"size:255" json:"sender_name"`
-	RecipientsTo JSONB  `gorm:"type:jsonb;not null;default:'[]'" json:"recipients_to"`
-	RecipientsCc JSONB  `gorm:"type:jsonb;not null;default:'[]'" json:"recipients_cc"`
-	Subject      string `gorm:"type:text" json:"subject"`
-	BodyText     string `gorm:"type:text" json:"body_text,omitempty"`
-	BodyHTML     string `gorm:"type:text" json:"body_html,omitempty"`
-	Headers      JSONB  `gorm:"type:jsonb" json:"headers,omitempty"`
-	RawMessage   string `gorm:"type:text" json:"-"`
+	MsgID        string     `gorm:"column:message_id;size:995;index" json:"message_id"`
+	InReplyTo    string     `gorm:"size:995" json:"in_reply_to"`
+	References   string     `gorm:"type:text" json:"references"`
+	ThreadID     string     `gorm:"size:995;index" json:"thread_id"`
+	Due          *time.Time `gorm:"->;-:migration" json:"-"`
+	DueSource    *string    `gorm:"->;-:migration" json:"-"`
+	Sender       string     `gorm:"size:255;not null" json:"sender"`
+	SenderName   string     `gorm:"size:255" json:"sender_name"`
+	RecipientsTo JSONB      `gorm:"type:jsonb;not null;default:'[]'" json:"recipients_to"`
+	RecipientsCc JSONB      `gorm:"type:jsonb;not null;default:'[]'" json:"recipients_cc"`
+	Subject      string     `gorm:"type:text" json:"subject"`
+	BodyText     string     `gorm:"type:text" json:"body_text,omitempty"`
+	BodyHTML     string     `gorm:"type:text" json:"body_html,omitempty"`
+	Headers      JSONB      `gorm:"type:jsonb" json:"headers,omitempty"`
+	RawMessage   string     `gorm:"type:text" json:"-"`
 	// RawOctets preserves imported sources that PostgreSQL text cannot represent.
 	RawOctets         []byte `gorm:"type:bytea" json:"-"`
 	CalendarEventsRaw JSONB  `gorm:"column:calendar_events;type:jsonb" json:"calendar_events,omitempty"`

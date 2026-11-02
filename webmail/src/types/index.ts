@@ -23,6 +23,9 @@ export interface Folder {
 export interface MessageSummary {
   id: number;
   mailbox_id: number;
+  thread_id: string;
+  due?: string | null;
+  due_source?: 'user' | 'rule' | 'parsed' | null;
   folder: string;
   message_id: string;
   sender: string;
@@ -44,7 +47,6 @@ export interface MessageDetail extends MessageSummary {
   headers: Record<string, string> | null;
   in_reply_to: string;
   references: string;
-  thread_id: string;
   calendar_events?: CalendarEvent[] | null;
 }
 

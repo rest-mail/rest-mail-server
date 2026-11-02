@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import type { Attachment, MessageSummary } from '@/types';
 import { CalendarInvite } from './CalendarInvite';
 import { HtmlMessageBody } from './HtmlMessageBody';
+import { ThreadDueControl } from './ThreadDueControl';
 import { TrustBadge, TrustReceipt } from './signals';
 import { cn } from '@/lib/utils';
 
@@ -72,7 +73,7 @@ function ActionWord({ k, label, style, onClick }: {
 }
 
 export function MessageViewer() {
-  const { selectedMessage, loadingMessage, markRead, markFlagged, deleteMsg, accounts, refresh, folders, activeFolder, activeAccountId, selectMessage } = useMailStore();
+  const { selectedMessage, loadingMessage, markRead, markFlagged, deleteMsg, accounts, refresh, folders, activeFolder, activeAccountId, selectMessage, setThreadDue } = useMailStore();
   const { startCompose } = useUIStore();
   const pack = useUIStore(s => getThemePack(s.theme));
   const v = pack.variants;
@@ -339,6 +340,8 @@ export function MessageViewer() {
           )}>
             {msg.subject || '(no subject)'}
           </h2>
+
+          <ThreadDueControl key={`${msg.mailbox_id}:${msg.thread_id}`} message={msg} setThreadDue={setThreadDue} />
 
           {/* Sender row */}
           <div className="flex items-start gap-3">

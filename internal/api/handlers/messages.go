@@ -196,6 +196,10 @@ func (h *MessageHandler) RegisterMessages(rs endpoint.Routes) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/threads/{threadID}",
 		OperationID: "getThread", Summary: "Get all messages in a thread", Tags: tags,
 		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.getThread)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/threads/{threadID}/due",
+		OperationID: "setThreadDue", Summary: "Set or clear a thread's due date", Tags: tags,
+		Description: "Stores an account-scoped user-set due date without changing message order or folders. Send an RFC 3339 due date-time, or null to clear both due and due_source. due_source must be user; rule and parsed are reserved for future work. Unknown threads and threads outside this account are 404.",
+		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.setThreadDue)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/messages/{id}/raw",
 		OperationID: "getRawMessage", Summary: "Get the raw RFC 2822 message source", Tags: tags,
 		Description: "The message as it arrived, headers and all. 404 not_found when no source was kept.",
@@ -250,6 +254,7 @@ func (h *MessageHandler) listMessages(r *http.Request, in listMessagesRequest) (
 	// pair: a page cut by id alone skipped every message whose id is above the cut but whose
 	// date is older, such as a copy, which keeps its source's date (#805).
 	query := h.db.Where("mailbox_id = ? AND folder = ? AND is_deleted = ?", mailboxID, folder, false).
+		Select(messageDueFields).
 		Order("received_at DESC, id DESC").
 		Limit(limit + 1)
 	if after, ok := decodeMessageCursor(in.Cursor); ok {
@@ -287,14 +292,14 @@ func (h *MessageHandler) listMessages(r *http.Request, in listMessagesRequest) (
 
 // ownedMessage is the message the path names, when the session may reach its account with
 // capability.
-func (h *MessageHandler) ownedMessage(r *http.Request, id uint32, capability string) (models.Message, error) {
+func (h *MessageHandler) ownedMessage(r *http.Request, id uint32, capability string, fields ...string) (models.Message, error) {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
 		return models.Message{}, errNotSignedIn
 	}
 	var msg models.Message
 	db := h.db.WithContext(r.Context())
-	if err := db.First(&msg, id).Error; err != nil {
+	if err := db.Select(fields).First(&msg, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return models.Message{}, errMessageNotFound
 		}
@@ -311,7 +316,7 @@ func (h *MessageHandler) ownedMessage(r *http.Request, id uint32, capability str
 
 // getMessage returns a single message by ID.
 func (h *MessageHandler) getMessage(r *http.Request, in messagePath) (Message, error) {
-	msg, err := h.ownedMessage(r, in.ID, models.CapMailRead)
+	msg, err := h.ownedMessage(r, in.ID, models.CapMailRead, messageDueFields)
 	if err != nil {
 		return Message{}, err
 	}
@@ -1816,6 +1821,7 @@ func (h *MessageHandler) getThread(r *http.Request, in threadRequest) (endpoint.
 
 	var messages []models.Message
 	if err := h.db.Where("mailbox_id = ? AND thread_id = ? AND is_deleted = ?", mailboxID, in.ThreadID, false).
+		Select(messageDueFields).
 		Order("received_at ASC").
 		Find(&messages).Error; err != nil {
 		return endpoint.List[Message]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to retrieve thread")

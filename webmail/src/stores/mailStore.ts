@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { toast } from 'sonner';
 import type { Folder, MessageSummary, MessageDetail, Account } from '../types';
 import * as api from '../api/client';
+import { threadDueChange } from '../lib/threadDue';
 
 interface MailState {
   // Accounts
@@ -40,6 +41,7 @@ interface MailState {
   markRead: (msgId: number, read: boolean) => Promise<void>;
   markFlagged: (msgId: number, flagged: boolean) => Promise<void>;
   deleteMsg: (msgId: number) => Promise<void>;
+  setThreadDue: (mailboxId: number, threadId: string, due: string | null) => Promise<void>;
   removeAccount: (accountId: number) => Promise<void>;
   refresh: () => Promise<void>;
   searchMessages: (query: string) => Promise<void>;
@@ -195,6 +197,11 @@ export const useMailStore = create<MailState>((set, get) => ({
       selectedMessageId: state.selectedMessageId === msgId ? null : state.selectedMessageId,
       selectedMessage: state.selectedMessage?.id === msgId ? null : state.selectedMessage,
     }));
+  },
+
+  setThreadDue: async (mailboxId, threadId, due) => {
+    const response = await api.setThreadDue(mailboxId, threadId, due);
+    set(state => threadDueChange(state, mailboxId, threadId, response.data.due, response.data.due_source));
   },
 
   removeAccount: async (accountId) => {

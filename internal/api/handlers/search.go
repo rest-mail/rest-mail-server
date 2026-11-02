@@ -102,7 +102,7 @@ func (h *SearchHandler) search(r *http.Request, in searchRequest) (endpoint.List
 	if err := query.Count(&total).Error; err != nil {
 		return endpoint.List[Message]{}, fmt.Errorf("count search results: %w", err)
 	}
-	if err := query.Order("received_at DESC").Limit(limit).Find(&messages).Error; err != nil {
+	if err := query.Select(messageDueFields).Order("received_at DESC").Limit(limit).Find(&messages).Error; err != nil {
 		return endpoint.List[Message]{}, fmt.Errorf("read search results: %w", err)
 	}
 

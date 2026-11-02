@@ -34341,6 +34341,393 @@
       }
     }
   },
+  "setThreadDue": {
+    "clear": {
+      "description": "Production routes enforce live account access and mail:write, validate the user source and persist account/thread state. Separate PostgreSQL tests prove durability, isolation, unchanged order and folders.",
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "\u003cdue/2026@example.net\u003e"
+        },
+        "body": {
+          "due": null,
+          "due_source": "user"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "thread_id": "\u003cdue/2026@example.net\u003e",
+            "due": null,
+            "due_source": null
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "description": "Real transport and path binding are exercised. The JSON body is valid; invalid-body flags do not describe path validation. The test cap is512 bytes; oversize hook sends513 bytes.",
+      "request": {
+        "path": {
+          "id": 0,
+          "threadID": "\u003cdue/2026@example.net\u003e"
+        },
+        "body": {
+          "due": "2026-12-01T10:00:00Z",
+          "due_source": "user"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "key_read": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "\u003cdue/2026@example.net\u003e"
+        },
+        "body": {
+          "due": "2026-12-01T10:00:00Z",
+          "due_source": "user"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_date": {
+      "description": "Production routes enforce live account access and mail:write, validate the user source and persist account/thread state. Separate PostgreSQL tests prove durability, isolation, unchanged order and folders.",
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "\u003cdue/2026@example.net\u003e"
+        },
+        "body": {
+          "due": "tomorrow",
+          "due_source": "user"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "due": "must be a valid date-time"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type. The route and Vertrag transport hook send those exact bytes rather than JSON-quoting them.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "\u003cdue/2026@example.net\u003e"
+        },
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "no_grants": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "\u003cdue/2026@example.net\u003e"
+        },
+        "body": {
+          "due": "2026-12-01T10:00:00Z",
+          "due_source": "user"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "\u003cdue/2026@example.net\u003e"
+        },
+        "body": {
+          "due": "2026-12-01T10:00:00Z",
+          "due_source": "user"
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "description": "Real transport and path binding are exercised. The JSON body is valid; invalid-body flags do not describe path validation. The test cap is512 bytes; oversize hook sends513 bytes.",
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "\u003cdue/2026@example.net\u003e"
+        },
+        "body": {
+          "due": "2026-12-01T10:00:00Z",
+          "due_source": "user"
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "\u003cdue/2026@example.net\u003e"
+        },
+        "body": {
+          "due": "2026-12-01T10:00:00Z",
+          "due_source": "user"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "set": {
+      "description": "Production routes enforce live account access and mail:write, validate the user source and persist account/thread state. Separate PostgreSQL tests prove durability, isolation, unchanged order and folders.",
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "\u003cdue/2026@example.net\u003e"
+        },
+        "body": {
+          "due": "2026-12-01T10:00:00Z",
+          "due_source": "user"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "thread_id": "\u003cdue/2026@example.net\u003e",
+            "due": "2026-12-01T10:00:00Z",
+            "due_source": "user"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "source_parsed": {
+      "description": "Production routes enforce live account access and mail:write, validate the user source and persist account/thread state. Separate PostgreSQL tests prove durability, isolation, unchanged order and folders.",
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "\u003cdue/2026@example.net\u003e"
+        },
+        "body": {
+          "due": "2026-12-01T10:00:00Z",
+          "due_source": "parsed"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "due_source": "must be one of \"user\""
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "source_rule": {
+      "description": "Production routes enforce live account access and mail:write, validate the user source and persist account/thread state. Separate PostgreSQL tests prove durability, isolation, unchanged order and folders.",
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "\u003cdue/2026@example.net\u003e"
+        },
+        "body": {
+          "due": "2026-12-01T10:00:00Z",
+          "due_source": "rule"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "due_source": "must be one of \"user\""
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "thread_missing": {
+      "description": "Production routes enforce live account access and mail:write, validate the user source and persist account/thread state. Separate PostgreSQL tests prove durability, isolation, unchanged order and folders.",
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "missing"
+        },
+        "body": {
+          "due": null,
+          "due_source": "user"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Thread not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "\u003cdue/2026@example.net\u003e"
+        },
+        "body": {
+          "due": "2026-12-01T10:00:00Z",
+          "due_source": "user"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "write_unavailable": {
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 1,
+          "threadID": "WriteFailure"
+        },
+        "body": {
+          "due": "2026-12-01T10:00:00Z",
+          "due_source": "user"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "setVacation": {
     "found": {
       "description": "The real registered route, JWT/Basic/scoped-key checks, current holder ceilings and CSRF guards precede mailbox-bound configuration reads and writes. Local SQL verifies selectors, all configuration fields and date clearing; lookup errors do not become creation or success. Fixed rows do not prove PostgreSQL/audit persistence or actual vacation delivery; owner-blocked pipeline migration #772 remains unchanged.",
