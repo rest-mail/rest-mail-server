@@ -9,7 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/grants"
 )
 
 func TestListTLSReports_RejectInvalidPolicyType(t *testing.T) {
@@ -37,6 +39,13 @@ func TestListTLSReports_RejectInvalidPolicyType(t *testing.T) {
 				t.Fatalf("missing policy_type validation error: %s", rr.Body)
 			}
 		})
+	}
+}
+
+func TestListTLSReports_MailboxScopeDeniedBeforeDatabase(t *testing.T) {
+	response := scopedRequest([]string{grants.Mailbox("user@a.test")}, middleware.CapDomainsRead, policyRoutes(NewTLSReportHandler(nil)).ServeHTTP, "/api/v1/admin/tls-reports")
+	if response.Code != http.StatusForbidden || response.Body.String() != "{\"error\":{\"code\":\"forbidden\",\"message\":\"Insufficient permissions\"}}\n" {
+		t.Fatalf("mailbox-only refusal changed: %d %s", response.Code, response.Body)
 	}
 }
 
@@ -106,8 +115,7 @@ func TestListTLSReports_ContractPolicyFilters(t *testing.T) {
 					query.Set("limit", "1")
 					query.Set("offset", "1")
 				}
-				rr := httptest.NewRecorder()
-				policyRoutes(NewTLSReportHandler(tx)).ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/tls-reports?"+query.Encode(), nil))
+				rr := scopedRequest([]string{grants.Domain(domain.Name)}, middleware.CapDomainsRead, policyRoutes(NewTLSReportHandler(tx)).ServeHTTP, "/api/v1/admin/tls-reports?"+query.Encode())
 				if rr.Code != http.StatusOK {
 					t.Fatalf("status = %d, want 200: %s", rr.Code, rr.Body)
 				}

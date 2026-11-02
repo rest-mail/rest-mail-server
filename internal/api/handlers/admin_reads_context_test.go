@@ -92,7 +92,7 @@ func TestAdminReadRoutesCarryTheRequestContext(t *testing.T) {
 			rs := endpoint.Routes{Router: router, Registry: endpoint.NewRegistry()}
 			NewBanHandler(db).Register(rs, pass)
 			NewDKIMHandler(db, testMasterKey).Register(rs, DKIMRouteChecks{At: pass, OnDomain: pass})
-			NewTLSReportHandler(db).Register(rs, DomainPolicyRouteChecks{At: pass, OnDomain: pass})
+			NewTLSReportHandler(db).Register(rs, DomainPolicyRouteChecks{At: pass, OnDomain: pass, OnList: pass})
 			stats := NewStatsHandler(db)
 			stats.Register(rs, pass)
 			stats.RegisterPipelineAnalytics(rs, pass(""))

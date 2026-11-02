@@ -2009,7 +2009,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List received TLS-RPT reports */
+        /**
+         * List received TLS-RPT reports
+         * @description Requires domains:read on the report's domain. Domain-scoped administrators see only reports for their permitted domains, including pagination totals, whether or not domain_id is supplied. A domain_id filter outside those domains returns the same empty list as a nonexistent domain. Reading every domain's reports requires domains:read at *. Callers without domains:read are refused with 403.
+         */
         get: operations["listTlsReports"];
         put?: never;
         post?: never;
@@ -5166,13 +5169,13 @@ export interface components {
             list_unsubscribe?: components["schemas"]["listUnsubscribe"] | null;
             on_behalf?: boolean;
         };
-        sendMessageRequest: {
+        sendMessageDescription: {
             bcc?: string[];
             body_html?: string;
             body_text?: string;
             calendar_event?: components["schemas"]["CalendarEvent"] | null;
             cc?: string[];
-            from?: string;
+            from: string;
             in_reply_to?: string;
             list_unsubscribe?: components["schemas"]["listUnsubscribe"] | null;
             on_behalf?: boolean;
@@ -22403,7 +22406,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["sendMessageRequest"];
+                "application/json": components["schemas"]["sendMessageDescription"];
             };
         };
         responses: {

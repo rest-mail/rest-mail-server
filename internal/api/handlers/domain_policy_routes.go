@@ -14,6 +14,7 @@ import (
 type DomainPolicyRouteChecks struct {
 	// OnDomain requires the capability on the domain named by {id}.
 	OnDomain func(string) endpoint.Middleware
+	OnList   func(string) endpoint.Middleware
 	// At requires the capability at "*".
 	At func(string) endpoint.Middleware
 }
@@ -136,5 +137,6 @@ func (h *RelayHandler) Register(rs endpoint.Routes, checks DomainPolicyRouteChec
 func (h *TLSReportHandler) Register(rs endpoint.Routes, checks DomainPolicyRouteChecks) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/tls-reports",
 		OperationID: "listTlsReports", Summary: "List received TLS-RPT reports", Tags: []string{"Admin: Domain mail policy"},
-		Middleware: []endpoint.Middleware{checks.At(middleware.CapDomainsRead)}}, h.listReports)
+		Description: "Requires domains:read on the report's domain. Domain-scoped administrators see only reports for their permitted domains, including pagination totals, whether or not domain_id is supplied. A domain_id filter outside those domains returns the same empty list as a nonexistent domain. Reading every domain's reports requires domains:read at *. Callers without domains:read are refused with 403.",
+		Middleware:  []endpoint.Middleware{checks.OnList(middleware.CapDomainsRead)}}, h.listReports)
 }

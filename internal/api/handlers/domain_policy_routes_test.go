@@ -22,11 +22,11 @@ func policyRoutes(h policyRegistrar) http.Handler {
 	pass := func(string) endpoint.Middleware {
 		return endpoint.Middleware{Wrap: func(next http.Handler) http.Handler { return next }}
 	}
-	h.Register(endpoint.Routes{Router: r, Registry: endpoint.NewRegistry()}, DomainPolicyRouteChecks{At: pass, OnDomain: pass})
+	h.Register(endpoint.Routes{Router: r, Registry: endpoint.NewRegistry()}, DomainPolicyRouteChecks{At: pass, OnDomain: pass, OnList: pass})
 	return r
 }
 
-// Each middleware must check the named domain except the two installation-wide routes.
+// Each middleware checks the named domain, the list's scopes, or installation-wide access.
 // Refusing before binding proves that the registered route actually executes that check.
 func TestDomainPolicyRouteScopes(t *testing.T) {
 	for _, tc := range []struct {
@@ -46,7 +46,7 @@ func TestDomainPolicyRouteScopes(t *testing.T) {
 		{NewMTASTSHandler(nil), "DELETE", "/api/v1/admin/domains/7/mta-sts", "domain", "domains:write"},
 		{NewRelayHandler(nil, ""), "GET", "/api/v1/admin/domains/7/relay", "domain", "domains:read"},
 		{NewRelayHandler(nil, ""), "PUT", "/api/v1/admin/domains/7/relay", "all", "domains:write"},
-		{NewTLSReportHandler(nil), "GET", "/api/v1/admin/tls-reports?domain_id=7", "all", "domains:read"},
+		{NewTLSReportHandler(nil), "GET", "/api/v1/admin/tls-reports?domain_id=7", "list", "domains:read"},
 	} {
 		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
 			r := chi.NewRouter()
@@ -66,7 +66,7 @@ func TestDomainPolicyRouteScopes(t *testing.T) {
 					}}
 				}
 			}
-			tc.handler.Register(endpoint.Routes{Router: r, Registry: reg}, DomainPolicyRouteChecks{At: check("all"), OnDomain: check("domain")})
+			tc.handler.Register(endpoint.Routes{Router: r, Registry: reg}, DomainPolicyRouteChecks{At: check("all"), OnDomain: check("domain"), OnList: check("list")})
 			rr := httptest.NewRecorder()
 			r.ServeHTTP(rr, httptest.NewRequest(tc.method, tc.path, nil))
 			if rr.Code != http.StatusForbidden {
