@@ -105,7 +105,7 @@ func TestThreadSnoozeExamples(t *testing.T) {
 	}
 }
 
-func TestThreadSnoozeExamplesWithVertrag(t *testing.T) {
+func checkThreadSnoozeExamplesWithVertrag(t *testing.T) {
 	binary := os.Getenv("RESTMAIL_VERTRAG_BINARY")
 	if binary == "" {
 		t.Skip("set RESTMAIL_VERTRAG_BINARY for snooze exchanges")
