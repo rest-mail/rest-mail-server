@@ -687,7 +687,7 @@ helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" -f "$tmp/s3-values.yaml" \
 assert_contains "external S3 Secret is referenced" "$tmp/s3-no-pvc.yaml" 'name: my-s3-secret'
 assert_absent "S3 after migration has no attachment mount" "$tmp/s3-no-pvc.yaml" 'mountPath: /attachments'
 assert_absent "external S3 Secret creates no inline credentials" "$tmp/s3-no-pvc.yaml" 'fixture-private-secret'
-if helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set api.attachments.storageType=s3 > /dev/null 2>&1; then
+if helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set garage.enabled=false --set api.attachments.storageType=s3 > /dev/null 2>&1; then
   fail "S3 without bucket and credentials was accepted"
 fi
 pass "incomplete S3 configuration is refused"
