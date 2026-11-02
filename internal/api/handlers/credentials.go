@@ -87,6 +87,10 @@ func (h *CredentialHandler) Register(rs endpoint.Routes, checks SessionRouteChec
 		OperationID: "createAPIKey", Summary: "Make a scoped API key", Tags: tags,
 		Status: http.StatusCreated, Errors: refusals, Security: manage,
 		Middleware: []endpoint.Middleware{checks.Throttle, checks.Audit(ActionAPIKeyCreate, middleware.AuditFailuresOnly()), noStore}}, h.createAPIKey)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPatch, Path: "/api/v1/accounts/{id}/api-keys/{credential_id}",
+		OperationID: "updateAPIKey", Summary: "Change what an API key may do, keeping its secret", Tags: tags,
+		Errors: refusals, Security: manage,
+		Middleware: []endpoint.Middleware{checks.Throttle, checks.Audit(ActionAPIKeyUpdate, middleware.AuditFailuresOnly()), noStore}}, h.updateAPIKey)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/accounts/{id}/api-keys/{credential_id}",
 		OperationID: "revokeAPIKey", Summary: "Revoke an API key", Tags: tags,
 		Status: http.StatusNoContent, Errors: refusals, Security: manage,

@@ -19,10 +19,17 @@ They are separate from app passwords, which remain mail-client credentials.
 ## Interactive management
 
 `GET/POST /api/v1/accounts/{id}/api-keys` and
-`DELETE /api/v1/accounts/{id}/api-keys/{credential_id}` operate on the caller's
-own account or an account they may manage. Creation and revocation require a
-session signed in with a second factor; creation additionally checks the
-creator's current password. Key management never accepts another API key.
+`PATCH/DELETE /api/v1/accounts/{id}/api-keys/{credential_id}` operate on the
+caller's own account or an account they may manage. Creating, editing and
+revoking require a session signed in with a second factor; creating and editing
+additionally check the current password. Key management never accepts another
+API key.
+
+Editing replaces a key's permissions and keeps its secret (#1386), as Google
+Cloud API keys and Stripe restricted keys do. The new permissions are held to the
+ceiling a new key is. A key's permissions are read from its row on every request,
+so the next request runs with the new ones, and the edit is audited with the
+permissions before and after.
 
 Keys carry no MFA or interactive-session claims. They cannot change credentials,
 passwords, two-factor enrollment, or grants. Own-grant escalation also remains

@@ -115,6 +115,7 @@ func TestTwoFactorRefusalExamples(t *testing.T) {
 		{"listAuditEntries", "two_factor_required"}, {"listAuditEntries", "recent_two_factor_required"},
 		{"releaseQuarantine", "two_factor_required"},
 		{"unlinkAccount", "two_factor_required"},
+		{"updateAPIKey", "two_factor_required"}, {"updateAPIKey", "recent_two_factor_required"},
 		{"updateMailbox", "two_factor_required"}, {"updateMailbox", "recent_two_factor_required"},
 	} {
 		t.Run(tc.op+"/"+tc.name, func(t *testing.T) {

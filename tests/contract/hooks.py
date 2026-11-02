@@ -198,6 +198,52 @@ def an_api_key_from_the_two_factor_admin(transaction):
     hooks.set_json(transaction, body)
 
 
+@hooks.before("updateAPIKey")
+def an_api_key_of_its_own_to_edit(transaction):
+    # Each edit makes the key it changes, so it needs nothing from another
+    # operation's run.
+    if not as_the_two_factor_admin(transaction):
+        return
+    body = hooks.get_json(transaction)
+    # The body_array refusal has no password to set, and a refused password
+    # keeps the one it sends.
+    if not isinstance(body, dict) or body.get("password") != "current-password":
+        return
+    body["password"] = mfa_admin.PASSWORD
+    origin = origin_of(transaction)
+    path, _, query = transaction["fullPath"].partition("?")
+    parent, _, credential = path.rstrip("/").rpartition("/")
+    address = mailbox_address(origin, parent.split("/")[-2])
+    if address and isinstance(body.get("permissions"), list):
+        for permission in body["permissions"]:
+            if not isinstance(permission, dict):
+                continue
+            # The generator's stand-in is no capability; a probe of a refused
+            # value keeps it, and so does a probe of a refused scope.
+            if permission.get("capability") == "x":
+                permission["capability"] = "mail:read"
+            if isinstance(permission.get("scope"), str) and permission["scope"]:
+                permission["scope"] = "mailbox:" + address
+    hooks.set_json(transaction, body)
+    # The missing pair names a key that is not there, and keeps it.
+    if credential == "2147483647" or not address:
+        return
+    time.sleep(1.1)  # making the key spends the same budget as the edit
+    request = urllib.request.Request(
+        origin + parent,
+        data=json.dumps({
+            "name": "contract key to edit " + str(time.time_ns()),
+            "password": mfa_admin.PASSWORD,
+            "permissions": [{"capability": "mail:read", "scope": "mailbox:" + address}],
+        }).encode(),
+        headers={"Content-Type": "application/json", "Authorization": "Bearer " + mfa_admin_token(origin)},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        key = json.load(response)["data"]
+    transaction["fullPath"] = parent + "/" + str(key["id"]) + ("?" + query if query else "")
+
+
 def hosted_mailboxes(origin):
     request = urllib.request.Request(
         origin + "/api/v1/admin/mailboxes?limit=1000",
@@ -261,6 +307,7 @@ def delete_a_grant_made_for_it(transaction):
 @hooks.before("issueClientCredentialsToken")
 @hooks.before("activateGrant")
 @hooks.before("makeGrantEligible")
+@hooks.before("updateAPIKey")
 def pace_auth_requests(transaction):
     # These operations share the default 1 request/second auth bucket. Coverage
     # repeats valid requests as well as refusals, so even correct credentials

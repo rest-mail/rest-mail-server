@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -23,6 +24,7 @@ import (
 const (
 	ActionAPIKeyCreate    = "api_keys.create"
 	ActionAPIKeyRevoke    = "api_keys.revoke"
+	ActionAPIKeyUpdate    = "api_keys.update"
 	maxAPIKeyPermissions  = 64
 	defaultAPIKeyLifetime = 90 * 24 * time.Hour
 )
@@ -94,6 +96,66 @@ func apiKeyWithinGrants(creator, owner grants.Held, permissions []auth.ScopedPer
 	return true
 }
 
+// parseAPIKeyPermissions reads the permissions asked for as a key stores them, adding to
+// problems what is wrong with them. The error says they could not be read.
+func parseAPIKeyPermissions(requested []apiKeyPermission, problems map[string]string) ([]auth.ScopedPermission, error) {
+	if len(requested) == 0 || len(requested) > maxAPIKeyPermissions {
+		problems["permissions"] = fmt.Sprintf("must contain between 1 and %d scoped permissions", maxAPIKeyPermissions)
+	}
+	asked := make([]auth.ScopedPermission, len(requested))
+	for i, permission := range requested {
+		asked[i] = auth.ScopedPermission{Capability: permission.Capability, Scope: permission.Scope}
+	}
+	permissions, err := repositories.NormalizeAPIKeyPermissions(asked)
+	if err != nil {
+		problems["permissions"] = "each permission needs a named capability and a valid scope"
+	}
+	return permissions, err
+}
+
+var (
+	errAPIKeyBeyondGrants      = errors.New("API key exceeds held permissions")
+	errAPIKeyUnknownCapability = errors.New("unknown API key capability")
+)
+
+// checkAPIKeyCeiling is the one rule for what a key may be given, when it is made and when it
+// is changed: nothing beyond what the person doing it and the account it belongs to both hold
+// now, and only capabilities that exist.
+func checkAPIKeyCeiling(tx *gorm.DB, actorID, accountID uint, permissions []auth.ScopedPermission, now time.Time) error {
+	actor, err := grants.Load(tx, actorID, now)
+	if err != nil {
+		return err
+	}
+	owner, err := grants.Load(tx, accountID, now)
+	if err != nil {
+		return err
+	}
+	if !apiKeyWithinGrants(actor, owner, permissions) {
+		return errAPIKeyBeyondGrants
+	}
+	for _, permission := range permissions {
+		var count int64
+		if err := tx.Model(&models.Capability{}).Where("name = ?", permission.Capability).Count(&count).Error; err != nil {
+			return err
+		}
+		if count == 0 {
+			return errAPIKeyUnknownCapability
+		}
+	}
+	return nil
+}
+
+// apiKeyCeilingRefusal is the refusal for an error of checkAPIKeyCeiling, or nil for any other.
+func apiKeyCeilingRefusal(err error) error {
+	switch {
+	case errors.Is(err, errAPIKeyBeyondGrants):
+		return endpoint.Refuse(http.StatusForbidden, "forbidden", "API key permissions must be within the account's and your current grants")
+	case errors.Is(err, errAPIKeyUnknownCapability):
+		return endpoint.Invalid(map[string]string{"permissions": "contains an unknown capability"})
+	}
+	return nil
+}
+
 // createAPIKey needs a password-authenticated, two-factor session and the
 // creator's current password. Machine credentials never satisfy this check.
 func (h *CredentialHandler) createAPIKey(r *http.Request, in createAPIKeyRequest) (createdAPIKey, error) {
@@ -118,17 +180,7 @@ func (h *CredentialHandler) createScopedCredential(r *http.Request, in createAPI
 	} else if utf8.RuneCountInString(req.Name) > maxCredentialNameLength || strings.IndexFunc(req.Name, unicode.IsControl) >= 0 {
 		problems["name"] = "must contain at most 100 characters and no control characters"
 	}
-	if len(req.Permissions) == 0 || len(req.Permissions) > maxAPIKeyPermissions {
-		problems["permissions"] = fmt.Sprintf("must contain between 1 and %d scoped permissions", maxAPIKeyPermissions)
-	}
-	asked := make([]auth.ScopedPermission, len(req.Permissions))
-	for i, permission := range req.Permissions {
-		asked[i] = auth.ScopedPermission{Capability: permission.Capability, Scope: permission.Scope}
-	}
-	permissions, err := repositories.NormalizeAPIKeyPermissions(asked)
-	if err != nil {
-		problems["permissions"] = "each permission needs a named capability and a valid scope"
-	}
+	permissions, err := parseAPIKeyPermissions(req.Permissions, problems)
 	if kind == models.CredentialKindClientSecret && err == nil {
 		if _, err := repositories.NormalizeClientSecretPermissions(permissions); err != nil {
 			problems["permissions"] = "client secrets may hold mailbox capabilities and ordinary domain administration, never human-2FA-only capabilities"
@@ -149,28 +201,9 @@ func (h *CredentialHandler) createScopedCredential(r *http.Request, in createAPI
 
 	var credential *models.Credential
 	var secret string
-	errPermission := errors.New("API key exceeds held permissions")
-	errUnknown := errors.New("unknown API key capability")
 	err = h.db.Transaction(func(tx *gorm.DB) error {
-		creator, err := grants.Load(tx, claims.AccountID, now)
-		if err != nil {
+		if err := checkAPIKeyCeiling(tx, claims.AccountID, accountID, permissions, now); err != nil {
 			return err
-		}
-		owner, err := grants.Load(tx, accountID, now)
-		if err != nil {
-			return err
-		}
-		if !apiKeyWithinGrants(creator, owner, permissions) {
-			return errPermission
-		}
-		for _, permission := range permissions {
-			var count int64
-			if err := tx.Model(&models.Capability{}).Where("name = ?", permission.Capability).Count(&count).Error; err != nil {
-				return err
-			}
-			if count == 0 {
-				return errUnknown
-			}
 		}
 		repo := repositories.NewCredentialRepository(tx)
 		action := ActionAPIKeyCreate
@@ -190,15 +223,86 @@ func (h *CredentialHandler) createScopedCredential(r *http.Request, in createAPI
 		e.Target["public_id"], e.Target["name"] = credential.PublicID, credential.Name
 		return audit.Append(tx, e)
 	})
-	switch {
-	case errors.Is(err, errPermission):
-		return createdAPIKey{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "API key permissions must be within the account's and your current grants")
-	case errors.Is(err, errUnknown):
-		return createdAPIKey{}, endpoint.Invalid(map[string]string{"permissions": "contains an unknown capability"})
-	case err != nil:
+	if refusal := apiKeyCeilingRefusal(err); refusal != nil {
+		return createdAPIKey{}, refusal
+	}
+	if err != nil {
 		return createdAPIKey{}, fmt.Errorf("create the API key: %w", err)
 	}
 	return createdAPIKey{toAPIKeyResponse(credential), secret}, nil
+}
+
+// updateAPIKeyBody is a key's new permissions, which replace the ones it holds. The current
+// password is asked for as it is when making a key, because this can give a key more.
+type updateAPIKeyBody struct {
+	Password    string             `json:"password" minLength:"1" message:"required" missing:"required"`
+	Permissions []apiKeyPermission `json:"permissions" minItems:"1" maxItems:"64" message:"must contain between 1 and 64 scoped permissions" missing:"must contain between 1 and 64 scoped permissions"`
+}
+
+type updateAPIKeyRequest struct {
+	ID           uint32           `path:"id" minimum:"1" example:"1"`
+	CredentialID uint32           `path:"credential_id" minimum:"1" example:"1"`
+	Body         updateAPIKeyBody `body:""`
+}
+
+// updateAPIKey changes what a key may do and keeps its secret, so nothing that uses it has to
+// change. It takes what making one takes. A request made with the key reads the stored
+// permissions each time (VerifyAPIKey), so the very next one runs with the new ones.
+func (h *CredentialHandler) updateAPIKey(r *http.Request, in updateAPIKeyRequest) (apiKeyResponse, error) {
+	h = h.forRequest(r)
+	claims, accountID, err := h.managedAccount(r, in.ID)
+	if err != nil {
+		return apiKeyResponse{}, err
+	}
+	if err := RequireFreshTwoFactor(r); err != nil {
+		return apiKeyResponse{}, err
+	}
+	problems := map[string]string{}
+	permissions, _ := parseAPIKeyPermissions(in.Body.Permissions, problems)
+	if len(problems) != 0 {
+		return apiKeyResponse{}, endpoint.Invalid(problems)
+	}
+	if err := h.checkCurrentPassword(claims.AccountID, in.Body.Password); err != nil {
+		return apiKeyResponse{}, err
+	}
+
+	now := h.now()
+	var credential *models.Credential
+	err = h.db.Transaction(func(tx *gorm.DB) error {
+		if err := checkAPIKeyCeiling(tx, claims.AccountID, accountID, permissions, now); err != nil {
+			return err
+		}
+		var previous []auth.ScopedPermission
+		var err error
+		credential, previous, err = repositories.NewCredentialRepository(tx).UpdateAPIKeyPermissions(accountID, uint(in.CredentialID), permissions)
+		if err != nil {
+			return err
+		}
+		before, err := json.Marshal(previous)
+		if err != nil {
+			return err
+		}
+		after, err := json.Marshal(credential.Scope.Permissions)
+		if err != nil {
+			return err
+		}
+		e := middleware.NewAuditEntry(ActionAPIKeyUpdate, r, now)
+		e.Target["account_id"] = strconv.FormatUint(uint64(accountID), 10)
+		e.Target["credential_id"] = strconv.FormatUint(uint64(credential.ID), 10)
+		e.Target["public_id"], e.Target["name"] = credential.PublicID, credential.Name
+		e.Target["previous_permissions"], e.Target["permissions"] = string(before), string(after)
+		return audit.Append(tx, e)
+	})
+	if refusal := apiKeyCeilingRefusal(err); refusal != nil {
+		return apiKeyResponse{}, refusal
+	}
+	if errors.Is(err, repositories.ErrCredentialNotFound) {
+		return apiKeyResponse{}, endpoint.Refuse(http.StatusNotFound, "not_found", "API key not found")
+	}
+	if err != nil {
+		return apiKeyResponse{}, fmt.Errorf("update the API key: %w", err)
+	}
+	return toAPIKeyResponse(credential), nil
 }
 
 // revokeAPIKey preserves the credential and its audit history. It stops being

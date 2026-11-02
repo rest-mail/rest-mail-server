@@ -11,6 +11,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // ErrBadAPIKeyPermission is a permission an API key cannot hold: no
@@ -143,6 +144,32 @@ func (r *CredentialRepository) VerifyAPIKey(key string, now time.Time) (*models.
 		}
 	}
 	return &cred, &mailbox, nil
+}
+
+// UpdateAPIKeyPermissions replaces what one of an account's API keys holds, and leaves its
+// secret and everything else as they are. It returns the key as it now is and what it held
+// before. It locks the row, so call it in a transaction for the two to stay a true pair.
+func (r *CredentialRepository) UpdateAPIKeyPermissions(accountID, id uint, permissions []auth.ScopedPermission) (*models.Credential, []auth.ScopedPermission, error) {
+	permissions, err := NormalizeAPIKeyPermissions(permissions)
+	if err != nil {
+		return nil, nil, err
+	}
+	var cred models.Credential
+	err = r.db.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("id = ? AND account_id = ? AND kind = ? AND revoked_at IS NULL", id, accountID, models.CredentialKindAPIKey).
+		Take(&cred).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil, ErrCredentialNotFound
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	previous := cred.Scope.Permissions
+	cred.Scope.Permissions = permissions
+	if err := r.db.Model(&cred).Update("scope", cred.Scope).Error; err != nil {
+		return nil, nil, err
+	}
+	return &cred, previous, nil
 }
 
 // RevokeAPIKey revokes one of an account's API keys. The row stays, for the

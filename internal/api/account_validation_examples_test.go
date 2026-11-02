@@ -25,6 +25,7 @@ func TestAccountValidationExamples(t *testing.T) {
 		{"createAccount", "address_missing"}, {"createAccount", "body_array"}, {"createAccount", "malformed_json"},
 		{"createAppPassword", "name_control"}, {"createAppPassword", "body_array"}, {"createAppPassword", "malformed_json"},
 		{"createAPIKey", "name_missing"}, {"createAPIKey", "body_array"}, {"createAPIKey", "malformed_json"},
+		{"updateAPIKey", "permissions_missing"}, {"updateAPIKey", "body_array"}, {"updateAPIKey", "malformed_json"},
 		{"linkAccount", "address_blank"}, {"linkAccount", "body_array"}, {"linkAccount", "malformed_json"},
 		{"unlinkAccount", "invalid_id"},
 	} {
@@ -73,7 +74,7 @@ func TestAccountAreaReportsNoWarnings(t *testing.T) {
 	area := map[string]bool{
 		"createAPIKey": true, "createAccount": true, "createAppPassword": true, "getAccount": true,
 		"linkAccount": true, "listAPIKeys": true, "listAccounts": true, "listCredentials": true,
-		"revokeAPIKey": true, "revokeCredential": true, "unlinkAccount": true,
+		"revokeAPIKey": true, "revokeCredential": true, "unlinkAccount": true, "updateAPIKey": true,
 	}
 	for _, g := range gapGenerators(t) {
 		for _, warning := range g.Report() {

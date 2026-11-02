@@ -10,6 +10,7 @@
     "listCredentials",
     "revokeAPIKey",
     "revokeCredential",
-    "unlinkAccount"
+    "unlinkAccount",
+    "updateAPIKey"
   ]
 }

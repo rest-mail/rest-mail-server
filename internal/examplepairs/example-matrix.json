@@ -41610,6 +41610,89 @@
       }
     }
   },
+  "updateAPIKey": {
+    "already_revoked": {
+      "request": {
+        "path": {
+          "credential_id": 2,
+          "id": 1
+        },
+        "body": {
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "mail:send",
+              "scope": "mailbox:robot@example.com"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "API key not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "another_accounts_key": {
+      "request": {
+        "path": {
+          "credential_id": 2,
+          "id": 1
+        },
+        "body": {
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "mail:send",
+              "scope": "mailbox:robot@example.com"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "API key not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "app_password": {
+      "request": {
+        "path": {
+          "credential_id": 2,
+          "id": 1
+        },
+        "body": {
+          "password": "current-password",
+          "permissions": [
+            {
+              "capability": "mail:send",
+              "scope": "mailbox:robot@example.com"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "API key not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "updateAlias": {
     "cookie_session": {
       "request": {
