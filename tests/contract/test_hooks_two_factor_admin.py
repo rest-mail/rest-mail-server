@@ -61,6 +61,7 @@ class TwoFactorAdminHookTests(unittest.TestCase):
                           "releaseQuarantine", "changeOwnPassword", "disableTwoFactor"):
             self.assertIn("send_as_the_two_factor_admin", self.registered[operation])
         self.assertIn("an_api_key_from_the_two_factor_admin", self.registered["createAPIKey"])
+        self.assertIn("an_api_key_of_its_own_to_edit", self.registered["updateAPIKey"])
         self.assertIn("an_app_password_from_the_two_factor_admin", self.registered["createClientSecret"])
         # The swap runs before the hook that confirms with the maker's password.
         self.assertEqual(self.registered["createAppPassword"][:1], ["send_as_the_two_factor_admin"])
@@ -86,7 +87,7 @@ class TwoFactorAdminHookTests(unittest.TestCase):
                 if any(not pair.get("requires") for pair in refusals(pairs))}
         hooked = {op for op, names in self.registered.items()
                   if {"send_as_the_two_factor_admin", "an_api_key_from_the_two_factor_admin",
-                      "an_app_password_from_the_two_factor_admin"} & set(names)}
+                      "an_api_key_of_its_own_to_edit", "an_app_password_from_the_two_factor_admin"} & set(names)}
         self.assertLessEqual(guarded, hooked)
         self.assertFalse(live & hooked)
 

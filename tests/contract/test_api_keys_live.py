@@ -41,12 +41,12 @@ class GuardTest(unittest.TestCase):
 
 class RequiredCI(unittest.TestCase):
     def test_separate_suite_is_required_beside_the_primary_run(self):
-        # The primary run sends the three key operations as the two-factor
+        # The primary run sends the four key operations as the two-factor
         # administrator (#1334); this suite still proves the whole lifecycle.
         root = os.path.join(os.path.dirname(__file__), "..", "..")
         with open(os.path.join(root, "vertrag.yml")) as source:
             config = yaml.safe_load(source)
-        operations = {"listAPIKeys", "createAPIKey", "revokeAPIKey"}
+        operations = {"listAPIKeys", "createAPIKey", "updateAPIKey", "revokeAPIKey"}
         excluded = {item.get("operation") for item in config["surface"]["exclude"]}
         self.assertFalse(operations & excluded)
         self.assertFalse(operations & set(config["exclude-operation-id"]))

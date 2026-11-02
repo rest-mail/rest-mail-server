@@ -136,6 +136,16 @@ func createdJustNow(t *testing.T, data map[string]any, started, finished time.Ti
 	return createdAt
 }
 
+// anotherMailbox is a second account in the fixture mailbox's domain.
+func anotherMailbox(f *credentialFixture) uint {
+	f.t.Helper()
+	var mailbox models.Mailbox
+	if err := f.db.First(&mailbox, f.mailboxID).Error; err != nil {
+		f.t.Fatal(err)
+	}
+	return f.seedMailbox(mailbox.DomainID, "someone-else")
+}
+
 func TestAccountExamples(t *testing.T) {
 	pairs, err := examplepairs.Read()
 	if err != nil {
@@ -196,6 +206,132 @@ func TestAccountExamples(t *testing.T) {
 			t.Fatalf("refused creation stored %d API keys", n)
 		}
 	})
+
+	// keyToEdit is a key of the fixture account's, made as createAPIKey makes one, holding
+	// mail:read at robot@example.com, which the fixture account owns.
+	keyToEdit := func(f *credentialFixture) (*models.Credential, string) {
+		f.t.Helper()
+		f.own(0, "robot@example.com")
+		knownPassword(f, "current-password")
+		cred, secret, err := repositories.NewCredentialRepository(f.db).CreateAPIKey(f.mailboxID, f.mailboxID, "Invoice robot",
+			[]auth.ScopedPermission{{Capability: "mail:read", Scope: "mailbox:robot@example.com"}}, nil)
+		if err != nil {
+			f.t.Fatal(err)
+		}
+		return cred, secret
+	}
+	onKey := func(f *credentialFixture, pair oapifly.ExamplePair, id uint) oapifly.ExamplePair {
+		pair = onOwnAccount(f, pair)
+		pair.Request.Path["credential_id"] = float64(id)
+		return pair
+	}
+	unchanged := func(f *credentialFixture, cred *models.Credential) {
+		f.t.Helper()
+		stored := reloadCredential(f, cred.ID)
+		if len(stored.Scope.Permissions) != 1 || stored.Scope.Permissions[0].Capability != "mail:read" {
+			f.t.Fatalf("a refused change stored %+v", stored.Scope.Permissions)
+		}
+	}
+
+	t.Run("updateAPIKey/updated", func(t *testing.T) {
+		examplepairs.Proven(t, "updateAPIKey", "updated")
+		pair := pairs["updateAPIKey"]["updated"]
+		f := newCredentialFixture(t)
+		cred, secret := keyToEdit(f)
+		rr := sendAccountExample(f, routes["updateAPIKey"], onKey(f, pair, cred.ID), twoFactorSession(f))
+		if rr.Code != pair.Response.Status {
+			t.Fatalf("got %d %s", rr.Code, rr.Body.String())
+		}
+		if rr.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("Cache-Control %q", rr.Header().Get("Cache-Control"))
+		}
+		var got, want map[string]map[string]any
+		decodeInto(t, rr, &got)
+		if err := json.Unmarshal(pair.Response.Body, &want); err != nil {
+			t.Fatal(err)
+		}
+		data := got["data"]
+		if _, leaked := data["token"]; leaked {
+			t.Fatal("the answer carried a secret")
+		}
+		if id, _ := data["id"].(float64); uint(id) != cred.ID || data["public_id"] != cred.PublicID {
+			t.Fatalf("answered %v for %+v", data, cred)
+		}
+		stored := reloadCredential(f, cred.ID)
+		if stored.SecretHash != cred.SecretHash || stored.Name != cred.Name || stored.PublicID != cred.PublicID {
+			t.Fatalf("the key changed beyond its permissions: %+v", stored)
+		}
+		wantStored := []auth.ScopedPermission{{Capability: "mail:send", Scope: "mailbox:robot@example.com"}}
+		if len(stored.Scope.Permissions) != 1 || stored.Scope.Permissions[0] != wantStored[0] || stored.Scope.MailboxID != f.mailboxID {
+			t.Fatalf("stored %+v", stored.Scope)
+		}
+		// The same secret still verifies, and what it runs with is the new permission.
+		verified, _, err := repositories.NewCredentialRepository(f.db).VerifyAPIKey(secret, time.Now())
+		if err != nil {
+			t.Fatalf("the secret stopped working: %v", err)
+		}
+		if verified.Scope.Permissions[0] != wantStored[0] {
+			t.Fatalf("the next request would run with %+v", verified.Scope.Permissions)
+		}
+		entries := f.entries("api_keys.update")
+		if len(entries) != 1 {
+			t.Fatalf("%d audit entries, want 1", len(entries))
+		}
+		entry := entries[0]
+		if entry.Target["previous_permissions"] != `[{"capability":"mail:read","scope":"mailbox:robot@example.com"}]` ||
+			entry.Target["permissions"] != `[{"capability":"mail:send","scope":"mailbox:robot@example.com"}]` ||
+			entry.ActorID == nil || *entry.ActorID != f.mailboxID {
+			t.Fatalf("audit entry %+v", entry)
+		}
+		for _, key := range []string{"id", "public_id", "created_at", "expires_at"} {
+			data[key] = want["data"][key]
+		}
+		rewriteBody(t, rr, got)
+		assertRequirementResponse(t, pair, rr)
+	})
+
+	for _, name := range []string{"missing", "already_revoked", "another_accounts_key", "app_password", "wrong_password", "beyond_grants"} {
+		t.Run("updateAPIKey/"+name, func(t *testing.T) {
+			examplepairs.Proven(t, "updateAPIKey", name)
+			pair := pairs["updateAPIKey"][name]
+			f := newCredentialFixture(t)
+			cred, _ := keyToEdit(f)
+			repo := repositories.NewCredentialRepository(f.db)
+			target := cred.ID
+			switch name {
+			case "missing":
+				target = 2147483647
+			case "already_revoked":
+				if err := repo.RevokeAPIKey(f.mailboxID, cred.ID, time.Now()); err != nil {
+					t.Fatal(err)
+				}
+			case "another_accounts_key":
+				other, _, err := repo.CreateAPIKey(anotherMailbox(f), f.mailboxID, "Someone else's", []auth.ScopedPermission{{Capability: "mail:read", Scope: "mailbox:robot@example.com"}}, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				target = other.ID
+			case "app_password":
+				password, _, err := repo.CreateAppPassword(f.mailboxID, f.mailboxID, "laptop", nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				target = password.ID
+			}
+			rr := sendAccountExample(f, routes["updateAPIKey"], onKey(f, pair, target), twoFactorSession(f))
+			assertRequirementResponse(t, pair, rr)
+			if name != "already_revoked" {
+				unchanged(f, cred)
+			}
+			var n int64
+			if err := f.db.Model(&models.AuditEntry{}).Where("action = ? AND outcome = ?", "api_keys.update", "success").Count(&n).Error; err != nil {
+				t.Fatal(err)
+			}
+			if n != 0 {
+				t.Fatalf("a refused change was audited as done %d times", n)
+			}
+		})
+	}
 
 	t.Run("createAccount/created", func(t *testing.T) {
 		examplepairs.Proven(t, "createAccount", "created")

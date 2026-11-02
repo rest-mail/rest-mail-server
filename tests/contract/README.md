@@ -81,7 +81,7 @@ naming another server sends them to that server instead.
 
 The grant operations (`createGrant`, `deleteGrant`, `activateGrant`,
 `deactivateGrant`, `makeGrantEligible`), the API key operations
-(`listAPIKeys`, `createAPIKey`, `revokeAPIKey`) and `confirmTwoFactor` are in
+(`listAPIKeys`, `createAPIKey`, `updateAPIKey`, `revokeAPIKey`) and `confirmTwoFactor` are in
 the primary run (#1334). A request carrying the fixture admin's session is sent
 with the two-factor administrator's instead (`mfa_admin.py`: a superadmin
 enrolled in TOTP and signed in with a real second factor; nothing is forged).
@@ -110,11 +110,11 @@ These checks detect missing routes and contract drift. Full mobile parity also
 needs request/response field, permission, UI and live integration evidence for
 each operation; route counts alone do not establish that evidence.
 
-The three API-key operations also run in a required check,
+The four API-key operations also run in a required check,
 `chore test:contract-api-keys`, inside `chore contract` before the examples gate. It creates a fresh
 disposable `restmail.test` account with a domain-scoped admin grant, enrolls
 2FA through the public API, confirms a real TOTP and signs in with a recovery
-code. The suite checks create/list/revoke, metadata without secrets, password
+code. The suite checks create/list/edit/revoke, metadata without secrets, password
 reauthentication, validation, refusals without MFA, scope restrictions and
 immediate revocation. The primary run sends them too, as the two-factor administrator (above).
 The dedicated step

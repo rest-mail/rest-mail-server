@@ -47,7 +47,8 @@
     "listCredentials",
     "revokeAPIKey",
     "revokeCredential",
-    "unlinkAccount"
+    "unlinkAccount",
+    "updateAPIKey"
   ],
   "636": [
     "accountEvents",

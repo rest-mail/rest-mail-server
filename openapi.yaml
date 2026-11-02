@@ -2754,6 +2754,93 @@ paths:
           type: integer
           minimum: 1
         example: 2
+    patch:
+      operationId: updateAPIKey
+      tags: [Credentials]
+      security:
+        - CookieAuth: [mailbox:manage]
+        - BearerAuth: [mailbox:manage]
+      summary: Change what an API key may do, keeping its secret
+      description: >
+        Replaces the key's `permissions` with the 1 to 64 given. Its secret,
+        name and expiry stay as they are, so nothing that uses it has to
+        change, and the next request made with it runs with the new
+        permissions. The rule is the one for making a key: each permission
+        must be within the current grants of both the session's account and
+        the account the key belongs to (`403 forbidden` otherwise), and it
+        needs a session from signing in with a password and a second factor
+        and the session's own current password, entered again in `password`.
+        Throttled like login, with the same budget. Recorded in the audit log
+        as `api_keys.update`, with the permissions before and after; a refused
+        attempt is recorded as denied. The answer is `Cache-Control: no-store`
+        and never carries the secret.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password, permissions]
+              properties:
+                password:
+                  type: string
+                  minLength: 1
+                  format: password
+                  writeOnly: true
+                  description: The session's own current password, entered again.
+                permissions:
+                  type: array
+                  minItems: 1
+                  maxItems: 64
+                  items:
+                    type: object
+                    required: [capability, scope]
+                    properties:
+                      capability: {type: string, minLength: 1, example: "mail:send"}
+                      scope: {type: string, minLength: 1, example: "mailbox:robot@example.com"}
+      responses:
+        "200":
+          description: The key as it now is, without its secret
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [id, name, kind, public_id, created_at, last_used_at, expires_at, permissions]
+                    properties:
+                      id: {type: integer}
+                      name: {type: string}
+                      kind: {type: string}
+                      public_id: {type: string}
+                      created_at: {type: string, format: date-time}
+                      last_used_at: {type: [string, "null"], format: date-time}
+                      expires_at: {type: [string, "null"], format: date-time}
+                      permissions:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/ScopedPermission"
+        "400":
+          description: The body is not valid JSON or not the declared media type
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: >
+            Without a recent two-factor sign-in, with the wrong current
+            password, or asking for more than the grants allow
+        "404":
+          description: No such API key of this account, or already revoked
+        "422":
+          description: permissions empty, more than 64, `*`, malformed, or naming an unknown capability
+        "429":
+          description: Too many attempts from this client; shares login's budget
     delete:
       operationId: revokeAPIKey
       tags: [Credentials]

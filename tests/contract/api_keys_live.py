@@ -3,10 +3,11 @@
 
 Creating and revoking an API key needs a session that signed in with
 two-factor authentication, and the primary contract run's fixture admin has
-none, so these three operations are proved here instead:
+none, so these four operations are proved here instead:
 
     GET    /api/v1/accounts/{id}/api-keys
     POST   /api/v1/accounts/{id}/api-keys
+    PATCH  /api/v1/accounts/{id}/api-keys/{credential_id}
     DELETE /api/v1/accounts/{id}/api-keys/{credential_id}
 
 The account must be a disposable one on restmail.test (the fixture helper's
@@ -122,6 +123,34 @@ def check_account_deletion(client, plain_token, token):
     client.expect(403, "DELETE", path, token=token, code="forbidden")
 
 
+def check_editing(client, keys, created, secret, domain_path, held, email, plain_token, token):
+    """An edit keeps the secret, holds to the same ceiling, and applies to the next request."""
+    key = f"{keys}/{created['id']}"
+
+    def patch(want, body, as_token, code=None):
+        # An edit spends login's budget, which the checks after this suite need too:
+        # wait for each one's token instead of draining it.
+        time.sleep(1.1)
+        return client.expect(want, "PATCH", key, body, as_token, code=code)
+
+    patch(403, held, plain_token, code="two_factor_required")
+    patch(403, {**held, "password": held["password"] + "-wrong"}, token, code="invalid_password")
+    patch(403, {**held, "permissions": [{"capability": "domains:read", "scope": "*"}]}, token, code="forbidden")
+    patch(422, {**held, "permissions": []}, token, code="validation_failed")
+    # A key cannot change itself: these routes are for sessions.
+    patch(401, held, secret)
+
+    other = [{"capability": "mail:read", "scope": f"mailbox:{email.lower()}"}]
+    edited = patch(200, {**held, "permissions": other}, token)["data"]
+    assert_no_secret(edited)
+    if edited["permissions"] != other or edited["public_id"] != created["public_id"]:
+        raise AssertionError(f"edit answered {edited!r}")
+    # The same secret, at once: it no longer reaches the domain.
+    client.expect(403, "GET", domain_path, token=secret)
+    patch(200, held, token)
+    client.expect(200, "GET", domain_path, token=secret)
+
+
 def run(base_url, email, password, domain_id):
     require_fixture_account(email)
     client = Client(base_url)
@@ -180,6 +209,9 @@ def run(base_url, email, password, domain_id):
     # These routes accept JWT sessions only, so a raw key is not a session.
     client.expect(401, "GET", keys, token=secret)
     client.expect(401, "POST", keys, request, secret)
+
+    check_editing(client, keys, created, secret, domain_path, {
+        "password": password, "permissions": request["permissions"]}, email, plain_token, token)
 
     client.expect(403, "DELETE", f"{keys}/{created['id']}", token=plain_token, code="two_factor_required")
     client.expect(204, "DELETE", f"{keys}/{created['id']}", token=token)
