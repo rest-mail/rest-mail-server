@@ -1,0 +1,9 @@
+{
+  "634": [
+    "changeOwnPassword",
+    "confirmTwoFactor",
+    "disableTwoFactor",
+    "enrollTwoFactor",
+    "getTwoFactorStatus"
+  ]
+}
