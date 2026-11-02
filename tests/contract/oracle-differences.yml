@@ -355,14 +355,6 @@
   reason: >-
     The optional sample email retains its previous null/omission semantics. The sidecar endpoints accept arbitrary sample JSON and forward it unchanged; engine previews bind a partial canonical email.
 - operation: testPipeline
-  difference: "response 200 application/json.properties.data.properties.auth_results.items.properties.method.enum: openapi.yaml [\"arc\",\"dkim\",\"dmarc\",\"spf\"], generated absent"
-  reason: >-
-    The runtime pipeline result uses string-backed Action/AuthResult fields; defer and filter-provided authentication values are not limited to the oracle's narrower enum.
-- operation: testPipeline
-  difference: "response 200 application/json.properties.data.properties.auth_results.items.properties.property.enum: openapi.yaml [\"header.d\",\"header.from\",\"smtp.helo\",\"smtp.mailfrom\"], generated absent"
-  reason: >-
-    The runtime pipeline result uses string-backed Action/AuthResult fields; defer and filter-provided authentication values are not limited to the oracle's narrower enum.
-- operation: testPipeline
   difference: "response 200 application/json.properties.data.properties.final_action.enum: openapi.yaml [\"continue\",\"discard\",\"quarantine\",\"reject\"], generated absent"
   reason: >-
     The runtime pipeline result uses string-backed Action/AuthResult fields; defer and filter-provided authentication values are not limited to the oracle's narrower enum.

@@ -243,40 +243,42 @@ type ProtocolSignedIn struct {
 }
 
 type Message struct {
-	ID                uint            `json:"id"`
-	MailboxID         uint            `json:"mailbox_id"`
-	Folder            string          `json:"folder"`
-	MsgID             string          `json:"message_id" description:"The RFC 5322 Message-ID"`
-	InReplyTo         string          `json:"in_reply_to"`
-	References        string          `json:"references"`
-	ThreadID          string          `json:"thread_id"`
-	Sender            string          `json:"sender"`
-	SenderName        string          `json:"sender_name"`
-	RecipientsTo      json.RawMessage `json:"recipients_to"`
-	RecipientsCc      json.RawMessage `json:"recipients_cc"`
-	Subject           string          `json:"subject"`
-	BodyText          string          `json:"body_text,omitempty"`
-	BodyHTML          string          `json:"body_html,omitempty"`
-	Headers           json.RawMessage `json:"headers,omitempty"`
-	CalendarEventsRaw json.RawMessage `json:"calendar_events,omitempty"`
-	SizeBytes         int             `json:"size_bytes"`
-	RawSize           int             `json:"raw_size" description:"The exact octet count of the stored raw message; 0 when none is stored"`
-	DowngradedSize    int             `json:"downgraded_size" description:"The octet count of the stored raw message with its headers downgraded to ASCII (RFC 6857), as sent to a POP3 or IMAP client that has not enabled UTF-8; 0 when not measured"`
-	ReceivedTLS       *bool           `json:"received_tls,omitempty" description:"For an inbound-MX delivery, whether it arrived encrypted"`
-	TLSVersion        string          `json:"tls_version,omitempty"`
-	HasAttachments    bool            `json:"has_attachments"`
-	IsAnswered        bool            `json:"is_answered,omitempty"`
-	IsRead            bool            `json:"is_read"`
-	IsDSN             bool            `json:"is_dsn" description:"A delivery status notification this server generated"`
-	IsFlagged         bool            `json:"is_flagged"`
-	IsStarred         bool            `json:"is_starred"`
-	IsDraft           bool            `json:"is_draft"`
-	IsDeleted         bool            `json:"is_deleted"`
-	ReceivedAt        time.Time       `json:"received_at"`
-	DateHeader        *time.Time      `json:"date_header"`
-	CreatedAt         time.Time       `json:"created_at"`
-	UpdatedAt         time.Time       `json:"updated_at"`
-	Mailbox           *Mailbox        `json:"mailbox,omitempty" description:"Present only when the mailbox association is loaded"`
+	ID                uint                  `json:"id"`
+	MailboxID         uint                  `json:"mailbox_id"`
+	Folder            string                `json:"folder"`
+	MsgID             string                `json:"message_id" description:"The RFC 5322 Message-ID"`
+	InReplyTo         string                `json:"in_reply_to"`
+	References        string                `json:"references"`
+	ThreadID          string                `json:"thread_id"`
+	Sender            string                `json:"sender"`
+	SenderName        string                `json:"sender_name"`
+	RecipientsTo      json.RawMessage       `json:"recipients_to"`
+	RecipientsCc      json.RawMessage       `json:"recipients_cc"`
+	Subject           string                `json:"subject"`
+	BodyText          string                `json:"body_text,omitempty"`
+	BodyHTML          string                `json:"body_html,omitempty"`
+	Headers           json.RawMessage       `json:"headers,omitempty"`
+	CalendarEventsRaw json.RawMessage       `json:"calendar_events,omitempty"`
+	SizeBytes         int                   `json:"size_bytes"`
+	RawSize           int                   `json:"raw_size" description:"The exact octet count of the stored raw message; 0 when none is stored"`
+	DowngradedSize    int                   `json:"downgraded_size" description:"The octet count of the stored raw message with its headers downgraded to ASCII (RFC 6857), as sent to a POP3 or IMAP client that has not enabled UTF-8; 0 when not measured"`
+	ReceivedTLS       *bool                 `json:"received_tls,omitempty" description:"For an inbound-MX delivery, whether it arrived encrypted"`
+	TLSVersion        string                `json:"tls_version,omitempty"`
+	HasAttachments    bool                  `json:"has_attachments"`
+	IsAnswered        bool                  `json:"is_answered,omitempty"`
+	IsRead            bool                  `json:"is_read"`
+	IsDSN             bool                  `json:"is_dsn" description:"A delivery status notification this server generated"`
+	IsFlagged         bool                  `json:"is_flagged"`
+	IsStarred         bool                  `json:"is_starred"`
+	IsDraft           bool                  `json:"is_draft"`
+	IsDeleted         bool                  `json:"is_deleted"`
+	ReceivedAt        time.Time             `json:"received_at"`
+	DateHeader        *time.Time            `json:"date_header"`
+	CreatedAt         time.Time             `json:"created_at"`
+	UpdatedAt         time.Time             `json:"updated_at"`
+	Mailbox           *Mailbox              `json:"mailbox,omitempty" description:"Present only when the mailbox association is loaded"`
+	AuthResults       []pipeline.AuthResult `json:"auth_results,omitempty" description:"The SPF, DKIM, ARC and DMARC verdicts this server reached at delivery; omitted when it reached none, as on a sent message or a draft"`
+	AuthVerdict       string                `json:"auth_verdict,omitempty" enums:"signed,unsigned,mismatch" description:"One state for the reader, derived from auth_results. mismatch means DMARC failed; unsigned means nothing verified, which is not a failure. None of these says a message is safe"`
 }
 
 type Mailbox struct {

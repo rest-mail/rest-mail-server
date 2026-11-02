@@ -14402,6 +14402,22 @@ components:
             to ASCII (RFC 6857), as sent to a POP3 or IMAP client that has not
             enabled UTF-8. Equals raw_size when the headers are already ASCII.
             0 when not measured; consumers should fall back to raw_size.
+        auth_results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuthResult'
+          description: >-
+            The SPF, DKIM, ARC and DMARC verdicts this server reached at
+            delivery. Omitted when it reached none, as on a sent message or a
+            draft.
+        auth_verdict:
+          type: string
+          enum: [signed, unsigned, mismatch]
+          description: >-
+            One state for the reader, derived from auth_results: signed,
+            unsigned or mismatch. mismatch means DMARC failed; unsigned means
+            nothing verified, which is not a failure. None of these says a
+            message is safe.
         has_attachments:
           type: boolean
         is_read:
