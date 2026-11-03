@@ -54,3 +54,11 @@ advertised.
   are added to a revision of this protocol" (§7.1), and RFC 7162 §3.2.11
   requires CLOSED of a server that "advertises "QRESYNC" or "CONDSTORE"",
   which this one does not. ENABLE IMAP4rev2 will turn it on.
+- LIST-EXTENDED in full (RFC 5258, folded into RFC 9051 §6.3.9) needs a real
+  subscription list: "the list MUST include exactly those mailbox names that
+  match the canonical list pattern and are subscribed to" (§3.1), names that
+  no longer exist included. The optional `imap.Subscriber` interface gives the
+  host that list; SUBSCRIBE, UNSUBSCRIBE, LSUB and the SUBSCRIBED selection and
+  return options use it, and RFC 5258 §5 examples 2, 3, 5, 6, 8, 9 and 10 run
+  against it in `rfctest`. A Mailbox without it keeps the all-folders-subscribed
+  model, so existing hosts see no change.

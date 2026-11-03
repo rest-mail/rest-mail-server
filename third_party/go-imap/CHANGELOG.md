@@ -13,6 +13,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The CLOSED response code (RFC 9051 §§6.3.2, 7.1): SELECT or EXAMINE that
   replaces a selection sends `* OK [CLOSED]` first, to IMAP4rev2 sessions only.
   Nothing enables IMAP4rev2 yet, so IMAP4rev1 sessions see no change.
+- Subscription lists (RFC 5258 §3.1, RFC 3501 §§6.3.6-6.3.9): a Mailbox that
+  implements the new optional `imap.Subscriber` interface keeps the list.
+  SUBSCRIBE and UNSUBSCRIBE change it; LSUB, `LIST (SUBSCRIBED)` and
+  `RETURN (SUBSCRIBED)` read it. A subscribed name that does not exist is
+  answered `\Subscribed \NonExistent`, and LSUB answers an unsubscribed level
+  above a subscribed name `\Noselect`. A Mailbox without it keeps every
+  existing folder subscribed, as before.
 
 ### Fixed
 
