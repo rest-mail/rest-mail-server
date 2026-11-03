@@ -48,7 +48,8 @@ add later, or never got:
    The certificate must be valid for the MX host name; redirects are refused; the
    answer is capped at 4 KiB. The answer names the endpoint:
    `{"endpoint": "https://mail.example.org/restmail"}`. A `404` or `410` here is a
-   verified "not hosted": the sender records that, and uses SMTP.
+   verified "not hosted": the REST Mail server at the MX refuses the domain, and
+   the message bounces, as its SMTP gateway would refuse it too.
 3. **Delivery.** The sender posts the message, DKIM-signed as always, to
    `POST <endpoint>/messages`, again verifying the certificate.
 4. **Acceptance.** The receiver accepts the delivery from a trusted peer network,
@@ -69,6 +70,14 @@ not, so it cannot be used to collect addresses.
   advertisement cannot redirect mail anywhere (#291).
 - **What a sender remembers** is only whether an MX speaks REST, and only for that
   MX host; the endpoint is asked for again on every delivery.
+- **No fallback to SMTP.** Once a sender has identified the recipient's MX as a
+  REST Mail server and taken the upgrade, that message goes by RESTMAIL or not
+  at all. A failure is a failure: retried over RESTMAIL while it is temporary,
+  bounced when it is permanent. The choice is recorded on the queued message, so
+  no later retry is sent by SMTP, whatever the cache or a new `EHLO` says then.
+  There is no setting to allow it: the other server's SMTP gateway delivers
+  through the same REST Mail API, so SMTP could not succeed where RESTMAIL
+  failed, and an attacker who blocks HTTPS cannot push the mail to SMTP (#291).
 
 ## What it is not
 
@@ -88,12 +97,11 @@ not, so it cannot be used to collect addresses.
   [`worker.go`](../../../internal/gateway/queue/worker.go)).
 - **Receiving:** deliveries are authenticated before they are accepted
   ([`internal/api/handlers/restmail_deliver_auth.go`](../../../internal/api/handlers/restmail_deliver_auth.go)).
-- **Fallback today:** a RESTMAIL delivery that fails for any reason other than a
-  verified "not hosted" is retried over SMTP. The design decided in #292 goes
-  further: once a server knows a domain runs REST Mail, it uses only REST for it,
-  so an attacker who blocks HTTPS cannot push the mail back to SMTP. That, and
-  protecting the very first contact, are parked until the core mail flow is
-  complete (#292).
+- **No fallback:** a message is pinned to RESTMAIL when the upgrade is taken
+  (`outbound_queue.transport`), and a failed RESTMAIL delivery is deferred or
+  bounced, never sent by SMTP (#291). Remembering a domain as REST Mail beyond
+  the capability cache's lifetime, and protecting the very first contact, are
+  parked until the core mail flow is complete (#292).
 
 ## Sources
 
