@@ -110,6 +110,12 @@ spec:
             {{- include "restmail.tlsEnv" . | nindent 12 }}
             {{- if .Values.internalMtls.enabled }}
             {{- include "restmail.internalMtls.clientEnv" . | nindent 12 }}
+            # Submission's own client certificate (#1586): a signed-in mail
+            # client's session is opened with rest-mail-smtp-submission.
+            - name: INTERNAL_MTLS_SUBMISSION_CERT
+              value: {{ printf "%s/submission.crt" .Values.internalMtls.mountPath | quote }}
+            - name: INTERNAL_MTLS_SUBMISSION_KEY
+              value: {{ printf "%s/submission.key" .Values.internalMtls.mountPath | quote }}
             {{- end }}
           volumeMounts:
             - name: tls
@@ -176,7 +182,7 @@ spec:
               - key: tls.key
                 path: {{ .Values.tls.keyFilename }}
         {{- if .Values.internalMtls.enabled }}
-        {{- include "restmail.internalMtls.volume" (list . "smtp-delivery") | nindent 8 }}
+        {{- include "restmail.internalMtls.volume" (list . "smtp") | nindent 8 }}
         {{- end }}
         {{- if .Values.smtp.dane.enabled }}
         - name: dane-config

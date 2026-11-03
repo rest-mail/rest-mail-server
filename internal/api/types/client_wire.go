@@ -52,8 +52,10 @@ type userInfo struct {
 	DisplayName string `json:"display_name"`
 }
 
-type protocolSignInRequest struct {
+type gatewaySessionOpenRequest struct {
 	Protocol string `json:"protocol" enums:"imap,pop3,smtp" message:"must be \"imap\", \"pop3\" or \"smtp\"" missing:"must be \"imap\", \"pop3\" or \"smtp\""`
+	Address  string `json:"address" format:"email" description:"The account's address, as the mail client gave it"`
+	Password string `json:"password" format:"password" description:"What the mail client gave as its password: an app password, or one of the account's passwords. Never stored or recorded"`
 }
 
 type sendMessageRequest struct {
@@ -232,12 +234,6 @@ type dkimEntry struct {
 type setDKIMKeyBody struct {
 	Selector   string `json:"selector" minLength:"1" maxLength:"63" pattern:"^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*$" message:"Must be a DNS label (letters, digits, hyphens), at most 63 characters"`
 	PrivateKey string `json:"private_key" minLength:"1" message:"required"`
-}
-
-type ProtocolSignedIn struct {
-	CredentialID   uint     `json:"credential_id"`
-	CredentialKind string   `json:"credential_kind" enums:"password,app_password"`
-	User           userInfo `json:"user"`
 }
 
 type Message struct {
@@ -420,8 +416,8 @@ type LoginResponse = loginResponse
 // UserInfo is the userInfo wire type used by the endpoint registration.
 type UserInfo = userInfo
 
-// ProtocolSignInRequest is the protocolSignInRequest wire type used by the endpoint registration.
-type ProtocolSignInRequest = protocolSignInRequest
+// GatewaySessionOpenRequest is the gatewaySessionOpenRequest wire type used by the endpoint registration.
+type GatewaySessionOpenRequest = gatewaySessionOpenRequest
 
 // SendMessageRequest is the sendMessageRequest wire type used by the endpoint registration.
 type SendMessageRequest = sendMessageRequest

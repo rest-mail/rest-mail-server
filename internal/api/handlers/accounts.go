@@ -77,7 +77,7 @@ func (h *AccountHandler) RegisterReads(rs endpoint.Routes) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}",
 		OperationID: "getAccount", Summary: "Get an account this one may read", Tags: tags,
 		Errors:   []int{http.StatusNotFound},
-		Security: handlerChecked(models.CapMailRead, "CookieAuth", "BearerAuth", "APIKeyAuth", "BasicAuth")}, h.get)
+		Security: handlerChecked(models.CapMailRead, "CookieAuth", "BearerAuth", "APIKeyAuth", "GatewaySessionAuth")}, h.get)
 }
 
 // RegisterCreate registers creating an account, behind audit. Its routes take a session or a

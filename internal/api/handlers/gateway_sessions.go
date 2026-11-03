@@ -42,8 +42,8 @@ func NewGatewaySessionHandler(db *gorm.DB, services middleware.GatewayServices) 
 }
 
 // GatewaySessionRouteChecks are the open route's checks: the mail client's
-// credential, sent once with HTTP Basic and checked as the mail routes check it
-// (refusals recorded and throttled), login's throttle, and the audit.
+// address and password, sent once in the body (middleware.SessionPasswords:
+// refusals recorded and throttled), login's throttle, and the audit.
 type GatewaySessionRouteChecks struct {
 	Credential endpoint.Middleware
 	Throttle   endpoint.Middleware
@@ -58,13 +58,14 @@ func (h *GatewaySessionHandler) Register(rs endpoint.Routes, checks GatewaySessi
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/gateway-sessions",
 		OperationID: "openGatewaySession", Summary: "Open a mail client's connection session (protocol gateways)", Tags: tags,
 		Description: "Internal: served on the mTLS listener, for a gateway presenting its own client certificate, which names its service " +
-			"(IMAP, POP3 or SMTP submission). The mail client's address and password or app password come once, as HTTP Basic, " +
-			"and are checked as the mail routes check them. The answer's token is sent as Bearer on every call the gateway then " +
+			"(IMAP, POP3 or SMTP submission). The mail client's address and password or app password come once, in the body: " +
+			"this is the only request that takes a mail client's password. A refused one is recorded as auth.credential_refused and " +
+			"refusals are throttled; an account with two-factor authentication needs an app password. The answer's token is sent as Bearer on every call the gateway then " +
 			"makes for that connection, over the internal listener with the same certificate; the session is checked on every " +
 			"request, so revoking the credential or the account's sessions ends it at the next one. protocol must be the one the " +
 			"service serves; a caller without a gateway certificate is 403 gateway_required.",
 		Status:   http.StatusCreated,
-		Security: []oapifly.SecurityRequirement{{"BasicAuth": nil}}, Errors: []int{http.StatusForbidden},
+		Security: oapifly.Public, Errors: []int{http.StatusForbidden},
 		Middleware: []endpoint.Middleware{checks.Credential, checks.Throttle,
 			checks.Audit("auth.gateway_session_open", middleware.AuditBodyFields("protocol"))}}, h.open)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/gateway-sessions/current",
@@ -81,7 +82,7 @@ func errGatewayRequired() error {
 }
 
 // POST /api/v1/gateway-sessions
-func (h *GatewaySessionHandler) open(r *http.Request, req apitypes.ProtocolSignInRequest) (GatewaySessionOpened, error) {
+func (h *GatewaySessionHandler) open(r *http.Request, req apitypes.GatewaySessionOpenRequest) (GatewaySessionOpened, error) {
 	service := h.services.Service(r)
 	protocol, ok := gatewayServiceProtocols[service]
 	if !ok {
@@ -89,8 +90,8 @@ func (h *GatewaySessionHandler) open(r *http.Request, req apitypes.ProtocolSignI
 	}
 	claims := middleware.GetClaims(r)
 	if claims == nil || claims.CredentialID == 0 || claims.IsScopedCredential() || claims.GatewaySessionID != 0 {
-		return GatewaySessionOpened{}, endpoint.Refuse(http.StatusBadRequest, "basic_required",
-			"Open a session with HTTP Basic: the account's address, and its password or an app password")
+		return GatewaySessionOpened{}, endpoint.Refuse(http.StatusBadRequest, "credential_required",
+			"Send the account's address, and its password or an app password")
 	}
 	if req.Protocol != protocol {
 		return GatewaySessionOpened{}, endpoint.Invalid(map[string]string{"protocol": `must be "` + protocol + `", the protocol this gateway serves`})
@@ -138,8 +139,7 @@ func (h *GatewaySessionHandler) close(r *http.Request, _ struct{}) (endpoint.Emp
 
 // GatewaySessionVerifier checks a gateway session token on every request for
 // middleware.GatewaySessions, and builds the claims the request runs with: the
-// account's, with the session's credential, exactly as that credential sent
-// with HTTP Basic runs, so the session reaches no more than the credential
+// account's, with the session's credential, so the session reaches no more than the credential
 // does (an app password only its own mailbox, #344), and never the admin
 // routes, which take no gateway session.
 func GatewaySessionVerifier(db *gorm.DB) middleware.GatewaySessionUse {

@@ -479,7 +479,7 @@ func TestAppPasswords_EndToEnd(t *testing.T) {
 		if rr := f.do(http.MethodGet, folders, basic(f.address, "not the password"), ""); rr.Code != http.StatusUnauthorized {
 			t.Fatalf("a wrong password with Basic: %d", rr.Code)
 		}
-		es := f.entries(middleware.AuditActionBasicRefused)
+		es := f.entries(middleware.AuditActionCredentialRefused)
 		if len(es) != 2 || es[0].Target["reason"] != auth.CredentialWrongSecret || es[0].CredentialID != nil ||
 			es[1].Target["reason"] != auth.CredentialWrongPassword || es[0].ActorName != f.address {
 			t.Errorf("refusal entries: %+v", es)
@@ -494,7 +494,7 @@ func TestAppPasswords_EndToEnd(t *testing.T) {
 		if rr := f.do(http.MethodGet, folders, appPassword, ""); rr.Code != http.StatusUnauthorized {
 			t.Fatalf("folders after revoking: %d", rr.Code)
 		}
-		es := f.entries(middleware.AuditActionBasicRefused)
+		es := f.entries(middleware.AuditActionCredentialRefused)
 		last := es[len(es)-1]
 		if last.Target["reason"] != auth.CredentialRevoked || last.CredentialID == nil || *last.CredentialID != created.ID {
 			t.Errorf("refusal after revoking: %+v", last)
@@ -566,7 +566,7 @@ func TestAppPasswords_Expiry(t *testing.T) {
 	if rr := f.do(http.MethodGet, folders, appPassword, ""); rr.Code != http.StatusUnauthorized {
 		t.Fatalf("after expiry: %d", rr.Code)
 	}
-	es := f.entries(middleware.AuditActionBasicRefused)
+	es := f.entries(middleware.AuditActionCredentialRefused)
 	if len(es) != 1 || es[0].Target["reason"] != auth.CredentialExpired {
 		t.Errorf("refusal entries: %+v", es)
 	}
@@ -724,7 +724,7 @@ func TestAppPasswords_CreatingIsThrottledLikeLogin(t *testing.T) {
 
 // Basic refusals past the budget are answered 429 by the production router,
 // with the whole-second Retry-After every 429 documents.
-func TestBasicCredentials_RefusalsPastTheBudgetAreThrottled(t *testing.T) {
+func TestSessionPasswords_RefusalsPastTheBudgetAreThrottled(t *testing.T) {
 	f := newCredentialFixtureWith(t, &config.Config{
 		Environment:          "test",
 		AuthRateLimitEnabled: true,
@@ -922,7 +922,7 @@ func TestAppPasswords_RevokedByANewPassword(t *testing.T) {
 				t.Errorf("folders with %d after a new password: %d", created.ID, rr.Code)
 			}
 		}
-		es := f.entries(middleware.AuditActionBasicRefused)
+		es := f.entries(middleware.AuditActionCredentialRefused)
 		if len(es) == 0 || es[len(es)-1].Target["reason"] != auth.CredentialRevoked {
 			t.Errorf("refusals after a new password: %+v", es)
 		}

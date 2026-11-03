@@ -242,7 +242,7 @@ func attachmentConditionalResponses() []oapifly.EndpointResponse {
 // the mail routes take; an attachment, or a message, in an account the session cannot read is
 // 404, as one that is not there.
 func (h *AttachmentHandler) Register(rs endpoint.Routes) {
-	security := handlerChecked(models.CapMailRead, "CookieAuth", "BearerAuth", "APIKeyAuth", "BasicAuth")
+	security := handlerChecked(models.CapMailRead, "CookieAuth", "BearerAuth", "APIKeyAuth", "GatewaySessionAuth")
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/messages/{id}/attachments",
 		OperationID: "listAttachments", Summary: "List a message's attachments", Tags: []string{"Attachments"},
 		Errors: []int{http.StatusNotFound}, Security: security}, h.listAttachments)

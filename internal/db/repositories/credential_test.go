@@ -431,18 +431,18 @@ func TestCredential_PasswordsAreCredentials(t *testing.T) {
 	}
 
 	memo := &countingMemo{remembered: map[string]bool{}}
-	cred, account, err := repo.VerifyBasic(mb.Address, "second password!", now, memo)
+	cred, account, err := repo.VerifyPassword(mb.Address, "second password!", now, memo)
 	if err != nil || cred.ID != rows[1].ID || account.ID != mb.ID {
-		t.Fatalf("VerifyBasic(password) = %v %v %v", cred, account, err)
+		t.Fatalf("VerifyPassword(password) = %v %v %v", cred, account, err)
 	}
-	if _, _, err := repo.VerifyBasic(mb.Address, "second password!", now, memo); err != nil || memo.hits != 1 {
+	if _, _, err := repo.VerifyPassword(mb.Address, "second password!", now, memo); err != nil || memo.hits != 1 {
 		t.Errorf("the second check was not remembered: hits %d, err %v", memo.hits, err)
 	}
-	if got := refusalReason(t, func() error { _, _, e := repo.VerifyBasic(mb.Address, "wrong", now, memo); return e }()); got.Reason != auth.CredentialWrongPassword || got.CredentialID != nil {
+	if got := refusalReason(t, func() error { _, _, e := repo.VerifyPassword(mb.Address, "wrong", now, memo); return e }()); got.Reason != auth.CredentialWrongPassword || got.CredentialID != nil {
 		t.Errorf("wrong password refused as %+v", got)
 	}
 	if got := refusalReason(t, func() error {
-		_, _, e := repo.VerifyBasic("nobody@example.test", "second password!", now, nil)
+		_, _, e := repo.VerifyPassword("nobody@example.test", "second password!", now, nil)
 		return e
 	}()); got.Reason != auth.CredentialWrongPassword {
 		t.Errorf("unknown address refused as %+v", got)
@@ -454,22 +454,22 @@ func TestCredential_PasswordsAreCredentials(t *testing.T) {
 	if err := gdb.Create(totp).Error; err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := repo.VerifyBasic(mb.Address, "second password!", now, nil); err != nil {
+	if _, _, err := repo.VerifyPassword(mb.Address, "second password!", now, nil); err != nil {
 		t.Errorf("an unconfirmed authenticator already counts: %v", err)
 	}
 	gdb.Model(totp).Update("confirmed_at", now)
-	if got := refusalReason(t, func() error { _, _, e := repo.VerifyBasic(mb.Address, "second password!", now, nil); return e }()); got.Reason != auth.CredentialNeedsAppPassword || got.CredentialID == nil {
+	if got := refusalReason(t, func() error { _, _, e := repo.VerifyPassword(mb.Address, "second password!", now, nil); return e }()); got.Reason != auth.CredentialNeedsAppPassword || got.CredentialID == nil {
 		t.Errorf("password of a 2FA account refused as %+v", got)
 	}
 	gdb.Model(totp).Update("revoked_at", now)
 
 	// An account in setup, or disabled, cannot use its password over Basic.
 	gdb.Model(&models.Mailbox{}).Where("id = ?", mb.ID).Update("password_change_required", true)
-	if got := refusalReason(t, func() error { _, _, e := repo.VerifyBasic(mb.Address, "second password!", now, nil); return e }()); got.Reason != auth.CredentialAccountInSetup {
+	if got := refusalReason(t, func() error { _, _, e := repo.VerifyPassword(mb.Address, "second password!", now, nil); return e }()); got.Reason != auth.CredentialAccountInSetup {
 		t.Errorf("password of an account in setup refused as %+v", got)
 	}
 	gdb.Model(&models.Mailbox{}).Where("id = ?", mb.ID).Updates(map[string]any{"password_change_required": false, "active": false})
-	if got := refusalReason(t, func() error { _, _, e := repo.VerifyBasic(mb.Address, "second password!", now, nil); return e }()); got.Reason != auth.CredentialAccountInactive {
+	if got := refusalReason(t, func() error { _, _, e := repo.VerifyPassword(mb.Address, "second password!", now, nil); return e }()); got.Reason != auth.CredentialAccountInactive {
 		t.Errorf("password of a disabled account refused as %+v", got)
 	}
 }

@@ -301,8 +301,8 @@ func TestFreshInstall_EndToEnd(t *testing.T) {
 	var adminApp createdCredential
 	f.expect(f.do(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/credentials", admin.ID), adminS.bearer(),
 		fmt.Sprintf(`{"name":"Thunderbird","password":%q}`, freshAdminPW)), http.StatusCreated, "admin@'s app password", &adminApp)
-	if _, err := gateway.SignIn(freshAdmin, freshAdminPW, "smtp"); !apiclient.IsAuthRejection(err) {
-		t.Fatalf("admin@'s password over SMTP = %v, want refused", err)
+	if _, err := gateway.OpenSession(freshAdmin, freshAdminPW, "imap"); !apiclient.IsAuthRejection(err) {
+		t.Fatalf("admin@'s password at a gateway = %v, want refused", err)
 	}
 	received := "to chris@, over SMTP"
 	c := dialSubmission(t, submission, rootCAs, freshAdmin, adminApp.Password)

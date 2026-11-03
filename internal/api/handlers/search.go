@@ -40,7 +40,7 @@ func (h *SearchHandler) Register(rs endpoint.Routes) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/search",
 		OperationID: "searchMessages", Summary: "Search messages", Tags: []string{"Search"},
 		Errors:   []int{http.StatusNotFound},
-		Security: handlerChecked(models.CapMailRead, "CookieAuth", "BearerAuth", "APIKeyAuth", "BasicAuth")}, h.search)
+		Security: handlerChecked(models.CapMailRead, "CookieAuth", "BearerAuth", "APIKeyAuth", "GatewaySessionAuth")}, h.search)
 }
 
 // search performs full-text search across messages for an account.

@@ -272,9 +272,9 @@ func (r *CredentialRepository) HasTwoFactor(accountID uint) (bool, error) {
 	return count > 0, err
 }
 
-// VerifyBasic checks what a client sent with HTTP Basic: an app password,
+// VerifyPassword checks the password a mail client gave its gateway: an app password,
 // recognised by its format, or else one of the account's passwords. It is the
-// one way the protocol gateways sign in. A password is refused for an account
+// one way the protocol gateways sign in (opening a connection session). A password is refused for an account
 // that has two-factor authentication (a mail client cannot send a code: it
 // needs an app password) or is still in setup.
 //
@@ -282,7 +282,7 @@ func (r *CredentialRepository) HasTwoFactor(accountID uint) (bool, error) {
 // credential could not be checked.
 //
 // memo, when not nil, remembers passwords that matched (see PasswordMemo).
-func (r *CredentialRepository) VerifyBasic(address, secret string, now time.Time, memo PasswordMemo) (*models.Credential, *models.Mailbox, error) {
+func (r *CredentialRepository) VerifyPassword(address, secret string, now time.Time, memo PasswordMemo) (*models.Credential, *models.Mailbox, error) {
 	if auth.IsAppPassword(secret) {
 		return r.VerifyAppPassword(address, secret, now)
 	}

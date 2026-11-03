@@ -266,12 +266,13 @@ func (a *Auditor) write(e *models.AuditEntry) {
 	}
 }
 
-// BasicRefused records a credential BasicCredentials refused, as one
-// auth.basic entry: the address given, why it was refused, the public id
+// CredentialRefused records a refused credential (a mail client's password at
+// a gateway session's open, SessionPasswords, or an API key), as one
+// auth.credential_refused entry: the address given, why it was refused, the public id
 // presented, and the credential when its secret matched. It never records the
 // password.
-func (a *Auditor) BasicRefused(r *http.Request, address string, refusal *auth.CredentialRefusal) {
-	e := newEntry(AuditActionBasicRefused, r, http.StatusUnauthorized, time.Now())
+func (a *Auditor) CredentialRefused(r *http.Request, address string, refusal *auth.CredentialRefusal) {
+	e := newEntry(AuditActionCredentialRefused, r, http.StatusUnauthorized, time.Now())
 	e.ErrorCode = "unauthorized"
 	e.ActorKind, e.ActorName = models.AuditActorAccount, address
 	e.CredentialID = refusal.CredentialID
@@ -282,9 +283,10 @@ func (a *Auditor) BasicRefused(r *http.Request, address string, refusal *auth.Cr
 	a.write(e)
 }
 
-// AuditActionBasicRefused is the action of a credential refused over HTTP
-// Basic: an app password, or an account's password from a protocol gateway.
-const AuditActionBasicRefused = "auth.basic"
+// AuditActionCredentialRefused is the action of a refused credential: an app
+// password or an account's password a protocol gateway sent to open a
+// connection session, or an API key.
+const AuditActionCredentialRefused = "auth.credential_refused"
 
 // AuditActionCredentialsRevoke is the action of a revoked credential: one its
 // owner revoked, or one revoked with a reason, such as a change of password.

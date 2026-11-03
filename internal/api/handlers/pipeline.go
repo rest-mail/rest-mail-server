@@ -899,7 +899,7 @@ type quarantinePath struct {
 // take; the handler checks the account is reachable with mail:read to list and mail:write to
 // release or delete, and answers 403 forbidden when it is not.
 func (h *PipelineHandler) RegisterQuarantine(rs endpoint.Routes) {
-	schemes := []string{"CookieAuth", "BearerAuth", "APIKeyAuth", "BasicAuth"}
+	schemes := []string{"CookieAuth", "BearerAuth", "APIKeyAuth", "GatewaySessionAuth"}
 	tags := []string{"Quarantine"}
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/quarantine",
 		OperationID: "listQuarantine", Summary: "List quarantined messages", Tags: tags,

@@ -143,48 +143,6 @@ func New(baseURL string, opts ...Option) *Client {
 
 type LoginResponse = endpoint.Data[apitypes.LoginResponse]
 
-type protocolSignInEnvelope = endpoint.Data[apitypes.ProtocolSignedIn]
-
-// SignInResponse combines the protocol response with the local Authorization header.
-// The credential stays out of JSON; it is transport state, not an API response field.
-type SignInResponse struct {
-	protocolSignInEnvelope
-	AccessToken string `json:"-"`
-}
-
-// SignIn signs a mail client in over protocol ("imap", "pop3" or "smtp") with
-// what it gave as its password: one of the account's passwords, or an app
-// password (#344). It is the one way the gateways sign in. No session is made:
-// the response's AccessToken holds the address and password as HTTP Basic
-// credentials, which every call that follows sends, and the API checks them
-// against the account's credentials each time, so a revoked app password or a
-// changed password stops working at the next call. An account with
-// two-factor authentication signs in only with an app password.
-func (c *Client) SignIn(email, password, protocol string) (*SignInResponse, error) {
-	jsonBody, err := json.Marshal(apitypes.ProtocolSignInRequest{Protocol: protocol})
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequest("POST", c.baseURL+"/api/v1/auth/protocol-sign-in", bytes.NewReader(jsonBody))
-	if err != nil {
-		return nil, err
-	}
-	req.SetBasicAuth(email, password)
-	req.Header.Set("Content-Type", "application/json")
-	httpResp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("POST /api/v1/auth/protocol-sign-in: %w", err)
-	}
-	defer httpResp.Body.Close()
-
-	var resp SignInResponse
-	if err := c.decodeResponse(httpResp, &resp); err != nil {
-		return nil, err
-	}
-	resp.AccessToken = req.Header.Get("Authorization")
-	return &resp, nil
-}
-
 type gatewaySessionEnvelope = endpoint.Data[apitypes.GatewaySessionOpened]
 
 // gatewaySessionPrefix starts a connection session token.
@@ -192,13 +150,13 @@ const gatewaySessionPrefix = "rmgs_"
 
 // OpenSession opens a connection session for a mail client that signed in over
 // protocol ("imap", "pop3" or "smtp") with what it gave as its password (#1586).
-// The address and password go once, to the API's internal listener with the
-// gateway's own client certificate, which tells the API which gateway service
+// The address and password go once, in the body (there is no HTTP Basic), to
+// the API's internal listener with the gateway's own client certificate, which tells the API which gateway service
 // is asking. The answer's Token is what every call for the connection then
 // sends, and CloseSession ends it at logout or disconnect. The API checks the
 // session on every call, so a revoked app password fails at the next one.
 func (c *Client) OpenSession(email, password, protocol string) (*apitypes.GatewaySessionOpened, error) {
-	jsonBody, err := json.Marshal(apitypes.ProtocolSignInRequest{Protocol: protocol})
+	jsonBody, err := json.Marshal(apitypes.GatewaySessionOpenRequest{Protocol: protocol, Address: email, Password: password})
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +164,6 @@ func (c *Client) OpenSession(email, password, protocol string) (*apitypes.Gatewa
 	if err != nil {
 		return nil, err
 	}
-	req.SetBasicAuth(email, password)
 	req.Header.Set("Content-Type", "application/json")
 	httpResp, err := c.internalHTTPClient.Do(req)
 	if err != nil {
@@ -238,14 +195,9 @@ func (c *Client) destination(token string) (string, *http.Client) {
 	return c.baseURL, c.httpClient
 }
 
-// authorize sets the Authorization header of a call made with token: HTTP Basic
-// credentials as SignIn returns them, or else a JWT access token, sent as
-// Bearer.
+// authorize sets the Authorization header of a call made with token (a
+// connection session's, or a JWT access token), sent as Bearer.
 func authorize(req *http.Request, token string) {
-	if strings.HasPrefix(token, "Basic ") {
-		req.Header.Set("Authorization", token)
-		return
-	}
 	req.Header.Set("Authorization", "Bearer "+token)
 }
 

@@ -85,7 +85,7 @@ type Claims struct {
 	MachineCredentialID uint `json:"machine_credential_id,omitempty"`
 
 	// CredentialID and CredentialKind identify the credential just checked:
-	// HTTP Basic, an API key, or a machine token's live credential. Zero for
+	// a gateway session's credential, an API key, or a machine token's live credential. Zero for
 	// a human session. They are never serialized into a token.
 	CredentialID   uint   `json:"-"`
 	CredentialKind string `json:"-"`
