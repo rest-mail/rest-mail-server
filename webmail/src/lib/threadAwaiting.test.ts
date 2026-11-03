@@ -32,7 +32,7 @@ test('a thread with no waiting state, or an unreadable one, shows no chip', () =
 test('the reader shows the chip beside the due date when the thread is waiting', () => {
   const form = (message: Partial<MessageDetail>) => renderToStaticMarkup(createElement(ThreadDueForm, {
     message: { mailbox_id: 1, thread_id: 'thread', ...message } as MessageDetail,
-    value: '', pending: false, error: '', onValue: () => {}, onSave: () => {}, onClear: () => {},
+    value: '', pending: false, error: '', onValue: () => {}, onSave: () => {}, onClear: () => {}, onAccept: () => {},
   }));
   assert.match(form({ awaiting_since: since(3 * 60 * 60 * 1000) }), /waiting (<!-- -->)?3h/);
   assert.doesNotMatch(form({}), /waiting/);
