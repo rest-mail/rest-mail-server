@@ -2,6 +2,7 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { AppShell } from '../../components/layout/AppShell'
 import { useAuthStore } from '../../lib/stores/authStore'
 import { useCertificateStore } from '../../lib/stores/certificateStore'
+import { holdsInstallationWide } from '../../lib/installationSenderRules'
 import { useEffect } from 'react'
 import { canReach } from '../../lib/access'
 
@@ -24,7 +25,7 @@ function SettingsPage() {
 
   const expiringCount = getExpiringCertificates(30).length
 
-  const allSettingsCards = [
+  const allSettingsCards: { title: string; description: string; icon: string; link: string; badge?: string }[] = [
     {
       title: 'Two-Factor Authentication',
       description: 'Protect your admin account with a TOTP authenticator app',
@@ -50,6 +51,16 @@ function SettingsPage() {
       link: '/settings/certificates',
       badge: expiringCount > 0 ? `${expiringCount} expiring soon` : undefined,
     },
+    ...(holdsInstallationWide(user?.capabilities ?? [], 'domains:read')
+      ? [
+          {
+            title: 'Installation sender rules',
+            description: 'Block or allow senders for every domain at once',
+            icon: '🛡️',
+            link: '/settings/sender-rules',
+          },
+        ]
+      : []),
     {
       title: 'IP Bans',
       description: 'Manage IP address blocklist for security',

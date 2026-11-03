@@ -62,74 +62,108 @@ func (f *domainAllowlistFilter) Execute(ctx context.Context, email *pipeline.Ema
 		senderDomainBare = parts[1]
 	}
 
-	// Check for each recipient's domain
+	// The recipients' domains, by name and ID. A recipient whose domain is not
+	// hosted here has no domain rules, but installation rules still apply to it.
+	type rcptDomain struct {
+		name string
+		id   uint
+	}
+	var domains []rcptDomain
 	for _, rcpt := range email.Envelope.RcptTo {
 		parts := strings.SplitN(rcpt, "@", 2)
 		if len(parts) != 2 {
 			continue
 		}
-		rcptDomain := parts[1]
-
-		// Get domain ID
 		var domainID uint
-		if err := f.db.Table("domains").Where("name = ?", rcptDomain).Pluck("id", &domainID).Error; err != nil {
+		if err := f.db.Table("domains").Where("name = ?", parts[1]).Pluck("id", &domainID).Error; err != nil {
 			continue
 		}
+		domains = append(domains, rcptDomain{name: parts[1], id: domainID})
+	}
 
-		// Check block list first (exact email, then domain pattern)
-		var blockCount int64
-		f.db.Table("domain_sender_rules").
-			Where("domain_id = ? AND list_type = 'block' AND (pattern = ? OR pattern = ?)",
-				domainID, sender, senderDomain).
-			Count(&blockCount)
-
-		if blockCount > 0 {
-			return &pipeline.FilterResult{
-				Type:      pipeline.FilterTypeAction,
-				Action:    pipeline.ActionReject,
-				RejectMsg: f.cfg.RejectMessage,
-				Log: pipeline.FilterLog{
-					Filter: "domain_allowlist",
-					Result: "blocked",
-					Detail: fmt.Sprintf("sender %s blocked for domain %s", sender, rcptDomain),
-				},
-			}, nil
+	// Precedence (#1576): a block wins over an allow, whatever the scope of
+	// either. Every block is checked before any allow: the installation's
+	// blocks, then each recipient domain's. So an installation block cannot
+	// be lifted by a domain's allow, a domain can add blocks of its own, and
+	// one recipient's allow cannot carry the message past another
+	// recipient's block.
+	blocked := func(detail string) *pipeline.FilterResult {
+		return &pipeline.FilterResult{
+			Type:      pipeline.FilterTypeAction,
+			Action:    pipeline.ActionReject,
+			RejectMsg: f.cfg.RejectMessage,
+			Log: pipeline.FilterLog{
+				Filter: "domain_allowlist",
+				Result: "blocked",
+				Detail: detail,
+			},
 		}
-
-		// Check allow list
-		var allowCount int64
-		f.db.Table("domain_sender_rules").
-			Where("domain_id = ? AND list_type = 'allow' AND (pattern = ? OR pattern = ?)",
-				domainID, sender, senderDomain).
-			Count(&allowCount)
-
-		if allowCount > 0 {
-			// A match may skip spam/greylist scanning ONLY when the sender's
-			// identity is actually authenticated and aligned to its domain (SPF or
-			// DKIM). Otherwise a spoofer who forges an allowlisted envelope-from
-			// would reuse the entry to bypass scanning entirely (#177). An
-			// unauthenticated match still passes the allowlist (no reject) but is
-			// scanned like any other mail.
-			skip := []string{"rspamd", "spamassassin", "greylist"}
-			detail := fmt.Sprintf("sender %s allowed for domain %s", sender, rcptDomain)
-			if !senderAuthenticated(ctx, senderDomainBare) {
-				skip = nil
-				detail += " (unauthenticated sender: scanning not skipped)"
-			}
-			return &pipeline.FilterResult{
-				Type:        pipeline.FilterTypeAction,
-				Action:      pipeline.ActionContinue,
-				SkipFilters: skip,
-				Log: pipeline.FilterLog{
-					Filter: "domain_allowlist",
-					Result: "allowed",
-					Detail: detail,
-				},
-			}, nil
+	}
+	if f.installationMatch(sender, senderDomain, "block") {
+		return blocked(fmt.Sprintf("sender %s blocked for the installation", sender)), nil
+	}
+	for _, d := range domains {
+		if f.domainMatch(d.id, sender, senderDomain, "block") {
+			return blocked(fmt.Sprintf("sender %s blocked for domain %s", sender, d.name)), nil
 		}
 	}
 
+	allowedFor := ""
+	for _, d := range domains {
+		if f.domainMatch(d.id, sender, senderDomain, "allow") {
+			allowedFor = "domain " + d.name
+			break
+		}
+	}
+	if allowedFor == "" && f.installationMatch(sender, senderDomain, "allow") {
+		allowedFor = "the installation"
+	}
+	if allowedFor != "" {
+		// A match may skip spam/greylist scanning ONLY when the sender's
+		// identity is actually authenticated and aligned to its domain (SPF or
+		// DKIM). Otherwise a spoofer who forges an allowlisted envelope-from
+		// would reuse the entry to bypass scanning entirely (#177). An
+		// unauthenticated match still passes the allowlist (no reject) but is
+		// scanned like any other mail.
+		skip := []string{"rspamd", "spamassassin", "greylist"}
+		detail := fmt.Sprintf("sender %s allowed for %s", sender, allowedFor)
+		if !senderAuthenticated(ctx, senderDomainBare) {
+			skip = nil
+			detail += " (unauthenticated sender: scanning not skipped)"
+		}
+		return &pipeline.FilterResult{
+			Type:        pipeline.FilterTypeAction,
+			Action:      pipeline.ActionContinue,
+			SkipFilters: skip,
+			Log: pipeline.FilterLog{
+				Filter: "domain_allowlist",
+				Result: "allowed",
+				Detail: detail,
+			},
+		}, nil
+	}
+
 	return continueResult("domain_allowlist", "no matching rules"), nil
+}
+
+// domainMatch reports whether the domain has a rule of listType for the sender's
+// address or its @domain.
+func (f *domainAllowlistFilter) domainMatch(domainID uint, sender, senderDomain, listType string) bool {
+	var n int64
+	f.db.Table("domain_sender_rules").
+		Where("domain_id = ? AND list_type = ? AND (pattern = ? OR pattern = ?)", domainID, listType, sender, senderDomain).
+		Count(&n)
+	return n > 0
+}
+
+// installationMatch reports whether the installation has a rule of listType for the
+// sender's address or its @domain.
+func (f *domainAllowlistFilter) installationMatch(sender, senderDomain, listType string) bool {
+	var n int64
+	f.db.Table("installation_sender_rules").
+		Where("list_type = ? AND (pattern = ? OR pattern = ?)", listType, sender, senderDomain).
+		Count(&n)
+	return n > 0
 }
 
 func continueResult(filter, detail string) *pipeline.FilterResult {
