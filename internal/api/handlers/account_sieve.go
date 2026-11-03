@@ -171,13 +171,14 @@ func sieveFolder(email *pipeline.EmailJSON, mailbox string) string {
 	return rmail.CanonicalFolder(folder)
 }
 
-// sieveFlags are the system flags a Sieve script's imap4flags actions left on the message
-// (RFC 5232), as the message's own fields: \Seen, \Flagged and \Draft. Keywords and
-// \Answered have no field to go in. \Deleted is left too: a deleted message is gone from its
-// folder here, where IMAP's \Deleted only marks one for a later EXPUNGE, so a script that
-// marks one would otherwise hide it.
+// sieveFlags are the flags a Sieve script's imap4flags actions left on the message (RFC 5232),
+// as the message's own fields: \Seen, \Flagged, \Draft and the receipt keyword, which sets
+// the rule class. Other keywords and \Answered have no field to go in. \Deleted is left too: a
+// deleted message is gone from its folder here, where IMAP's \Deleted only marks one for a
+// later EXPUNGE, so a script that marks one would otherwise hide it.
 type sieveFlags struct {
 	seen, flagged, draft bool
+	ruleClass            string
 }
 
 func sieveFlagsOf(email *pipeline.EmailJSON) sieveFlags {
@@ -185,7 +186,9 @@ func sieveFlagsOf(email *pipeline.EmailJSON) sieveFlags {
 	if email == nil || email.Metadata == nil {
 		return flags
 	}
-	for _, flag := range strings.Fields(email.Metadata["imap_flags"]) {
+	keywords := strings.Fields(email.Metadata["imap_flags"])
+	flags.ruleClass = rmail.RuleClassOf(keywords)
+	for _, flag := range keywords {
 		switch strings.ToLower(flag) {
 		case `\seen`:
 			flags.seen = true

@@ -17,11 +17,18 @@ import (
 // gateway delivered is kept, so the API does not narrow it.
 type Message = apitypes.Message
 
-func messageOf(m models.Message) Message {
+// messageClass is the class of a stored message, worked out on read as the authentication
+// results are. Most delivery paths store only the source and no decoded headers, so the
+// source answers when the row has no usable decoded headers.
+func messageClass(m models.Message) string {
 	var headers map[string][]string
-	if err := json.Unmarshal(m.Headers, &headers); err != nil {
-		headers = nil
+	if err := json.Unmarshal(m.Headers, &headers); err != nil || len(headers) == 0 {
+		headers = rmail.SourceHeaders(m.SourceReader())
 	}
+	return rmail.Classify(headers, m.RuleClass)
+}
+
+func messageOf(m models.Message) Message {
 	var mailbox *Mailbox
 	if m.Mailbox.ID != 0 {
 		loaded := mailboxOf(m.Mailbox)
@@ -33,7 +40,7 @@ func messageOf(m models.Message) Message {
 		authVerdict = pipeline.AuthVerdict(authResults)
 	}
 	return Message{
-		Class:             rmail.ClassifyHeaders(headers),
+		Class:             messageClass(m),
 		ID:                m.ID,
 		MailboxID:         m.MailboxID,
 		Folder:            m.Folder,

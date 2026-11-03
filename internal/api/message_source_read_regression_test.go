@@ -36,7 +36,7 @@ func (c messageSourceReadConnection) QueryContext(ctx context.Context, query str
 	if id == "3" {
 		return nil, errors.New("private message lookup detail")
 	}
-	r := &authReadSnapshotRows{columns: []string{"id", "mailbox_id", "folder", "message_id", "sender", "sender_name", "recipients_to", "recipients_cc", "subject", "body_text", "body_html", "headers", "calendar_events", "size_bytes", "raw_size", "received_tls", "tls_version", "has_attachments", "is_read", "is_draft", "is_deleted", "received_at", "date_header", "created_at", "updated_at", "raw_message"}}
+	r := &authReadSnapshotRows{columns: []string{"id", "mailbox_id", "folder", "message_id", "sender", "sender_name", "recipients_to", "recipients_cc", "subject", "body_text", "body_html", "headers", "calendar_events", "size_bytes", "raw_size", "received_tls", "tls_version", "has_attachments", "is_read", "is_draft", "is_deleted", "received_at", "date_header", "created_at", "updated_at", "raw_message", "rule_class"}}
 	if id == "2147483647" {
 		return r, nil
 	}
@@ -48,7 +48,7 @@ func (c messageSourceReadConnection) QueryContext(ctx context.Context, query str
 	if id == "5" {
 		mailbox = 3
 	}
-	if id == "6" || id == "7" || id == "101" || id == "102" {
+	if id == "6" || id == "7" || id == "101" || id == "102" || id == "103" || id == "104" {
 		mailbox = 1
 	}
 	raw := messageSourceReadRaw
@@ -66,7 +66,16 @@ func (c messageSourceReadConnection) QueryContext(ctx context.Context, query str
 	if id == "102" {
 		headers = []byte(`{"Auto-Submitted":["auto-generated"]}`)
 	}
-	r.rows = [][]driver.Value{{n, mailbox, "INBOX", "<message@example.net>", "sender@example.net", "Sender café", []byte(`["recipient@example.com"]`), nil, "Subject café", "Hello café", "<p>Hello café</p>", headers, nil, int64(80), int64(len(raw)), true, "TLS1.3", true, false, false, id == "7", stamp, nil, stamp, stamp, raw}}
+	if id == "104" {
+		raw = "From: sender@example.net\r\nList-Id: News\r\n <news.example.test>\r\n\r\nHello café\r\n"
+		headers = nil
+	}
+	var ruleClass any
+	if id == "103" {
+		ruleClass = "receipt"
+		headers = []byte(`{"List-Id":["<shop.example.test>"]}`)
+	}
+	r.rows = [][]driver.Value{{n, mailbox, "INBOX", "<message@example.net>", "sender@example.net", "Sender café", []byte(`["recipient@example.com"]`), nil, "Subject café", "Hello café", "<p>Hello café</p>", headers, nil, int64(80), int64(len(raw)), true, "TLS1.3", true, false, false, id == "7", stamp, nil, stamp, stamp, raw, ruleClass}}
 	return r, nil
 }
 
@@ -77,7 +86,7 @@ func messageSourceReadScenarios(t *testing.T) map[string]accountReadScenario {
 	})
 	out["domain_grant"] = out["domain_manager"]
 	out["app_password_other"] = out["app_password"]
-	for _, name := range []string{"mailbox_unavailable", "source_missing", "minimal_source", "deleted_message", "classification_newsletter", "classification_notification"} {
+	for _, name := range []string{"mailbox_unavailable", "source_missing", "minimal_source", "deleted_message", "classification_newsletter", "classification_notification", "classification_receipt_rule", "classification_source_headers"} {
 		out[name] = out["found"]
 	}
 	return out

@@ -241,7 +241,7 @@ type ProtocolSignedIn struct {
 }
 
 type Message struct {
-	Class             string                `json:"class" enums:"newsletter,receipt,notification,person" description:"Derived on read from stored headers. newsletter: valid List-Id or HTTP(S)/mailto List-Unsubscribe (list-shaped); notification: otherwise Auto-Submitted auto-generated/auto-replied or Precedence bulk/list/junk; person: otherwise, including malformed signals. receipt is reserved: these headers cannot distinguish commercial receipts from other automated mail. Only newsletter may collapse; person must never be hidden. Not an authenticity or safety verdict"`
+	Class             string                `json:"class" enums:"newsletter,receipt,notification,person" description:"Derived on read from the stored headers or, when none are stored, the stored source's header section, and from the class a Sieve rule recorded at delivery, in this order. receipt: a Sieve rule added the imap4flags keyword $receipt; no header says a message is a receipt, so nothing else assigns this class. newsletter: otherwise valid List-Id or HTTP(S)/mailto List-Unsubscribe (list-shaped); notification: otherwise Auto-Submitted auto-generated/auto-replied or Precedence bulk/list/junk; person: otherwise, including malformed signals. Only newsletter may collapse; person must never be hidden. Mail delivered before Sieve rules could assign receipt has no recorded rule class and is not backfilled. Not an authenticity or safety verdict"`
 	ID                uint                  `json:"id"`
 	MailboxID         uint                  `json:"mailbox_id"`
 	Folder            string                `json:"folder"`

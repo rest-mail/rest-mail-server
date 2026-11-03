@@ -560,6 +560,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 			IsRead:       flags.seen,
 			IsFlagged:    flags.flagged,
 			IsDraft:      flags.draft,
+			RuleClass:    flags.ruleClass,
 			MsgID:        req.MessageID,
 			InReplyTo:    req.InReplyTo,
 			References:   req.References,

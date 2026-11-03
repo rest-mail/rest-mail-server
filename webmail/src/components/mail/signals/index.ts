@@ -9,3 +9,6 @@ export type { DueBadgeProps, ThreadSignalsProps, WaitingBadgeProps } from './Thr
 
 export { HeldBadge } from './HeldBadge';
 export type { HeldBadgeProps } from './HeldBadge';
+
+export { ClassLabel } from './ClassLabel';
+export type { ClassLabelProps } from './ClassLabel';

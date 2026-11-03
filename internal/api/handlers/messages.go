@@ -2541,7 +2541,7 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	// The flags a Sieve script's imap4flags actions set (RFC 5232, #787); the flags a
 	// gateway carried, below, are the client's own and win.
 	flags := sieveFlagsOf(emailJSON)
-	msg.IsRead, msg.IsFlagged, msg.IsDraft = flags.seen, flags.flagged, flags.draft
+	msg.IsRead, msg.IsFlagged, msg.IsDraft, msg.RuleClass = flags.seen, flags.flagged, flags.draft, flags.ruleClass
 
 	// Apply IMAP flags / INTERNALDATE the gateway carried through: COPY preserves
 	// the source message's flags and internal date (RFC 3501 §6.4.7); APPEND
