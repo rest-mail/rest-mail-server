@@ -192,4 +192,180 @@ func TestThreadDueMigrationAndPersistence(t *testing.T) {
 	}
 }
 
+// A parsed date is only a suggestion. Nothing writes one yet, so these tests store the row the
+// way later work will, then hold every read and the route that accepts it to the issue's rules.
+func TestThreadDueSuggestion(t *testing.T) {
+	database, err := connectTestDB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rmdb.AutoMigrate(database); err != nil {
+		t.Fatal(err)
+	}
+	tx := database.Begin()
+	t.Cleanup(func() { tx.Rollback() })
+	fixture := seedAuthzFixture(t, tx)
+	seedReceiveFixture(t, tx, fixture.ownerMailbox, fixture.attackerMailbox)
+	owner, other := fixture.ownerMailbox.ID, fixture.attackerMailbox.ID
+	base := time.Now().Add(-time.Hour).Truncate(time.Microsecond)
+	rows := []models.Message{
+		{MailboxID: owner, Folder: "INBOX", ThreadID: "suggested", Sender: "s@example.test", Subject: "suggestion test", ReceivedAt: base},
+		{MailboxID: owner, Folder: "Archive", ThreadID: "suggested", Sender: "s@example.test", Subject: "suggestion test", ReceivedAt: base.Add(time.Minute)},
+		{MailboxID: owner, Folder: "INBOX", ThreadID: "plain", Sender: "s@example.test", Subject: "suggestion test", ReceivedAt: base.Add(2 * time.Minute)},
+		{MailboxID: owner, Folder: "INBOX", ThreadID: "dismissed", Sender: "s@example.test", Subject: "suggestion test", ReceivedAt: base.Add(3 * time.Minute)},
+		{MailboxID: other, Folder: "INBOX", ThreadID: "suggested", Sender: "s@example.test", Subject: "suggestion test", ReceivedAt: base},
+	}
+	if err := tx.Create(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	handler := NewMessageHandler(tx, nil, nil, "", nil)
+	search := NewSearchHandler(tx)
+	post := func(actor uint, thread, body string, want int) map[string]json.RawMessage {
+		t.Helper()
+		response := httptest.NewRecorder()
+		request := authzRequest(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/threads/%s/due", owner, thread), actor, nil, body)
+		request.Header.Set("Content-Type", "application/json")
+		messageRoutes(handler).ServeHTTP(response, request)
+		if response.Code != want {
+			t.Fatalf("due %s: got %d %s, want %d", body, response.Code, response.Body, want)
+		}
+		var decoded map[string]json.RawMessage
+		if err := json.Unmarshal(response.Body.Bytes(), &decoded); err != nil {
+			t.Fatal(err)
+		}
+		return decoded
+	}
+	inbox := func() []uint {
+		t.Helper()
+		result, err := handler.listMessages(authzRequest("GET", "/", owner, nil, ""), listMessagesRequest{ID: uint32(owner), Folder: "INBOX"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids := make([]uint, len(result.Data))
+		for index, message := range result.Data {
+			ids[index] = message.ID
+		}
+		return ids
+	}
+	found := func() []uint {
+		t.Helper()
+		result, err := search.search(authzRequest("GET", "/", owner, nil, ""), searchRequest{ID: uint32(owner), Q: "suggestion"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids := make([]uint, len(result.Data))
+		for index, message := range result.Data {
+			ids[index] = message.ID
+		}
+		return ids
+	}
+	// Every read of the thread has to give the same date and source.
+	readsSay := func(wantDue time.Time, wantSource string) {
+		t.Helper()
+		check := func(read string, message Message) {
+			t.Helper()
+			if message.Due == nil || !message.Due.Equal(wantDue) || message.DueSource == nil || *message.DueSource != wantSource {
+				t.Fatalf("%s said due %v source %v, want %v %s", read, message.Due, message.DueSource, wantDue, wantSource)
+			}
+		}
+		thread, err := handler.getThread(authzRequest("GET", "/", owner, nil, ""), threadRequest{ID: uint32(owner), ThreadID: "suggested"})
+		if err != nil || len(thread.Data) != 2 {
+			t.Fatalf("thread = %#v, %v", thread, err)
+		}
+		check("thread", thread.Data[0])
+		check("thread", thread.Data[1])
+		detail, err := handler.getMessage(authzRequest("GET", "/", owner, nil, ""), messagePath{ID: uint32(rows[0].ID)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		check("detail", detail)
+		folder, err := handler.listMessages(authzRequest("GET", "/", owner, nil, ""), listMessagesRequest{ID: uint32(owner), Folder: "INBOX"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		searched, err := search.search(authzRequest("GET", "/", owner, nil, ""), searchRequest{ID: uint32(owner), Q: "suggestion"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for read, messages := range map[string][]Message{"folder list": folder.Data, "search": searched.Data} {
+			seen := false
+			for _, message := range messages {
+				if message.ID == rows[0].ID {
+					seen = true
+					check(read, message)
+				} else if message.ThreadID == "plain" && message.Due != nil {
+					t.Fatalf("%s put the date on thread %s", read, message.ThreadID)
+				}
+			}
+			if !seen {
+				t.Fatalf("%s lost the suggested thread", read)
+			}
+		}
+	}
+	// A suggestion on the oldest thread, with a date sooner than anything else, is the row a
+	// sort by due date would lift to the top of every list.
+	suggested := time.Date(2026, 12, 1, 10, 0, 0, 0, time.UTC)
+	listBefore, searchBefore := inbox(), found()
+	parsed := "parsed"
+	for _, thread := range []string{"suggested", "dismissed"} {
+		if err := tx.Create(&models.ThreadDue{MailboxID: owner, ThreadID: thread, Due: &suggested, DueSource: &parsed}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	readsSay(suggested, "parsed")
+	if after := inbox(); !reflect.DeepEqual(listBefore, after) {
+		t.Fatalf("suggestion reordered the folder list: %v -> %v", listBefore, after)
+	}
+	if after := found(); !reflect.DeepEqual(searchBefore, after) {
+		t.Fatalf("suggestion reordered search: %v -> %v", searchBefore, after)
+	}
+
+	// The caller who may not write, and the caller from another account, change nothing.
+	body := fmt.Sprintf(`{"due":%q,"due_source":"user"}`, suggested.Format(time.RFC3339))
+	post(other, "suggested", body, http.StatusNotFound)
+	readOnly := authzRequest(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/threads/suggested/due", owner), owner, nil, body)
+	claims := freshTwoFactorClaims(owner, fixture.ownerMailbox.Address)
+	claims.CredentialKind = auth.CredentialKindAPIKey
+	claims.APIKeyPermissions = []auth.ScopedPermission{{Capability: models.CapMailRead, Scope: "mailbox:" + fixture.ownerMailbox.Address}}
+	readOnly = readOnly.WithContext(context.WithValue(readOnly.Context(), middleware.ClaimsKey, claims))
+	refused := httptest.NewRecorder()
+	messageRoutes(handler).ServeHTTP(refused, readOnly)
+	if refused.Code != http.StatusForbidden {
+		t.Fatalf("read-only caller: %d %s", refused.Code, refused.Body)
+	}
+	// Nobody can make a suggestion through the API, on a thread with one or without.
+	post(owner, "suggested", fmt.Sprintf(`{"due":%q,"due_source":"parsed"}`, suggested.Format(time.RFC3339)), http.StatusUnprocessableEntity)
+	post(owner, "plain", fmt.Sprintf(`{"due":%q,"due_source":"parsed"}`, suggested.Format(time.RFC3339)), http.StatusUnprocessableEntity)
+	readsSay(suggested, "parsed")
+
+	// Accepting keeps the date, makes it the user's, and moves nothing.
+	result := post(owner, "suggested", body, http.StatusOK)
+	var state ThreadDue
+	if err := json.Unmarshal(result["data"], &state); err != nil || state.Due == nil || !state.Due.Equal(suggested) || state.DueSource == nil || *state.DueSource != "user" {
+		t.Fatalf("accept = %s, %v", result["data"], err)
+	}
+	readsSay(suggested, "user")
+	if after := inbox(); !reflect.DeepEqual(listBefore, after) {
+		t.Fatalf("accepting reordered the folder list: %v -> %v", listBefore, after)
+	}
+
+	// Clearing a suggestion leaves no date behind, on any read.
+	post(owner, "dismissed", `{"due":null,"due_source":"user"}`, http.StatusOK)
+	dismissed, err := handler.getMessage(authzRequest("GET", "/", owner, nil, ""), messagePath{ID: uint32(rows[3].ID)})
+	if err != nil || dismissed.Due != nil || dismissed.DueSource != nil {
+		t.Fatalf("dismissed = %#v, %v", dismissed, err)
+	}
+
+	// No step above filed, moved or changed a message.
+	var stored []models.Message
+	if err := tx.Where("subject = ?", "suggestion test").Order("id").Find(&stored).Error; err != nil || len(stored) != len(rows) {
+		t.Fatalf("messages changed: %d, %v", len(stored), err)
+	}
+	for index, message := range stored {
+		if message.Folder != rows[index].Folder || message.IsDeleted || !message.ReceivedAt.Equal(rows[index].ReceivedAt) {
+			t.Fatalf("a suggestion filed or changed a message: %#v", message)
+		}
+	}
+}
+
 func dueSourcePointer(source string) *string { return &source }
