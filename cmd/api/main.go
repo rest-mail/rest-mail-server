@@ -26,6 +26,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/dns"
 	"github.com/rest-mail/rest-mail-server/internal/dnsbl"
 	"github.com/rest-mail/rest-mail-server/internal/domainstate"
+	"github.com/rest-mail/rest-mail-server/internal/gatewaysession"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"github.com/rest-mail/rest-mail-server/internal/greylist"
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
@@ -388,6 +389,11 @@ func main() {
 	greylistPurger := greylist.NewPurger(database, time.Hour)
 	greylistPurger.Start()
 
+	// Close gateway connection sessions left idle (#1586): a gateway that died
+	// without closing its sessions leaves them open until this sweep.
+	gatewaySessionSweeper := gatewaysession.NewSweeper(database, gatewaysession.SweepInterval)
+	gatewaySessionSweeper.Start()
+
 	// Remove stored attachment objects nothing refers to any more (#1388).
 	attachmentCleaner := attachmentstore.NewCleaner(database, attachmentstore.NewS3(cfg.Attachments),
 		attachmentstore.FilesystemRoot, attachmentstore.DefaultCleanupGrace, 24*time.Hour)
@@ -478,6 +484,7 @@ func main() {
 	rollupWorker.Shutdown()
 	tracePruner.Shutdown()
 	greylistPurger.Shutdown()
+	gatewaySessionSweeper.Shutdown()
 	attachmentCleaner.Stop()
 	vacationPurger.Shutdown()
 	dkimRotation.Shutdown()
