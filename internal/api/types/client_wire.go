@@ -187,12 +187,14 @@ type updateMailboxRequest struct {
 }
 
 type updateMessageBody struct {
-	IsAnswered *bool   `json:"is_answered,omitempty"`
-	IsRead     *bool   `json:"is_read,omitempty"`
-	IsFlagged  *bool   `json:"is_flagged,omitempty"`
-	IsStarred  *bool   `json:"is_starred,omitempty"`
-	IsDraft    *bool   `json:"is_draft,omitempty"`
-	Folder     *string `json:"folder,omitempty" minLength:"1" minLengthMessage:"required"`
+	Keywords    *[]string `json:"keywords,omitempty"`
+	IMAPDeleted *bool     `json:"imap_deleted,omitempty" description:"IMAP Deleted flag; hidden from ordinary lists until cleared or permanently removed by EXPUNGE"`
+	IsAnswered  *bool     `json:"is_answered,omitempty"`
+	IsRead      *bool     `json:"is_read,omitempty"`
+	IsFlagged   *bool     `json:"is_flagged,omitempty"`
+	IsStarred   *bool     `json:"is_starred,omitempty"`
+	IsDraft     *bool     `json:"is_draft,omitempty"`
+	Folder      *string   `json:"folder,omitempty" minLength:"1" minLengthMessage:"required"`
 }
 
 type updatePipelineRequestBody struct {
@@ -272,6 +274,8 @@ type Message struct {
 	IsFlagged         bool                  `json:"is_flagged"`
 	IsStarred         bool                  `json:"is_starred"`
 	IsDraft           bool                  `json:"is_draft"`
+	Keywords          []string              `json:"keywords,omitempty"`
+	IMAPDeleted       bool                  `json:"imap_deleted,omitempty"`
 	IsDeleted         bool                  `json:"is_deleted"`
 	ReceivedAt        time.Time             `json:"received_at"`
 	DateHeader        *time.Time            `json:"date_header"`

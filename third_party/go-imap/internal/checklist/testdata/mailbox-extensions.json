@@ -1,0 +1,731 @@
+{
+  "reviewed_at": "2026-10-26",
+  "scope": "Five related mailbox discovery/status specifications, section-level reconciliation only. Wider issue374 remains partial.",
+  "sources": [
+    {
+      "rfc": 2342,
+      "url": "https://www.rfc-editor.org/rfc/rfc2342.txt",
+      "sha256": "6023278a88e94a0b1a530b1e7a14a37e89699b07d7ba65e3bfe45dd276d56aab",
+      "sections": [
+        {
+          "section": "1",
+          "title": "Abstract",
+          "source_section_sha256": "a1cc68ba4135665ab6c6717af69bdf24df5bd389f4e5d12534379f3e0d2bb0cc",
+          "requirements": [
+            "IMAP-NAMESPACE-01"
+          ],
+          "note": "Namespace discovery scope; the offered model is one personal namespace."
+        },
+        {
+          "section": "2",
+          "title": "Conventions used in this document",
+          "source_section_sha256": "7f0994e81f14742c7e8e49b64c441bb5541b846ec3a3ce26c6cbe19275173207",
+          "requirements": [
+            "IMAP-NAMESPACE-01",
+            "IMAP-NAMESPACE-03"
+          ],
+          "note": "INBOX is personal; other-users grants and optional multiple/per-user namespaces remain boundaries."
+        },
+        {
+          "section": "3",
+          "title": "Introduction and Overview",
+          "source_section_sha256": "6eec25b04322776e463919634f8a3ffa47385889d6242cd6929df8aa540f3557",
+          "requirements": [
+            "IMAP-NAMESPACE-05"
+          ],
+          "note": "Discovery overview and manual client-prefix fallback."
+        },
+        {
+          "section": "4",
+          "title": "Requirements",
+          "source_section_sha256": "7e7547e938ea225e165251f78b892eb56466e0b94c725cf80652741277fe6e82",
+          "requirements": [
+            "IMAP-NAMESPACE-01"
+          ],
+          "note": "Capability and authenticated/selected command availability."
+        },
+        {
+          "section": "5",
+          "title": "NAMESPACE Command",
+          "source_section_sha256": "77d811ff3a14fd4b2cab1a882d0e0233ed63bb3abe2aa7e655d69c9ff2bc789c",
+          "requirements": [
+            "IMAP-NAMESPACE-01",
+            "IMAP-NAMESPACE-02",
+            "IMAP-NAMESPACE-03",
+            "IMAP-NAMESPACE-04",
+            "IMAP-NAMESPACE-05"
+          ],
+          "note": "Example 5.1 is the fixed personal exchange; other/shared/anonymous/multiple-prefix examples are outside the offered backend. Other-user visibility and client target selection remain explicit."
+        },
+        {
+          "section": "6",
+          "title": "Formal Syntax",
+          "source_section_sha256": "028832e642d66e951c1e125bb8d2a2f5f21cc23db74f76f7131da0c3ac9bc9db",
+          "requirements": [
+            "IMAP-NAMESPACE-01",
+            "IMAP-NAMESPACE-02",
+            "IMAP-NAMESPACE-04"
+          ],
+          "note": "Three ordered namespace classes, quoted prefix/delimiter, NIL absent classes and no arguments; international prefixes/extensions are not offered."
+        },
+        {
+          "section": "7",
+          "title": "Security Considerations",
+          "source_section_sha256": "26007dac693068aba2cf0c5b309d8c1ac100eeae87d99d4a8f34fea8a9efb532",
+          "requirements": [
+            "IMAP-NAMESPACE-03"
+          ],
+          "note": "Other-user visibility is a host ACL boundary; no other-users namespace is advertised."
+        },
+        {
+          "section": "8",
+          "title": "References",
+          "source_section_sha256": "35a2ec3a1f5fa96ec4e159af79141a3f448006c69c1704d613c5091ed2832f19",
+          "requirements": [],
+          "note": "Document context, conventions, references, acknowledgements or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "9",
+          "title": "Acknowledgments",
+          "source_section_sha256": "862627e2b62f1fcf424ea2ff3812dc4d8e05c0bb2f7467b183d80ec13c1e82a6",
+          "requirements": [],
+          "note": "Document context, conventions, references, acknowledgements or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "11",
+          "title": "Authors' Addresses",
+          "source_section_sha256": "9217bc341e828245fb085ac66df4899ad7d33e34a8f18692b9cb04998b86d99a",
+          "requirements": [],
+          "note": "Document context, conventions, references, acknowledgements or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "12",
+          "title": "Full Copyright Statement",
+          "source_section_sha256": "74237906cc61336d8675ff19636cac1649fe247a46ac18cb20fcf075caf3d101",
+          "requirements": [],
+          "note": "Document context, conventions, references, acknowledgements or legal metadata; no independent server protocol requirement."
+        }
+      ]
+    },
+    {
+      "rfc": 8438,
+      "url": "https://www.rfc-editor.org/rfc/rfc8438.txt",
+      "sha256": "36432e42934250b81f19e2c7f529decc66508dcbfad19a3225654c4a375673f1",
+      "sections": [
+        {
+          "section": "1",
+          "title": "Introduction",
+          "source_section_sha256": "a7f2b2cfab181bd8d9b75f9c0144e4f395c2a779ce8bcc1548922b6160316124",
+          "requirements": [
+            "IMAP-STATUSSIZE-01"
+          ],
+          "note": "STATUS=SIZE discovery and mailbox-size intent."
+        },
+        {
+          "section": "2",
+          "title": "Conventions Used in This Document",
+          "source_section_sha256": "f017c4ab5fad69ec75da966e24496e58ce21c36e8dbc156956c1013d433b3827",
+          "requirements": [],
+          "note": "Document context, conventions, references, acknowledgements or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "3",
+          "title": "STATUS Command and Response Extensions",
+          "source_section_sha256": "64013b8a978b50ecab2d91a3bf87dc3bed7821f8f97f373b49921fae9a588c0f",
+          "requirements": [
+            "IMAP-STATUSSIZE-01",
+            "IMAP-STATUSSIZE-02",
+            "IMAP-STATUSSIZE-03",
+            "IMAP-STATUSSIZE-04"
+          ],
+          "note": "Octet sum, quota consistency boundary, wide values and direct/LIST-STATUS examples. Existing TestStatusSize follows the eight-message 44421-octet example."
+        },
+        {
+          "section": "4",
+          "title": "Formal Syntax",
+          "source_section_sha256": "63280a637b92ed9996ec34459104a9aff0383ee92fb670250e78435d5b99b727",
+          "requirements": [
+            "IMAP-STATUSSIZE-03"
+          ],
+          "note": "SIZE grammar and inclusive unsigned 63-bit range; invalid host sums cannot wrap."
+        },
+        {
+          "section": "5",
+          "title": "Security Considerations",
+          "source_section_sha256": "7f11262fa55b88a536224f82f603388cd8ef771fe072cfcfe6e9323dbd98b4e2",
+          "requirements": [
+            "IMAP-LISTSTATUS-07"
+          ],
+          "note": "No added security protocol beyond base/LIST-STATUS resource handling."
+        },
+        {
+          "section": "6",
+          "title": "IANA Considerations",
+          "source_section_sha256": "03b57939d83f8d555560033e8e5050ce5bb40d3b7759980e72d6b11c8a9a6fe4",
+          "requirements": [
+            "IMAP-STATUSSIZE-01"
+          ],
+          "note": "STATUS=SIZE capability registration."
+        },
+        {
+          "section": "7",
+          "title": "Normative References",
+          "source_section_sha256": "15b001d076085d6bc3e85e63021c345d812222fdc47964d7aca4b0976268fc94",
+          "requirements": [],
+          "note": "Document context, conventions, references, acknowledgements or legal metadata; no independent server protocol requirement."
+        }
+      ]
+    },
+    {
+      "rfc": 5819,
+      "url": "https://www.rfc-editor.org/rfc/rfc5819.txt",
+      "sha256": "7cecc3c6f63e70e872a2cc62888ecfdb5f701f11b339bb4c81e8ad40759de63a",
+      "sections": [
+        {
+          "section": "1",
+          "title": "Introduction",
+          "source_section_sha256": "3350fa4956b0d0a7be2c877f7072779a3eca878d28155567ccf7f6d99e484328",
+          "requirements": [
+            "IMAP-LISTSTATUS-01"
+          ],
+          "note": "Combined listing/status intent."
+        },
+        {
+          "section": "1.1",
+          "title": "Conventions Used in This Document",
+          "source_section_sha256": "e4a88fa9fcb54d48db62a5aa318e3617b56364651d8ab55cb1c581d71c928b34",
+          "requirements": [],
+          "note": "Document context, conventions, references, acknowledgements or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "2",
+          "title": "STATUS Return Option to LIST Command",
+          "source_section_sha256": "82c7c8937497bd1946f92b8388b6a1b9430e302f576899795b28e91c074f795d",
+          "requirements": [
+            "IMAP-LISTSTATUS-01",
+            "IMAP-LISTSTATUS-02",
+            "IMAP-LISTSTATUS-04",
+            "IMAP-LISTSTATUS-05",
+            "IMAP-LISTSTATUS-06"
+          ],
+          "note": "Buffer LIST before metadata lookup; emit STATUS only for selected matching mailboxes. Typed disappearance gets Noselect, unexpected errors may omit STATUS; untyped ACL failures remain a boundary."
+        },
+        {
+          "section": "3",
+          "title": "Examples",
+          "source_section_sha256": "94c13b4ccc56bb53769c614ef517a15d42e76cd33030372084c4cfcfcd315cc3",
+          "requirements": [
+            "IMAP-LISTSTATUS-01",
+            "IMAP-LISTSTATUS-05"
+          ],
+          "note": "LIST/STATUS ordering and no STATUS for a recursive-only parent. Selective subscription examples are adapted to the explicit all-folders-subscribed backend."
+        },
+        {
+          "section": "4",
+          "title": "Formal Syntax",
+          "source_section_sha256": "38a1dc07e806e9edf6acd8de5c1aab479d17862ee59a73c8b85b9195aa3b240a",
+          "requirements": [
+            "IMAP-LISTSTATUS-03",
+            "IMAP-LISTEXT-07"
+          ],
+          "note": "Nonempty STATUS item-list grammar, bad syntax and repeated-option deduplication per RFC5258."
+        },
+        {
+          "section": "5",
+          "title": "Security Considerations",
+          "source_section_sha256": "04ed0710f3d16f3830c57c4100f7614f75658224192e6844b5e9324c882e7118",
+          "requirements": [
+            "IMAP-LISTSTATUS-07"
+          ],
+          "note": "Cross-connection fairness and host scheduling boundary."
+        },
+        {
+          "section": "6",
+          "title": "IANA Considerations",
+          "source_section_sha256": "64ee2889bd57f0263d8b6e1705fd49daddf16e305750aa05a4a0190ae6add47a",
+          "requirements": [
+            "IMAP-LISTSTATUS-01"
+          ],
+          "note": "LIST-STATUS capability and STATUS return-option registration."
+        },
+        {
+          "section": "7",
+          "title": "Acknowledgements",
+          "source_section_sha256": "af4bfdfd6f3ffd236a0dc12be9745671da07c08bb83aa5060712b0e73b6921a6",
+          "requirements": [],
+          "note": "Document context, conventions, references, acknowledgements or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "8",
+          "title": "Normative References",
+          "source_section_sha256": "12240816659e1b18392b0b9c19d253e2687d11b61d12bc52fe7461a59d11a96d",
+          "requirements": [],
+          "note": "Document context, conventions, references, acknowledgements or legal metadata; no independent server protocol requirement."
+        }
+      ]
+    },
+    {
+      "rfc": 6154,
+      "url": "https://www.rfc-editor.org/rfc/rfc6154.txt",
+      "sha256": "c5908ee88071617d19fc847b947b149a58fb2d65366f6c800683c5b8bc3cfc0f",
+      "sections": [
+        {
+          "section": "1",
+          "title": "Introduction",
+          "source_section_sha256": "733c2804cf78fa5c498f555dbfc2cc5759431273b2f1c68e7f8ad3cbb3276151",
+          "requirements": [
+            "IMAP-SPECIALUSE-05",
+            "IMAP-SPECIALUSE-08"
+          ],
+          "note": "Role discovery is offered; role assignment on CREATE is optional and not offered."
+        },
+        {
+          "section": "1.1",
+          "title": "Conventions Used in This Document",
+          "source_section_sha256": "1105c96c0dd997211de56bc5527c8751a4af03794ed27a3e5f8532d02f5d86f9",
+          "requirements": [],
+          "note": "Document context, conventions, references, acknowledgements or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "2",
+          "title": "New Mailbox Attributes Identifying Special-Use Mailboxes",
+          "source_section_sha256": "6257617707c1d8692bb03b0d4ad7e2392d98c041533f32bc2ab308945446b860",
+          "requirements": [
+            "IMAP-SPECIALUSE-01",
+            "IMAP-SPECIALUSE-02",
+            "IMAP-SPECIALUSE-03",
+            "IMAP-SPECIALUSE-04",
+            "IMAP-SPECIALUSE-05",
+            "IMAP-SPECIALUSE-06",
+            "IMAP-SPECIALUSE-07",
+            "IMAP-SPECIALUSE-10",
+            "IMAP-SPECIALUSE-11"
+          ],
+          "note": "All seven roles, optional ordinary LIST attributes, implied return-on-selection, no invented roles, duplicate roles and the one-role-per-Folder representation boundary."
+        },
+        {
+          "section": "3",
+          "title": "Extension to IMAP CREATE Command to Set Special-Use Attributes",
+          "source_section_sha256": "3c7ac966076ea179a56b945f7732aa13805d0d1c837181038ae40f318f5a56d0",
+          "requirements": [
+            "IMAP-SPECIALUSE-08",
+            "IMAP-SPECIALUSE-12"
+          ],
+          "note": "Optional CREATE USE/USEATTR, conflict rules and dual capability requirements are outside the offered implementation."
+        },
+        {
+          "section": "4",
+          "title": "IMAP METADATA Entry for Special-Use Attributes",
+          "source_section_sha256": "1b15ef3f65c077b814c4b80187da5815a7f07c53423617815dc38359113cc01b",
+          "requirements": [
+            "IMAP-SPECIALUSE-09",
+            "IMAP-SPECIALUSE-12"
+          ],
+          "note": "METADATA tie-in and role-assignment validation are conditional on an unsupported, deliberately excluded extension."
+        },
+        {
+          "section": "5",
+          "title": "Examples",
+          "source_section_sha256": "f25f7ebcebd546a74ec04e18198aca2688bbc4c8fae1fa045ee38095e2147531",
+          "requirements": [
+            "IMAP-SPECIALUSE-10",
+            "IMAP-SPECIALUSE-14"
+          ],
+          "note": "Example scope is split between offered LIST discovery and unsupported assignment operations."
+        },
+        {
+          "section": "5.1",
+          "title": "Example of an IMAP LIST Command",
+          "source_section_sha256": "2d49dc3c82d576dfc87b1362a373deef555f3d1e013803344a76721c177d3a26",
+          "requirements": [
+            "IMAP-SPECIALUSE-01",
+            "IMAP-SPECIALUSE-02",
+            "IMAP-SPECIALUSE-03",
+            "IMAP-SPECIALUSE-04"
+          ],
+          "note": "Ordinary LIST role discovery; optional Marked/child flags are separate from role identity."
+        },
+        {
+          "section": "5.2",
+          "title": "Example of an Extended IMAP LIST Command",
+          "source_section_sha256": "7dcc8954dfcf349b1d5c04bd2d5a448a3389bbcf8edcc6dc1f268b62ecb72a7c",
+          "requirements": [
+            "IMAP-SPECIALUSE-07",
+            "IMAP-SPECIALUSE-10"
+          ],
+          "note": "Extended return and selection examples, including nested role-bearing folders."
+        },
+        {
+          "section": "5.3",
+          "title": "Example of an IMAP CREATE Command",
+          "source_section_sha256": "65f8cd7faebc91011ae884beb0da932d0d3d45b1ae2b0153fd0ba3615b2de5fe",
+          "requirements": [
+            "IMAP-SPECIALUSE-14"
+          ],
+          "note": "CREATE USE example is not implemented."
+        },
+        {
+          "section": "5.4",
+          "title": "Example of Using IMAP METADATA to Manipulate Special-Use",
+          "source_section_sha256": "f9ed1f51eed0ed3f3e1803b71f8e3eb5b84071126acc9fbba0f6fe7cd3fbac45",
+          "requirements": [
+            "IMAP-SPECIALUSE-14"
+          ],
+          "note": "METADATA assignment example is not implemented."
+        },
+        {
+          "section": "6",
+          "title": "Formal Syntax",
+          "source_section_sha256": "708200a0e77b61bce4c19ce9d16ab68009d04f8a9989c53f46689fa256e56ecb",
+          "requirements": [
+            "IMAP-SPECIALUSE-07",
+            "IMAP-SPECIALUSE-10",
+            "IMAP-SPECIALUSE-12",
+            "IMAP-SPECIALUSE-13"
+          ],
+          "note": "Registered role grammar, selection/return options and unknown-attribute client duty. Assignment grammar remains unsupported."
+        },
+        {
+          "section": "7",
+          "title": "Security Considerations",
+          "source_section_sha256": "3c02a41d86f754c75da01b8feea9aef2ef28372b3eb6021030900b2288ff5b49",
+          "requirements": [
+            "IMAP-LISTEXT-11",
+            "IMAP-SPECIALUSE-12"
+          ],
+          "note": "Host visibility/TLS privacy and unsupported assignment side effects; no shared-folder role policy is invented."
+        },
+        {
+          "section": "8",
+          "title": "IANA Considerations",
+          "source_section_sha256": "ea7bf28d0c2d5db96625e909525f419b338721a73cf945181b5fb6bfecac19c6",
+          "requirements": [
+            "IMAP-SPECIALUSE-05"
+          ],
+          "note": "Registration overview."
+        },
+        {
+          "section": "8.1",
+          "title": "Registration of USEATTR IMAP Response Code",
+          "source_section_sha256": "d05a387a9595261d7baed13786150390fd27d36595d0d0daeef2abff2bcffcb6",
+          "requirements": [
+            "IMAP-SPECIALUSE-12"
+          ],
+          "note": "USEATTR is tied to unsupported assignment."
+        },
+        {
+          "section": "8.2",
+          "title": "Registration of CREATE-SPECIAL-USE IMAP Capability",
+          "source_section_sha256": "5130bea5508398a6b0f82d1c100725ee142760578af34842b8fb5e026bce5182",
+          "requirements": [
+            "IMAP-SPECIALUSE-05"
+          ],
+          "note": "CREATE-SPECIAL-USE remains unadvertised."
+        },
+        {
+          "section": "8.3",
+          "title": "Registration of SPECIAL-USE IMAP Capability",
+          "source_section_sha256": "4f7e2b2597f5c7f431639f17212df5db02442ebe3bac72442b5f88ab92d5ba77",
+          "requirements": [
+            "IMAP-SPECIALUSE-05"
+          ],
+          "note": "SPECIAL-USE is advertised."
+        },
+        {
+          "section": "8.4",
+          "title": "Registration of SPECIAL-USE Selection Option",
+          "source_section_sha256": "64f244cc0ca8c5fb47ecbfad05b14777c5d4d802639e03594c56dd4fa19aec03",
+          "requirements": [
+            "IMAP-SPECIALUSE-07"
+          ],
+          "note": "SPECIAL-USE selection registration and implied return."
+        },
+        {
+          "section": "8.5",
+          "title": "Registration of SPECIAL-USE Return Option",
+          "source_section_sha256": "429993cc2eeb0f14bf6d0cd168c1872f1f515fb11f7018d43c112a76d52a56aa",
+          "requirements": [
+            "IMAP-SPECIALUSE-07"
+          ],
+          "note": "SPECIAL-USE return registration."
+        },
+        {
+          "section": "8.6",
+          "title": "Registration of SPECIAL-USE Metadata",
+          "source_section_sha256": "80e2d38b09daca82234a14658fddeb798db7ac1025461ff18dbbcc11ca8af743",
+          "requirements": [
+            "IMAP-SPECIALUSE-09"
+          ],
+          "note": "METADATA entry registration does not imply implementation."
+        },
+        {
+          "section": "9",
+          "title": "References",
+          "source_section_sha256": "6f58ef1211419535c1c20d9c77d2b6536948f8af0f8a2d30dd73e3c4aec632f7",
+          "requirements": [],
+          "note": "Document context, conventions, references, acknowledgements or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "9.1",
+          "title": "Normative References",
+          "source_section_sha256": "488be511abbbabbe9782ef0b3f02d9386b61eb1b2ae168d175ef731783d10196",
+          "requirements": [],
+          "note": "Document context, conventions, references, acknowledgements or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "9.2",
+          "title": "Informative References",
+          "source_section_sha256": "4e61534f2923768ceff97e146c7134702b04dcaf23c5fef3d18de71b111c707e",
+          "requirements": [],
+          "note": "Document context, conventions, references, acknowledgements or legal metadata; no independent server protocol requirement."
+        }
+      ]
+    },
+    {
+      "rfc": 5258,
+      "url": "https://www.rfc-editor.org/rfc/rfc5258.txt",
+      "sha256": "9ec84900ac85244a0ec0d530fc704349737570ffaaada7b20e78725714bccb02",
+      "sections": [
+        {
+          "section": "1",
+          "title": "Introduction and Overview",
+          "source_section_sha256": "3b1e32cef79624eaef7e6a04e0b178b9af75f3ee0b3ed0d5828e94169bd8be19",
+          "requirements": [
+            "IMAP-LISTEXT-01",
+            "IMAP-LISTEXT-05",
+            "IMAP-LISTEXT-08"
+          ],
+          "note": "Extended syntax discovery, capability and client use of LSUB."
+        },
+        {
+          "section": "2",
+          "title": "Conventions Used in This Document",
+          "source_section_sha256": "903f702fbb132abe18efec319895c96269a93a0bcacc542e9859c1766453d8b3",
+          "requirements": [
+            "IMAP-LISTEXT-05"
+          ],
+          "note": "Canonical pattern definition; RFC2119 conventions add no independent engine rule."
+        },
+        {
+          "section": "3",
+          "title": "Extended LIST Command",
+          "source_section_sha256": "51d413fec75d3a854a444d79a7f08c302f331ca682f5c6028b421ae4a42f2f8a",
+          "requirements": [
+            "IMAP-LISTEXT-01",
+            "IMAP-LISTEXT-02",
+            "IMAP-LISTEXT-03",
+            "IMAP-LISTEXT-05",
+            "IMAP-LISTEXT-06",
+            "IMAP-LISTEXT-07",
+            "IMAP-LISTEXT-08"
+          ],
+          "note": "Multiple patterns, empty-pattern special case, conjunction of selection, no extra names from return options, unknown/duplicate options and unsolicited extended-data boundaries."
+        },
+        {
+          "section": "3.1",
+          "title": "Initial List of Selection Options",
+          "source_section_sha256": "4e095dfc7aa414387b566c57d9c7826a16624ef48b3eaafb31b7d93041ab221b",
+          "requirements": [
+            "IMAP-LISTEXT-03",
+            "IMAP-LISTEXT-04",
+            "IMAP-LISTEXT-06",
+            "IMAP-LISTEXT-09",
+            "IMAP-LISTEXT-10"
+          ],
+          "note": "SUBSCRIBED/REMOTE/RECURSIVEMATCH; only supported host models are claimed."
+        },
+        {
+          "section": "3.2",
+          "title": "Initial List of Return Options",
+          "source_section_sha256": "bc859beecce0e9efad77a15d586f581fcd1855c02d91f420340e2c75147be9ef",
+          "requirements": [
+            "IMAP-LISTEXT-01",
+            "IMAP-LISTEXT-03",
+            "IMAP-LISTEXT-09"
+          ],
+          "note": "SUBSCRIBED and mandatory CHILDREN return options."
+        },
+        {
+          "section": "3.3",
+          "title": "General Principles for Returning LIST Responses",
+          "source_section_sha256": "fba120d217f4c229585d64fae61e759042bca6aae64c37a6acadcec761ebe3d1",
+          "requirements": [
+            "IMAP-LISTEXT-02",
+            "IMAP-LISTEXT-04",
+            "IMAP-LISTEXT-05"
+          ],
+          "note": "One reply per name, selection/recursive inclusion and additive attributes."
+        },
+        {
+          "section": "3.4",
+          "title": "Additional Requirements on LIST-EXTENDED Clients",
+          "source_section_sha256": "56aa61a1eebe2fc190b09b7af842f437fcb393652d5ac7b8e6e727c8437503c8",
+          "requirements": [
+            "IMAP-LISTEXT-08"
+          ],
+          "note": "Client inference of stronger attributes."
+        },
+        {
+          "section": "3.5",
+          "title": "CHILDINFO Extended Data Item",
+          "source_section_sha256": "463836a42973e8b17f7d4f70df719184f0acdcf09971a2aaf47dbb688dd7b92d",
+          "requirements": [
+            "IMAP-LISTEXT-02",
+            "IMAP-LISTEXT-04",
+            "IMAP-LISTEXT-08",
+            "IMAP-LISTEXT-09"
+          ],
+          "note": "CHILDINFO only on recursive selection, criteria strings, missing ancestors and redundant-parent suppression; selective subscriptions remain unsupported."
+        },
+        {
+          "section": "4",
+          "title": "The CHILDREN Return Option",
+          "source_section_sha256": "7178bdf7ac0364703aef29df3a12c7d03e072807c4491c70afc12ab69c226c66",
+          "requirements": [
+            "IMAP-LISTEXT-01",
+            "IMAP-LISTEXT-11"
+          ],
+          "note": "Exactly one child attribute and visibility filtering by the host."
+        },
+        {
+          "section": "5",
+          "title": "Examples",
+          "source_section_sha256": "5208e01612cb43960b2db9f994b2a2102e7420167e4858f7b6a7d1fac5b5c32f",
+          "requirements": [
+            "IMAP-LISTEXT-01",
+            "IMAP-LISTEXT-02",
+            "IMAP-LISTEXT-03",
+            "IMAP-LISTEXT-04",
+            "IMAP-LISTEXT-05",
+            "IMAP-LISTEXT-12"
+          ],
+          "note": "All eleven examples reviewed: supported hierarchy slices have tests; selective/missing subscriptions, remote and ACL variants are not claimed verbatim."
+        },
+        {
+          "section": "6",
+          "title": "Formal Syntax",
+          "source_section_sha256": "f060d7663ec53db1201f85b88983f3fafb6d8b5a3b17daf3895a025f3595e55f",
+          "requirements": [
+            "IMAP-LISTEXT-05",
+            "IMAP-LISTEXT-06",
+            "IMAP-LISTEXT-07",
+            "IMAP-LISTSTATUS-03"
+          ],
+          "note": "LIST selection/pattern/return and CHILDINFO grammar. This crosswalk is not a claim to test every ABNF alternative or generic future extension value."
+        },
+        {
+          "section": "7",
+          "title": "Internationalization Considerations",
+          "source_section_sha256": "42dfd0fb5d4027884a5eccaaf73dd411c1da00580a1c5b6eecdd5e096dfade68",
+          "requirements": [
+            "IMAP-LISTEXT-08"
+          ],
+          "note": "Future extension/comparator specification duty; no COMPARATOR extension is offered."
+        },
+        {
+          "section": "8",
+          "title": "Security Considerations",
+          "source_section_sha256": "c428698f7ebd56c8cf29ab17ea25bea79816ac0ff1901b85f8c4bb34fd2e4f93",
+          "requirements": [
+            "IMAP-LISTEXT-11"
+          ],
+          "note": "Child visibility and disclosure boundary."
+        },
+        {
+          "section": "9",
+          "title": "IANA Considerations",
+          "source_section_sha256": "287d99115ed4bf4f10522d569df3f2a706280957459176f8b5924b98ba6aed3b",
+          "requirements": [
+            "IMAP-LISTEXT-01"
+          ],
+          "note": "Registry overview."
+        },
+        {
+          "section": "9.1",
+          "title": "Guidelines for IANA",
+          "source_section_sha256": "e6f27f603ef710792f3b87f7b320bc878cadcc706f81968e3ab9c681baa62a67",
+          "requirements": [
+            "IMAP-LISTEXT-01"
+          ],
+          "note": "Registry creation, not additional runtime behavior."
+        },
+        {
+          "section": "9.2",
+          "title": "Registration Procedure and Change Control",
+          "source_section_sha256": "18799e5276eee207e75e9e52e5906e5fa3979c71084248a4a2215c17b02cc4bc",
+          "requirements": [
+            "IMAP-LISTEXT-06",
+            "IMAP-LISTEXT-08"
+          ],
+          "note": "Vendor/standard extension registration and ownership procedure; no unregistered extension is emitted."
+        },
+        {
+          "section": "9.3",
+          "title": "Registration Template for LIST-EXTENDED Options",
+          "source_section_sha256": "f82a5263ba98b1bfc4dba2c9d21e46a25a2ca0102e3cf17fd8871f12fe7573d7",
+          "requirements": [
+            "IMAP-LISTEXT-01"
+          ],
+          "note": "Option registration template."
+        },
+        {
+          "section": "9.4",
+          "title": "Initial LIST-EXTENDED Option Registrations",
+          "source_section_sha256": "ca65c527073f0514e2e7840ce0b627f75d103f8d9a31cc9d7da0cb19a1bbf15e",
+          "requirements": [
+            "IMAP-LISTEXT-01",
+            "IMAP-LISTEXT-03",
+            "IMAP-LISTEXT-04"
+          ],
+          "note": "Registered SUBSCRIBED/REMOTE/RECURSIVEMATCH/CHILDREN meanings, subject to documented host boundaries."
+        },
+        {
+          "section": "9.5",
+          "title": "Registration Template for LIST-EXTENDED Extended Data Item",
+          "source_section_sha256": "d0c4dcc3ab37776d953d70e69119e256fea8d7ac7fd2bf78f5f3d279a36940f6",
+          "requirements": [
+            "IMAP-LISTEXT-04"
+          ],
+          "note": "Extended-data registration template."
+        },
+        {
+          "section": "9.6",
+          "title": "Initial LIST-EXTENDED Extended Data Item Registrations",
+          "source_section_sha256": "eebb2e7147858110b4865d5191aab976d15931e763270de62c5fdb7e5739ef65",
+          "requirements": [
+            "IMAP-LISTEXT-04"
+          ],
+          "note": "CHILDINFO registration."
+        },
+        {
+          "section": "10",
+          "title": "Acknowledgements",
+          "source_section_sha256": "83a5fd764e691f030085fa10262352c8f49af53d1f3505aa80cc0ec070f5c713",
+          "requirements": [],
+          "note": "Document context, conventions, references, acknowledgements or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "11",
+          "title": "References",
+          "source_section_sha256": "15ee0fbd38b8db25f6fc7b4fb8fa69d992ebfe4b006eaaf8c71cc56a11f9e53f",
+          "requirements": [],
+          "note": "Document context, conventions, references, acknowledgements or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "11.1",
+          "title": "Normative References",
+          "source_section_sha256": "e8f80eeba81bae8f41ac9d0755dfb970fbca977de92053e81b96306125ce55f4",
+          "requirements": [],
+          "note": "Document context, conventions, references, acknowledgements or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "11.2",
+          "title": "Informative References",
+          "source_section_sha256": "9020143344f2e49f2c5922f4555f3fc5394ee75a9239a50f857ce177d3ebf584",
+          "requirements": [],
+          "note": "Document context, conventions, references, acknowledgements or legal metadata; no independent server protocol requirement."
+        }
+      ]
+    }
+  ]
+}

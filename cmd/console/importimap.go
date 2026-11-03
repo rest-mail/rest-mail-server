@@ -41,7 +41,7 @@ TLS. The source is examined read-only; BODY.PEEK never marks mail read.
   --json                 one summary on stdout; one error on stderr
 
 All selectable folders, original octets, supported flags and INTERNALDATE are
-copied. Deleted and keyword flags are refused rather than dropped. Rerun to
+copied. Deleted and keyword flags are preserved. Rerun to
 resume: destination account/folder/Message-ID deduplication skips existing mail.
 Later source edits, moves and deletes are not synchronized. Empty source folders
 cannot be created by message import. No device flow or token refresh is performed.

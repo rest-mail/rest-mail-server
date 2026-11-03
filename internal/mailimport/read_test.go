@@ -69,7 +69,7 @@ func TestMaildirPreservesFoldersFlagsDatesAndOctets(t *testing.T) {
 }
 
 func TestMaildirRefusesUnsupportedAndUnsafeSources(t *testing.T) {
-	for _, flag := range []string{"P", "a", "T"} {
+	for _, flag := range []string{"P", "a", "Z"} {
 		root := sourceMaildir(t)
 		if err := os.WriteFile(filepath.Join(root, "cur", "message:2,"+flag), []byte("Subject: x\n\nx\n"), 0600); err != nil {
 			t.Fatal(err)
@@ -130,11 +130,11 @@ func TestMboxBoundsFramingAndRefusesUnsupportedMetadata(t *testing.T) {
 	for _, source := range []string{
 		"Subject: not an mbox\n\nbody\n",
 		prefix + "Subject: x\nContent-Length: 4\n\nbody\n\n",
-		prefix + "Subject: x\nX-Status: D\n\nbody\n\n",
+		prefix + "Subject: x\nX-Status: Q\n\nbody\n\n",
 		prefix + "Subject: x\nX-Status: Z\n\nbody\n\n",
 		prefix + "Subject: x\nStatus: Z\n\nbody\n\n",
 		"From  Mon Jan  2 15:04:05 2006\nSubject: x\n\nbody\n",
-		prefix + "Subject: x\nX-Keywords: custom\n\nbody\n\n",
+		prefix + "Subject: x\nX-Keywords: bad]keyword\n\nbody\n\n",
 		prefix + "Subject: metadata\nX-IMAP: 1 2\n\nbody\n\n",
 	} {
 		if err := Mbox(context.Background(), strings.NewReader(source), "INBOX", "mboxrd", 4096, func(string, apitypes.ImportMessageBody) error {

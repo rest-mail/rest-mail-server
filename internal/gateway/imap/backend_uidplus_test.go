@@ -32,17 +32,19 @@ import (
 // APPENDUID / COPYUID must report.
 
 type fakeMsg struct {
-	id         uint
-	folder     string
-	raw        string
-	subject    string
-	sender     string
-	senderNm   string
-	isRead     bool
-	isFlagged  bool
-	isStarred  bool
-	isDraft    bool
-	receivedAt time.Time
+	id          uint
+	folder      string
+	raw         string
+	subject     string
+	sender      string
+	senderNm    string
+	isRead      bool
+	isFlagged   bool
+	isStarred   bool
+	isDraft     bool
+	imapDeleted bool
+	keywords    []string
+	receivedAt  time.Time
 }
 
 type patchRecord struct {
@@ -161,13 +163,19 @@ func (f *fakeAPI) listMessages(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		out = append(out, apiclient.MessageSummary{
-			ID:         m.id,
-			Folder:     m.folder,
-			Subject:    m.subject,
-			Sender:     m.sender,
-			SenderName: m.senderNm,
-			RawSize:    len(m.raw),
-			ReceivedAt: fakeReceivedAt,
+			ID:          m.id,
+			Folder:      m.folder,
+			Subject:     m.subject,
+			Sender:      m.sender,
+			SenderName:  m.senderNm,
+			RawSize:     len(m.raw),
+			IMAPDeleted: m.imapDeleted,
+			Keywords:    m.keywords,
+			IsRead:      m.isRead,
+			IsFlagged:   m.isFlagged,
+			IsStarred:   m.isStarred,
+			IsDraft:     m.isDraft,
+			ReceivedAt:  fakeReceivedAt,
 		})
 	}
 	f.mu.Unlock()
@@ -205,6 +213,12 @@ func (f *fakeAPI) importMessage(w http.ResponseWriter, r *http.Request) {
 	m.isFlagged = slices.Contains(req.Flags, `\Flagged`)
 	m.isStarred = m.isFlagged
 	m.isDraft = slices.Contains(req.Flags, `\Draft`)
+	m.imapDeleted = slices.Contains(req.Flags, `\Deleted`)
+	for _, flag := range req.Flags {
+		if !strings.HasPrefix(flag, `\`) {
+			m.keywords = append(m.keywords, flag)
+		}
+	}
 	f.msgs[id] = m
 	f.mu.Unlock()
 	var resp apiclient.ImportResponse
@@ -250,18 +264,20 @@ func (f *fakeAPI) getMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	var dr apiclient.MessageDetailResponse
 	dr.Data = apiclient.MessageSummary{
-		ID:         m.id,
-		MailboxID:  7,
-		Folder:     m.folder,
-		Subject:    m.subject,
-		Sender:     m.sender,
-		SenderName: m.senderNm,
-		RawSize:    len(m.raw),
-		IsRead:     m.isRead,
-		IsFlagged:  m.isFlagged,
-		IsStarred:  m.isStarred,
-		IsDraft:    m.isDraft,
-		ReceivedAt: received,
+		ID:          m.id,
+		MailboxID:   7,
+		Folder:      m.folder,
+		Subject:     m.subject,
+		Sender:      m.sender,
+		SenderName:  m.senderNm,
+		RawSize:     len(m.raw),
+		IMAPDeleted: m.imapDeleted,
+		Keywords:    m.keywords,
+		IsRead:      m.isRead,
+		IsFlagged:   m.isFlagged,
+		IsStarred:   m.isStarred,
+		IsDraft:     m.isDraft,
+		ReceivedAt:  received,
 	}
 	writeJSON(w, dr)
 }
@@ -286,6 +302,15 @@ func (f *fakeAPI) patch(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	f.patches = append(f.patches, patchRecord{id: id, updates: updates})
 	if m := f.msgs[id]; m != nil {
+		if deleted, ok := updates["imap_deleted"].(bool); ok {
+			m.imapDeleted = deleted
+		}
+		if keywords, ok := updates["keywords"].([]interface{}); ok {
+			m.keywords = nil
+			for _, keyword := range keywords {
+				m.keywords = append(m.keywords, keyword.(string))
+			}
+		}
 		if folder, ok := updates["folder"].(string); ok {
 			m.folder = folder
 		}

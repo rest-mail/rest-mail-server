@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
 	"net/http"
 	"net/http/httptest"
@@ -30,7 +31,8 @@ var importScenarios = []importScenario{
 	{"missing", "disappeared", 404}, {"mailbox_full", "full", 409},
 	{"decoded_too_large", "", 413}, {"request_too_large", "body_limit", 413},
 	{"missing_raw", "", 422}, {"missing_date", "", 422}, {"invalid_folder", "", 422},
-	{"unsupported_keyword", "", 422}, {"unsupported_deleted", "", 422},
+	{"keywords", "", 200}, {"deleted", "", 200},
+	{"invalid_keyword", "", 422}, {"keyword_too_long", "", 422}, {"too_many_keywords", "", 422},
 	{"invalid_base64", "", 422}, {"invalid_id", "global", 422},
 	{"read_failure", "read_failure", 500}, {"insert_failure", "insert_failure", 500},
 	{"quota_failure", "quota_failure", 500}, {"audit_failure", "audit_failure", 500},
@@ -56,10 +58,20 @@ func importScenarioRequest(t *testing.T, tc importScenario) oapifly.ExampleReque
 		delete(body, "internal_date")
 	case "invalid_folder":
 		body["folder"] = "bad\x00folder"
-	case "unsupported_keyword":
+	case "keywords":
 		body["flags"] = []string{"$Custom"}
-	case "unsupported_deleted":
+	case "deleted":
 		body["flags"] = []string{`\Deleted`}
+	case "invalid_keyword":
+		body["flags"] = []string{"bad]keyword"}
+	case "keyword_too_long":
+		body["flags"] = []string{strings.Repeat("x", 256)}
+	case "too_many_keywords":
+		flags := make([]string, 101)
+		for index := range flags {
+			flags[index] = fmt.Sprintf("$keyword%d", index)
+		}
+		body["flags"] = flags
 	case "invalid_base64":
 		body["raw_message"] = "!not-base64!"
 	case "invalid_id", "unresolved_scoped_id":

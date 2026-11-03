@@ -22,7 +22,7 @@ func imapImportMessages() []apitypes.ImportMessageBody {
 	raw := []byte("Message-ID: <history@example.test>\r\nSubject: private-source-content\r\n\r\n\xff\x00body\r\n")
 	date := time.Date(2020, 1, 2, 3, 4, 5, 0, time.FixedZone("source", -5*3600))
 	return []apitypes.ImportMessageBody{
-		{RawMessage: raw, Folder: "INBOX", Flags: []string{`\Seen`, `\Answered`}, InternalDate: date},
+		{RawMessage: raw, Folder: "INBOX", Flags: []string{`\Seen`, `\Answered`, `\Deleted`, "$Forwarded", "$Junk"}, InternalDate: date},
 		{RawMessage: raw, Folder: "Archive/2020", Flags: []string{`\Flagged`}, InternalDate: date},
 	}
 }

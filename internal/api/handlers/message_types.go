@@ -61,6 +61,8 @@ func messageOf(m models.Message) Message {
 		TLSVersion:        m.TLSVersion,
 		HasAttachments:    m.HasAttachments,
 		IsAnswered:        m.IsAnswered,
+		Keywords:          m.Keywords,
+		IMAPDeleted:       m.IMAPDeleted,
 		IsRead:            m.IsRead,
 		IsDSN:             m.IsDSN,
 		IsFlagged:         m.IsFlagged,

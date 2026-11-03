@@ -3278,6 +3278,10 @@ paths:
         - BasicAuth: [mail:read]
       summary: List messages in a folder with cursor pagination
       parameters:
+        - name: include_imap_deleted
+          in: query
+          schema:
+            type: boolean
         - name: limit
           in: query
           schema:
@@ -13964,8 +13968,10 @@ paths:
         deterministic SHA-256 import identity; the raw source remains unchanged. Every
         attempt is audited; successful imports and skips also receive a transactional
         messages.import audit entry. The decoded message is bounded by SMTP_MAX_MESSAGE_SIZE
-        (10 MiB by default); the general API body limit may be stricter. Deleted-state
-        and keyword flags are unsupported and refused rather than hidden or discarded.
+        (10 MiB by default); the general API body limit may be stricter. Deleted state
+        and up to 100 case-insensitive keywords of 1-255 ASCII bytes are preserved.
+        Keywords must be RFC 3501 atoms without backslash. Deleted messages use
+        IMAP deletion state, not API tombstones; EXPUNGE removes them.
       operationId: importMessage
       parameters:
       - example: 1
@@ -15572,6 +15578,12 @@ components:
           type: boolean
         is_deleted:
           type: boolean
+        imap_deleted:
+          type: boolean
+        keywords:
+          type: array
+          items:
+            type: string
         received_at:
           type: string
           format: date-time
@@ -15588,6 +15600,12 @@ components:
     UpdateMessageRequest:
       type: object
       properties:
+        imap_deleted:
+          type: [boolean, "null"]
+        keywords:
+          type: [array, "null"]
+          items:
+            type: string
         is_answered:
           type:
           - boolean

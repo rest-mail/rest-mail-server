@@ -27,7 +27,10 @@ func mailImportSource(t *testing.T) (string, []byte, time.Time) {
 	}
 	raw := []byte("Message-ID: <history@example.test>\r\nSubject: private source\r\n\r\nhistory\xff\x00\r\n")
 	date := time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)
-	for _, name := range []string{"cur/one:2,RS", ".Archive/cur/two:2,F"} {
+	if err := os.WriteFile(filepath.Join(root, "dovecot-keywords"), []byte("0 $Forwarded\n1 $Junk\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"cur/one:2,RSTab", ".Archive/cur/two:2,F"} {
 		path := filepath.Join(root, name)
 		if err := os.WriteFile(path, raw, 0600); err != nil {
 			t.Fatal(err)
@@ -70,7 +73,7 @@ func TestImportMaildirPublicAPIAndResumableSummary(t *testing.T) {
 		if !bytes.Equal(message.RawMessage, raw) || !message.InternalDate.Equal(date) {
 			t.Fatalf("source bytes/date changed: %+v", message)
 		}
-		flags := []string{`\Answered`, `\Seen`}
+		flags := []string{`\Answered`, `\Seen`, `\Deleted`, "$Forwarded", "$Junk"}
 		if message.Folder == "Archive" {
 			flags = []string{`\Flagged`}
 		} else if message.Folder != "INBOX" {

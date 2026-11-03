@@ -1,0 +1,835 @@
+{
+  "reviewed_at": "2026-10-26",
+  "scope": "Seven related session/negotiation extension specifications, section-level reconciliation. Not a full RFC3501/9051 or all-extension conformance claim.",
+  "sources": [
+    {
+      "rfc": 2595,
+      "url": "https://www.rfc-editor.org/rfc/rfc2595.txt",
+      "sha256": "5d644cd1053214b5f2a75584efedb16acac07472b099496562fbfe574c2d775b",
+      "sections": [
+        {
+          "section": "1",
+          "title": "Motivation",
+          "source_section_sha256": "8cee148a43bce3dfcc743189ad04880d6ffef985fbc6475b6a253dd05a2d06c1",
+          "requirements": [],
+          "note": "Document context, conventions, acknowledgements, references or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "1.1",
+          "title": "Conventions Used in this Document",
+          "source_section_sha256": "13633b0123ef90135b1646b4cd67d61f5de4acdbc5002c96a244ff98e7dc0f7b",
+          "requirements": [],
+          "note": "Document context, conventions, acknowledgements, references or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "2",
+          "title": "Basic Interoperability and Security Requirements",
+          "source_section_sha256": "9a1980d4212d8b2e31a19a15230ba80ba7c8ee244041cb1e25531d6d8b6dfb32",
+          "requirements": [],
+          "note": "Document context, conventions, acknowledgements, references or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "2.1",
+          "title": "Cipher Suite Requirements",
+          "source_section_sha256": "cb79418e2d776dcc5e26af303d600f6f319f637617e960d6bc747e98fe71fc4f",
+          "requirements": [
+            "IMAP-TLS-AUDIT-01"
+          ],
+          "note": "Historical cipher requirement is explicitly unsupported; modern host TLS policy is separate."
+        },
+        {
+          "section": "2.2",
+          "title": "Privacy Operational Mode Security Requirements",
+          "source_section_sha256": "ec661414d84772fdbc9867af9ba6155a0dc76101f7bed93a3732153c001e2907",
+          "requirements": [
+            "IMAP-TLS-AUDIT-02",
+            "IMAP-STARTTLS-08"
+          ],
+          "note": "Protected and legacy operational modes; no per-user policy hook."
+        },
+        {
+          "section": "2.3",
+          "title": "Clear-Text Password Requirements",
+          "source_section_sha256": "ccbe9818f66c020b4ab9461f59da7d2d71790e33ade1bd51a60dd54dec3d093d",
+          "requirements": [
+            "IMAP-STARTTLS-01",
+            "IMAP-STARTTLS-08",
+            "IMAP-TLS-AUDIT-02"
+          ],
+          "note": "All cleartext credential forms are gated when TLS is configured; per-user advice remains a boundary."
+        },
+        {
+          "section": "2.4",
+          "title": "Server Identity Check",
+          "source_section_sha256": "f4835ef0030e87bc2b0a0b4ee27f3f27aaab00defb022fc2d8434024d78acd27",
+          "requirements": [
+            "IMAP-TLS-AUDIT-03"
+          ],
+          "note": "All hostname, SAN, wildcard and confirmation checks belong to the connecting client."
+        },
+        {
+          "section": "2.5",
+          "title": "TLS Security Policy Check",
+          "source_section_sha256": "773e461e64c187c377229bb892008fa85c7066a2a8be3c70787b9b32a87109b7",
+          "requirements": [
+            "IMAP-STARTTLS-07",
+            "IMAP-TLS-AUDIT-04"
+          ],
+          "note": "Handshake failure terminates the connection; the host chooses acceptable privacy/authentication policy."
+        },
+        {
+          "section": "3",
+          "title": "IMAP STARTTLS extension",
+          "source_section_sha256": "2620d7d853a2c0c8b01dfee4965344a5e870664424a5cba82ee9044cf5b00cad",
+          "requirements": [
+            "IMAP-STARTTLS-01"
+          ],
+          "note": "STARTTLS capability registration and IMAP command context."
+        },
+        {
+          "section": "3.1",
+          "title": "STARTTLS Command",
+          "source_section_sha256": "53edde0b876a047b05eabb721494ce112dea247312a657e82750b5cc78d715be",
+          "requirements": [
+            "IMAP-STARTTLS-02",
+            "IMAP-STARTTLS-03",
+            "IMAP-STARTTLS-04",
+            "IMAP-STARTTLS-05",
+            "IMAP-STARTTLS-06",
+            "IMAP-STARTTLS-09",
+            "IMAP-TLS-AUDIT-03"
+          ],
+          "note": "Negotiation boundary, state, optional EXTERNAL and client cache/pipeline duties; example covered by TestStartTLSExample."
+        },
+        {
+          "section": "3.2",
+          "title": "IMAP LOGINDISABLED capability",
+          "source_section_sha256": "bb93ed5f2ec0879664366df7bae7b1c754add979eb744db5686b790191367451",
+          "requirements": [
+            "IMAP-STARTTLS-01",
+            "IMAP-STARTTLS-08",
+            "IMAP-TLS-AUDIT-03"
+          ],
+          "note": "LOGINDISABLED advertisement/refusal and the client prohibition."
+        },
+        {
+          "section": "4",
+          "title": "POP3 STARTTLS extension",
+          "source_section_sha256": "d262e4550436a5152accffc339cea522fca5a29bcc4ef8062ef62e4b82826ede",
+          "requirements": [
+            "IMAP-TLS-AUDIT-05"
+          ],
+          "note": "POP3-only STLS and capability rules, not IMAP."
+        },
+        {
+          "section": "5",
+          "title": "ACAP STARTTLS extension",
+          "source_section_sha256": "1ebf0852fdc981eb1817b311e1defa3c795efac14a06de660d26fa065726c363",
+          "requirements": [
+            "IMAP-TLS-AUDIT-05"
+          ],
+          "note": "ACAP-only extension, not IMAP."
+        },
+        {
+          "section": "5.1",
+          "title": "STARTTLS Command",
+          "source_section_sha256": "9f3f2ae1b2aa4edc2d15d2bfd06bad8eeb46d670535e090b0fb66cdcd56c5579",
+          "requirements": [
+            "IMAP-TLS-AUDIT-05"
+          ],
+          "note": "ACAP greeting and command rules, not IMAP."
+        },
+        {
+          "section": "6",
+          "title": "PLAIN SASL mechanism",
+          "source_section_sha256": "64f1391af7d72e4f37f6338f50bbcc22a80c8c99640771b7c7aa275f3c256a0b",
+          "requirements": [
+            "IMAP-PLAIN-01",
+            "IMAP-PLAIN-02",
+            "IMAP-PLAIN-03",
+            "IMAP-PLAIN-04",
+            "IMAP-PLAIN-05",
+            "IMAP-PLAIN-06"
+          ],
+          "note": "Superseded in full by RFC4616; do not implement obsolete 5/6-octet UTF-8 grammar."
+        },
+        {
+          "section": "7",
+          "title": "imaps and pop3s ports",
+          "source_section_sha256": "29d065f72a8aa84bda26b3e474b08b6775ffc5195eca905b6f7f96baabd44c83",
+          "requirements": [
+            "IMAP-TLS-AUDIT-06"
+          ],
+          "note": "Historical port guidance; modern deployment is outside Session."
+        },
+        {
+          "section": "8",
+          "title": "IANA Considerations",
+          "source_section_sha256": "a6970ce86ab3ae12c60ea3523720405a2e94d677a45dc151dd337fe7b89ce29d",
+          "requirements": [
+            "IMAP-STARTTLS-01",
+            "IMAP-TLS-AUDIT-05"
+          ],
+          "note": "IMAP capability registration only; POP3/ACAP registrations are excluded."
+        },
+        {
+          "section": "9",
+          "title": "Security Considerations",
+          "source_section_sha256": "1b5d86cc347b3f04ba49c7610275243013ad77fde70dde7741412487542ec643",
+          "requirements": [
+            "IMAP-TLS-AUDIT-03",
+            "IMAP-TLS-AUDIT-04",
+            "IMAP-PLAIN-06"
+          ],
+          "note": "TLS policy, downgrade and cleartext advice; TLS is not end-to-end message security."
+        },
+        {
+          "section": "10",
+          "title": "References",
+          "source_section_sha256": "2c232e1bb3070518a4723316ed12f3eafec01b95b86dab310fcceb6e218cca3a",
+          "requirements": [],
+          "note": "Document context, conventions, acknowledgements, references or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "11",
+          "title": "Author's Address",
+          "source_section_sha256": "72eda06387e4726f2079e0e2de7b6773e67ee11ae1840ef09d4ecc7ce990c13c",
+          "requirements": [],
+          "note": "Document context, conventions, acknowledgements, references or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "A",
+          "title": "Compliance checklist",
+          "source_section_sha256": "1e293338e5a400cbc1484dbf1ff3af7c7c49a0a95b23a9aeebada63904a7aa94",
+          "requirements": [
+            "IMAP-TLS-AUDIT-01",
+            "IMAP-TLS-AUDIT-02",
+            "IMAP-TLS-AUDIT-03",
+            "IMAP-TLS-AUDIT-04",
+            "IMAP-TLS-AUDIT-05",
+            "IMAP-STARTTLS-01",
+            "IMAP-STARTTLS-08"
+          ],
+          "note": "Summary of the same privacy, cipher, client and other-protocol requirements; no additional implementation claim."
+        }
+      ]
+    },
+    {
+      "rfc": 4616,
+      "url": "https://www.rfc-editor.org/rfc/rfc4616.txt",
+      "sha256": "33aa677ab7b8efe52e86147c63b38dd8dd5de96438c63e10ba8a04504bbdbca4",
+      "sections": [
+        {
+          "section": "1",
+          "title": "Introduction",
+          "source_section_sha256": "6b141677f283fa55705454b1b3494e86e19d480944a6b4428e7efc719a612acd",
+          "requirements": [
+            "IMAP-PLAIN-06",
+            "IMAP-AUTHENTICATE-11"
+          ],
+          "note": "PLAIN has no security layer; protected default and legacy exception are explicit."
+        },
+        {
+          "section": "2",
+          "title": "PLAIN SASL Mechanism",
+          "source_section_sha256": "dcd912c4c541892224ea6242605e92b2c9eecd77fb25d5d087a3d317955b445e",
+          "requirements": [
+            "IMAP-PLAIN-01",
+            "IMAP-PLAIN-02",
+            "IMAP-PLAIN-03",
+            "IMAP-PLAIN-04",
+            "IMAP-PLAIN-05"
+          ],
+          "note": "UTF-8/NUL grammar, 255-octet minima, authentication/authorization and preparation responsibilities. Optional credential-database initialization is not offered."
+        },
+        {
+          "section": "3",
+          "title": "Pseudo-Code",
+          "source_section_sha256": "652e40114ac8c67075fb9850e96d61eadd588cb903e0506df3d0bb2d2c1452c3",
+          "requirements": [
+            "IMAP-PLAIN-04",
+            "IMAP-PLAIN-05"
+          ],
+          "note": "Illustrative non-definitive pseudocode, not an additional engine algorithm requirement."
+        },
+        {
+          "section": "4",
+          "title": "Examples",
+          "source_section_sha256": "96462c5116acff9bba0af7db8796335fed056f9bf90bb0212af31c301c25a01c",
+          "requirements": [
+            "IMAP-PLAIN-02",
+            "IMAP-AUTHENTICATE-06",
+            "IMAP-TLS-AUDIT-05"
+          ],
+          "note": "Mechanism framing/unauthorized identity are proved through IMAP; ACAP transcripts are not claimed verbatim."
+        },
+        {
+          "section": "5",
+          "title": "Security Considerations",
+          "source_section_sha256": "959e25718c2d90a0fed3f153a24b58a95204cb02cb67ee40e236f2eafca31fde",
+          "requirements": [
+            "IMAP-PLAIN-06",
+            "IMAP-TLS-AUDIT-03"
+          ],
+          "note": "Protected-default recommendation and client password-revealing mechanism policy."
+        },
+        {
+          "section": "6",
+          "title": "IANA Considerations",
+          "source_section_sha256": "a06e1fabcda790f3d99670a45ff82b262f3987d5071e9c62ec7ba36b6a8cd024",
+          "requirements": [
+            "IMAP-SASLIR-01"
+          ],
+          "note": "PLAIN is advertised as AUTH=PLAIN; registration metadata needs no runtime behavior."
+        },
+        {
+          "section": "7",
+          "title": "Acknowledgements",
+          "source_section_sha256": "73b3c9fdf898bb6bda6a599cea55678fde6f2a2ae4e908c982fdd443c8115549",
+          "requirements": [],
+          "note": "Document context, conventions, acknowledgements, references or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "8",
+          "title": "Normative References",
+          "source_section_sha256": "f6fd9033b92ef3729faf18822a9e1640896c504a8c417047e23997e7ec10e367",
+          "requirements": [],
+          "note": "Document context, conventions, acknowledgements, references or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "9",
+          "title": "Informative References",
+          "source_section_sha256": "31f8c3da32cb1bef4b4dc1a0a8cec8fc2dae2309cb81b563026629f525432095",
+          "requirements": [],
+          "note": "Document context, conventions, acknowledgements, references or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "A",
+          "title": "Changes since RFC2595",
+          "source_section_sha256": "5f877d1d309d0d98d86dbf1348df661fd34cbe3f35b423341a5f416c7e0b8082",
+          "requirements": [
+            "IMAP-PLAIN-01",
+            "IMAP-PLAIN-04"
+          ],
+          "note": "Explicitly non-normative changes: modern UTF-8 grammar replaces the old 5/6-octet form; preparation remains a backend duty."
+        }
+      ]
+    },
+    {
+      "rfc": 4959,
+      "url": "https://www.rfc-editor.org/rfc/rfc4959.txt",
+      "sha256": "22a39f041118aec0cb7b5f879ccba9cc146081c5c138768b79bbd4e798ac44b8",
+      "sections": [
+        {
+          "section": "1",
+          "title": "Introduction",
+          "source_section_sha256": "7d7ff471482a98a7e9d63d452a45a3d5f8ba87b276603c7b08b8d6480a0a8d9d",
+          "requirements": [
+            "IMAP-SASLIR-01"
+          ],
+          "note": "SASL-IR discovery and optional initial response."
+        },
+        {
+          "section": "2",
+          "title": "Conventions Used in This Document",
+          "source_section_sha256": "dd4f3b196973ec5fcc18593308d73926664f714f5992cdc997d8c7b9eea37343",
+          "requirements": [],
+          "note": "Document context, conventions, acknowledgements, references or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "3",
+          "title": "IMAP Changes to the IMAP AUTHENTICATE Command",
+          "source_section_sha256": "9ac21f04420eedfc8aadade97ba8df1614e42f9c98884260ffd3c18b0ec14a13",
+          "requirements": [
+            "IMAP-SASLIR-02",
+            "IMAP-SASLIR-03",
+            "IMAP-SASLIR-04",
+            "IMAP-SASLIR-06",
+            "IMAP-SASLIR-07",
+            "IMAP-SASLIR-08"
+          ],
+          "note": "Base64, zero-length marker, unquoted token, omitted-response fallback and mechanism applicability."
+        },
+        {
+          "section": "4",
+          "title": "Examples",
+          "source_section_sha256": "dde7bf7e59db4707e47291c3a5f14630f5cdc67f220812eef76266919a658437",
+          "requirements": [
+            "IMAP-SASLIR-02",
+            "IMAP-SASLIR-03",
+            "IMAP-SASLIR-08"
+          ],
+          "note": "PLAIN initial/continuation examples are tested; optional EXTERNAL is not supported."
+        },
+        {
+          "section": "5",
+          "title": "IANA Considerations",
+          "source_section_sha256": "9b13c8569588e2da025cc4dcb0073d8ff95b60af14d3561b26a7874161a59dfa",
+          "requirements": [
+            "IMAP-SASLIR-01"
+          ],
+          "note": "Capability registration, no extra wire command."
+        },
+        {
+          "section": "6",
+          "title": "Security Considerations",
+          "source_section_sha256": "5e182660a321f260ea3e9fea3c0644f589b9fe7c94f8f048d432cb7d82e0ee56",
+          "requirements": [
+            "IMAP-SASLIR-03",
+            "IMAP-SASLIR-05",
+            "IMAP-LITERAL-10"
+          ],
+          "note": "Omission fallback and line budget for the required PLAIN size; overlong replies preserve framing."
+        },
+        {
+          "section": "7",
+          "title": "Formal Syntax",
+          "source_section_sha256": "84304e69a552be03577ad5431560ddb47a92c4d9f60c774c97a603132d9c3692",
+          "requirements": [
+            "IMAP-SASLIR-01",
+            "IMAP-SASLIR-04",
+            "IMAP-SASLIR-06"
+          ],
+          "note": "AUTHENTICATE grammar, unquoted base64/equals and continuation forms."
+        },
+        {
+          "section": "8",
+          "title": "Acknowledgments",
+          "source_section_sha256": "7a8e78310b00f7018d94eec1b3e3b32979fdec2f808d97597f83760f481ddade",
+          "requirements": [],
+          "note": "Document context, conventions, acknowledgements, references or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "9",
+          "title": "References",
+          "source_section_sha256": "6f58ef1211419535c1c20d9c77d2b6536948f8af0f8a2d30dd73e3c4aec632f7",
+          "requirements": [],
+          "note": "Document context, conventions, acknowledgements, references or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "9.1",
+          "title": "Normative References",
+          "source_section_sha256": "314f33a0f382807093882765b172dcc9bd3068950a18cb842e0dee42d555911c",
+          "requirements": [],
+          "note": "Document context, conventions, acknowledgements, references or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "9.2",
+          "title": "Informative References",
+          "source_section_sha256": "18a69cd8a13bbec5b08f189a4590b85e12c0fd0c00ee239ead2d89cf52fb0f03",
+          "requirements": [],
+          "note": "Document context, conventions, acknowledgements, references or legal metadata; no independent server protocol requirement."
+        }
+      ]
+    },
+    {
+      "rfc": 5161,
+      "url": "https://www.rfc-editor.org/rfc/rfc5161.txt",
+      "sha256": "a8a34b3442e20ac21336e32a418828c21e24c253ca5d1706d9a0019e8f1301e3",
+      "sections": [
+        {
+          "section": "1",
+          "title": "Overview",
+          "source_section_sha256": "f5656d307fab36b9f9335d315e340f034199ac099baa76e01e25dd8721578b70",
+          "requirements": [
+            "IMAP-EXT-CAP-01"
+          ],
+          "note": "ENABLE advertisement; descriptive overview introduces no extra enable-able extension."
+        },
+        {
+          "section": "2",
+          "title": "Conventions Used in This Document",
+          "source_section_sha256": "9bc0cc4ec5b93e8602eb2636731bcb6dc1e6cf99c6be5f3c20f7ee528ec6e9db",
+          "requirements": [],
+          "note": "Document context, conventions, acknowledgements, references or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "3",
+          "title": "Protocol Changes",
+          "source_section_sha256": "ab950bbb4dfb2965351719001f37def1bdfcb85f9a21275a3684c4426aadf799",
+          "requirements": [
+            "IMAP-ENABLE-01"
+          ],
+          "note": "Protocol-change overview."
+        },
+        {
+          "section": "3.1",
+          "title": "The ENABLE Command",
+          "source_section_sha256": "79bc816b01102c20ea48601a734b89158926a05cbbe3955cc8f3f3a04a27393a",
+          "requirements": [
+            "IMAP-ENABLE-01",
+            "IMAP-ENABLE-02",
+            "IMAP-ENABLE-03",
+            "IMAP-ENABLE-04",
+            "IMAP-ENABLE-05",
+            "IMAP-ENABLE-06",
+            "IMAP-ENABLE-07",
+            "IMAP-ENABLE-08"
+          ],
+          "note": "Ignore unknown/non-enable-able names; persistent additive mode, response/capability invariants, state, pipelining and client duties. CONDSTORE example is unsupported and ignored."
+        },
+        {
+          "section": "3.2",
+          "title": "The ENABLED Response",
+          "source_section_sha256": "a4a95062c9f7455fcb2a2bc0e3d6578cbaba6ca36bf97b9d559bb9e6a1106951",
+          "requirements": [
+            "IMAP-ENABLE-02"
+          ],
+          "note": "ENABLED lists only enabled names and can be empty."
+        },
+        {
+          "section": "3.3",
+          "title": "Note to Designers of Extensions That May Use the ENABLE Command",
+          "source_section_sha256": "5fb557cceca202cc6e872fbf102461da9dee5fe54628c98be3a510a359a2ca86",
+          "requirements": [
+            "IMAP-ENABLE-08"
+          ],
+          "note": "Extension-designer advice, not engine behavior."
+        },
+        {
+          "section": "4",
+          "title": "Formal Syntax",
+          "source_section_sha256": "6be2db5a8180f16310f07cfa74b7cc66fe1e4aba5aef1bcec60c6c6552eb76ff",
+          "requirements": [
+            "IMAP-ENABLE-04",
+            "IMAP-ENABLE-05"
+          ],
+          "note": "Case-insensitive capability atoms, required arguments and response syntax."
+        },
+        {
+          "section": "5",
+          "title": "Security Considerations",
+          "source_section_sha256": "28420dc2867d744d2840a4a0a7f9494c1e627bda3c8233a018204c761fe084ec",
+          "requirements": [
+            "IMAP-ENABLE-06"
+          ],
+          "note": "No added security requirement beyond authenticated state."
+        },
+        {
+          "section": "6",
+          "title": "IANA Considerations",
+          "source_section_sha256": "1b1bfcd76906376517f48af021e830f2196bd6fff4805fbb52820710959118fa",
+          "requirements": [
+            "IMAP-EXT-CAP-01"
+          ],
+          "note": "ENABLE capability registration."
+        },
+        {
+          "section": "7",
+          "title": "Acknowledgments",
+          "source_section_sha256": "2dc0b5baa634173263c2aff50f2169612b2928bf0cffbec891aff98671b3c345",
+          "requirements": [],
+          "note": "Document context, conventions, acknowledgements, references or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "8",
+          "title": "Normative References",
+          "source_section_sha256": "3b1a139ae78d3e23f936025ad4dbefdf06a81bc22cda213c9a7d6b8082f43a36",
+          "requirements": [],
+          "note": "Document context, conventions, acknowledgements, references or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "9",
+          "title": "Informative References",
+          "source_section_sha256": "5678384a7bc4a60211c35c307cd60e432829aede8d711d4e34d47ffd89c6d716",
+          "requirements": [],
+          "note": "Document context, conventions, acknowledgements, references or legal metadata; no independent server protocol requirement."
+        }
+      ]
+    },
+    {
+      "rfc": 3691,
+      "url": "https://www.rfc-editor.org/rfc/rfc3691.txt",
+      "sha256": "2d3527e0d7cb70a3877f77685d487eed5044671197fd5f437be4f7a540dd958b",
+      "sections": [
+        {
+          "section": "1",
+          "title": "Introduction",
+          "source_section_sha256": "5aeee05ffa6e8de1a22d396e16ecf935c5f128340aeaa8365ebc0311fe8bdf18",
+          "requirements": [
+            "IMAP-EXT-CAP-01"
+          ],
+          "note": "UNSELECT advertisement and distinction from CLOSE."
+        },
+        {
+          "section": "2",
+          "title": "UNSELECT Command",
+          "source_section_sha256": "052a368dd06ab82f1933d9906b74f05baed6b27ec52d0a0849b6ef503df6d9b8",
+          "requirements": [
+            "IMAP-UNSELECT-01",
+            "IMAP-UNSELECT-02",
+            "IMAP-UNSELECT-03",
+            "IMAP-UNSELECT-04"
+          ],
+          "note": "No expunge, selection release, BAD without selection/with arguments; RFC example is covered by the public exchange."
+        },
+        {
+          "section": "3",
+          "title": "Security Considerations",
+          "source_section_sha256": "48b7e4dd1e99bf153d9aedae3e5c7ab5c3ebf684b215d3d5b3ab7390068749e7",
+          "requirements": [
+            "IMAP-UNSELECT-02"
+          ],
+          "note": "No added security requirement beyond the base protocol."
+        },
+        {
+          "section": "4",
+          "title": "Formal Syntax",
+          "source_section_sha256": "87b5aee3108f628c942c5ad4d219d5e8874b30a6a860b896de596053361bddc7",
+          "requirements": [
+            "IMAP-UNSELECT-01",
+            "IMAP-UNSELECT-04"
+          ],
+          "note": "Case-insensitive selected-state no-argument command."
+        },
+        {
+          "section": "5",
+          "title": "IANA Considerations",
+          "source_section_sha256": "0a6a774503e3d5cc04cd400c3645227e37f598db1a9c6ecc9653eebbc4aeb356",
+          "requirements": [
+            "IMAP-EXT-CAP-01"
+          ],
+          "note": "UNSELECT capability registration."
+        },
+        {
+          "section": "6",
+          "title": "Acknowledgments",
+          "source_section_sha256": "8e82248da242d35e7925c02babb2d4ca8bf29d3a503d9be747e409cd130002f7",
+          "requirements": [],
+          "note": "Document context, conventions, acknowledgements, references or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "7",
+          "title": "Normative References",
+          "source_section_sha256": "03322ed2bba24cba0005145f9b9f7348b87e32bd136d6ab0efb4f4daeb848ea9",
+          "requirements": [],
+          "note": "Document context, conventions, acknowledgements, references or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "8",
+          "title": "Author's Address",
+          "source_section_sha256": "19ae6947524437e12a5e1668d6c3641987a3f3bfd42da19d7292b01e7c1b05c0",
+          "requirements": [],
+          "note": "Document context, conventions, acknowledgements, references or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "9",
+          "title": "Full Copyright Statement",
+          "source_section_sha256": "ac9e24a2f8648c18748b84b46d7c63497632b30aceadd81190a0480608b26f44",
+          "requirements": [],
+          "note": "Document context, conventions, acknowledgements, references or legal metadata; no independent server protocol requirement."
+        }
+      ]
+    },
+    {
+      "rfc": 2177,
+      "url": "https://www.rfc-editor.org/rfc/rfc2177.txt",
+      "sha256": "600c02aeddb4dc47618700797b2293115d077404ce1781990fdad1a88597d8d2",
+      "sections": [
+        {
+          "section": "1",
+          "title": "Abstract",
+          "source_section_sha256": "dd3f602222b6de08f1b398e446ca7671854ee71cd0b6a396da7a7106fbaaba2f",
+          "requirements": [
+            "IMAP-EXT-CAP-01"
+          ],
+          "note": "IDLE capability and motivation."
+        },
+        {
+          "section": "2",
+          "title": "Conventions Used in this Document",
+          "source_section_sha256": "b15c35d1337da7918206f98ed066490758843de7466dff9a721c6b692d23e430",
+          "requirements": [],
+          "note": "Document context, conventions, acknowledgements, references or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "3",
+          "title": "Specification",
+          "source_section_sha256": "de381f849ab1562632f6ef00ee4ef59326fc9f5a3f55cd4a28e7036ca5fb00ee",
+          "requirements": [
+            "IMAP-IDLE-01",
+            "IMAP-IDLE-02",
+            "IMAP-IDLE-03",
+            "IMAP-IDLE-04",
+            "IMAP-IDLE-05",
+            "IMAP-LITERAL-11",
+            "IMAP-AUTOLOGOUT-01"
+          ],
+          "note": "Continuation/DONE, update transcript, completion ordering, NO policy, client obligations and timeout boundary."
+        },
+        {
+          "section": "4",
+          "title": "Formal Syntax",
+          "source_section_sha256": "cc0fc639b31d1bee7294d2e76b3eb4d20c538b4f7732165b4822caf6c4971b53",
+          "requirements": [
+            "IMAP-IDLE-01",
+            "IMAP-IDLE-02",
+            "IMAP-IDLE-04"
+          ],
+          "note": "Authenticated/selected-state command grammar and DONE continuation."
+        },
+        {
+          "section": "5",
+          "title": "References",
+          "source_section_sha256": "cc214311a6e1af2a7588bd2b73a049cf2d1161f4a71d2d76ee99efa68d736882",
+          "requirements": [],
+          "note": "Document context, conventions, acknowledgements, references or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "6",
+          "title": "Security Considerations",
+          "source_section_sha256": "c3d70f1bf8424e90efb83131922a6e2ccd1eebd967e28d9729036df10930eee8",
+          "requirements": [
+            "IMAP-IDLE-05"
+          ],
+          "note": "No new security requirements; base-protocol timeout policy remains explicit."
+        },
+        {
+          "section": "7",
+          "title": "Author's Address",
+          "source_section_sha256": "e573358edfe1ea936745e788718a5d30174962a238389e49e889d9abc7aaa76d",
+          "requirements": [],
+          "note": "Document context, conventions, acknowledgements, references or legal metadata; no independent server protocol requirement."
+        }
+      ]
+    },
+    {
+      "rfc": 7888,
+      "url": "https://www.rfc-editor.org/rfc/rfc7888.txt",
+      "sha256": "62e676eeece48d072ab1e2049613357ef47e7a9f3fb52163f27eece0d7d95b15",
+      "sections": [
+        {
+          "section": "1",
+          "title": "Introduction",
+          "source_section_sha256": "af9b30af2daa76c024d467abe9db522418871de75cf8f91240a2bb75e54e8bb3",
+          "requirements": [
+            "IMAP-LITMINUS-01",
+            "IMAP-LITMINUS-03"
+          ],
+          "note": "LITERAL- is the offered subset; LITERAL+ is not advertised."
+        },
+        {
+          "section": "2",
+          "title": "Conventions",
+          "source_section_sha256": "b89fd6f6b6c8feb90c6efaa1a18cc5162b2568f8878a7cab50813930e4697b55",
+          "requirements": [],
+          "note": "Document context, conventions, acknowledgements, references or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "3",
+          "title": "Specification",
+          "source_section_sha256": "1dabbfe302a5177fb75d561cedcbefe6f12f3b3fd645395941affec1514ea5bb",
+          "requirements": [
+            "IMAP-LITERAL-01",
+            "IMAP-LITERAL-02",
+            "IMAP-LITERAL-03",
+            "IMAP-LITERAL-04",
+            "IMAP-LITERAL-05",
+            "IMAP-LITERAL-06",
+            "IMAP-LITERAL-07",
+            "IMAP-LITERAL-08",
+            "IMAP-LITERAL-09",
+            "IMAP-LITMINUS-02",
+            "IMAP-LITMINUS-05",
+            "IMAP-LITMINUS-06"
+          ],
+          "note": "Count each literal and continuation segment, preserve spaces, omit client-data continuation, never emit plus literals to clients; exact LOGIN example has a dedicated proof."
+        },
+        {
+          "section": "4",
+          "title": "Considerations on When to Use and Not to Use Synchronizing Literals",
+          "source_section_sha256": "c826f0c0cf1f84cfba8897cc6bf55d72deaf797ea5e9f258c34e4c30b5cde3fd",
+          "requirements": [
+            "IMAP-LITERAL-02",
+            "IMAP-LITERAL-03",
+            "IMAP-LITMINUS-04"
+          ],
+          "note": "Reject by closing with BYE when unread payload is in flight; APPENDLIMIT is optional and is not advertised."
+        },
+        {
+          "section": "5",
+          "title": "LITERAL- Capability",
+          "source_section_sha256": "14148d0483079cc4943586d59d9be115b647bc3b07b8b6f211a2880481a608cc",
+          "requirements": [
+            "IMAP-LITMINUS-01",
+            "IMAP-LITMINUS-03",
+            "IMAP-LITMINUS-04"
+          ],
+          "note": "4096 boundary, synchronizing fallback, TOOBIG and mutual exclusion of LITERAL-/LITERAL+."
+        },
+        {
+          "section": "6",
+          "title": "Interaction with BINARY Extension",
+          "source_section_sha256": "7d0fd4f664a3f25a3eb016db8169d7464053975345d3d978cff33cd99c0c7a53",
+          "requirements": [
+            "IMAP-LITMINUS-07",
+            "IMAP-BINARY-07",
+            "IMAP-UTF8-04"
+          ],
+          "note": "literal8 grammar is recognized, but binary APPEND storage is explicitly unsupported."
+        },
+        {
+          "section": "7",
+          "title": "Interaction with MULTIAPPEND Extension",
+          "source_section_sha256": "940f2876b497a7113ca0c538c160339e236c6451dbfaf0e197f63717859dcb66",
+          "requirements": [
+            "IMAP-LITMINUS-08"
+          ],
+          "note": "MULTIAPPEND is not supported."
+        },
+        {
+          "section": "8",
+          "title": "Formal Syntax",
+          "source_section_sha256": "c791fb4ea58b840b0dfdece734718cd51004a2f118ce5103d7436a75c83d6645",
+          "requirements": [
+            "IMAP-LITMINUS-02",
+            "IMAP-LITMINUS-03",
+            "IMAP-LITMINUS-07"
+          ],
+          "note": "Literal octet counts and optional plus; literal8 storage boundary remains explicit."
+        },
+        {
+          "section": "9",
+          "title": "Security Considerations",
+          "source_section_sha256": "aabc5e660392bdf63bebd9d02b555c839acb4155f0f2ec22686cfd7ea606503b",
+          "requirements": [
+            "IMAP-LITERAL-01",
+            "IMAP-LITERAL-02",
+            "IMAP-LITMINUS-04"
+          ],
+          "note": "Bound command/literal allocations and close unread payload paths; no blanket denial-of-service guarantee."
+        },
+        {
+          "section": "10",
+          "title": "IANA Considerations",
+          "source_section_sha256": "156368d13ac651a8004df7085c9196e34a875a48c7aa0316c93cabee96e40093",
+          "requirements": [
+            "IMAP-LITMINUS-01"
+          ],
+          "note": "Capability registration."
+        },
+        {
+          "section": "11",
+          "title": "References",
+          "source_section_sha256": "15ee0fbd38b8db25f6fc7b4fb8fa69d992ebfe4b006eaaf8c71cc56a11f9e53f",
+          "requirements": [],
+          "note": "Document context, conventions, acknowledgements, references or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "11.1",
+          "title": "Normative References",
+          "source_section_sha256": "aa462329933e3dbad0f0b9e7720379d167819f60a455efd081d376032b19ba3f",
+          "requirements": [],
+          "note": "Document context, conventions, acknowledgements, references or legal metadata; no independent server protocol requirement."
+        },
+        {
+          "section": "11.2",
+          "title": "Informative References",
+          "source_section_sha256": "aa50a8f38e458cd6f55098fa1b69af3a67494144be20623eb4cf7478a5b69bf8",
+          "requirements": [],
+          "note": "Document context, conventions, acknowledgements, references or legal metadata; no independent server protocol requirement."
+        }
+      ]
+    }
+  ]
+}

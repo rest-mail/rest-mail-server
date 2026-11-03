@@ -31,7 +31,7 @@ func TestMessageImportValidationAndSizeBeforeDatabase(t *testing.T) {
 		{"empty raw", "12", "raw_message", 422, func(b *apitypes.ImportMessageBody) { b.RawMessage = nil }},
 		{"missing internal date", "12", "internal_date", 422, func(b *apitypes.ImportMessageBody) { b.InternalDate = time.Time{} }},
 		{"bad folder", "12", "folder", 422, func(b *apitypes.ImportMessageBody) { b.Folder = "bad\x00folder" }},
-		{"unknown flag", "12", "flags", 422, func(b *apitypes.ImportMessageBody) { b.Flags = []string{"$Custom"} }},
+		{"unknown flag", "12", "flags", 422, func(b *apitypes.ImportMessageBody) { b.Flags = []string{"bad keyword"} }},
 		{"bad id", "0", "id", 422, func(*apitypes.ImportMessageBody) {}},
 		{"decoded size", "12", "message_too_large", 413, func(b *apitypes.ImportMessageBody) { b.RawMessage = bytes.Repeat([]byte("x"), 1025) }},
 	} {

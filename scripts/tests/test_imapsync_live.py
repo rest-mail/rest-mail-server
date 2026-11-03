@@ -65,7 +65,7 @@ def contents(client, folder):
         flags = re.search(rb"FLAGS \(([^)]*)\)", item[0])
         subject = re.search(rb"Subject: (.+?)\r?\n", item[1], re.IGNORECASE)
         kept = sorted(flag for flag in (flags.group(1).decode().split() if flags else [])
-                      if flag in ("\\Seen", "\\Flagged", "\\Answered"))
+                      if flag != "\\Recent")
         found[subject.group(1).decode()] = kept
     return found
 
@@ -91,6 +91,8 @@ class ImapsyncCutover(unittest.TestCase):
             "first read": ["\\Seen"],
             "second flagged": ["\\Flagged", "\\Seen"],
             "third unread": [],
+            "fourth keywords": ["$Forwarded", "$Junk"],
+            "fifth deleted": ["$Forwarded", "\\Deleted", "\\Seen"],
         }
         sender = source()
         sender.create(folder)
@@ -114,6 +116,14 @@ class ImapsyncCutover(unittest.TestCase):
         print(imapsync(host, folder)[-800:], file=sys.stderr)
         receiver.close()
         self.assertEqual(contents(receiver, folder), want, "a second copy changed the folder")
+        receiver.close()
+        status, _ = receiver.select('"%s"' % folder)
+        self.assertEqual(status, "OK")
+        status, _ = receiver.expunge()
+        self.assertEqual(status, "OK")
+        remaining = {subject: flags for subject, flags in want.items() if "\\Deleted" not in flags}
+        self.assertEqual(contents(receiver, folder), remaining)
+        self.assertEqual(contents(sender, folder), want, "destination EXPUNGE changed the source")
 
 
 if __name__ == "__main__":

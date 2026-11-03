@@ -15,6 +15,7 @@ import (
 	"time"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
+	goimap "github.com/rest-mail/go-imap/pkg/imap"
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/api/respond"
@@ -136,10 +137,11 @@ func (h *MessageHandler) signOutboundDKIM(senderDomain, raw string) (string, err
 // listMessagesRequest is a page of a folder, newest first. limit is 1 to 100 (50 otherwise);
 // cursor is the next_cursor of the page before.
 type listMessagesRequest struct {
-	ID     uint32 `path:"id" minimum:"1" example:"1"`
-	Folder string `path:"folder" example:"INBOX"`
-	Limit  *int   `query:"limit"`
-	Cursor string `query:"cursor"`
+	ID                 uint32 `path:"id" minimum:"1" example:"1"`
+	Folder             string `path:"folder" example:"INBOX"`
+	Limit              *int   `query:"limit"`
+	Cursor             string `query:"cursor"`
+	IncludeIMAPDeleted bool   `query:"include_imap_deleted"`
 }
 
 // messagePath names a message by its id.
@@ -266,6 +268,9 @@ func (h *MessageHandler) listMessages(r *http.Request, in listMessagesRequest) (
 		Where(visibleThreads).
 		Order("received_at DESC, id DESC").
 		Limit(limit + 1)
+	if !in.IncludeIMAPDeleted {
+		query = query.Where("imap_deleted = false")
+	}
 	if after, ok := decodeMessageCursor(in.Cursor); ok {
 		query = query.Where("(received_at < ? OR (received_at = ? AND id < ?))", after.ReceivedAt, after.ReceivedAt, after.ID)
 	}
@@ -288,7 +293,11 @@ func (h *MessageHandler) listMessages(r *http.Request, in listMessagesRequest) (
 	}
 
 	var total int64
-	if err := h.db.Model(&models.Message{}).Where("mailbox_id = ? AND folder = ? AND is_deleted = ?", mailboxID, folder, false).Where(visibleThreads).Count(&total).Error; err != nil {
+	countQuery := h.db.Model(&models.Message{}).Where("mailbox_id = ? AND folder = ? AND is_deleted = ?", mailboxID, folder, false).Where(visibleThreads)
+	if !in.IncludeIMAPDeleted {
+		countQuery = countQuery.Where("imap_deleted = false")
+	}
+	if err := countQuery.Count(&total).Error; err != nil {
 		return zero, fmt.Errorf("count messages: %w", err)
 	}
 
@@ -342,6 +351,25 @@ func (h *MessageHandler) updateMessage(r *http.Request, in updateMessageRequest)
 
 	req := in.Body
 	updates := map[string]interface{}{}
+	if req.Keywords != nil {
+		flags, err := goimap.NormalizeImportFlags(*req.Keywords)
+		if err != nil {
+			return Message{}, endpoint.Invalid(map[string]string{"keywords": err.Error()})
+		}
+		for _, keyword := range flags {
+			if strings.Contains(keyword, `\`) {
+				return Message{}, endpoint.Invalid(map[string]string{"keywords": "expected keywords, not system flags"})
+			}
+		}
+		encoded, err := json.Marshal(flags)
+		if err != nil {
+			return Message{}, err
+		}
+		updates["keywords"] = string(encoded)
+	}
+	if req.IMAPDeleted != nil {
+		updates["imap_deleted"] = *req.IMAPDeleted
+	}
 	if req.IsAnswered != nil {
 		updates["is_answered"] = *req.IsAnswered
 	}
@@ -1328,7 +1356,7 @@ func (h *MessageHandler) listFolders(r *http.Request, in accountPath) (endpoint.
 
 	var folders []FolderSummary
 	if err := h.db.Model(&models.Message{}).
-		Select("folder, COUNT(CASE WHEN is_deleted = false AND "+visibleThreads+" THEN 1 END) as total, COUNT(CASE WHEN is_deleted = false AND is_read = false AND "+visibleThreads+" THEN 1 END) as unread").
+		Select("folder, COUNT(CASE WHEN is_deleted = false AND imap_deleted = false AND "+visibleThreads+" THEN 1 END) as total, COUNT(CASE WHEN is_deleted = false AND imap_deleted = false AND is_read = false AND "+visibleThreads+" THEN 1 END) as unread").
 		Where("mailbox_id = ?", mailboxID).
 		Group("folder").
 		Order("folder ASC").
@@ -1819,7 +1847,7 @@ func (h *MessageHandler) getThread(r *http.Request, in threadRequest) (endpoint.
 	}
 
 	var messages []models.Message
-	if err := h.db.Where("mailbox_id = ? AND thread_id = ? AND is_deleted = ?", mailboxID, in.ThreadID, false).
+	if err := h.db.Where("mailbox_id = ? AND thread_id = ? AND is_deleted = ? AND imap_deleted = false", mailboxID, in.ThreadID, false).
 		Select(messageThreadFields).
 		Order("received_at ASC").
 		Find(&messages).Error; err != nil {
@@ -2675,7 +2703,7 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 			},
 		})
 		var unreadCount int64
-		h.db.Model(&models.Message{}).Where("mailbox_id = ? AND folder = ? AND is_read = ? AND is_deleted = ?",
+		h.db.Model(&models.Message{}).Where("mailbox_id = ? AND folder = ? AND is_read = ? AND is_deleted = ? AND imap_deleted = false",
 			mailbox.ID, "INBOX", false, false).Count(&unreadCount)
 		h.broker.Publish(mailbox.ID, SSEEvent{
 			Type: "folder_update",

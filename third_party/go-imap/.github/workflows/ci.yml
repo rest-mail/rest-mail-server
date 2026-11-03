@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.10"
+          cache: true
+
+      - name: Build
+        run: go build ./...
+
+      # A signed 32-bit int cannot hold every valid IMAP sequence endpoint.
+      # Run the actual wire proofs on 386; amd64-only tests hide this bug.
+      - name: Check 32-bit sequence dispatch
+        env:
+          GOARCH: "386"
+          CGO_ENABLED: "0"
+        run: go test -count=1 -run '^(TestParseSequenceSet.*|TestResolveSeqNum.*|TestWideSequenceDispatch|TestSearchValidSequenceSet)$' ./pkg/imap/internal/wire ./pkg/imap/rfctest
+
+      - name: Check coverage gate fixtures
+        run: python3 -B -m unittest discover -s .github/tests -v
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          # v2.1.6 is built with Go 1.24 and refuses to lint a module that
+          # targets go 1.25.0 (go.mod). Pin a build made with Go >= 1.25.
+          version: v2.11.4
+          args: --timeout=5m
+
+      - name: Validate partial RFC checklist
+        run: go run ./internal/checklist pkg/imap/rfctest
+
+      # Wire proofs in pkg/imap/rfctest exercise the public library from a
+      # separate package. Instrument all packages so those proofs count too.
+      - name: Run tests with race detector and coverage
+        run: go test -race -count=1 -covermode=atomic -coverpkg=./... -coverprofile=coverage.out ./...
+
+      - name: Require at least 95% statement coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          go tool cover -func=coverage.out | tee coverage.txt | python3 -B .github/scripts/check_coverage.py
+
+      - name: Upload coverage evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: statement-coverage
+          path: |
+            coverage.out
+            coverage.txt
+          if-no-files-found: ignore
+
+      # Duration limits can fail at normal shutdown with "context deadline exceeded"
+      # (golang/go#75804). Bound each smoke run by executions instead; failures
+      # still propagate through go test without retries or suppressed errors.
+      - name: Fuzz MIME transfer-encoding token
+        run: go test -run=^$ -fuzz=^FuzzTransferEncoding$ -fuzztime=500000x ./pkg/imap/internal/message
+
+      - name: Fuzz Content-Type comments
+        run: go test -run='^$' -fuzz='^FuzzContentTypeComments$' -fuzztime=500000x ./pkg/imap/internal/message
+
+      - name: Fuzz FETCH partial ranges
+        run: go test -run='^$' -fuzz='^FuzzBodyPartial$' -fuzztime=500000x ./pkg/imap/internal/message
+
+      - name: Fuzz FETCH data-item lists
+        run: go test -run='^$' -fuzz='^FuzzFetchItems$' -fuzztime=500000x ./pkg/imap/internal/wire
+
+      - name: Fuzz FETCH header lists
+        run: go test -run='^$' -fuzz='^FuzzHeaderFields$' -fuzztime=500000x ./pkg/imap/internal/wire
+
+      - name: Fuzz FETCH section-specs
+        run: go test -run='^$' -fuzz='^FuzzSectionSpec$' -fuzztime=500000x ./pkg/imap/internal/message
+
+      - name: Fuzz SEARCH date tokens
+        run: go test -run='^$' -fuzz='^FuzzSearchDate$' -fuzztime=500000x ./pkg/imap/internal/wire
+
+      - name: Fuzz SEARCH quote framing
+        run: go test -run='^$' -fuzz='^FuzzSearchQuotes$' -fuzztime=500000x ./pkg/imap/server
+
+      - name: Fuzz modified UTF-7 mailbox names
+        run: go test -run='^$' -fuzz='^FuzzModifiedUTF7$' -fuzztime=500000x ./pkg/imap/internal/mutf7

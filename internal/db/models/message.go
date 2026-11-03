@@ -118,15 +118,17 @@ type Message struct {
 	// rows for the per-recipient DSN rate limit, so inbound mail that merely claims
 	// a mailer-daemon@ envelope-from cannot inflate the counter and suppress a
 	// target user's legitimate bounces.
-	IsDSN      bool       `gorm:"default:false" json:"is_dsn"`
-	IsFlagged  bool       `gorm:"default:false" json:"is_flagged"`
-	IsStarred  bool       `gorm:"default:false" json:"is_starred"`
-	IsDraft    bool       `gorm:"default:false" json:"is_draft"`
-	IsDeleted  bool       `gorm:"default:false;index:idx_messages_mailbox_deleted" json:"is_deleted"`
-	ReceivedAt time.Time  `gorm:"default:now();index" json:"received_at"`
-	DateHeader *time.Time `json:"date_header"`
-	CreatedAt  time.Time  `json:"created_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
+	IsDSN       bool       `gorm:"default:false" json:"is_dsn"`
+	IsFlagged   bool       `gorm:"default:false" json:"is_flagged"`
+	IsStarred   bool       `gorm:"default:false" json:"is_starred"`
+	Keywords    []string   `gorm:"serializer:json;type:jsonb" json:"keywords,omitempty"`
+	IMAPDeleted bool       `gorm:"not null;default:false" json:"imap_deleted,omitempty"`
+	IsDraft     bool       `gorm:"default:false" json:"is_draft"`
+	IsDeleted   bool       `gorm:"default:false;index:idx_messages_mailbox_deleted" json:"is_deleted"`
+	ReceivedAt  time.Time  `gorm:"default:now();index" json:"received_at"`
+	DateHeader  *time.Time `json:"date_header"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 
 	// Associations
 	Mailbox Mailbox `gorm:"foreignKey:MailboxID" json:"mailbox,omitempty"`
