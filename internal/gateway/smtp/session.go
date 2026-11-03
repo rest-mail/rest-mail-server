@@ -972,17 +972,23 @@ func (s *session) Data(r io.Reader) error {
 	return nil
 }
 
+// aliasRoutingRefusal recognises the API's permanent refusal of a reserved alias that
+// cannot route, which this gateway turns into SMTP 550. GET /api/mailboxes answers it 403
+// and deliverMessage with its documented 550, both as rejected with the fixed sentence.
+// Any other answer says nothing about the recipient: a 403 from anywhere else stays the
+// temporary failure it was, so a fault here never bounces a sender's mail.
 func aliasRoutingRefusal(err error) (string, bool) {
 	var apiError *apiclient.APIError
-	if !errors.As(err, &apiError) || apiError.StatusCode != 550 {
+	if !errors.As(err, &apiError) || (apiError.StatusCode != 403 && apiError.StatusCode != 550) {
 		return "", false
 	}
 	var refusal struct {
 		Error struct {
+			Code    string `json:"code"`
 			Message string `json:"message"`
 		} `json:"error"`
 	}
-	if json.Unmarshal([]byte(apiError.Body), &refusal) != nil || refusal.Error.Message != rmail.AliasRoutingRefusal {
+	if json.Unmarshal([]byte(apiError.Body), &refusal) != nil || refusal.Error.Code != "rejected" || refusal.Error.Message != rmail.AliasRoutingRefusal {
 		return "", false
 	}
 	return refusal.Error.Message, true

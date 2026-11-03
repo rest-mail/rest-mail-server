@@ -52,11 +52,11 @@ class AliasRefusalHooksTests(unittest.TestCase):
         self.environment.start()
         self.addCleanup(self.environment.stop)
         self.transaction = {
-            "name": "/api/mailboxes > Check whether an address is a mailbox here (protocol gateways) > 550 > application/json",
+            "name": "/api/mailboxes > Check whether an address is a mailbox here (protocol gateways) > 403 > application/json",
             "protocol": "https:", "host": "internal.test", "port": "8443",
             "fullPath": "/api/mailboxes?address=reserved%40example.com",
             "request": {"method": "GET", "headers": {}, "body": ""},
-            "expected": {"statusCode": "550", "body": "unchanged"},
+            "expected": {"statusCode": "403", "body": "unchanged"},
         }
 
     def response(self, body, status=200):
@@ -91,10 +91,10 @@ class AliasRefusalHooksTests(unittest.TestCase):
         self.assertTrue(all(request.get_header("Authorization") == "Bearer setup-session" for request in requests))
 
     def test_probes_and_other_examples_are_never_rewritten(self):
-        for status in ("200", "422", "550"):
+        for status in ("200", "422", "403"):
             for query in ("", "address=", "address=user%40example.com", "address=null",
                           "address=reserved%40example.com&extra=1", "address=reserved%40example.com"):
-                if status == "550" and query == "address=reserved%40example.com":
+                if status == "403" and query == "address=reserved%40example.com":
                     continue
                 transaction = copy.deepcopy(self.transaction)
                 transaction["expected"]["statusCode"] = status

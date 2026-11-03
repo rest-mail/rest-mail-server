@@ -7071,6 +7071,8 @@ paths:
         certificate required) and is absent from the public listener; when disabled
         it is unauthenticated on the public listener. Never accepts a user JWT.
         A missing mailbox is 404; a failed mailbox lookup is 500, never a missing recipient.
+        A reserved alias that cannot route is 403 rejected, never an outbound recipient;
+        the gateway answers its SMTP peer 550.
       security: []
       x-internal-mtls: true
       parameters:
@@ -7101,6 +7103,12 @@ paths:
                   data:
                     $ref: "#/components/schemas/MailboxCheck"
 
+        '403':
+          description: A reserved alias that cannot route (rejected)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '422':
           description: Request failed validation (validation_failed), with details.fields naming each failing field
           content:

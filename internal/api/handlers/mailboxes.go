@@ -329,8 +329,8 @@ func (h *MailboxHandler) RegisterAddressCheck(rs endpoint.Routes) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/mailboxes",
 		OperationID: "checkMailboxAddress", Summary: "Check whether an address is a mailbox here (protocol gateways)", Tags: []string{"Mailboxes"},
 		Description: "Machine to machine: no user token. An address that is not a mailbox here is 200 with exists " +
-			"false: the gateway then routes it outbound. A reserved alias that cannot route is 550 rejected, never an outbound recipient.",
-		Errors: []int{http.StatusUnprocessableEntity, 550}, Security: oapifly.Public}, h.checkAddress)
+			"false: the gateway then routes it outbound. A reserved alias that cannot route is 403 rejected, never an outbound recipient; the gateway answers its SMTP peer 550.",
+		Errors: []int{http.StatusUnprocessableEntity, http.StatusForbidden}, Security: oapifly.Public}, h.checkAddress)
 }
 
 // checkAddress verifies a recipient exists: GET /api/mailboxes?address=...
@@ -344,7 +344,7 @@ func (h *MailboxHandler) checkAddress(r *http.Request, in addressCheckQuery) (Ad
 	recipient, err := repositories.ResolveRecipient(h.db, address, false)
 	if errors.Is(err, repositories.ErrAliasRouting) {
 		slog.WarnContext(r.Context(), "recipient alias refused", "address", address, "error", err)
-		return AddressCheck{}, endpoint.Refuse(550, "rejected", rmail.AliasRoutingRefusal)
+		return AddressCheck{}, endpoint.Refuse(http.StatusForbidden, "rejected", rmail.AliasRoutingRefusal)
 	}
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {

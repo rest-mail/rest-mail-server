@@ -2708,13 +2708,6 @@
     The inbound pipeline rejected the message; the gateway answers its SMTP peer 550 with the
     pipeline's words, the code this answer carries.
 - operation: checkMailboxAddress
-  difference: "response 550: generated only"
-  reason: >-
-    A reserved alias that cannot route is an explicit permanent refusal (#1533).
-    Returning exists false could route it outbound, and refusing only during DATA
-    could hide its failure behind another recipient's success. The gateway propagates
-    this 550 and its alias routing reason instead.
-- operation: checkMailboxAddress
   difference: "parameter query address schema.format: openapi.yaml \"email\", generated absent"
   reason: >-
     Any address is looked up as spelled, internationalised ones included; one that is not a

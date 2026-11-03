@@ -33,7 +33,7 @@ def register_alias_refusal_hooks(admin_token):
             or urllib.parse.parse_qsl(query, keep_blank_values=True)
             != [("address", "reserved@example.com")]
             or transaction.get("request", {}).get("method") != "GET"
-            or transaction.get("expected", {}).get("statusCode") != "550"
+            or transaction.get("expected", {}).get("statusCode") != "403"
         ):
             return
         origin = os.environ.get("CONTRACT_ENDPOINT", "http://10.99.0.20:8080").rstrip("/")

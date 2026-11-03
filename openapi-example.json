@@ -3288,7 +3288,7 @@
         }
       },
       "response": {
-        "status": 550,
+        "status": 403,
         "body": {
           "error": {
             "code": "rejected",

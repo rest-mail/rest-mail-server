@@ -2,11 +2,15 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/smtp"
+	"net/textproto"
+	"net/url"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -18,6 +22,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	smtpgateway "github.com/rest-mail/rest-mail-server/internal/gateway/smtp"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 	pipelinefilters "github.com/rest-mail/rest-mail-server/internal/pipeline/filters"
 	"gorm.io/gorm"
@@ -165,6 +170,98 @@ func TestAliasDeliverySMTPLoopRefusedBeforeAcceptance(t *testing.T) {
 	}
 	if err := client.Rcpt(fixture.alias.SourceAddress); err == nil || !strings.Contains(err.Error(), "Alias delivery is not available for this recipient.") {
 		t.Fatalf("alias loop must be refused safely at RCPT, got %v", err)
+	}
+}
+
+// addressCheck asks the API what the gateway asks at RCPT, and returns the answer as it is.
+func (fixture *aliasDeliveryFixture) addressCheck(t *testing.T, address string) (int, string) {
+	t.Helper()
+	response, err := http.Get(fixture.api.URL + "/api/mailboxes?address=" + url.QueryEscape(address))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return response.StatusCode, string(body)
+}
+
+// rcptError returns what the gateway answers a sending server for one recipient.
+func (fixture *aliasDeliveryFixture) rcptError(t *testing.T, address string) *textproto.Error {
+	t.Helper()
+	client, err := smtp.Dial(fixture.smtpAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = client.Close() }()
+	if err := client.Mail("sender@outside.test"); err != nil {
+		t.Fatal(err)
+	}
+	err = client.Rcpt(address)
+	var reply *textproto.Error
+	if !errors.As(err, &reply) {
+		t.Fatalf("RCPT %s: %v, want an SMTP refusal", address, err)
+	}
+	return reply
+}
+
+// The API answers a refused address with REST semantics, a 403 with the rejected envelope,
+// and the gateway owns the SMTP: a sending server hears a permanent 550 over the same pair.
+func TestAliasRoutingRefusalIsForbiddenOverHTTPAndPermanentOverSMTP(t *testing.T) {
+	for name, breakRoute := range map[string]func(*aliasDeliveryFixture) map[string]any{
+		"inactive": func(*aliasDeliveryFixture) map[string]any { return map[string]any{"active": false} },
+		"loop": func(fixture *aliasDeliveryFixture) map[string]any {
+			return map[string]any{"destination_address": fixture.alias.SourceAddress}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			fixture := newAliasDeliveryFixture(t)
+			if err := fixture.db.Model(&fixture.alias).Updates(breakRoute(fixture)).Error; err != nil {
+				t.Fatal(err)
+			}
+			status, body := fixture.addressCheck(t, fixture.alias.SourceAddress)
+			var refusal struct {
+				Error struct {
+					Code    string `json:"code"`
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			if err := json.Unmarshal([]byte(body), &refusal); err != nil {
+				t.Fatalf("%d %s: %v", status, body, err)
+			}
+			if status != http.StatusForbidden || refusal.Error.Code != "rejected" || refusal.Error.Message != rmail.AliasRoutingRefusal {
+				t.Fatalf("address check = %d %s, want 403 rejected with the fixed reason", status, body)
+			}
+			reply := fixture.rcptError(t, fixture.alias.SourceAddress)
+			if reply.Code != 550 || !strings.Contains(reply.Msg, "5.1.1") || !strings.Contains(reply.Msg, rmail.AliasRoutingRefusal) {
+				t.Fatalf("RCPT = %d %q, want a permanent 550 5.1.1 with the reason", reply.Code, reply.Msg)
+			}
+		})
+	}
+}
+
+// An ordinary not-found keeps its own answer on both layers: a 200 with exists false, then
+// the gateway's own No such user, never the alias routing reason.
+func TestAliasRoutingRefusalStaysDistinctFromNotFound(t *testing.T) {
+	fixture := newAliasDeliveryFixture(t)
+	address := "nobody@" + fixture.domain.Name
+	status, body := fixture.addressCheck(t, address)
+	var check struct {
+		Data struct {
+			Exists bool `json:"exists"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(body), &check); err != nil {
+		t.Fatalf("%d %s: %v", status, body, err)
+	}
+	if status != http.StatusOK || check.Data.Exists {
+		t.Fatalf("address check = %d %s, want 200 exists false", status, body)
+	}
+	reply := fixture.rcptError(t, address)
+	if reply.Code != 550 || !strings.Contains(reply.Msg, "No such user") || strings.Contains(reply.Msg, rmail.AliasRoutingRefusal) {
+		t.Fatalf("RCPT = %d %q, want 550 No such user", reply.Code, reply.Msg)
 	}
 }
 

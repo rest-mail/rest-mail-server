@@ -316,24 +316,25 @@ their state. No domain or mailbox is created or modified. Coverage's generated
 queries do not match the named refusal's query and expected status; they are
 sent unchanged, with no probe hidden by a body rewrite or added requirement.
 
-The #1539 local regression used the rebased PR's API build, disposable
-`postgres:16-alpine`, the seeded `restmail.test` domain, real MFA setup, and
-checksum-verified Vertrag 0.42.0. Both runs of the unchanged implementation
-passed 53 of 54 selected examples; only `alias_refused` failed (200, not 550).
-Both runs with the repair passed all 54, including the neighbouring alias,
-domain and mailbox operations, with no errors or skips. The inactive alias
-returned 550 with the fixed public sentence; the detailed inactive-alias reason
-appeared only in the API log. No temporary refusal alias remained afterwards.
-The generated frontend types were regenerated in scratch and matched both
-checked-in files byte for byte.
+The refusal is a 403, not a 5xx. The API uses REST semantics and the SMTP gateway
+turns them into SMTP (the owner's decision on #1533), and the surface gate never
+counts a 5xx as passed. The gateway answers its SMTP peer 550 for this 403.
 
-The narrowed `checkMailboxAddress` coverage run emitted no generated boundary
-probes and skipped none before or after; its two prerequisite examples changed
-from one passing/one failing to both passing. Its query schema is unchanged.
-The same real ownership runs were repeated before and after: domains/aliases
-retained 9 passing of 16 cells and the same 7 unsent cells; mailboxes retained
-10 of 10 passing cells. These are local regression counts, not a claim that
-unsent ownership cells or the whole-API merge-queue gate have been proven.
+The #1539 local regression used the rebased PR's API build, disposable
+`postgres:16-alpine`, the seeded `restmail.test` domain, these hooks and
+checksum-verified Vertrag 0.42.0, with the description narrowed to this route and
+`surface: {count: passed, require: 100}`. It passed 1 of 1 operations and exited 0:
+the 200, 403 and 422 examples passed, and the 500 example needs a database fault,
+so it is unproven there and proven by `TestMailboxLookupExamplesWithVertrag`. The
+same surface rule against a loopback fixture answering HTTP 550 exited 3 (#1533).
+The inactive alias returned the fixed public sentence, the detailed reason appeared
+only in the API log, and no temporary refusal alias remained afterwards.
+
+An earlier local run, with the refusal still at HTTP 550, also covered the
+neighbouring operations. It passed all 54 selected alias, domain and mailbox
+examples, and left the ownership runs' cells unchanged: domains and aliases 9 of 16
+passing with the same 7 unsent, mailboxes 10 of 10. These counts were not repeated
+for the 403, and neither run is a claim about the whole-API merge-queue gate.
 
 ### Attachment download contract
 

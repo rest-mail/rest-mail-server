@@ -57,9 +57,9 @@ refused rather than acknowledged without anything to send.
 Resolution follows at most eight alias rows. A loop, a longer chain, an
 ambiguous legacy identity, an inactive alias or a missing hosted destination
 is refused with an explicit routing reason; none is relayed back to this
-server's own MX or silently acknowledged. SMTP refuses a broken route at RCPT
-with `550` and its routing reason; RESTMAIL refuses it with
-`422 undeliverable`. A database or queue failure defers delivery instead.
+server's own MX or silently acknowledged. The API's address check answers a
+broken route `403 rejected`, and the SMTP gateway turns that into `550` at RCPT
+with its routing reason; RESTMAIL refuses it with `422 undeliverable`. A database or queue failure defers delivery instead.
 An external message returning through an alias already in its `Delivered-To`
 chain is also refused.
 
