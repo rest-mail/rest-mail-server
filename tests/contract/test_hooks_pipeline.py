@@ -1,5 +1,6 @@
-"""The createPipeline and testPipeline hooks point a request at the run's own
-domain and pipeline, and leave each refused example as documented."""
+"""The pipeline hooks point a request at the run's own domain and a pipeline of
+its own, leave each refused example as documented, and after a reset (#1385)
+start clean and make what the exchange needs."""
 
 import copy
 import json
@@ -18,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[2]
 def load_hooks():
     """Exercise the hook entrypoint selected by the real contract configuration."""
     stub = types.ModuleType("vertrag_hooks")
-    stub.stash = {"domain_id": 17, "pipeline_id": 11}
+    stub.stash = {"domain_id": 17}
     callbacks = {}
 
     def before(name):
@@ -79,11 +80,27 @@ class TestPipeline(unittest.TestCase):
     def setUp(self):
         self.hooks = load_hooks()
 
-    def test_a_valid_request_tests_the_created_pipeline(self):
-        body = sent(
-            self.hooks.test_the_created_pipeline, {"pipeline_id": 1, "email": {}}
-        )
-        self.assertEqual(body["pipeline_id"], 11)
+    def test_a_valid_request_tests_a_pipeline_of_its_own(self):
+        transaction = {
+            "protocol": "http:", "host": "api", "port": "8080",
+            "request": {"body": json.dumps({"pipeline_id": 1, "email": {}})},
+        }
+        with patch.dict(self.hooks.test_the_created_pipeline.__globals__) as names:
+            call = names["fixture_call"] = Mock(return_value={"id": 23})
+            self.hooks.test_the_created_pipeline(transaction)
+        call.assert_called_once_with(transaction, "POST", "/api/v1/admin/pipelines", {
+            "domain_id": 17,
+            "direction": "inbound",
+            "filters": [{"name": "header_validate", "config": {}}],
+            "active": False,
+        })
+        self.assertEqual(json.loads(transaction["request"]["body"])["pipeline_id"], 23)
+        self.assertNotIn("pipeline_id", self.hooks.hooks.stash)
+
+    def test_before_the_run_has_a_domain_it_is_sent_as_before(self):
+        self.hooks.hooks.stash.pop("domain_id")
+        body = {"pipeline_id": 1, "email": {}}
+        self.assertEqual(sent(self.hooks.test_the_created_pipeline, body), body)
 
     def test_refused_examples_are_sent_as_documented(self):
         for documented in ({"pipeline_id": 1}, {"pipeline_id": "1", "email": {}}):
@@ -118,42 +135,127 @@ class TestPipeline(unittest.TestCase):
         sleep.assert_called_once_with(0.55)
         self.assertEqual(transaction, before)
 
-    def test_a_deleted_pipeline_is_replaced_before_the_next_preview(self):
-        # The authorization run replays the examples, whose delete removes the
-        # kept pipeline, then sends each principal's preview without after hooks.
-        stash = self.hooks.hooks.stash
-        for path in ("/api/v1/admin/pipelines/12", "/api/v1/admin/pipelines/abc"):
-            self.hooks.forget_a_deleted_pipeline({"fullPath": path})
-            self.assertEqual(stash["pipeline_id"], 11)
-        self.hooks.forget_a_deleted_pipeline({"fullPath": "/api/v1/admin/pipelines/11"})
-        self.assertNotIn("pipeline_id", stash)
-
-        def preview():
-            return {
-                "protocol": "http:", "host": "api", "port": "8080",
-                "request": {"body": json.dumps({"pipeline_id": 1, "email": {}})},
-            }
-
-        first, second = preview(), preview()
-        # The hook resolves fixture_call from its own module globals.
-        with patch.dict(self.hooks.test_the_created_pipeline.__globals__) as names:
-            call = names["fixture_call"] = Mock(return_value={"id": 23})
-            self.hooks.test_the_created_pipeline(first)
-            self.hooks.test_the_created_pipeline(second)
-        call.assert_called_once_with(first, "POST", "/api/v1/admin/pipelines", {
-            "domain_id": 17,
-            "direction": "inbound",
-            "filters": [{"name": "header_validate", "config": {}}],
-            "active": False,
-        })
-        for transaction in (first, second):
-            self.assertEqual(json.loads(transaction["request"]["body"])["pipeline_id"], 23)
-
     def test_nonplaceholder_and_invalid_targets_are_preserved(self):
+        self.hooks.hooks.stash["domain_id"] = 17
         for pipeline_id in (0, 42, 2147483647, True, "1", None):
             with self.subTest(pipeline_id=pipeline_id):
                 body = {"pipeline_id": pipeline_id, "email": {}}
                 self.assertEqual(sent(self.hooks.test_the_created_pipeline, body), body)
+
+
+class CleanStart(unittest.TestCase):
+    """With CONTRACT_RESET_SEED=1 (the own-data phase), each moved exchange
+    resets first and makes its own domain and pipeline."""
+
+    def setUp(self):
+        self.hooks = load_hooks()
+        self.env = patch.dict("os.environ", {"CONTRACT_RESET_SEED": "1"})
+        self.env.start()
+        self.addCleanup(self.env.stop)
+        self.globals = self.hooks.test_the_created_pipeline.__globals__
+        self.made = []
+
+        def fixture_call(transaction, method, path, body=None):
+            self.made.append((method, path, body))
+            return {"id": 30 + len(self.made), "name": "made.test"}
+
+        self.patch = patch.dict(self.globals)
+        names = self.patch.start()
+        self.addCleanup(self.patch.stop)
+        names["fixture_call"] = fixture_call
+        names["start_clean"] = self.start_clean = Mock(
+            side_effect=lambda transaction: self.forget()
+        )
+
+    def forget(self):
+        stash = self.hooks.hooks.stash
+        stash.pop("domain_id", None)
+        stash["clean_starts"] = stash.get("clean_starts", 0) + 1
+
+    def transaction(self, path, name, body=None):
+        return {
+            "protocol": "http:", "host": "api", "port": "8080",
+            "fullPath": path, "name": name,
+            "request": {"body": json.dumps(body)},
+        }
+
+    def test_create_resets_and_puts_the_pipeline_on_a_domain_of_its_own(self):
+        transaction = self.transaction(
+            "/api/v1/admin/pipelines",
+            "/api/v1/admin/pipelines > Create a new pipeline > 201",
+            {"domain_id": 1, "direction": "inbound", "filters": []},
+        )
+        self.hooks.a_pipeline_on_the_created_domain(transaction)
+        self.start_clean.assert_called_once()
+        self.assertEqual(self.made[0][:2], ("POST", "/api/v1/admin/domains"))
+        self.assertEqual(json.loads(transaction["request"]["body"])["domain_id"], 31)
+
+    def test_an_undecodable_create_resets_and_is_sent_as_documented(self):
+        transaction = self.transaction("/api/v1/admin/pipelines", "x > 400", [])
+        self.hooks.a_pipeline_on_the_created_domain(transaction)
+        self.start_clean.assert_called_once()
+        self.assertEqual(self.made, [])
+        self.assertEqual(json.loads(transaction["request"]["body"]), [])
+
+    def test_a_preview_resets_and_tests_a_pipeline_on_a_domain_of_its_own(self):
+        transaction = self.transaction(
+            "/api/v1/admin/pipelines/test", "x > 200", {"pipeline_id": 1, "email": {}}
+        )
+        self.hooks.test_the_created_pipeline(transaction)
+        self.start_clean.assert_called_once()
+        self.assertEqual([m[1] for m in self.made], [
+            "/api/v1/admin/domains", "/api/v1/admin/pipelines",
+        ])
+        self.assertEqual(self.made[1][2]["domain_id"], 31)
+        self.assertEqual(json.loads(transaction["request"]["body"])["pipeline_id"], 32)
+
+    def test_a_refused_preview_resets_and_is_sent_as_documented(self):
+        body = {"pipeline_id": 2147483647, "email": {}}
+        transaction = self.transaction("/api/v1/admin/pipelines/test", "x > 404", body)
+        self.hooks.test_the_created_pipeline(transaction)
+        self.start_clean.assert_called_once()
+        self.assertEqual(self.made, [])
+        self.assertEqual(json.loads(transaction["request"]["body"]), body)
+
+    def test_delete_resets_and_deletes_a_pipeline_of_its_own(self):
+        transaction = self.transaction(
+            "/api/v1/admin/pipelines/5", "x > Delete pipeline > 200 > application/json"
+        )
+        self.hooks.delete_a_pipeline_of_its_own(transaction)
+        self.start_clean.assert_called_once()
+        self.assertEqual(transaction["fullPath"], "/api/v1/admin/pipelines/32")
+        missing = self.transaction("/api/v1/admin/pipelines/2147483647", "x > 404")
+        self.hooks.delete_a_pipeline_of_its_own(missing)
+        self.assertEqual(missing["fullPath"], "/api/v1/admin/pipelines/2147483647")
+
+    def test_an_update_the_link_reaches_gets_a_live_pipeline_after_a_reset(self):
+        transaction = self.transaction("/api/v1/admin/pipelines/5", "x > 200")
+        self.hooks.a_live_pipeline_for_the_link(transaction)
+        self.assertEqual(transaction["fullPath"], "/api/v1/admin/pipelines/5")
+        self.forget()
+        self.hooks.a_live_pipeline_for_the_link(transaction)
+        self.assertEqual(transaction["fullPath"], "/api/v1/admin/pipelines/32")
+        for refused in ("2147483647", "0", "abc"):
+            other = self.transaction("/api/v1/admin/pipelines/" + refused, "x > 422")
+            self.hooks.a_live_pipeline_for_the_link(other)
+            self.assertEqual(other["fullPath"], "/api/v1/admin/pipelines/" + refused)
+
+
+class WithoutAReset(unittest.TestCase):
+    def setUp(self):
+        self.hooks = load_hooks()
+
+    def test_delete_and_update_follow_the_link_unchanged(self):
+        for hook in (
+            self.hooks.delete_a_pipeline_of_its_own,
+            self.hooks.a_live_pipeline_for_the_link,
+        ):
+            transaction = {
+                "fullPath": "/api/v1/admin/pipelines/5",
+                "name": "x > 200",
+            }
+            hook(transaction)
+            self.assertEqual(transaction["fullPath"], "/api/v1/admin/pipelines/5")
 
 
 if __name__ == "__main__":

@@ -1190,13 +1190,23 @@ needs, and for a read or delete the policy too. Only the path changes, so bodies
 credentials reach the handler as generated. The absent-policy 404 keeps its own hook
 (`policy_lookup_hooks.py`), which runs after the reset.
 
+`createPipeline`, `testPipeline` and `deletePipeline` reset and seed before each
+exchange too. A create gets a domain of its own; a preview and a delete each get
+a domain and an inactive pipeline of their own, and refusals keep their ids. No
+pipeline id is carried between exchanges any more, so `hooks.stash` holds no
+`pipeline_id`: without a reset, each preview makes its own pipeline on the run's
+domain. `updatePipeline` follows `createPipeline`'s link and has not moved. After
+a reset, an update to a positive id other than missing's gets a pipeline that
+exists, on the domain that stands in for the created one
+(`a_live_pipeline_for_the_link`); a run with no reset changes nothing there.
+
 This happens only with `CONTRACT_RESET_SEED=1`, which `tests/contract/run.sh own-data`
 sets, and that phase is a gate of its own, sent by `chore test:contract-teardown`
 just before the teardown. It sends the moved operations with everything that follows
-`createDomain`'s links (`own_data.py`), and fails on a skipped exchange as well as a
-failed one.
+`createDomain`'s and `createPipeline`'s links (`own_data.py`), and fails on a skipped
+exchange as well as a failed one.
 
-**The primary run does not reset.** It still sends these four as before, because a
+**The primary run does not reset.** It still sends these operations as before, because a
 reset there removes what the unmoved operations after it depend on, not only the
 domain: a local whole-API run with these four resetting in the primary run fell from
 538 passes to 503, across accounts, messages, certificates, custom filters and the

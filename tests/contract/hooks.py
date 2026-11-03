@@ -894,9 +894,11 @@ def on_the_created_domain(transaction, **fields):
 
 @hooks.before("createPipeline")
 def a_pipeline_on_the_created_domain(transaction):
+    if asked_for_a_clean_start():
+        start_clean(transaction)
     body = hooks.get_json(transaction)
-    # The undecodable create (body_array, 400) is sent as documented: an
-    # array, with no object to put the domain in.
+    # The undecodable creates (body_array and null_body) are sent as documented,
+    # with no object to put the domain in.
     if not isinstance(body, dict):
         return
     fields = {}
@@ -910,21 +912,36 @@ def a_pipeline_on_the_created_domain(transaction):
         fields["direction"] = "inbound"
     if "filters" in body:
         fields["filters"] = [{"name": "header_validate", "config": {}}]
+    if asked_for_a_clean_start():
+        # Its own domain, made after the reset, as the run's domain is in the
+        # primary run.
+        fields["domain_id"] = a_domain_of_its_own(transaction)
     on_the_created_domain(transaction, **fields)
 
 
-@hooks.after("createPipeline")
-def keep_the_created_pipeline(transaction):
-    data = hooks.get_json(transaction, "real").get("data") or {}
-    # The refused create runs straight after the one that made the pipeline,
-    # and created nothing to keep.
-    if not data.get("id"):
-        return
-    hooks.stash["pipeline_id"] = data.get("id")
+def a_pipeline_of_its_own(transaction, domain_id):
+    """An inactive pipeline on that domain, made for this exchange."""
+    return fixture_call(
+        transaction,
+        "POST",
+        "/api/v1/admin/pipelines",
+        {
+            "domain_id": domain_id,
+            "direction": "inbound",
+            "filters": [{"name": "header_validate", "config": {}}],
+            "active": False,
+        },
+    )["id"]
+
+
+# A pipeline's id sits where a domain's does: /api/v1/admin/pipelines/{id}.
+to_pipeline = to_domain
 
 
 @hooks.before("testPipeline")
 def test_the_created_pipeline(transaction):
+    if asked_for_a_clean_start():
+        start_clean(transaction)
     body = hooks.get_json(transaction)
     # Replace only the documented successful request's placeholder. Missing
     # IDs, invalid bodies and coverage probes must retain their own target.
@@ -935,35 +952,44 @@ def test_the_created_pipeline(transaction):
         or body["pipeline_id"] != 1
     ):
         return
-    # The kept pipeline was deleted (forget_a_deleted_pipeline): make another,
-    # inactive, on the run's domain. Before the run has a domain, send as before.
-    if hooks.stash.get("pipeline_id") is None and hooks.stash.get("domain_id") is not None:
-        created = fixture_call(
-            transaction,
-            "POST",
-            "/api/v1/admin/pipelines",
-            {
-                "domain_id": hooks.stash["domain_id"],
-                "direction": "inbound",
-                "filters": [{"name": "header_validate", "config": {}}],
-                "active": False,
-            },
-        )
-        hooks.stash["pipeline_id"] = created["id"]
-    body["pipeline_id"] = hooks.stash.get("pipeline_id")
+    # Each preview tests a pipeline of its own, inactive: after a reset on a
+    # domain of its own, otherwise on the run's domain. Before the run has a
+    # domain, it is sent as before.
+    if asked_for_a_clean_start():
+        domain_id = a_domain_of_its_own(transaction)
+    else:
+        domain_id = hooks.stash.get("domain_id")
+        if domain_id is None:
+            return
+    body["pipeline_id"] = a_pipeline_of_its_own(transaction, domain_id)
     hooks.set_json(transaction, body)
 
 
 @hooks.before("deletePipeline")
-def forget_a_deleted_pipeline(transaction):
-    # The authorization run replays the examples, whose delete removes the
-    # kept pipeline, and then sends each principal's preview without after
-    # hooks. A delete aimed at the kept pipeline makes the next preview test
-    # one of its own rather than a deleted id.
-    path = transaction.get("fullPath", "").partition("?")[0]
-    pipeline_id = path.rstrip("/").rsplit("/", 1)[-1]
-    if pipeline_id.isdecimal() and int(pipeline_id) == hooks.stash.get("pipeline_id"):
-        hooks.stash.pop("pipeline_id")
+def delete_a_pipeline_of_its_own(transaction):
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    # missing (2147483647) needs nothing to exist.
+    if " > 200" in transaction.get("name", ""):
+        domain_id = a_domain_of_its_own(transaction)
+        to_pipeline(transaction, a_pipeline_of_its_own(transaction, domain_id))
+
+
+@hooks.before("updatePipeline")
+def a_live_pipeline_for_the_link(transaction):
+    # updatePipeline follows createPipeline's link and has not moved. The
+    # resets before createPipeline's refusals remove the pipeline the link
+    # names, so after a reset each update the link reaches gets a pipeline that
+    # exists. The refusals' ids (0 and missing's 2147483647) stay as they are,
+    # and a run with no reset, which is the primary run, changes nothing here.
+    if not hooks.stash.get("clean_starts"):
+        return
+    parts = transaction["fullPath"].partition("?")[0].split("/")
+    if len(parts) < 6 or not positive_id(parts[5]) or parts[5] == "2147483647":
+        return
+    domain_id = the_domain_since_the_reset(transaction)
+    to_pipeline(transaction, a_pipeline_of_its_own(transaction, domain_id))
 
 
 @hooks.before("createCustomFilter")
