@@ -54,6 +54,14 @@ The log says 404 for absent targets, 422 for the draft/send examples, and
 Those remaining groups still need per-operation diagnosis; the grouping is
 not a claim that every underlying cause has been proven.
 
+The `sendMessage` skip has since been reproduced locally with pinned Vertrag
+0.42.0 after `updateDomain`: the domain probes leave `restmail.test` with bulk
+sending policy, and a cold send hook assumes the policy is already empty. A
+scratch-only setup correction reaches 14 real description findings instead of
+14 skips. Its ratchet entry stays unchanged until those findings can be repaired
+without hiding probes or changing address policy. See
+[the send-probe evidence](send-probe-findings.md) for the reproduction and limits.
+
 Vertrag sequences examples with linked resource IDs, but coverage starts from
 the description's original placeholder IDs. Its before hooks receive the
 original transaction name, **not** the reporter's `coverage:` prefix.

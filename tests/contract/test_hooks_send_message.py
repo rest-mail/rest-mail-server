@@ -2,30 +2,31 @@
 mailbox, once, without touching the request."""
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-import importlib.util
 import json
 from pathlib import Path
+import runpy
 import sys
 import threading
 import types
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import urllib.parse
 
 ROOT = Path(__file__).resolve().parents[2]
+REAL_NAME = "/api/v1/messages/send > Send a message > 201 > application/json"
 
 
 def load_hooks():
     """hooks.py imports vertrag_hooks, which only vertrag provides."""
     stub = types.ModuleType("vertrag_hooks")
     stub.stash = {}
-    stub.before = stub.after = lambda name: (lambda fn: fn)
+    stub.registered = []
+    stub.before = lambda name: lambda fn: stub.registered.append((name, fn)) or fn
+    stub.after = lambda name: lambda fn: fn
     stub.get_json = lambda transaction, which="request": json.loads(transaction[which]["body"])
-    spec = importlib.util.spec_from_file_location("contract_send_message_hooks", ROOT / "tests/contract/hooks.py")
-    module = importlib.util.module_from_spec(spec)
     with patch.dict(sys.modules, {"vertrag_hooks": stub}):
-        spec.loader.exec_module(module)
-    return module, stub
+        loaded = runpy.run_path(str(ROOT / "tests/contract/entrypoint.py"))
+    return types.SimpleNamespace(**loaded["shared"]), stub
 
 
 class FixtureAPI(BaseHTTPRequestHandler):
@@ -97,18 +98,39 @@ class SendMessageProbes(unittest.TestCase):
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.shutdown)
-        # The sending policy half of the hook is not what is tested here.
-        patcher = patch.object(self.hooks, "set_the_admin_domains_policy", lambda transaction, policy: None)
+        self.policy = Mock()
+        patcher = patch.dict(
+            self.hooks.a_sending_policy_for_the_send.__globals__,
+            {"set_the_admin_domains_policy": self.policy},
+        )
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    def send(self, body):
-        transaction = {"name": "coverage: /api/v1/messages/send > Compose and send a new message > 201 > application/json",
+    def send(self, body, name=REAL_NAME):
+        transaction = {"name": name, "fullPath": "/api/v1/messages/send",
                        "protocol": "http:", "host": "127.0.0.1", "port": str(self.server.server_port),
                        "request": {"body": json.dumps(body), "headers": {"Authorization": "Bearer probe"}}}
         before = json.loads(json.dumps(transaction))
         self.hooks.a_sending_policy_for_the_send(transaction)
         self.assertEqual(transaction, before, "the request must stay as generated")
+
+    def test_entrypoint_registers_the_operation_hook(self):
+        self.assertIn(
+            ("sendMessage", self.hooks.a_sending_policy_for_the_send),
+            self.stub.registered,
+        )
+
+    def test_real_transaction_names_select_the_sending_policy(self):
+        body = {"from": "admin@restmail.test", "to": ["admin@restmail.test"]}
+        self.send(body)
+        self.assertEqual(self.policy.call_args.args[1], "")
+        self.send(body, REAL_NAME.replace(" > 201 > ", " > 422 > "))
+        self.assertEqual(self.policy.call_args.args[1], "transactional")
+
+    def test_the_documented_foreign_sender_gets_no_fixture(self):
+        self.send({"from": "someone@other.test", "to": ["admin@restmail.test"]},
+                  REAL_NAME.replace(" > 201 > ", " > 403 > "))
+        self.assertEqual(self.server.state["calls"], [])
 
     def test_an_unknown_sender_gets_a_signing_domain_and_a_mailbox_once(self):
         self.send({"from": "someone@example.com", "to": ["someone@example.com"]})
