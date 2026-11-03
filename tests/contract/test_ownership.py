@@ -11,11 +11,11 @@ import tempfile
 import types
 import unittest
 from pathlib import Path
+from typing import ClassVar
 from unittest.mock import patch
 
 import ownership
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -262,7 +262,6 @@ class MailboxOwnershipConfig(unittest.TestCase):
             self.assertEqual(bool(selected.search(name)), sent, name)
 
 
-
 # The twelve path-id operations #1163's audit found missing from the matrix,
 # with the operations the description's links make their resources by.
 MESSAGE_ROWS = (
@@ -300,8 +299,13 @@ def described_operations():
 
 
 class MessageOwnershipConfig(OwnershipConfig):
-    """The message run: the account tenants, declaring no ids, each sent the
-    other's messages, drafts, scheduled sends and attachments (#1163)."""
+    """The message run: the account tenants, each sent the other's messages,
+    drafts, scheduled sends, invitations and attachments (#1163)."""
+
+    ATTACHMENTS: ClassVar[dict[str, dict[str, str]]] = {
+        "a": {"path.id": "31"},
+        "b": {"path.id": "32"},
+    }
 
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
@@ -310,28 +314,67 @@ class MessageOwnershipConfig(OwnershipConfig):
         self.write_fixture()
         self.output = self.root / "generated.yml"
         self.report = self.root / "ownership-messages.xml"
+        with patch.object(
+            ownership, "held_attachments", return_value=self.ATTACHMENTS
+        ) as held:
+            self.assertEqual(
+                ownership.messages(
+                    str(self.spec),
+                    str(self.config),
+                    str(self.principals),
+                    str(self.output),
+                    str(self.report),
+                ),
+                0,
+            )
+        self.held = held
+        self.generated = yaml.safe_load(self.output.read_text())
+
+    def test_each_tenant_declares_its_own_account(self):
+        # Not its account, here: its attachment. A message id is not an account's: each cell's message is made by the
+        # victim tenant's chain. Only getAttachment has none, so the one id a
+        # tenant declares is an attachment it holds, made against the run's
+        # endpoint before the run.
         self.assertEqual(
+            self.generated["tenants"],
+            {
+                "a": {
+                    "principals": ["ordinary", "app-password"],
+                    "ids": {"path.id": "31"},
+                },
+                "b": {
+                    "principals": ["other", "other-app-password"],
+                    "ids": {"path.id": "32"},
+                },
+            },
+        )
+        endpoint, fixture = self.held.call_args.args
+        self.assertEqual(endpoint, "http://fixture.test:8080")
+        self.assertEqual(fixture["ordinary"]["id"], 4)
+
+    def test_a_tenant_without_an_attachment_declares_no_ids(self):
+        with patch.object(ownership, "held_attachments", return_value={}):
             ownership.messages(
                 str(self.spec),
                 str(self.config),
                 str(self.principals),
                 str(self.output),
                 str(self.report),
-            ),
-            0,
-        )
-        self.generated = yaml.safe_load(self.output.read_text())
-
-    def test_each_tenant_declares_its_own_account(self):
-        # A message id is not an account's: declared, it would be sent to the
-        # message routes, refused for naming nothing, and prove nothing. Each
-        # cell's message is made by the victim tenant's chain instead.
+            )
         self.assertEqual(
-            self.generated["tenants"],
+            yaml.safe_load(self.output.read_text())["tenants"],
             {
                 "a": {"principals": ["ordinary", "app-password"]},
                 "b": {"principals": ["other", "other-app-password"]},
             },
+        )
+
+    def test_the_run_provides_what_its_hooks_make(self):
+        # ownership_hooks.py schedules the victim's send for tomorrow and puts
+        # an invitation in its sent message.
+        self.assertEqual(
+            self.generated["provides"],
+            {"state": ["future_time", "calendar_invitation"]},
         )
 
     def test_another_accounts_message_is_answered_as_absent(self):
@@ -388,8 +431,17 @@ class MessageOwnershipConfig(OwnershipConfig):
         for operation in MESSAGE_ROWS:
             for source in sorted(sources.get(operation, ())):
                 self.assertRegex(names[source], selected, f"{source} -> {operation}")
-        for linked in ("getMessage", "deleteMessage", "updateDraft", "sendDraft"):
+        for linked in (
+            "getMessage",
+            "deleteMessage",
+            "updateDraft",
+            "sendDraft",
+            "cancelScheduledMessage",
+            "respondToCalendar",
+        ):
             self.assertIn(linked, sources)
+        # The one row the run declares an id for, as no link leads to it.
+        self.assertNotIn("getAttachment", sources)
 
 
 def load_ownership_hooks():
@@ -441,7 +493,7 @@ class SenderHooks(unittest.TestCase):
         self.hooks.send_as_the_sender_itself(transaction)
         return json.loads(transaction["request"]["body"])
 
-    EXAMPLE = {
+    EXAMPLE: ClassVar[dict[str, str | list[str]]] = {
         "from": "admin@restmail.test",
         "to": ["admin@restmail.test", "someone@imap.restmail.test"],
         "cc": ["admin@restmail.test"],
@@ -451,7 +503,11 @@ class SenderHooks(unittest.TestCase):
     def test_a_session_sends_from_and_to_its_own_address(self):
         self.assertEqual(
             self.sent_body(bearer("other@restmail.test"), self.EXAMPLE),
-            {"from": "other@restmail.test", "to": ["other@restmail.test"], "subject": "Hello"},
+            {
+                "from": "other@restmail.test",
+                "to": ["other@restmail.test"],
+                "subject": "Hello",
+            },
         )
 
     def test_an_app_password_sends_from_its_own_address(self):
@@ -464,7 +520,10 @@ class SenderHooks(unittest.TestCase):
             (bearer("admin@restmail.test"), self.EXAMPLE),
             ("", self.EXAMPLE),
             ("Bearer not-a-token", self.EXAMPLE),
-            (bearer("other@restmail.test"), {"from": "someone@other.test", "to": ["x@y.test"]}),
+            (
+                bearer("other@restmail.test"),
+                {"from": "someone@other.test", "to": ["x@y.test"]},
+            ),
             (bearer("other@restmail.test"), {}),
         ]:
             self.assertEqual(self.sent_body(authorization, body), body, authorization)
@@ -472,7 +531,8 @@ class SenderHooks(unittest.TestCase):
     def test_only_an_ownership_run_is_changed(self):
         with patch.dict(os.environ, {"CONTRACT_OWNERSHIP": ""}):
             self.assertEqual(
-                self.sent_body(bearer("other@restmail.test"), self.EXAMPLE), self.EXAMPLE
+                self.sent_body(bearer("other@restmail.test"), self.EXAMPLE),
+                self.EXAMPLE,
             )
 
 
@@ -502,3 +562,260 @@ class LinkedDraftSend(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HeldAttachment(unittest.TestCase):
+    """Before the message run, each tenant's owner imports a message with an
+    attachment into its own account through the API and reads its id back."""
+
+    def setUp(self):
+        import http.server
+        import threading
+
+        self.requests = []
+        test = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def answer(self, body):
+                data = json.dumps(body).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(length))
+                test.requests.append(
+                    ("POST", self.path, self.headers.get("Authorization"), body)
+                )
+                if self.path == "/api/v1/auth/login":
+                    self.answer({"data": {"access_token": "token-" + body["email"]}})
+                else:
+                    self.answer({"data": {"id": 77, "imported": True}})
+
+            def do_GET(self):
+                test.requests.append(
+                    ("GET", self.path, self.headers.get("Authorization"), None)
+                )
+                self.answer({"data": [{"id": 5}, {"id": 6}]})
+
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.addCleanup(self.server.server_close)
+        self.addCleanup(self.server.shutdown)
+        self.endpoint = f"http://127.0.0.1:{self.server.server_address[1]}"
+
+    def test_the_owner_imports_into_its_own_account_and_reads_the_attachment(self):
+        principal = {
+            "address": "user@restmail.test",
+            "password": "user fixture",
+            "id": 4,
+        }
+        self.assertEqual(ownership.held_attachment(self.endpoint, principal), "5")
+        login, imported, listed = self.requests
+        self.assertEqual(
+            login[1:],
+            (
+                "/api/v1/auth/login",
+                None,
+                {
+                    "email": "user@restmail.test",
+                    "password": "user fixture",
+                    "client": "native",
+                },
+            ),
+        )
+        self.assertEqual(imported[1], "/api/v1/accounts/4/messages/import")
+        self.assertEqual(imported[2], "Bearer token-user@restmail.test")
+        self.assertEqual(imported[3]["folder"], "INBOX")
+        raw = base64.b64decode(imported[3]["raw_message"])
+        self.assertIn(b"Content-Disposition: attachment; filename=notes.txt", raw)
+        self.assertRegex(
+            raw.decode(), r"^Message-ID: <contract-ownership-\d+@example.test>"
+        )
+        self.assertEqual(
+            listed[:3],
+            (
+                "GET",
+                "/api/v1/messages/77/attachments",
+                "Bearer token-user@restmail.test",
+            ),
+        )
+
+    def test_each_tenant_declares_its_owners_attachment(self):
+        fixture = {
+            "ordinary": {"address": "user@restmail.test", "password": "a", "id": 4},
+            "other": {"address": "other@restmail.test", "password": "b", "id": 9},
+        }
+        self.assertEqual(
+            ownership.held_attachments(self.endpoint, fixture),
+            {"a": {"path.id": "5"}, "b": {"path.id": "5"}},
+        )
+        imports = [r[1] for r in self.requests if r[1].endswith("/import")]
+        self.assertEqual(
+            imports,
+            [
+                "/api/v1/accounts/4/messages/import",
+                "/api/v1/accounts/9/messages/import",
+            ],
+        )
+
+    def test_an_attachment_that_cannot_be_made_declares_none(self):
+        self.server.shutdown()
+        self.server.server_close()
+        fixture = {
+            "ordinary": {"address": "user@restmail.test", "password": "a", "id": 4},
+            "other": {"address": "other@restmail.test", "password": "b", "id": 9},
+        }
+        with patch("sys.stderr"):
+            self.assertEqual(ownership.held_attachments(self.endpoint, fixture), {})
+        with (
+            patch.object(ownership, "call", return_value={"data": []}),
+            patch("sys.stderr"),
+        ):
+            self.assertEqual(ownership.held_attachments(self.endpoint, fixture), {})
+
+
+class LinkedResourceHooks(unittest.TestCase):
+    """The victim's send makes what the scheduled-send and invitation rows are
+    sent for; the reply is sent from the replier's own address."""
+
+    def setUp(self):
+        self.hooks = load_ownership_hooks()
+        patcher = patch.dict(os.environ, {"CONTRACT_OWNERSHIP": "1"})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def sent(self, hook, authorization, body):
+        transaction = {
+            "request": {
+                "headers": {"Authorization": authorization},
+                "body": json.dumps(body),
+            }
+        }
+        hook(transaction)
+        return json.loads(transaction["request"]["body"])
+
+    def test_a_scheduled_send_is_for_tomorrow(self):
+        from datetime import UTC, datetime, timedelta
+
+        body = self.sent(
+            self.hooks.a_send_each_link_can_follow,
+            bearer("other@restmail.test"),
+            {
+                "from": "other@restmail.test",
+                "to": ["other@restmail.test"],
+                "scheduled_at": "2026-10-27T00:00:00Z",
+            },
+        )
+        when = datetime.strptime(body["scheduled_at"], "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=UTC
+        )
+        ahead = when - datetime.now(UTC)
+        self.assertGreater(ahead, timedelta(hours=22))
+        self.assertLess(ahead, timedelta(days=2))
+        self.assertNotIn("calendar_event", body)
+
+    def test_any_other_send_invites_the_sender(self):
+        body = self.sent(
+            self.hooks.a_send_each_link_can_follow,
+            basic_header("user@restmail.test"),
+            {"from": "user@restmail.test", "to": ["user@restmail.test"]},
+        )
+        event = body["calendar_event"]
+        self.assertEqual(event["method"], "REQUEST")
+        self.assertEqual(event["organizer"], {"address": "user@restmail.test"})
+        self.assertEqual(event["attendees"][0]["address"], "user@restmail.test")
+        self.assertTrue(event["uid"].endswith("@restmail.test"))
+        self.assertLess(event["dtstart"], event["dtend"])
+        # Every field the CalendarEvent schema requires.
+        for field in (
+            "method",
+            "uid",
+            "summary",
+            "dtstart",
+            "dtend",
+            "all_day",
+            "organizer",
+            "sequence",
+        ):
+            self.assertIn(field, event)
+
+    def test_the_administrator_and_other_runs_are_left_alone(self):
+        example = {
+            "from": "admin@restmail.test",
+            "to": ["admin@restmail.test"],
+            "scheduled_at": "2026-10-27T00:00:00Z",
+        }
+        self.assertEqual(
+            self.sent(
+                self.hooks.a_send_each_link_can_follow,
+                bearer("admin@restmail.test"),
+                example,
+            ),
+            example,
+        )
+        with patch.dict(os.environ, {"CONTRACT_OWNERSHIP": ""}):
+            self.assertEqual(
+                self.sent(
+                    self.hooks.a_send_each_link_can_follow,
+                    bearer("other@restmail.test"),
+                    example,
+                ),
+                example,
+            )
+        given = {
+            "from": "other@restmail.test",
+            "to": ["other@restmail.test"],
+            "calendar_event": {"method": "CANCEL"},
+        }
+        self.assertEqual(
+            self.sent(
+                self.hooks.a_send_each_link_can_follow,
+                bearer("other@restmail.test"),
+                given,
+            ),
+            given,
+        )
+
+    def test_a_reply_is_sent_from_the_repliers_own_address(self):
+        example = {"from": "admin@restmail.test", "response": "ACCEPTED"}
+        self.assertEqual(
+            self.sent(
+                self.hooks.reply_as_the_sender_itself,
+                bearer("other@restmail.test"),
+                example,
+            ),
+            {"from": "other@restmail.test", "response": "ACCEPTED"},
+        )
+        self.assertEqual(
+            self.sent(
+                self.hooks.reply_as_the_sender_itself,
+                bearer("admin@restmail.test"),
+                example,
+            ),
+            example,
+        )
+        foreign = {"from": "someone@other.test", "response": "ACCEPTED"}
+        self.assertEqual(
+            self.sent(
+                self.hooks.reply_as_the_sender_itself,
+                bearer("other@restmail.test"),
+                foreign,
+            ),
+            foreign,
+        )
+        with patch.dict(os.environ, {"CONTRACT_OWNERSHIP": ""}):
+            self.assertEqual(
+                self.sent(
+                    self.hooks.reply_as_the_sender_itself,
+                    bearer("other@restmail.test"),
+                    example,
+                ),
+                example,
+            )

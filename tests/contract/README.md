@@ -1339,17 +1339,23 @@ Tenant ids are keyed by parameter name, and the account run already declares
 `path.id`, so the domains need a run of their own.
 
 A fourth run, `ownership-messages` (`ownership.py --messages`), sends the two
-account tenants each other's messages, drafts, scheduled sends and attachments
-(#1163), with the creates their links start from. Their ids are not an
-account's, so the run declares none: for each cell the victim tenant's
-signed-in owner sends the chain the links lead from (`sendMessage`,
-`saveDraft`, `updateDraft`, `getRawMessage`), and the attacker is sent the id
-it made. That covers `getMessage`, `updateMessage`, `deleteMessage`,
-`getRawMessage`, `listAttachments`, `updateDraft` and `sendDraft`. No link
-leads to `cancelScheduledMessage` or `getAttachment`, so their cells are
-reported unsent rather than sent with an id that names nothing.
-`forwardMessage` and `respondToCalendar` are selected too, but have no row
-until the run can send their success. Every answer must be 404: someone else's
+account tenants each other's messages, drafts, scheduled sends, invitations
+and attachments (#1163), with the creates their links start from. Their ids are
+not an account's: for each cell the victim tenant's signed-in owner sends the
+chain the links lead from (`sendMessage`, `saveDraft`, `updateDraft`,
+`getRawMessage`), and the attacker is sent the id it made. That covers
+`getMessage`, `updateMessage`, `deleteMessage`, `getRawMessage`,
+`listAttachments`, `updateDraft`, `sendDraft`, `cancelScheduledMessage` (from
+the scheduled send's 202) and `respondToCalendar` (from a send carrying an
+invitation). The run provides `future_time` and `calendar_invitation`, which
+`ownership_hooks.py` makes true: the victim's scheduled send is moved to
+tomorrow, and its other sends invite the sender to an hour tomorrow. No link
+leads to `getAttachment`, so before the run each tenant's owner imports a
+message with an attachment into its own account through the API and declares
+the attachment's id as `path.id`, which no row with a chain reads; if that
+fails, the tenant declares nothing and those cells are unsent.
+`forwardMessage` is selected too, but has no row: its success example names
+no message, so it inherits a fault-only path parameter. Every answer must be 404: someone else's
 account, or an object in it, is answered as if it did not exist
 (`docs/api-conventions.md`, rows 11 and 12). The examples send from the fixture
 administrator, which an account may not, so `ownership_hooks.py`, loaded after

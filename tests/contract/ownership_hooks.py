@@ -14,6 +14,8 @@ for whose message it names.
 import base64
 import json
 import os
+import time
+from datetime import UTC, datetime, timedelta
 
 import vertrag_hooks as hooks
 
@@ -34,7 +36,9 @@ def credential_address(transaction):
     try:
         if scheme == "Bearer":
             payload = value.split(".")[1]
-            claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+            claims = json.loads(
+                base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4))
+            )
             address = claims.get("address") if isinstance(claims, dict) else None
         elif scheme == "Basic":
             address = base64.b64decode(value, validate=True).decode().partition(":")[0]
@@ -50,10 +54,8 @@ def credential_address(transaction):
 @hooks.before("updateDraft")
 @hooks.before("forwardMessage")
 def send_as_the_sender_itself(transaction):
-    if not in_an_ownership_run():
-        return
-    address = credential_address(transaction)
-    if address is None or address.lower() == ADMIN:
+    address = own_sender(transaction)
+    if address is None:
         return
     body = hooks.get_json(transaction)
     if not isinstance(body, dict) or str(body.get("from", "")).lower() != ADMIN:
@@ -62,4 +64,74 @@ def send_as_the_sender_itself(transaction):
     body["to"] = [address]
     body.pop("cc", None)
     body.pop("bcc", None)
+    hooks.set_json(transaction, body)
+
+
+def own_sender(transaction):
+    """The sender's own address in an ownership run, or None where the hooks
+    leave the request as it is: outside one, or for the administrator."""
+    if not in_an_ownership_run():
+        return None
+    address = credential_address(transaction)
+    if address is None or address.lower() == ADMIN:
+        return None
+    return address
+
+
+def an_hour_tomorrow(now):
+    start = (now + timedelta(days=1)).replace(minute=0, second=0, microsecond=0)
+    return start, start + timedelta(hours=1)
+
+
+def rfc3339(moment):
+    return moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+@hooks.before("sendMessage")
+def a_send_each_link_can_follow(transaction):
+    # The victim's chain starts at a send. Its scheduled example (202) names a
+    # time already past, and its 201 carries no invitation, so neither would
+    # make what cancelScheduledMessage and respondToCalendar are sent for
+    # (the run provides future_time and calendar_invitation). A scheduled send
+    # is moved to tomorrow; any other send invites the sender to an hour
+    # tomorrow, which its Sent copy keeps (#1163).
+    address = own_sender(transaction)
+    body = hooks.get_json(transaction)
+    if address is None or not isinstance(body, dict):
+        return
+    start, end = an_hour_tomorrow(datetime.now(UTC))
+    if body.get("scheduled_at") is not None:
+        body["scheduled_at"] = rfc3339(start)
+    elif body.get("calendar_event") is None:
+        domain = address.rpartition("@")[2]
+        body["calendar_event"] = {
+            "method": "REQUEST",
+            "uid": f"contract-ownership-{time.time_ns()}@{domain}",
+            "summary": "Ownership run",
+            "dtstart": rfc3339(start),
+            "dtend": rfc3339(end),
+            "all_day": False,
+            "organizer": {"address": address},
+            "attendees": [
+                {"address": address, "partstat": "NEEDS-ACTION", "rsvp": True}
+            ],
+            "sequence": 0,
+        }
+    else:
+        return
+    hooks.set_json(transaction, body)
+
+
+@hooks.before("respondToCalendar")
+def reply_as_the_sender_itself(transaction):
+    # The reply is sent from the administrator in the example; an account
+    # replies from its own address, so a refusal is for whose invitation it
+    # names, not for its sender.
+    address = own_sender(transaction)
+    body = hooks.get_json(transaction)
+    if address is None or not isinstance(body, dict):
+        return
+    if str(body.get("from", "")).lower() != ADMIN:
+        return
+    body["from"] = address
     hooks.set_json(transaction, body)
