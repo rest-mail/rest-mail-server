@@ -1265,6 +1265,21 @@ carried between exchanges. `created_contact_probes` stays, because a create
 without a reset (the primary run and coverage) still removes only the repeated
 probe contacts it made; the reset clears it, so it starts empty here.
 
+The send operations, `sendMessage` and `sendTestEmail`, whose hooks keep
+`sender_mailboxes` and `test_send_mailboxes`, reset and seed before each
+exchange too, refusals included. The seed gives back `restmail.test`, its admin
+and its postmaster with no sending policy, so after the reset `sendMessage`'s
+hook sets the transactional policy `unsubscribe_not_allowed` needs and checks
+the sender's signing key and mailbox again, making what is missing, and
+`sendTestEmail`'s makes any account the seed did not give back. No link reaches either.
+`sendMessage`'s 201 link reaches the message operations, which have not moved
+and are not selected here: the reset comes before a send, never between it and
+what follows its link. Each send exchange runs after its own reset, a handful
+per run, far below the send rate limit (20 a minute per account). Both stash
+values stay, because without a reset (the primary run and coverage) they keep
+each address's setup to once per run; the reset clears them, so they start
+empty here.
+
 This happens only with `CONTRACT_RESET_SEED=1`, which `tests/contract/run.sh own-data`
 sets, and that phase is a gate of its own, sent by `chore test:contract-teardown`
 just before the teardown. It sends the moved operations with everything that follows
@@ -1603,7 +1618,7 @@ Send probes (sendMessage) send from a generated address (`someone@example.com`)
 that no mailbox holds, which the handler refuses with 403. A before hook hosts
 the sender's domain with a DKIM key (an https unsubscribe target needs one) and
 creates its mailbox through the admin API the first time the address appears,
-then leaves them in place, with the two-factor administrator's session where
+then leaves them in place (after a reset, the first time since it), with the two-factor administrator's session where
 that takes one. Malformed senders and domains the server will not host are left
 to the probe, and the request is never rewritten.
 
@@ -1650,8 +1665,9 @@ is left to the probe's 404.
 
 Test send probes (sendTestEmail) send from and to a generated address
 (`someone@example.com`) that has no mailbox. A before hook hosts its domain and
-creates its account through the admin API the first time an address appears,
-then leaves both in place: a test send only adds a message. Malformed addresses
+creates its account through the admin API the first time an address appears
+(after a reset, the first time since it), then leaves both in place: a test
+send only adds a message. Malformed addresses
 and domains the server will not host are left to the probe, and the request is
 never rewritten.
 

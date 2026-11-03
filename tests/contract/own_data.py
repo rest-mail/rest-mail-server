@@ -86,6 +86,12 @@ MOVED = (
     "suggestContacts",
     "getContactReplyTimeSetting",
     "setContactReplyTimeSetting",
+    # The send operations. No link reaches either. sendMessage's 201 link
+    # reaches the message operations, which have not moved and are not
+    # selected here: the reset comes before the send, never between it and
+    # what follows its link, so the primary run still follows that link.
+    "sendMessage",
+    "sendTestEmail",
 )
 
 FOLLOWS_THE_CREATED_DOMAIN = (

@@ -131,5 +131,48 @@ class SendTestEmailProbes(unittest.TestCase):
         self.assertEqual(len(self.server.state["accounts"]), 2)
 
 
+class SendTestEmailCleanStart(unittest.TestCase):
+    """With CONTRACT_RESET_SEED=1 (the own-data phase) every test send starts
+    clean and makes its accounts again after the reset (#1385)."""
+
+    probe = SendTestEmailProbes.probe
+    addresses = SendTestEmailProbes.addresses
+
+    def setUp(self):
+        SendTestEmailProbes.setUp(self)
+        for patcher in (
+            unittest.mock.patch.dict(hooks.os.environ, {"CONTRACT_RESET_SEED": "1"}),
+            unittest.mock.patch.object(hooks, "admin_token", return_value="setup"),
+            unittest.mock.patch.object(hooks.reset_seed, "reset_and_seed", self.reset),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def reset(self, origin, token, fixtures=("queue",)):
+        # What the seed leaves: restmail.test, its admin and its postmaster.
+        state = self.server.state
+        state["calls"].append("RESET")
+        state["domains"][:] = [{"id": 1, "name": "restmail.test"}]
+        del state["accounts"][2:]
+
+    def test_a_refusal_starts_clean_too(self):
+        self.probe([])
+        self.assertEqual(self.server.state["calls"], ["RESET"])
+
+    def test_each_test_send_makes_its_accounts_again_after_its_reset(self):
+        body = {"from": "someone@example.com", "to": "someone@example.com"}
+        self.probe(body)
+        self.probe(body)
+        calls = self.server.state["calls"]
+        self.assertEqual(calls.count("RESET"), 2)
+        self.assertEqual(calls.count("POST /api/v1/accounts"), 2)
+        self.assertEqual(self.addresses().count("someone@example.com"), 1)
+
+    def test_the_seeded_addresses_need_nothing_made(self):
+        self.probe({"from": "postmaster@restmail.test", "to": "admin@restmail.test"})
+        self.assertEqual(self.server.state["calls"][0], "RESET")
+        self.assertNotIn("POST /api/v1/accounts", self.server.state["calls"])
+
+
 if __name__ == "__main__":
     unittest.main()
