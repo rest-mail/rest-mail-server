@@ -122,7 +122,7 @@ func TestAccessRequirementExamples(t *testing.T) {
 	routes := requirementRoutes(t)
 	for _, tc := range []struct{ op, name string }{
 		{"deactivateGrant", "csrf_mismatch"}, {"unlinkAccount", "csrf_mismatch"},
-		{"updateMailbox", "csrf_mismatch"}, {"protocolSignIn", "csrf_mismatch"},
+		{"updateMailbox", "csrf_mismatch"},
 		{"unlinkAccount", "own_account"}, {"enrollTwoFactor", "disabled"},
 		{"createAppPassword", "credential"},
 	} {

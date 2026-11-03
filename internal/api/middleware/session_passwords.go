@@ -78,13 +78,23 @@ func (a *SessionPasswords) Authenticate() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			body, err := io.ReadAll(io.LimitReader(r.Body, maxSignInBody+1))
-			if err != nil || len(body) > maxSignInBody {
-				writeError(w, http.StatusBadRequest, "invalid_request", "Could not read the request body")
+			var tooLarge *http.MaxBytesError
+			if errors.As(err, &tooLarge) || len(body) > maxSignInBody {
+				writeError(w, http.StatusRequestEntityTooLarge, "request_too_large", "Request body too large")
+				return
+			}
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "bad_request", "Invalid request body")
 				return
 			}
 			r.Body = io.NopCloser(bytes.NewReader(body))
 			var cred signInCredential
-			if json.Unmarshal(body, &cred) != nil || cred.Address == "" || cred.Password == "" {
+			if json.Unmarshal(body, &cred) != nil {
+				// As the binder answers a body that is not JSON.
+				writeError(w, http.StatusBadRequest, "bad_request", "Invalid request body")
+				return
+			}
+			if cred.Address == "" || cred.Password == "" {
 				writeError(w, http.StatusBadRequest, "credential_required",
 					"Send the account's address, and its password or an app password")
 				return

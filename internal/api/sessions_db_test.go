@@ -117,8 +117,17 @@ func (f *epochFixture) refresh(s epochSession) (int, epochSession) {
 	return rr.Code, sessionOf(f.t, rr)
 }
 
+// protocolSignIn opens an IMAP gateway session for the account with password
+// (#1586) and answers 200 when it opens, or the refusal's status.
 func (f *epochFixture) protocolSignIn(password string) int {
-	return f.do(http.MethodPost, "/api/v1/auth/protocol-sign-in", basic(f.address, password), `{"protocol":"imap"}`).Code
+	routers := NewRouters(f.db, f.jwt, &config.Config{Environment: "test", TOTP2FAEnabled: true, MasterKey: accessMasterKey, InternalMTLSEnabled: true}, nil)
+	defer routers.Close()
+	g := &gatewayFixture{credentialFixture: f.credentialFixture, internal: routers.Internal}
+	rr := g.as(imapCN, http.MethodPost, "/api/v1/gateway-sessions", "", openBody("imap", f.address, password))
+	if rr.Code == http.StatusCreated {
+		return http.StatusOK
+	}
+	return rr.Code
 }
 
 func (f *epochFixture) appPassword(s epochSession) string {

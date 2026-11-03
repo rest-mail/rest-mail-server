@@ -60,11 +60,6 @@ func (connection *gapPairConnection) QueryContext(ctx context.Context, query str
 			connection.faults++
 			return nil, errors.New("injected client secret lookup failure")
 		}
-	case "protocolSignIn":
-		if strings.HasPrefix(query, `SELECT "id","address","display_name" FROM "mailboxes"`) {
-			connection.faults++
-			return nil, errors.New("injected account read after successful Basic authentication")
-		}
 	case "saveDraft", "updateDraft", "sendDraft", "forwardMessage":
 		if rows, ok := defaultServerCeilingRows(query, args); ok {
 			rows.rows = [][]driver.Value{{"*", models.CapMailboxSession}}
@@ -90,7 +85,7 @@ func (connection *gapPairConnection) QueryContext(ctx context.Context, query str
 }
 
 func (connection *gapPairConnection) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
-	if connection.operation != "protocolSignIn" && !strings.HasPrefix(query, "SELECT pg_advisory_xact_lock") && !strings.HasPrefix(query, `INSERT INTO "audit_log"`) {
+	if !strings.HasPrefix(query, "SELECT pg_advisory_xact_lock") && !strings.HasPrefix(query, `INSERT INTO "audit_log"`) {
 		connection.mutations++
 		connection.t.Errorf("refused request attempted a non-audit write: %s", query)
 		return nil, errors.New("unexpected mutation after refusal")
@@ -115,15 +110,13 @@ func TestGapDatabaseExamplePairsThroughProductionRouter(t *testing.T) {
 		t.Fatal(err)
 	}
 	routes := requirementRoutes(t)
-	for _, operation := range []string{"listClientSecrets", "createClientSecret", "revokeClientSecret", "updateServerCapabilities", "updateServerLimits", "protocolSignIn", "issueClientCredentialsToken"} {
+	for _, operation := range []string{"listClientSecrets", "createClientSecret", "revokeClientSecret", "updateServerCapabilities", "updateServerLimits", "issueClientCredentialsToken"} {
 		t.Run(operation, func(t *testing.T) {
 			pair := pairs[operation]["storage_unavailable"]
 			examplepairs.Proven(t, operation, "storage_unavailable")
 			routers, jwt, connection := newGapPairRouter(t, operation)
 			request := requirementRequest(routes[operation], pair)
-			if operation == "protocolSignIn" {
-				request.SetBasicAuth("admin@restmail.test", "fixture-password")
-			} else if operation == "issueClientCredentialsToken" {
+			if operation == "issueClientCredentialsToken" {
 				var form string
 				if err := json.Unmarshal(pair.Request.Body, &form); err != nil {
 					t.Fatal(err)

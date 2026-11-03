@@ -135,9 +135,6 @@ func requirementExampleSetup(t *testing.T, operation, name, requirement string, 
 	}
 	if requirement == "fault=database" {
 		switch {
-		case operation == "protocolSignIn" && name == "storage_unavailable":
-			routers, _, _ := newGapPairRouter(t, operation)
-			return routers.Public, token, body
 		case operation == "refreshToken" || operation == "logout":
 			session, err := jwt.GenerateSession(testAdminHolding([]string{"*"}), "admin@example.test", 0, []string{auth.AMRPassword, auth.AMROTP}, false)
 			if err != nil {
