@@ -813,7 +813,7 @@ export interface paths {
         put?: never;
         /**
          * Set or clear a thread's due date
-         * @description Stores an account-scoped user-set due date without changing message order or folders. Send an RFC 3339 due date-time, or null to clear both due and due_source. due_source must be user; rule and parsed are reserved for future work. Unknown threads and threads outside this account are 404.
+         * @description Stores an account-scoped user-set due date without changing message order or folders. Send an RFC 3339 due date-time, or null to clear both due and due_source. due_source must be user. Reads may also report rule or parsed, but nothing writes those yet. A parsed date is only a suggestion and never changes message order or folders; send its due with due_source user to accept it. Unknown threads and threads outside this account are 404.
          */
         post: operations["setThreadDue"];
         delete?: never;

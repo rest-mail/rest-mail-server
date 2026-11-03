@@ -1,6 +1,7 @@
 import { CalendarClock, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { describeDue, formatAge } from '@/lib/mailTrust';
+import { isDueSuggestion } from '@/lib/threadDue';
 
 function chipStyle(color: string) {
   return {
@@ -57,19 +58,28 @@ export function DueBadge({ due, source, className }: DueBadgeProps) {
   const described = describeDue(due);
   if (!described) return null;
 
-  const color = described.overdue ? 'var(--color-danger)' : 'var(--color-primary)';
-  const label = described.overdue
-    ? `past due ${described.text.replace(' over', '')}`
+  // A suggestion is not a deadline yet, so it neither warns nor reads like one.
+  const suggestion = isDueSuggestion(source);
+  const color = suggestion
+    ? 'var(--color-text-secondary)'
+    : described.overdue ? 'var(--color-danger)' : 'var(--color-primary)';
+  const when = described.overdue
+    ? suggestion ? described.text.replace(' over', ' ago') : `past due ${described.text.replace(' over', '')}`
     : `due ${described.text}`;
+  const label = suggestion ? `suggested: ${when}` : when;
   const sourceLabel = source ? SOURCE_LABEL[source] ?? source : undefined;
+  const title = suggestion
+    ? `Suggested date ${sourceLabel}. It is not a deadline until you accept it.`
+    : sourceLabel ? `Deadline ${sourceLabel}.` : 'Deadline.';
 
   return (
     <span
       role="status"
-      title={sourceLabel ? `Deadline ${sourceLabel}.` : 'Deadline.'}
+      title={title}
       style={chipStyle(color)}
       className={cn(
         'inline-flex w-fit shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 font-mono text-[11px] font-medium',
+        suggestion && 'border-dashed',
         className,
       )}
     >

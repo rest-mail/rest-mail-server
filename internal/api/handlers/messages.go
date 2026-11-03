@@ -204,7 +204,7 @@ func (h *MessageHandler) RegisterMessages(rs endpoint.Routes) {
 		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.getThread)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/threads/{threadID}/due",
 		OperationID: "setThreadDue", Summary: "Set or clear a thread's due date", Tags: tags,
-		Description: "Stores an account-scoped user-set due date without changing message order or folders. Send an RFC 3339 due date-time, or null to clear both due and due_source. due_source must be user; rule and parsed are reserved for future work. Unknown threads and threads outside this account are 404.",
+		Description: "Stores an account-scoped user-set due date without changing message order or folders. Send an RFC 3339 due date-time, or null to clear both due and due_source. due_source must be user. Reads may also report rule or parsed, but nothing writes those yet. A parsed date is only a suggestion and never changes message order or folders; send its due with due_source user to accept it. Unknown threads and threads outside this account are 404.",
 		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.setThreadDue)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/threads/{threadID}/snooze",
 		OperationID: "snoozeThread", Summary: "Snooze a thread or cancel its snooze", Tags: tags,

@@ -31,3 +31,23 @@ export function dueLocalInput(due?: string | null): string {
   const pad = (value: number) => String(value).padStart(2, '0');
   return `${instant.getFullYear()}-${pad(instant.getMonth() + 1)}-${pad(instant.getDate())}T${pad(instant.getHours())}:${pad(instant.getMinutes())}`;
 }
+
+// A date parsed from the message text is only a suggestion until someone accepts it.
+export function isDueSuggestion(source?: string | null): boolean {
+  return source === 'parsed';
+}
+
+// The picker holds the user's own date. It never starts on a suggestion, because pressing
+// "Set due date" on one would accept it, with its seconds cut off, by accident.
+export function initialDueInput(message: Pick<MessageSummary, 'due' | 'due_source'>): string {
+  return isDueSuggestion(message.due_source) ? '' : dueLocalInput(message.due);
+}
+
+export type DueAction = 'set' | 'clear' | 'accept';
+
+export function dueToSave(action: DueAction, message: Pick<MessageSummary, 'due' | 'due_source'>, value: string): string | null {
+  if (action === 'clear') return null;
+  if (action === 'set') return dueInstant(value);
+  if (!message.due || !isDueSuggestion(message.due_source)) throw new Error('There is no suggestion to accept');
+  return message.due;
+}
