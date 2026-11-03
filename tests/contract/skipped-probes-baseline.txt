@@ -4,26 +4,22 @@
 # Evidence: E2E merge-group runs 41458365703 and 41491618197, Vertrag 0.42.0, 2026-11-02.
 # MTA-STS and sender-rule examples have independent, repeat-safe API fixtures
 # (Part of #1443); narrowed local coverage sends their 17 formerly skipped probes.
+# So do custom filter and pipeline examples, whose 26 formerly skipped probes are
+# sent the same way.
 # Login's six generated-credential probes are exempt in Vertrag itself.
 bounceQueueEntry 1
 cancelScheduledMessage 1
 clearSuppression 2
 deleteContact 2
-deleteCustomFilter 1
 deleteFolder 2
-deletePipeline 1
 deleteQuarantine 2
 deleteQueueEntry 1
 getCertificate 1
-getCustomFilter 1
 getQueueEntry 1
 retryQueueEntry 1
 revokeAPIKey 2
 revokeCredential 2
 sendDraft 1
 sendMessage 14
-testCustomFilter 1
 updateContact 9
-updateCustomFilter 15
 updateDraft 10
-updatePipeline 7
