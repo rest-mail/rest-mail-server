@@ -1,8 +1,15 @@
 package api
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -14,6 +21,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
 	"github.com/rest-mail/rest-mail-server/internal/config"
+	rmcrypto "github.com/rest-mail/rest-mail-server/internal/crypto"
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
@@ -246,7 +254,9 @@ func TestFreshInstall_EndToEnd(t *testing.T) {
 	}
 	// The domain is not live until it has a certificate (#295). The install's
 	// certificate arrives, and the admin puts the domain live.
-	if err := db.Create(&models.Certificate{DomainID: domains[0].ID, CertPEM: "-- certificate --", KeyPEM: "-- key --",
+	// It must be one the gateways can serve the domain with (#1704).
+	certPEM, keyPEM := freshCertificate(t, freshDomain)
+	if err := db.Create(&models.Certificate{DomainID: domains[0].ID, CertPEM: certPEM, KeyPEM: keyPEM,
 		Issuer: "the install", NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(90 * 24 * time.Hour)}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -407,4 +417,29 @@ func TestFreshInstall_EndToEnd(t *testing.T) {
 	if res, err := audit.VerifyDB(db); err != nil || !res.OK {
 		t.Fatalf("audit chain: %+v, %v", res, err)
 	}
+}
+
+// freshCertificate is a throwaway self-signed pair for name, its key encrypted
+// as the install stores it.
+func freshCertificate(t *testing.T, name string) (string, string) {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	template := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: name}, DNSNames: []string{name},
+		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(90 * 24 * time.Hour)}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyDER, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encrypted, err := rmcrypto.EncryptString(string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})), accessMasterKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})), encrypted
 }

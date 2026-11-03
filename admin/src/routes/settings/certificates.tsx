@@ -312,7 +312,6 @@ function CertificateUploadModal({ domains, onClose, onSuccess }: CertificateUplo
   const [domainId, setDomainId] = useState<string>('')
   const [certPem, setCertPem] = useState('')
   const [keyPem, setKeyPem] = useState('')
-  const [autoRenew, setAutoRenew] = useState(true)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -324,7 +323,9 @@ function CertificateUploadModal({ domains, onClose, onSuccess }: CertificateUplo
           domain_id: parseInt(domainId),
           cert_pem: certPem,
           key_pem: keyPem,
-          auto_renew: autoRenew,
+          // Only certificates this server obtained itself are renewed; an
+          // uploaded one is replaced by uploading its successor (#1704).
+          auto_renew: false,
         }
       )
       onSuccess()
@@ -433,18 +434,10 @@ function CertificateUploadModal({ domains, onClose, onSuccess }: CertificateUplo
               </p>
             </div>
 
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="autoRenew"
-                checked={autoRenew}
-                onChange={(e) => setAutoRenew(e.target.checked)}
-                className="h-4 w-4"
-              />
-              <label htmlFor="autoRenew" className="text-sm" style={{ color: 'var(--black-soft)' }}>
-                Enable auto-renewal (if supported)
-              </label>
-            </div>
+            <p className="text-sm" style={{ color: 'var(--gray-secondary)' }}>
+              An uploaded certificate is not renewed automatically. Upload its replacement
+              before it expires. The certificate must name the domain and match its private key.
+            </p>
           </div>
 
           <div className="flex gap-3 mt-6">

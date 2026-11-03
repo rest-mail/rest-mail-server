@@ -1154,7 +1154,11 @@ def a_self_signed_certificate(transaction):
         or not (documented or succeeds)
     ):
         return
-    name = hooks.stash.get("domain") or "example.org"
+    if body.get("domain_id") == 1 and hooks.stash.get("domain_id") is not None:
+        body["domain_id"] = hooks.stash["domain_id"]
+    # The server refuses a certificate that does not name the domain it is
+    # uploaded for (#1704), so it is made for that domain's own name.
+    name = certificate_name_for(transaction, body["domain_id"])
     with tempfile.TemporaryDirectory() as d:
         key, cert = os.path.join(d, "tls.key"), os.path.join(d, "tls.crt")
         openssl(
@@ -1177,9 +1181,25 @@ def a_self_signed_certificate(transaction):
         with open(cert) as cert_file, open(key) as key_file:
             body["cert_pem"] = cert_file.read()
             body["key_pem"] = key_file.read()
-            if body.get("domain_id") == 1 and hooks.stash.get("domain_id") is not None:
-                body["domain_id"] = hooks.stash["domain_id"]
             hooks.set_json(transaction, body)
+
+
+def certificate_name_for(transaction, domain_id):
+    """The name of the domain a certificate is uploaded for. A domain that
+    does not answer (missing, or a fault the probe injects) keeps the
+    placeholder name: that probe meets its refusal before any name check."""
+    if domain_id == hooks.stash.get("domain_id") and hooks.stash.get("domain"):
+        return hooks.stash["domain"]
+    try:
+        domain = fixture_call(
+            transaction,
+            "GET",
+            "/api/v1/admin/domains/%d" % domain_id,
+            expect=PROBE_REFUSALS,
+        )
+    except (urllib.error.URLError, OSError, ValueError):
+        domain = None
+    return (domain or {}).get("name") or "example.org"
 
 
 @hooks.before("updateDomain")
