@@ -107,6 +107,10 @@ type mailbox struct {
 	// from then on it takes raw UTF-8 header fields, so FETCH stops
 	// downgrading them.
 	utf8 bool
+	// clientID is what the client said it is with ID (RFC 2971), so an import
+	// summary (#1498) can name the tool. It is never used to decide how to
+	// serve the client (RFC 2971 §3).
+	clientID goimap.ClientID
 }
 
 var _ goimap.Mailbox = (*mailbox)(nil)
@@ -120,7 +124,16 @@ var (
 	_ goimap.Mover          = (*mailbox)(nil)
 	_ goimap.UTF8Mailbox    = (*mailbox)(nil)
 	_ goimap.DateAppender   = (*mailbox)(nil)
+	_ goimap.IDMailbox      = (*mailbox)(nil)
 )
+
+// SetClientID keeps the fields of the client's ID command (RFC 2971) for this
+// session. The library calls it once the session is authenticated, whether the
+// client sent ID before or after logging in.
+func (m *mailbox) SetClientID(id goimap.ClientID) { m.clientID = id }
+
+// ClientID returns what the client said it is with ID, or nil if it sent none.
+func (m *mailbox) ClientID() goimap.ClientID { return m.clientID }
 
 // EnableUTF8 switches this session to UTF-8 (RFC 6855 UTF8=ACCEPT). The
 // library advertises the capability because the mailbox implements this, and

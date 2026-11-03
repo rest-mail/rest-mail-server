@@ -34,7 +34,8 @@ func (s *Session) capabilities() string {
 	// SPECIAL-USE (RFC 6154): LIST reports each folder's role, and takes the
 	// SPECIAL-USE selection and return options.
 	// LITERAL- (RFC 7888 §5): non-synchronizing literals up to 4096 octets.
-	caps := []string{"IMAP4rev1", "LITERAL-", "IDLE", "MOVE", "QUOTA", "UNSELECT", "ENABLE", "SPECIAL-USE", "NAMESPACE", "ESEARCH", "LIST-STATUS", "STATUS=SIZE", "BINARY", "SEARCHRES", "LIST-EXTENDED"}
+	// ID (RFC 2971 §3.1) is valid in any state, so it is advertised in every one.
+	caps := []string{"IMAP4rev1", "LITERAL-", "IDLE", "MOVE", "QUOTA", "UNSELECT", "ENABLE", "SPECIAL-USE", "NAMESPACE", "ESEARCH", "LIST-STATUS", "STATUS=SIZE", "BINARY", "SEARCHRES", "LIST-EXTENDED", "ID"}
 	if _, ok := s.mailbox.(imap.UIDPlusMailbox); ok {
 		caps = append(caps, "UIDPLUS")
 	}

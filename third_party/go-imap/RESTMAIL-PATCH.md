@@ -85,3 +85,35 @@ so it is corrected.
   return options use it, and RFC 5258 §5 examples 2, 3, 5, 6, 8, 9 and 10 run
   against it in `rfctest`. A Mailbox without it keeps the all-folders-subscribed
   model, so existing hosts see no change.
+
+## RFC 2971 ID
+
+Added for rest-mail/rest-mail-server#1614, so an IMAP import summary (#1498)
+and the logs can name the client, such as imapsync, which sends ID whenever the
+server advertises it. New code only: `pkg/imap/id.go`, `internal/wire/id.go`
+and `server/id.go`, plus the dispatch case, the CAPABILITY token, the session
+fields and one call after authentication.
+
+- ID is advertised in every state, because "This command is valid in any
+  state" (RFC 2971 §3.1). IMAP4rev2 is still not advertised.
+- `ID NIL` and `ID (field value ...)` are answered with one untagged ID and
+  OK. The server's list is the name and version set with
+  `Server.SetServerID`/`Session.SetServerID`, or NIL when none is set, which
+  §3.2 allows ("a server MAY send NIL in place of the list"). No host, OS or
+  contact detail is sent (§7).
+- The client's data is held to §3.3: "Field strings MUST NOT be longer than 30
+  octets. Value strings MUST NOT be longer than 1024 octets. Implementations
+  MUST NOT send more than 30 field-value pairs." and "MUST NOT send the same
+  field name more than once", with "Strings are not case-sensitive". Data past
+  a bound, or breaking §4's grammar, is answered BAD ("BAD command unknown or
+  arguments invalid", §3.1), with no ID response; the fields already held stay.
+- The fields are kept on the session and handed, in order, to a `Mailbox`
+  implementing the new optional `imap.IDMailbox`, once the session is
+  authenticated or when ID arrives later. The session logs the client's name
+  and version only, at info level. Nothing about how a session is served reads
+  them, as §3 requires: "Implementations MUST NOT make operational changes
+  based on the data sent as part of the ID command or response."
+- `TestIDExamples` replays the RFC's §3.1 and §3.2 examples;
+  `TestIDStoredForTheMailbox` and `TestIDLimits` cover storage and the bounds
+  (CHECKLIST.md IMAP-ID-01 to IMAP-ID-05). The CAPABILITY example output in
+  `server/example_test.go` gains ID.

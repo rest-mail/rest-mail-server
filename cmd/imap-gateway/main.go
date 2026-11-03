@@ -22,6 +22,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
+	"github.com/rest-mail/rest-mail-server/internal/version"
 )
 
 func main() {
@@ -173,6 +174,8 @@ func main() {
 	// The shared connlimiter satisfies the library's structural Limiter interface;
 	// the rest-mail Backend adapter maps API responses onto the library's types.
 	imapServer := imapserver.New(cfg.GatewayHostname, imap.NewBackend(api, limiter), tlsConfig, limiter)
+	// ID (RFC 2971) answers with the product's name and version only.
+	imapServer.SetServerID("REST Mail", version.Version)
 	// IMAP is left zero, which the library skips: there is no cleartext listener on 143.
 	if err := imapServer.ListenAndServe(imapserver.Ports{
 		IMAPTLS: cfg.IMAPTLSPort,

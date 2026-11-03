@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/rest-mail/go-imap/actions/workflows/ci.yml/badge.svg)](https://github.com/rest-mail/go-imap/actions/workflows/ci.yml)
 [![Coverage gate: >=95%](https://img.shields.io/badge/coverage%20gate-%3E%3D95%25-brightgreen)](COVERAGE.md)
-[![Partial checklist: 515/789 mapped](https://img.shields.io/badge/partial%20checklist-515%2F789%20mapped-blue)](CHECKLIST.md)
+[![Partial checklist: 520/794 mapped](https://img.shields.io/badge/partial%20checklist-520%2F794%20mapped-blue)](CHECKLIST.md)
 [![Go Reference](https://pkg.go.dev/badge/github.com/rest-mail/go-imap.svg)](https://pkg.go.dev/github.com/rest-mail/go-imap/pkg/imap/server)
 [![Go Report Card](https://goreportcard.com/badge/github.com/rest-mail/go-imap)](https://goreportcard.com/report/github.com/rest-mail/go-imap)
 
@@ -187,6 +187,7 @@ drives one whole conversation this way over an in-memory pipe.
 | BINARY | RFC 3516 | always: sections with their transfer encoding removed |
 | UIDPLUS | [RFC 4315] | the `Mailbox` implements `UIDPlusMailbox` |
 | UTF8=ACCEPT | [RFC 6855] | the `Mailbox` implements `UTF8Mailbox` |
+| ID | RFC 2971 | always, in every state; the answer is the name and version set with `SetServerID`, or NIL; the client's fields reach a `Mailbox` that implements `IDMailbox` |
 
 The list is computed per session from what the concrete `Mailbox` implements,
 so it never promises more than the backend does.
@@ -197,7 +198,7 @@ CAPABILITY, NOOP, LOGOUT, STARTTLS, LOGIN, AUTHENTICATE PLAIN, SELECT, EXAMINE,
 CREATE, DELETE, RENAME, SUBSCRIBE, UNSUBSCRIBE, LIST, LSUB, NAMESPACE, STATUS,
 APPEND, CHECK, CLOSE, UNSELECT, EXPUNGE, SEARCH, FETCH, STORE, COPY, MOVE, the
 UID forms of SEARCH, FETCH, STORE, COPY, MOVE and EXPUNGE, ENABLE, IDLE,
-GETQUOTA and GETQUOTAROOT.
+GETQUOTA, GETQUOTAROOT and ID.
 
 FETCH answers `BODY[]`, `BODY.PEEK[]` and every section form (`HEADER`,
 `HEADER.FIELDS[.NOT]`, `TEXT`, `MIME`, numeric part paths, partial ranges),
@@ -429,7 +430,6 @@ reason.
 | CREATE succeeds without creating anything, and DELETE and RENAME move messages. An empty folder does not exist. | [#160](https://github.com/rest-mail/go-imap/issues/160) |
 | COPY and MOVE cannot roll back a partly applied command. | [#161](https://github.com/rest-mail/go-imap/issues/161) |
 | CONDSTORE and QRESYNC (RFC 7162). | [#162](https://github.com/rest-mail/go-imap/issues/162) |
-| ID (RFC 2971). | [#163](https://github.com/rest-mail/go-imap/issues/163) |
 | The IMAP4rev2 capability (RFC 9051). The checklist inventories its requirements. | [rest-mail/rest-mail-server#718](https://github.com/rest-mail/rest-mail-server/issues/718) |
 
 ### Badges and coverage
