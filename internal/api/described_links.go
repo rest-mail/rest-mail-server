@@ -75,20 +75,21 @@ var responseLinks = map[string]map[string]map[string]oapifly.Link{
 	},
 	"createDomain": {
 		"201": {
-			"addToAllowlist":   {OperationID: "addToAllowlist", Parameters: map[string]string{"id": "$response.body#/data/id"}},
-			"addToBlocklist":   {OperationID: "addToBlocklist", Parameters: map[string]string{"id": "$response.body#/data/id"}},
-			"domainDNSCheck":   {OperationID: "domainDNSCheck", Parameters: map[string]string{"id": "$response.body#/data/id"}},
-			"getDKIMRotation":  {OperationID: "getDKIMRotation", Parameters: map[string]string{"id": "$response.body#/data/id"}},
-			"getDomain":        {OperationID: "getDomain", Parameters: map[string]string{"id": "$response.body#/data/id"}},
-			"getDomainRelay":   {OperationID: "getDomainRelay", Parameters: map[string]string{"id": "$response.body#/data/id"}},
-			"listAllowlist":    {OperationID: "listAllowlist", Parameters: map[string]string{"id": "$response.body#/data/id"}},
-			"listBlocklist":    {OperationID: "listBlocklist", Parameters: map[string]string{"id": "$response.body#/data/id"}},
-			"listSuppressions": {OperationID: "listSuppressions", Parameters: map[string]string{"id": "$response.body#/data/id"}},
-			"setDKIMKey":       {OperationID: "setDKIMKey", Parameters: map[string]string{"id": "$response.body#/data/id"}},
-			"setDKIMRotation":  {OperationID: "setDKIMRotation", Parameters: map[string]string{"id": "$response.body#/data/id"}},
-			"setDomainRelay":   {OperationID: "setDomainRelay", Parameters: map[string]string{"id": "$response.body#/data/id"}},
-			"setMtaStsPolicy":  {OperationID: "setMtaStsPolicy", Parameters: map[string]string{"id": "$response.body#/data/id"}},
-			"updateDomain":     {OperationID: "updateDomain", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+			"addToAllowlist":     {OperationID: "addToAllowlist", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+			"addToBlocklist":     {OperationID: "addToBlocklist", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+			"domainDNSCheck":     {OperationID: "domainDNSCheck", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+			"getDKIMRotation":    {OperationID: "getDKIMRotation", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+			"getDomain":          {OperationID: "getDomain", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+			"getDomainRelay":     {OperationID: "getDomainRelay", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+			"listAllowlist":      {OperationID: "listAllowlist", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+			"listBlocklist":      {OperationID: "listBlocklist", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+			"listSuppressions":   {OperationID: "listSuppressions", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+			"setDKIMKey":         {OperationID: "setDKIMKey", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+			"setDKIMRotation":    {OperationID: "setDKIMRotation", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+			"setDomainRelay":     {OperationID: "setDomainRelay", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+			"setMtaStsPolicy":    {OperationID: "setMtaStsPolicy", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+			"stopDomainOutbound": {OperationID: "stopDomainOutbound", Parameters: map[string]string{"id": "$response.body#/data/id"}},
+			"updateDomain":       {OperationID: "updateDomain", Parameters: map[string]string{"id": "$response.body#/data/id"}},
 		},
 	},
 	"createFolder": {
@@ -206,6 +207,11 @@ var responseLinks = map[string]map[string]map[string]oapifly.Link{
 		"201": {
 			"getMtaStsPolicy":  {OperationID: "getMtaStsPolicy", Parameters: map[string]string{"id": "$request.path.id"}},
 			"mtaStsPolicyFile": {OperationID: "mtaStsPolicyFile"},
+		},
+	},
+	"stopDomainOutbound": {
+		"200": {
+			"restartDomainOutbound": {OperationID: "restartDomainOutbound", Parameters: map[string]string{"id": "$request.path.id"}},
 		},
 	},
 	"testCustomFilter": {

@@ -565,14 +565,36 @@ func (w *Worker) EnableTestReset(cfg *config.Config) {
 }
 
 func (w *Worker) processNext(workerID int) {
-	// Claim a pending item using raw SQL with FOR UPDATE SKIP LOCKED
-	var item models.OutboundQueue
 	now := time.Now()
+	item, err := w.claim(now)
+	if err != nil {
+		// No items to process (or DB error)
+		return
+	}
+
+	slog.Info("queue: processing",
+		"worker", workerID,
+		"id", item.ID,
+		"sender", item.Sender,
+		"recipient", item.Recipient,
+		"domain", item.Domain,
+		"attempt", item.Attempts, // the claim above counted it already
+	)
+
+	w.process(item, now)
+}
+
+// claim takes the next message due for an attempt and marks it delivering, using
+// FOR UPDATE SKIP LOCKED so workers never claim the same row.
+func (w *Worker) claim(now time.Time) (models.OutboundQueue, error) {
+	var item models.OutboundQueue
 	// Rows that have gone longer than w.reclaim without a heartbeat were orphaned
 	// by a worker that crashed mid-send: the worker holding a row refreshes
 	// last_attempt for as long as its attempt runs (startHeartbeat), however long
 	// that is. Reclaim them so mail isn't stranded forever (the claim below only
-	// re-selects pending/deferred).
+	// re-selects pending/deferred). A row whose sending domain has its outbound
+	// mail stopped is held: never claimed, so it stays queued until the stop is
+	// lifted (#1590).
 	staleDelivering := now.Add(-w.reclaim)
 	err := w.db.Transaction(func(tx *gorm.DB) error {
 		result := tx.Raw(
@@ -581,6 +603,7 @@ func (w *Worker) processNext(workerID int) {
 			     (status IN ('pending', 'deferred') AND next_attempt <= ?)
 			     OR (status = 'delivering' AND last_attempt < ?)
 			 ) AND expires_at > ?
+			 AND NOT `+models.OutboundQueueHeldSQL+`
 			 ORDER BY next_attempt ASC
 			 LIMIT 1
 			 FOR UPDATE SKIP LOCKED`, now, staleDelivering, now,
@@ -600,22 +623,7 @@ func (w *Worker) processNext(workerID int) {
 			"attempts":     item.Attempts + 1,
 		}).Error
 	})
-
-	if err != nil {
-		// No items to process (or DB error)
-		return
-	}
-
-	slog.Info("queue: processing",
-		"worker", workerID,
-		"id", item.ID,
-		"sender", item.Sender,
-		"recipient", item.Recipient,
-		"domain", item.Domain,
-		"attempt", item.Attempts, // the claim above counted it already
-	)
-
-	w.process(item, now)
+	return item, err
 }
 
 // process sends a claimed message and records how that went.

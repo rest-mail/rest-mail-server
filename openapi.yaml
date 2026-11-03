@@ -7701,6 +7701,10 @@ paths:
               operationId: setMtaStsPolicy
               parameters:
                 id: '$response.body#/data/id'
+            stopDomainOutbound:
+              operationId: stopDomainOutbound
+              parameters:
+                id: '$response.body#/data/id'
         '400':
           description: The body is not valid JSON or not the declared media type
           content:
@@ -12978,6 +12982,92 @@ paths:
   # ═══════════════════════════════════════════════════════════════
   # Admin: Domains — DNS check
   # ═══════════════════════════════════════════════════════════════
+  /api/v1/admin/domains/{id}/outbound-stop:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    put:
+      operationId: stopDomainOutbound
+      description: "Stops the domain's outbound mail, with the reason the operator gives. Mail its mailboxes send is still accepted and queued, but held, as is the mail it already has queued: none of it is delivered, bounced or lost until the stop is lifted. Mail to the domain is delivered as before. Stopping a stopped domain replaces the reason. The stop, who made it, when and why, is written to the audit log, and the domain answers with it in outbound_stop."
+      tags: ["Admin: Domains"]
+      security:
+        - CookieAuth: [queue:manage]
+        - BearerAuth: [queue:manage]
+        - APIKeyAuth: [queue:manage]
+      summary: Stop a domain's outbound mail
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+                  minLength: 1
+                  maxLength: 1000
+                  pattern: '\S'
+      responses:
+        "200":
+          description: The domain, with its outbound stop
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Domain"
+          links:
+            restartDomainOutbound:
+              operationId: restartDomainOutbound
+              parameters:
+                id: '$request.path.id'
+        "400":
+          description: The body is not JSON
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          description: Authentication refusals exceeded the configured rate limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: restartDomainOutbound
+      description: "Lifts the domain's outbound stop: the mail held while it was stopped is released for normal delivery, its queue lifetime extended by the time it was held. The restart, who made it and when, is written to the audit log. Restarting a domain that is not stopped changes nothing and writes nothing."
+      tags: ["Admin: Domains"]
+      security:
+        - CookieAuth: [queue:manage]
+        - BearerAuth: [queue:manage]
+        - APIKeyAuth: [queue:manage]
+      summary: Restart a domain's outbound mail
+      responses:
+        "200":
+          description: The domain, without an outbound stop
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Domain"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          description: Authentication refusals exceeded the configured rate limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/v1/admin/domains/{id}/dns:
     parameters:
       - $ref: "#/components/parameters/ResourceId"
@@ -17067,12 +17157,32 @@ components:
           $ref: "#/components/schemas/DomainSendingPolicy"
         dmarc_policy:
           $ref: "#/components/schemas/DomainDMARCPolicy"
+        outbound_stop:
+          description: Present only while the domain's outbound mail is stopped
+          oneOf:
+            - $ref: "#/components/schemas/DomainOutboundStop"
+            - type: "null"
         created_at:
           type: string
           format: date-time
         updated_at:
           type: string
           format: date-time
+
+    DomainOutboundStop:
+      description: An operator's stop on a domain's outbound mail (#1590). The domain's mail is queued and held while it stands.
+      type: object
+      additionalProperties: false
+      required: [stopped_at, stopped_by, reason]
+      properties:
+        stopped_at:
+          type: string
+          format: date-time
+        stopped_by:
+          type: string
+          description: The address of the account that made the stop
+        reason:
+          type: string
 
     CreateDomainRequest:
       type: object

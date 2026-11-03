@@ -28,9 +28,18 @@ type Domain struct {
 	DKIMCreatedAt *time.Time `json:"-"`
 	// DKIMRotationIntervalDays is the requested key lifetime; zero disables
 	// scheduled rotation. Exposed only through the DKIM settings API.
-	DKIMRotationIntervalDays int       `gorm:"not null;default:0;check:dkim_rotation_interval_range,dkim_rotation_interval_days >= 0 AND dkim_rotation_interval_days <= 3650" json:"-"`
-	CreatedAt                time.Time `json:"created_at"`
-	UpdatedAt                time.Time `json:"updated_at"`
+	DKIMRotationIntervalDays int `gorm:"not null;default:0;check:dkim_rotation_interval_range,dkim_rotation_interval_days >= 0 AND dkim_rotation_interval_days <= 3650" json:"-"`
+	// OutboundStoppedAt is set while an operator has stopped the domain's outbound
+	// mail (#1590): what its mailboxes send is still accepted and queued, but the
+	// outbound worker holds it, and the mail already queued, until the stop is
+	// lifted. Inbound mail to the domain is not affected. Nil: not stopped.
+	OutboundStoppedAt *time.Time `json:"-"`
+	// OutboundStopReason is why the operator stopped it, and OutboundStoppedBy who
+	// did (the account's address at the time). Both are empty while not stopped.
+	OutboundStopReason string    `gorm:"type:text;not null;default:''" json:"-"`
+	OutboundStoppedBy  string    `gorm:"type:text;not null;default:''" json:"-"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
 
 	// Associations
 	Mailboxes []Mailbox `gorm:"foreignKey:DomainID" json:"mailboxes,omitempty"`

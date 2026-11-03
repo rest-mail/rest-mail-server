@@ -93,6 +93,7 @@ func domainOf(d models.Domain) Domain {
 		DKIMSelector:      d.DKIMSelector,
 		SendingPolicy:     d.SendingPolicy,
 		DMARCPolicy:       d.DMARCPolicy,
+		OutboundStop:      outboundStopOf(d),
 		CreatedAt:         d.CreatedAt,
 		UpdatedAt:         d.UpdatedAt,
 	}
@@ -136,6 +137,7 @@ func (h *DomainHandler) Register(rs endpoint.Routes, checks DomainRouteChecks) {
 		OperationID: "domainDNSCheck", Summary: "Live DNS record check (MX, SPF, DMARC, DKIM, MTA-STS, TLS-RPT) for a domain",
 		Tags: tags, Errors: missing,
 		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsRead)}}, h.dnsCheck)
+	h.registerOutboundStop(rs, checks)
 }
 
 // domainPath names a domain by the path's {id}.

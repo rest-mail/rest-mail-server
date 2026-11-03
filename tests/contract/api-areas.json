@@ -162,6 +162,8 @@
     "domainDNSCheck",
     "getDomain",
     "listDomains",
+    "restartDomainOutbound",
+    "stopDomainOutbound",
     "updateDomain"
   ],
   "646": [
