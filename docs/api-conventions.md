@@ -68,7 +68,7 @@ Some of these turn on stored state, which may place them under the stored-state 
 
 **A 400 outside the decision, and not on #1165's stored-state list.**
 
-- `basic_required`, from `protocolSignIn`, for a caller not using HTTP Basic
+- `credential_required`, from `openGatewaySession`, for a body without the mail client's address and password
 - "invalid organizer address in calendar event", from `respondToCalendar`, about a stored message
 - The OAuth token route's `invalid_request`, `invalid_scope` and `unsupported_grant_type`, in the error shape RFC 6749 section 5.2 defines, some for a form that parses
 - The script routes' `scriptExecutionResponses`, which can pass on the JavaScript sidecar's own 400

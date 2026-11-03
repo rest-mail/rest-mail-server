@@ -153,7 +153,7 @@ func TestSessionPasswords_NoCredentialNoCheck(t *testing.T) {
 	f, sink := &fakeAppPasswords{}, &auditSink{}
 	router, _ := appPasswordRouter(f, sink, nil)
 	for name, req := range map[string]*http.Request{
-		"no body": httptest.NewRequest(http.MethodPost, "/api/v1/gateway-sessions", nil),
+		"no address or password": httptest.NewRequest(http.MethodPost, "/api/v1/gateway-sessions", strings.NewReader(`{"protocol":"imap"}`)),
 		"no password": httptest.NewRequest(http.MethodPost, "/api/v1/gateway-sessions",
 			strings.NewReader(`{"protocol":"imap","address":"user@example.com"}`)),
 		"HTTP Basic instead": func() *http.Request {
