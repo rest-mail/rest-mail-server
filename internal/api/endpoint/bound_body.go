@@ -51,7 +51,6 @@ func readBoundBody(r *http.Request, t reflect.Type) ([]byte, error) {
 		return nil, boundBodyReadFailure(err)
 	}
 	defer done()
-	head = nil
 	size, err := file.Seek(0, io.SeekEnd)
 	if err != nil {
 		return nil, err

@@ -50,8 +50,8 @@ func uploadBody(size int64) (io.Reader, *generatedBody) {
 }
 
 // bindUpload binds r as a route with a body cap of limit, and answers what it bound, the
-// error, and the bytes allocated while it ran.
-func bindUpload(t *testing.T, r *http.Request, limit int64) (boundUpload, error, uint64) {
+// bytes allocated while it ran, and the error.
+func bindUpload(t *testing.T, r *http.Request, limit int64) (boundUpload, uint64, error) {
 	t.Helper()
 	if limit > 0 {
 		r.Body = http.MaxBytesReader(httptest.NewRecorder(), r.Body, limit)
@@ -63,7 +63,7 @@ func bindUpload(t *testing.T, r *http.Request, limit int64) (boundUpload, error,
 	runtime.ReadMemStats(&before)
 	err := bind(r, &in, shape)
 	runtime.ReadMemStats(&after)
-	return in, err, after.TotalAlloc - before.TotalAlloc
+	return in, after.TotalAlloc - before.TotalAlloc, err
 }
 
 // spoolDir makes the temporary directory one the test can see is left empty.
@@ -102,7 +102,7 @@ func TestBindRefusesABodyPastTheCapAsItArrives(t *testing.T) {
 		body, script := uploadBody(size)
 		r := httptest.NewRequest(http.MethodPut, "/", body)
 		r.Header.Set("Content-Type", "application/json")
-		_, err, allocated := bindUpload(t, r, limit)
+		_, allocated, err := bindUpload(t, r, limit)
 		if refusalStatus(err) != http.StatusRequestEntityTooLarge {
 			t.Fatalf("%d bytes: got %v, want the 413", size, err)
 		}
@@ -128,7 +128,7 @@ func TestBindRefusesAnUnacceptedMediaTypeWithoutHoldingTheBody(t *testing.T) {
 	r := httptest.NewRequest(http.MethodPut, "/", body)
 	r.Header.Set("Content-Type", "text/plain")
 	r.ContentLength = size + int64(len(`{"script":""}`))
-	_, err, allocated := bindUpload(t, r, 0)
+	_, allocated, err := bindUpload(t, r, 0)
 	var refusal *Error
 	if !errors.As(err, &refusal) || refusal.Status != http.StatusBadRequest || !strings.HasPrefix(refusal.Message, "Unsupported media type: text/plain") {
 		t.Fatalf("got %v, want the unsupported media type", err)
@@ -141,7 +141,7 @@ func TestBindRefusesAnUnacceptedMediaTypeWithoutHoldingTheBody(t *testing.T) {
 	body, script = uploadBody(size)
 	r = httptest.NewRequest(http.MethodPut, "/", body)
 	r.Header.Set("Content-Type", "text/plain")
-	_, err, allocated = bindUpload(t, r, 0)
+	_, allocated, err = bindUpload(t, r, 0)
 	if !errors.As(err, &refusal) || refusal.Status != http.StatusBadRequest {
 		t.Fatalf("in chunks: got %v, want the unsupported media type", err)
 	}
@@ -153,7 +153,7 @@ func TestBindRefusesAnUnacceptedMediaTypeWithoutHoldingTheBody(t *testing.T) {
 	body, _ = uploadBody(size)
 	r = httptest.NewRequest(http.MethodPut, "/", body)
 	r.Header.Set("Content-Type", "text/plain")
-	if _, err, _ := bindUpload(t, r, 8<<20); refusalStatus(err) != http.StatusRequestEntityTooLarge {
+	if _, _, err := bindUpload(t, r, 8<<20); refusalStatus(err) != http.StatusRequestEntityTooLarge {
 		t.Fatalf("in chunks past the cap: got %v, want the 413", err)
 	}
 	assertNoSpoolLeft(t, dir)
@@ -167,7 +167,7 @@ func TestBindReadsALargeBodyOnce(t *testing.T) {
 		body, _ := uploadBody(size)
 		r := httptest.NewRequest(http.MethodPut, "/", body)
 		r.Header.Set("Content-Type", "application/json")
-		in, err, allocated := bindUpload(t, r, 32<<20)
+		in, allocated, err := bindUpload(t, r, 32<<20)
 		if err != nil || int64(len(in.Body.Script)) != size || strings.Trim(in.Body.Script, "a") != "" {
 			t.Fatalf("%d bytes: bound %d bytes, %v", size, len(in.Body.Script), err)
 		}
@@ -192,7 +192,7 @@ func TestBindAnswersTheSameEitherSideOfTheFirstPart(t *testing.T) {
 		body := `{"script":"` + strings.Repeat("b", int(size)) + `"}`
 		r := httptest.NewRequest(http.MethodPut, "/", io.MultiReader(strings.NewReader(body)))
 		r.Header.Set("Content-Type", "application/json")
-		in, err, _ := bindUpload(t, r, 0)
+		in, _, err := bindUpload(t, r, 0)
 		if err != nil || in.Body.Script != strings.Repeat("b", int(size)) {
 			t.Fatalf("%d bytes: bound %d bytes, %v", size, len(in.Body.Script), err)
 		}
@@ -200,11 +200,11 @@ func TestBindAnswersTheSameEitherSideOfTheFirstPart(t *testing.T) {
 
 	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "gone"))
 	small := httptest.NewRequest(http.MethodPut, "/", io.MultiReader(strings.NewReader(`{"script":"x"}`)))
-	if in, err, _ := bindUpload(t, small, 0); err != nil || in.Body.Script != "x" {
+	if in, _, err := bindUpload(t, small, 0); err != nil || in.Body.Script != "x" {
 		t.Fatalf("a small body with no disk: %v", err)
 	}
 	large, _ := uploadBody(2 * boundBodyInMemory)
-	_, err, _ := bindUpload(t, httptest.NewRequest(http.MethodPut, "/", large), 0)
+	_, _, err := bindUpload(t, httptest.NewRequest(http.MethodPut, "/", large), 0)
 	var refusal *Error
 	if err == nil || errors.As(err, &refusal) {
 		t.Fatalf("a large body with no disk: got %v, want the server's own error", err)
@@ -213,7 +213,7 @@ func TestBindAnswersTheSameEitherSideOfTheFirstPart(t *testing.T) {
 	// An empty body is no body in any media type: never the unsupported media type.
 	empty := httptest.NewRequest(http.MethodPut, "/", bytes.NewReader(nil))
 	empty.Header.Set("Content-Type", "text/plain")
-	if _, err, _ := bindUpload(t, empty, 0); err == nil || errors.As(err, &refusal) && strings.HasPrefix(refusal.Message, "Unsupported") {
+	if _, _, err := bindUpload(t, empty, 0); err == nil || errors.As(err, &refusal) && strings.HasPrefix(refusal.Message, "Unsupported") {
 		t.Fatalf("an empty body: got %v, want what a body-less request gets", err)
 	}
 }
