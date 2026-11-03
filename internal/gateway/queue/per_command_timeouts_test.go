@@ -447,19 +447,22 @@ func readRow(t *testing.T, db *gorm.DB, id uint) models.OutboundQueue {
 
 // An attempt that outlasts the reclaim interval while it is alive is not taken by
 // another worker and sent twice, the case the set-once last_attempt got wrong. The
-// peer here takes 5 minutes (on the test clock) over the final reply, with workers
-// polling throughout, and reclaim far shorter than that.
+// peer here takes longer over the final reply than reclaim allows, with workers
+// polling throughout. A test minute is short enough for one slow database write to
+// outlast it, which at full scale is no threat to a 12 minute reclaim, so reclaim
+// here is many heartbeats long, and the reply longer still.
 func TestLiveAttemptIsNotReclaimedAndDeliveredTwice(t *testing.T) {
 	for _, testReset := range []bool{false, true} {
 		t.Run("testReset="+strconv.FormatBool(testReset), func(t *testing.T) {
 			db := openResetWorkerDB(t)
 			migrateDeliveryTables(t, db)
 			_, sender := sendingDomain(t, db)
-			mx := newTimedMX(t, timedMXOptions{delay: map[string]time.Duration{"final": 5 * testMinute}})
+			mx := newTimedMX(t, timedMXOptions{delay: map[string]time.Duration{"final": 15 * testMinute}})
 			configure := func(w *Worker) *Worker {
 				w.smtpTimeouts = rfcTimeoutsOnTestClock()
+				w.smtpTimeouts.FinalReply = 20 * testMinute
 				w.sendDeadline = func(int64) time.Duration { return time.Minute }
-				w.reclaim = testMinute
+				w.reclaim = 10 * testMinute
 				w.heartbeatEvery = testMinute / 4
 				return w
 			}
@@ -583,6 +586,9 @@ func TestHeartbeatLeavesARowItNoLongerHolds(t *testing.T) {
 			item := queueTimedRow(t, db, sender.Address, func(row *models.OutboundQueue) {
 				row.Status, row.Attempts, row.LastAttempt = tc.status, 2, &last
 			})
+			// Compare with what the database stored. It keeps microseconds, and on
+			// Linux the clock that set last gives nanoseconds.
+			stored := *readRow(t, db, item.ID).LastAttempt
 			stale := item
 			stale.Attempts = tc.claim
 			w := &Worker{db: db, heartbeatEvery: 5 * time.Millisecond}
@@ -590,8 +596,8 @@ func TestHeartbeatLeavesARowItNoLongerHolds(t *testing.T) {
 			time.Sleep(50 * time.Millisecond)
 			stop()
 			row := readRow(t, db, item.ID)
-			if !row.LastAttempt.Equal(*item.LastAttempt) {
-				t.Fatalf("a row this worker no longer holds was refreshed: %v, then %v", item.LastAttempt, row.LastAttempt)
+			if !row.LastAttempt.Equal(stored) {
+				t.Fatalf("a row this worker no longer holds was refreshed: %v, then %v", stored, row.LastAttempt)
 			}
 			if row.Status != tc.status {
 				t.Fatalf("status = %s, want %s", row.Status, tc.status)
