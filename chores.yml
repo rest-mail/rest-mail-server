@@ -834,7 +834,7 @@ tasks:
           go test -race -count=1 -v -timeout 8m ./tests/e2e/... {{.CLI_ARGS}}
 
   test:contract-teardown:
-    desc: Send the operations that wipe the contract run's data, last (#1334)
+    desc: Send the operations that reset before each exchange, then those that wipe the contract run's data, last (#1334, #1385)
     cmds:
       # The limits suite, before this, spends the API's buckets in its memory;
       # a restart gives the teardown's sign-in its own.
@@ -843,8 +843,9 @@ tasks:
       - |
         set -eu
         code=0
+        CONTRACT_DEFER_SUMMARY=1 tests/contract/run.sh own-data {{.CLI_ARGS}} || code=$?
         CONTRACT_DEFER_SUMMARY=1 tests/contract/run.sh teardown {{.CLI_ARGS}} || code=$?
-        python3 -B tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes teardown
+        python3 -B tests/contract/summary.py .cache/contract examples coverage authorization ownership ownership-domains ownership-mailboxes own-data teardown
         exit "$code"
 
   test:limits:

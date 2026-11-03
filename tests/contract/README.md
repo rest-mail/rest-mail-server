@@ -34,6 +34,7 @@ In the `E2E (full topology)` job (`.github/workflows/e2e-suite.yml`), after the
 | `authorization` | Every selected operation as each configured principal, checked against the spec's security roles. A signed-in caller refused an object the path names may get the 404 that hides it (#672); `authorization_refusals.py` names any 404 outside that, so an admin route stays 403 and no credential stays 401. | Report only, after the gates |
 | `ownership` | Each account tenant's principals sent the other tenant's account id, on the operations they are entitled to; every answer must be 403 or 404. | Report only, after authorization |
 | `fuzz` | Values drawn from each schema, shrunk to the smallest failing input, with a replayable seed. | Nightly (`contract-fuzz.yml`), never blocks |
+| `own-data` | The operations moved to a clean start, each exchange after a reset and seed, with what follows `createDomain`'s links ([Moved to a clean start](#moved-to-a-clean-start-part-of-1385)). | Gate, before the teardown |
 | faults | The API built with each fault in `faults.yml`, and the phase the fault names run on its operation: it must turn red ([Fault catalogue](#fault-catalogue-654)). | Nightly (`contract-faults.yml`), fails on a fault not caught |
 
 ### Skipped valid coverage probes (#1443)
@@ -1023,6 +1024,54 @@ failed SQL reset rolls back fixture rows and sequence restarts and does not clea
 memory. Run API and gateway with the same non-production environment; production
 has neither reset routes nor worker-barrier behavior. Exchanges and fixture
 subprocesses must still be serialized; this is not a concurrency-isolation API.
+
+`fixtures=()` runs no fixture command, and needs no container: only the seed's data.
+
+## Moved to a clean start (Part of #1385)
+
+`getDomain`, `setMtaStsPolicy`, `getMtaStsPolicy` and `deleteMtaStsPolicy` reset and
+seed before each exchange, refusals included, and each success makes the domain it
+needs, and for a read or delete the policy too. Only the path changes, so bodies and
+credentials reach the handler as generated. The absent-policy 404 keeps its own hook
+(`policy_lookup_hooks.py`), which runs after the reset.
+
+This happens only with `CONTRACT_RESET_SEED=1`, which `tests/contract/run.sh own-data`
+sets, and that phase is a gate of its own, sent by `chore test:contract-teardown`
+just before the teardown. It sends the moved operations with everything that follows
+`createDomain`'s links (`own_data.py`), and fails on a skipped exchange as well as a
+failed one.
+
+**The primary run does not reset.** It still sends these four as before, because a
+reset there removes what the unmoved operations after it depend on, not only the
+domain: a local whole-API run with these four resetting in the primary run fell from
+538 passes to 503, across accounts, messages, certificates, custom filters and the
+queue. Coverage, authorization
+and ownership stay in their own processes without a reset too, so nothing here
+changes their probes. The primary run can start resetting once nothing that has not
+moved is sent after a reset.
+
+A reset removes the domain `createDomain` made, and its id is what the links carry.
+So after a reset, an unmoved operation that follows one of those links gets a stand-in
+domain (`a_live_domain_for_the_link`), made once per reset and kept where the created
+domain was. An allowlist or blocklist entry the link names is added again, and a DKIM
+key is set again before its delete. A run with no reset changes nothing there.
+
+What a reset does and does not touch here:
+
+- **Rate limits:** the reset refills the buckets in the API's memory, so setup does not
+  wait for them. The primary run still paces its sign-ins.
+- **Sessions:** the fixture admin and the two-factor administrator must exist before
+  the first reset, which keeps them with their ids and credentials. Vertrag's session,
+  the setup session and the two-factor session therefore stay valid across resets.
+  `.cache/contract/mfa-admin.json` stays valid for the same reason. Nothing else may
+  be cached across one: `start_clean` drops everything in `hooks.stash` except
+  `SURVIVES_A_RESET`. Domain ids are not stable from one reset to the next, because they
+  depend on what was made since, which is why each exchange makes its own.
+- **Outside the database:** delivery work in flight holds up the reset for up to 30
+  seconds, and a timeout fails the exchange as an error rather than sending it. Event
+  streams are closed by the reset. `.cache/contract-principals.json` names accounts
+  that the first reset removes, so nothing that reads it can run after this phase,
+  which is why this phase is the last before the teardown.
 
 ## Principals
 

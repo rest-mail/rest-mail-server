@@ -3,7 +3,7 @@
 # `chore contract`: Vertrag against a running E2E topology, every phase writing
 # JUnit, HTML and Markdown reports to .cache/contract/, and a summary at the end.
 #
-#   tests/contract/run.sh [gate|authorization|ownership|fuzz|teardown] [selection flags]
+#   tests/contract/run.sh [gate|authorization|ownership|fuzz|own-data|teardown] [selection flags]
 #
 #   gate           the examples phase, then the coverage phase held to
 #                  tests/contract/coverage-baseline.txt (the default)
@@ -13,6 +13,10 @@
 #                  (#657)
 #   fuzz           values drawn from each schema, a report and not a gate; a
 #                  finding replays with --seed from its log line
+#   own-data       the operations moved to a clean start, each exchange after
+#                  a reset and seed, and what follows their links
+#                  (tests/contract/own_data.py); a gate, sent once nothing else
+#                  needs the data
 #   teardown       the operations that wipe the run's data, sent last, once
 #                  nothing else needs it (tests/contract/teardown.py); a gate
 #
@@ -27,7 +31,7 @@ cd "$(dirname "$0")/../.."
 
 phase=gate
 case "${1:-}" in
-gate | authorization | ownership | fuzz | teardown)
+gate | authorization | ownership | fuzz | own-data | teardown)
   phase=$1
   shift
   ;;
@@ -49,7 +53,7 @@ names=("$phase")
 if [ "$phase" = ownership ]; then names=(ownership ownership-domains ownership-mailboxes); fi
 reset_run=()
 # The teardown, like authorization, keeps the gate's saved inputs and reports.
-if [ "$phase" != authorization ] && [ "$phase" != ownership ] && [ "$phase" != teardown ]; then
+if [ "$phase" != authorization ] && [ "$phase" != ownership ] && [ "$phase" != own-data ] && [ "$phase" != teardown ]; then
   reset_run=(--reset-run)
   names=(fuzz)
   if [ "$phase" = gate ]; then names=(examples coverage authorization ownership ownership-domains ownership-mailboxes browser-sessions); fi
@@ -205,6 +209,18 @@ ownership)
     echo "vertrag ownership of $kind exited $kind_code (report only)"
     if [ "$code" -eq 0 ]; then code=$kind_code; fi
   done
+  exit "$code"
+  ;;
+own-data)
+  python3 -B tests/contract/own_data.py "$out/vertrag-run.yml" "$out/vertrag-own-data.yml"
+  python3 -B tests/contract/reports.py "$out/vertrag-own-data.yml" "$out/vertrag-own-data.yml" "$out/own-data" --narrowed
+  code=0
+  CONTRACT_RESET_SEED=1 "$CONTRACT_VERTRAG" run --config "$out/vertrag-own-data.yml" --sequence --phases examples "${select[@]}" \
+    2>&1 | tee "$logs/contract-own-data.log" || code=$?
+  echo "vertrag own-data exited $code"
+  if [ "$code" -eq 0 ]; then
+    python3 -B tests/contract/own_data.py --check "$out/own-data.xml" || code=$?
+  fi
   exit "$code"
   ;;
 teardown)
