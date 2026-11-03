@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
+	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"github.com/rest-mail/rest-mail-server/internal/config"
 )
 
@@ -45,6 +46,10 @@ func TestEachCompiledFaultBreaksItsRoute(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			if f.Configure != nil {
 				testConfiguredLimit(t, f)
+				return
+			}
+			if f.BreakRequest != nil {
+				testSkippedCSRF(t, f)
 				return
 			}
 			next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -235,5 +240,103 @@ func TestNoFaultLeavesTheHandler(t *testing.T) {
 	next := http.NewServeMux()
 	if got := wrap(next, nil); got != http.Handler(next) {
 		t.Fatal("wrap with no fault replaced the handler")
+	}
+}
+
+// Off, the CSRF guard refuses a cookie session's unsafe request that lacks a
+// matching double-submit token. On, that request reaches the route on the
+// fault's path only, with its session cookie, other cookies, headers and body
+// as sent, and nothing else the guard decides changes.
+func TestCSRFSkipOnlyLetsCookieRequestsPastTheGuard(t *testing.T) {
+	fault, active := registry["create_account_csrf_skipped"]
+	if !active {
+		t.Skip("built without fault_create_account_csrf_skipped")
+	}
+	testSkippedCSRF(t, fault)
+}
+
+func testSkippedCSRF(t *testing.T, fault Fault) {
+	t.Helper()
+	type seen struct{ session, other, authorization, kept, body string }
+	var got seen
+	route := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		got = seen{authorization: r.Header.Get("Authorization"), kept: r.Header.Get("X-Kept"), body: string(body)}
+		if c, err := r.Cookie(auth.AccessCookieName); err == nil {
+			got.session = c.Value
+		}
+		if c, err := r.Cookie("other"); err == nil {
+			got.other = c.Value
+		}
+		w.WriteHeader(http.StatusCreated)
+	})
+	guarded := middleware.CSRF()(route)
+	off, on := wrap(guarded, nil), wrap(guarded, []Fault{fault})
+	type request struct {
+		name, method, path, csrfCookie, csrfHeader, bearer string
+		session                                            bool
+	}
+	send := func(h http.Handler, req request) (int, seen) {
+		got = seen{}
+		r := httptest.NewRequest(req.method, req.path, strings.NewReader(`{"sent":true}`))
+		r.Header.Set("X-Kept", "yes")
+		if req.session {
+			r.AddCookie(&http.Cookie{Name: auth.AccessCookieName, Value: "the-session"})
+		}
+		r.AddCookie(&http.Cookie{Name: "other", Value: "kept"})
+		if req.csrfCookie != "" {
+			r.AddCookie(&http.Cookie{Name: auth.CSRFCookieName, Value: req.csrfCookie})
+		}
+		if req.csrfHeader != "" {
+			r.Header.Set(auth.CSRFHeaderName, req.csrfHeader)
+		}
+		if req.bearer != "" {
+			r.Header.Set("Authorization", "Bearer "+req.bearer)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, r)
+		return rec.Code, got
+	}
+	reached := func(req request) seen {
+		s := seen{kept: "yes", body: `{"sent":true}`, other: "kept"}
+		if req.session {
+			s.session = "the-session"
+		}
+		if req.bearer != "" {
+			s.authorization = "Bearer " + req.bearer
+		}
+		return s
+	}
+	elsewhere := "/api/v1/messages/send"
+	for _, c := range []struct {
+		req     request
+		offCode int
+		onCode  int
+	}{
+		// The three variants the browser-session checker sends: only these change.
+		{request{name: "no header", method: fault.Method, path: fault.Path, session: true, csrfCookie: "c"}, 403, 201},
+		{request{name: "mismatched", method: fault.Method, path: fault.Path, session: true, csrfCookie: "c", csrfHeader: "c-mismatch"}, 403, 201},
+		{request{name: "no CSRF cookie", method: fault.Method, path: fault.Path, session: true, csrfHeader: "c"}, 403, 201},
+		{request{name: "matching", method: fault.Method, path: fault.Path, session: true, csrfCookie: "c", csrfHeader: "c"}, 201, 201},
+		{request{name: "bearer", method: fault.Method, path: fault.Path, bearer: "t"}, 201, 201},
+		{request{name: "safe method", method: http.MethodGet, path: fault.Path, session: true}, 201, 201},
+		{request{name: "another route", method: fault.Method, path: elsewhere, session: true, csrfCookie: "c"}, 403, 403},
+		{request{name: "another route mismatched", method: fault.Method, path: elsewhere, session: true, csrfCookie: "c", csrfHeader: "x"}, 403, 403},
+	} {
+		t.Run(c.req.name, func(t *testing.T) {
+			for _, side := range []struct {
+				name string
+				h    http.Handler
+				code int
+			}{{"off", off, c.offCode}, {"on", on, c.onCode}} {
+				code, seen := send(side.h, c.req)
+				if code != side.code {
+					t.Fatalf("%s: status %d, want %d", side.name, code, side.code)
+				}
+				if code == http.StatusCreated && seen != reached(c.req) {
+					t.Fatalf("%s: the route saw %+v, want %+v", side.name, seen, reached(c.req))
+				}
+			}
+		})
 	}
 }

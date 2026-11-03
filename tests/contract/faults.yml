@@ -11,7 +11,8 @@
 #               no fault code.
 #   operation   the operationId whose answer it breaks
 #   path        that operation's path, which Vertrag's report names it by
-#   phase       the witness phase (examples, body_cap, auth_throttle, secret_scan)
+#   phase       the witness phase (examples, body_cap, auth_throttle, secret_scan,
+#               browser_session)
 #   breaks      what a client would see
 #   expected_failure  optional: text Vertrag's failure must hold, so the run
 #               counts as catching the fault only when it fails for this reason
@@ -98,3 +99,11 @@ faults:
     phase: secret_scan
     breaks: POST /api/v1/auth/password answers a wrong current password's 403 refusal with that password in its error message, which still fits the schema
     expected_failure: "answers the current_password sent in"
+
+  - name: create_account_csrf_skipped
+    build_tags: faultinject,fault_create_account_csrf_skipped
+    operation: createAccount
+    path: /api/v1/accounts
+    phase: browser_session
+    breaks: POST /api/v1/accounts lets a cookie session's request past the CSRF guard without a matching X-CSRF-Token header, instead of refusing it with 403 csrf_failed
+    expected_failure: "expected 403 csrf_failed"

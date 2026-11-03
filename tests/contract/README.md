@@ -917,8 +917,23 @@ of its own login body, so login cannot be it: the only password login's examples
 record is the fixture admin's. Any operation sending another secret can be, and
 `faults-<name>-secret_scan.xml` says how many secrets were sent to the route.
 
-Authorization and ownership faults still wait until those phases stop being
-report-only.
+The browser-session checker (`tests/contract/browser_sessions`) is a required
+gate already, the first step of `run.sh gate`, so its CSRF refusals can be
+proven now. `create_account_csrf_skipped` gets a cookie session's
+`POST /api/v1/accounts` past the CSRF middleware: before the router sees the
+request, the switch gives it a matching `restmail_csrf` cookie and
+`X-CSRF-Token` header, whatever the client sent. A request without the session
+cookie, every other route and every other cookie and header are left as they
+are. The `browser_session` phase runs the narrowed gate and judges only the
+checker, by its output line and its receipt (`browser-sessions.json`). The fault
+is caught only when the checker failed `createAccount`'s refusal of a request
+lacking CSRF (`expected 403 csrf_failed`) and its receipt ends with that check.
+The baseline needs the checker passed, with `createAccount` refusing each of
+the three requests lacking CSRF with 403. A failure of any other check, or one
+it could not run, is an error, not a verdict.
+
+The other authorization and ownership faults still wait until those phases stop
+being report-only.
 
 ### Adding a fault
 
@@ -929,13 +944,16 @@ report-only.
    `faultinject.go`), and an `Example` of the route's normal answer for the
    package test. Set `ExampleStatus` when that answer is not 200. A fault that
    repeats what the client sent uses `BreakSeeing`, which is given the request
-   body as well, with `ExampleRequest` for the package test. A switch
+   body as well, with `ExampleRequest` for the package test. A fault that
+   gets a request past a guard in front of the route changes the request with
+   `BreakRequest` instead, and needs its own package test of that guard. A switch
    disabling a real guard uses `Configure` instead of `Break`; only tagged
    builds apply it to the configuration before constructing the router. The
    switch check exercises the configured limit middleware as well as the
    response-rewriting faults. A normal build's configuration hook is a no-op.
 2. Add its entry to `faults.yml`: `name`, `build_tags`
-   (`faultinject,fault_<name>`), `operation`, `path`, `phase` and `breaks`,
+   (`faultinject,fault_<name>`), `operation`, `path`, `phase` (`examples`,
+   `body_cap`, `auth_throttle`, `secret_scan` or `browser_session`) and `breaks`,
    and `expected_failure` once you have seen the failure the phase reports.
 
 `go test ./internal/faultinject` (no tags) holds the catalogue and the
