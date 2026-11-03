@@ -11,6 +11,8 @@ on:
 permissions:
   contents: read
   packages: write
+  # The image scan uploads its SARIF to code scanning (main only).
+  security-events: write
 
 env:
   REGISTRY: ghcr.io
@@ -79,6 +81,7 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ${{ matrix.context }}
@@ -96,3 +99,92 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
+          # A release image carries its SBOM (SPDX) and full build provenance
+          # as attestations in the image index, so they travel with the image
+          # and anyone can read them from the registry:
+          #   docker buildx imagetools inspect <image>:<version> --format '{{ json .SBOM }}'
+          # Dev images from main keep the default (minimal provenance, no SBOM).
+          sbom: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          provenance: ${{ startsWith(github.ref, 'refs/tags/v') && 'mode=max' || '' }}
+
+      # Scan exactly what was pushed: the image by digest, once per platform.
+      # Every finding is reported (code scanning on main, the job summary
+      # always); a CRITICAL or HIGH vulnerability that has a fix fails the job.
+      # Exceptions go in .trivyignore, each with a reason and an issue link.
+      - name: Scan image (report all findings)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_PLATFORM: linux/amd64
+        with:
+          image-ref: ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}@${{ steps.build.outputs.digest }}
+          format: sarif
+          output: trivy-${{ matrix.image }}.sarif
+          trivyignores: .trivyignore
+          exit-code: "0"
+
+      - name: Upload scan to code scanning
+        if: github.ref == 'refs/heads/main'
+        uses: github/codeql-action/upload-sarif@1fc58d04a4d4374f921bdac573c3811c240f9c26 # v4.39.2
+        with:
+          sarif_file: trivy-${{ matrix.image }}.sarif
+          category: trivy-image-${{ matrix.image }}
+
+      - name: Scan image for fixable CRITICAL/HIGH (linux/amd64)
+        id: gate-amd64
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_PLATFORM: linux/amd64
+        with:
+          image-ref: ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}@${{ steps.build.outputs.digest }}
+          skip-setup-trivy: true
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          format: table
+          output: trivy-${{ matrix.image }}-amd64.txt
+          trivyignores: .trivyignore
+          exit-code: "1"
+
+      - name: Scan image for fixable CRITICAL/HIGH (linux/arm64)
+        id: gate-arm64
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_PLATFORM: linux/arm64
+        with:
+          image-ref: ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}@${{ steps.build.outputs.digest }}
+          skip-setup-trivy: true
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          format: table
+          output: trivy-${{ matrix.image }}-arm64.txt
+          trivyignores: .trivyignore
+          exit-code: "1"
+
+      - name: Write scan results to the job summary
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        env:
+          IMAGE: ${{ matrix.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          AMD64: ${{ steps.gate-amd64.outcome }}
+          ARM64: ${{ steps.gate-arm64.outcome }}
+        run: |
+          {
+            echo "## Image scan: ${IMAGE}"
+            echo
+            echo "Digest \`${DIGEST}\`. Fixable CRITICAL/HIGH fail the job; all findings are in code scanning (main)."
+            for arch in amd64 arm64; do
+              outcome=AMD64; [ "$arch" = arm64 ] && outcome=ARM64
+              echo
+              echo "### linux/${arch}: ${!outcome}"
+              f="trivy-${IMAGE}-${arch}.txt"
+              if [ -s "$f" ]; then
+                echo '```text'
+                cat "$f"
+                echo '```'
+              else
+                echo "No fixable CRITICAL or HIGH vulnerabilities."
+              fi
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+          # Also in the log, where the job's failure points.
+          cat trivy-"${IMAGE}"-*.txt 2>/dev/null || true
