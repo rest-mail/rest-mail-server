@@ -1,6 +1,6 @@
 # ── Stage 1: module cache (shared by all later stages) ───────────────
 # Base images pinned by digest for reproducible builds (OSI-17).
-FROM golang:1.26-alpine@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2 AS deps
+FROM golang:1.26.10-alpine@sha256:a2012b4a1d1f9f7e9f44e0d39b805a901e856b1dd80b4e6ee4338db547050308 AS deps
 WORKDIR /app
 # git is required so `go mod download` can fetch module versions not yet cached
 # by the Go module proxy (direct VCS fallback). `safe.directory` lets Go's
