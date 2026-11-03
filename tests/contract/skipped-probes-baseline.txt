@@ -12,10 +12,6 @@
 # sendMessage, sendDraft and cancelScheduledMessage shared one cause, restmail.test
 # left at a sending policy (Part of #1443); local coverage sends all 16 of their probes.
 bounceQueueEntry 1
-deleteContact 2
-deleteFolder 2
 deleteQueueEntry 1
 getQueueEntry 1
 retryQueueEntry 1
-updateContact 9
-updateDraft 10
