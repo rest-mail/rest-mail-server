@@ -86,7 +86,7 @@ spec:
               - key: tls.key
                 path: {{ .Values.tls.keyFilename }}
         {{- if .Values.internalMtls.enabled }}
-        {{- include "restmail.internalMtls.volume" (list . "client") | nindent 8 }}
+        {{- include "restmail.internalMtls.volume" (list . "pop3") | nindent 8 }}
         {{- end }}
         - name: tmp
           emptyDir: {}

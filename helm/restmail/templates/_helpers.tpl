@@ -477,9 +477,25 @@ Internal mTLS volumeMount (shared by API + gateways).
 {{- end -}}
 
 {{/*
+Internal mTLS: the gateway services and the Common Name of each one's client
+certificate, which is how the API knows which gateway is calling (#1586). The
+same list is internal/mtls.Gateways; TestChartGatewayNamesMatch checks the two
+agree. Read it with: fromYaml (include "restmail.internalMtls.gateways" .)
+*/}}
+{{- define "restmail.internalMtls.gateways" -}}
+imap: rest-mail-imap-gateway
+pop3: rest-mail-pop3-gateway
+smtp-submission: rest-mail-smtp-submission
+smtp-delivery: rest-mail-smtp-delivery
+{{- end -}}
+
+{{/*
 Internal mTLS volume projecting only the keys a role needs (least privilege):
-"server" → ca+server, "client" → ca+client. Usage:
+"server" → ca+server; a gateway service (imap, pop3, smtp-delivery, ...) → ca
+and that service's own client keypair (client-<service>.*), mounted as
+client.crt/client.key. Usage:
 {{ include "restmail.internalMtls.volume" (list . "server") }}
+{{ include "restmail.internalMtls.volume" (list . "imap") }}
 */}}
 {{- define "restmail.internalMtls.volume" -}}
 {{- $root := index . 0 -}}
@@ -496,9 +512,12 @@ Internal mTLS volume projecting only the keys a role needs (least privilege):
       - key: server.key
         path: server.key
 {{- else }}
-      - key: client.crt
+{{- if not (hasKey (fromYaml (include "restmail.internalMtls.gateways" $root)) $role) }}
+{{- fail (printf "restmail.internalMtls.volume: %q is not a gateway service" $role) }}
+{{- end }}
+      - key: {{ printf "client-%s.crt" $role }}
         path: client.crt
-      - key: client.key
+      - key: {{ printf "client-%s.key" $role }}
         path: client.key
 {{- end }}
 {{- end -}}

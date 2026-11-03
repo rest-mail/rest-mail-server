@@ -75,15 +75,23 @@ checks:
 # off too, so the gateways' machine routes (checkMailboxAddress,
 # deliverMessage) are served on the public listener and sent like any other.
 # The routes the mail gateways call are on the API's internal listener, which
-# requires the gateway's client certificate (chore test:contract-mtls copies it).
-# They are sent there, as production sends them.
+# requires a gateway's client certificate (chore test:contract-mtls copies them).
+# They are sent there, as production sends them, each with the certificate of
+# the gateway service that calls it (#1586): delivery with the SMTP delivery
+# certificate, the connection sessions with the IMAP gateway's.
 endpoints:
   - endpoint: https://10.99.0.20:8443
     operation-id: [checkMailboxAddress, deliverMessage]
     transport:
       ca-cert: .cache/contract-mtls/internal-ca.crt
-      cert: .cache/contract-mtls/internal-client.crt
-      cert-key: .cache/contract-mtls/internal-client.key
+      cert: .cache/contract-mtls/internal-smtp-delivery.crt
+      cert-key: .cache/contract-mtls/internal-smtp-delivery.key
+  - endpoint: https://10.99.0.20:8443
+    operation-id: [openGatewaySession, closeGatewaySession]
+    transport:
+      ca-cert: .cache/contract-mtls/internal-ca.crt
+      cert: .cache/contract-mtls/internal-imap.crt
+      cert-key: .cache/contract-mtls/internal-imap.key
 
 exclude-operation-id:
   - resetTestData

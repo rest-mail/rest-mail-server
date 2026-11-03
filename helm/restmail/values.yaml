@@ -161,12 +161,16 @@ internalMtls:
   # In-pod mount path for the CA + certificate material.
   mountPath: /etc/restmail/internal-mtls
   # Bring your own trust material (e.g. cert-manager) via a Secret with keys
-  # ca.crt, server.crt, server.key, client.crt, client.key. Empty → the chart
+  # ca.crt, server.crt, server.key and, for each gateway service, a client
+  # keypair client-<service>.crt/.key whose certificate's Common Name names that
+  # service (#1586): client-imap (rest-mail-imap-gateway), client-pop3
+  # (rest-mail-pop3-gateway), client-smtp-submission (rest-mail-smtp-submission)
+  # and client-smtp-delivery (rest-mail-smtp-delivery). Empty → the chart
   # mints a self-signed internal CA and server/client certs on first install and
   # reuses them across upgrades. The CA's private key is never stored: it exists
   # only while the chart renders, so nothing in the cluster can sign another
   # certificate the API would accept. Each pod mounts the CA certificate and its
-  # own keypair only (the API the server's, the gateways the client's), and
+  # own keypair only (the API the server's, each gateway its service's), and
   # never a key your Secret may also hold.
   existingSecret: ""
 
