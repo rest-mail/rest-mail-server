@@ -378,7 +378,7 @@ Install via Homebrew, Go, or pre-built binary — see https://github.com/rest-ma
 
 ### 4.6 Webmail (React / Vite / Tailwind / shadcn)
 
-Located at [webmail/](../webmail/). Features: rich text editor, contacts, drafts, threads, attachments, SSE live updates, vacation settings. Served on `:3000` (production build) or `:3001` (Vite HMR dev).
+Located at [webmail/](../webmail/). Features: rich text editor, contacts, drafts, threads, attachments, SSE live updates, vacation settings, send later. Send later, beside Send in compose, takes a date and time in the person's own time zone and sends it as UTC `scheduled_at`; the API refuses a time under a minute ahead or over a year ahead, and compose shows that refusal under the picker. The **scheduled** view lists the account's waiting messages (`GET /api/v1/messages/scheduled`) with their send times in the person's zone, and cancels one after a confirmation (`DELETE /api/v1/messages/scheduled/{id}`): a cancelled message is not sent and is not kept as a draft. One already being sent cannot be cancelled. Served on `:3000` (production build) or `:3001` (Vite HMR dev).
 
 Deployed by the Helm chart at `webmail.<domain>` (`webmail.*` in [helm/restmail/values.yaml](../helm/restmail/values.yaml)), whose Ingress also sends `/api` to the API: the app calls the API at the root-relative `/api/v1` on its own origin, which its CSP (`connect-src 'self'`) and `SameSite=Strict` cookies require. The image (`ghcr.io/rest-mail/webmail`) takes the path it is served under when it starts (`NGINX_BASE_PATH`, default `/`) and names it in the page's `<base>`; the chart serves it at `/`.
 

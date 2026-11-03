@@ -10,14 +10,15 @@ import { Separator } from '@/components/ui/separator';
 import { RichTextEditor } from './RichTextEditor';
 import { AutocompleteInput } from './AutocompleteInput';
 import * as api from '@/api/client';
-import { X, Code, Type, Trash2, Save, Send, CalendarPlus, CalendarX } from 'lucide-react';
+import { scheduleTime, scheduledSendRequest, sendTimeLabel, toLocalInput } from '@/lib/scheduledSend';
+import { X, Code, Type, Trash2, Save, Send, CalendarPlus, CalendarX, Clock } from 'lucide-react';
 
 function parseRecipients(raw: string): string[] {
   return raw ? raw.split(',').map(s => s.trim()).filter(Boolean) : [];
 }
 
 export function ComposeView() {
-  const { composeState, closeCompose } = useUIStore();
+  const { composeState, closeCompose, setView } = useUIStore();
   const { accounts } = useMailStore();
 
   const [from, setFrom] = useState(accounts[0]?.address || '');
@@ -37,6 +38,10 @@ export function ComposeView() {
   const [calStart, setCalStart] = useState('');
   const [calEnd, setCalEnd] = useState('');
   const [calAllDay, setCalAllDay] = useState(false);
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [scheduleAt, setScheduleAt] = useState('');
+  const [scheduleError, setScheduleError] = useState('');
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   // Auto-save timer
   const autoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -87,6 +92,81 @@ export function ComposeView() {
     }
   };
 
+  const messageData = (): Parameters<typeof api.sendMessage>[0] => {
+    const sendData: Parameters<typeof api.sendMessage>[0] = {
+      from,
+      to,
+      cc: cc.length > 0 ? cc : undefined,
+      bcc: bcc.length > 0 ? bcc : undefined,
+      subject,
+      body_text: isHtml ? stripHtml(htmlContent) : plainText,
+      body_html: isHtml ? htmlContent : undefined,
+      in_reply_to: composeState?.inReplyTo,
+    };
+    if (showCalendar && calSummary && calStart && calEnd) {
+      sendData.calendar_event = {
+        method: 'REQUEST',
+        summary: calSummary,
+        location: calLocation || undefined,
+        dtstart: new Date(calStart).toISOString(),
+        dtend: new Date(calEnd).toISOString(),
+        all_day: calAllDay,
+        attendees: to.map(addr => ({ address: addr, rsvp: true })),
+      };
+    }
+    return sendData;
+  };
+
+  // handleSchedule asks the API to send later. The time is the person's own
+  // wall time; the request carries it as UTC, and the server judges it (at
+  // least a minute ahead, within a year), so its refusal is shown as it is.
+  const handleSchedule = async () => {
+    if (to.length === 0) return;
+    setScheduleError('');
+    let when;
+    try {
+      when = scheduleTime(scheduleAt);
+    } catch (err) {
+      setScheduleError(err instanceof Error ? err.message : 'Choose a date and time to send');
+      return;
+    }
+    setSending(true);
+    try {
+      const resp = await api.scheduleMessage(scheduledSendRequest(messageData(), when));
+      if (draftId) {
+        // The scheduled send keeps its own copy; the draft would be a duplicate.
+        try {
+          await api.deleteMessage(draftId);
+        } catch {
+          // ignore — draft may already be gone
+        }
+      }
+      const at = sendTimeLabel(resp.data?.scheduled_at || when.utc);
+      toast.success(`Scheduled for ${at}`, {
+        description: when.adjusted ? `That time does not exist on that day where you are, so it goes at ${at}.` : undefined,
+        action: { label: 'View scheduled', onClick: () => setView('scheduled') },
+      });
+      closeCompose();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to schedule message';
+      setScheduleError(message);
+      toast.error(`Not scheduled: ${message}`);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const openSchedule = () => {
+    if (!showSchedule && !scheduleAt) {
+      // Start an hour ahead, on the minute, so the default is never refused.
+      const start = new Date(Date.now() + 60 * 60 * 1000);
+      start.setSeconds(0, 0);
+      setScheduleAt(toLocalInput(start));
+    }
+    setScheduleError('');
+    setShowSchedule(!showSchedule);
+  };
+
   const handleSend = async () => {
     if (to.length === 0) return;
     setSending(true);
@@ -96,28 +176,7 @@ export function ComposeView() {
         await api.updateDraft(draftId, getDraftData());
         await api.sendDraft(draftId);
       } else {
-        const sendData: Parameters<typeof api.sendMessage>[0] = {
-          from,
-          to,
-          cc: cc.length > 0 ? cc : undefined,
-          bcc: bcc.length > 0 ? bcc : undefined,
-          subject,
-          body_text: isHtml ? stripHtml(htmlContent) : plainText,
-          body_html: isHtml ? htmlContent : undefined,
-          in_reply_to: composeState?.inReplyTo,
-        };
-        if (showCalendar && calSummary && calStart && calEnd) {
-          sendData.calendar_event = {
-            method: 'REQUEST',
-            summary: calSummary,
-            location: calLocation || undefined,
-            dtstart: new Date(calStart).toISOString(),
-            dtend: new Date(calEnd).toISOString(),
-            all_day: calAllDay,
-            attendees: to.map(addr => ({ address: addr, rsvp: true })),
-          };
-        }
-        await api.sendMessage(sendData);
+        await api.sendMessage(messageData());
       }
       toast.success('Message sent');
       closeCompose();
@@ -274,6 +333,33 @@ export function ComposeView() {
         )}
       </div>
 
+      {showSchedule && (
+        <div className="px-4 py-2 space-y-1 bg-muted/30 border-t">
+          <div className="flex items-center gap-2">
+            <Label htmlFor="compose-send-at" className="text-sm text-muted-foreground">Send at</Label>
+            <Input
+              id="compose-send-at"
+              type="datetime-local"
+              value={scheduleAt}
+              onChange={e => { setScheduleAt(e.target.value); setScheduleError(''); }}
+              className="w-auto"
+              aria-invalid={scheduleError !== ''}
+              aria-describedby="compose-send-at-hint"
+            />
+            <Button size="sm" onClick={handleSchedule} disabled={sending || to.length === 0}>
+              <Clock className="w-4 h-4 mr-1" />
+              {sending ? 'Scheduling...' : 'Schedule'}
+            </Button>
+          </div>
+          <p id="compose-send-at-hint" className="text-xs text-muted-foreground">
+            Your time zone: {timeZone}. It must be at least a minute ahead and within a year.
+          </p>
+          {scheduleError && (
+            <p role="alert" className="text-sm text-destructive">Not scheduled: {scheduleError}</p>
+          )}
+        </div>
+      )}
+
       <Separator />
       {/* Footer */}
       <div className="flex items-center justify-end gap-2 px-4 py-2">
@@ -284,6 +370,10 @@ export function ComposeView() {
         <Button variant="outline" size="sm" onClick={() => handleSaveDraft(false)} disabled={savingDraft}>
           <Save className="w-4 h-4 mr-1" />
           {savingDraft ? 'Saving...' : 'Save Draft'}
+        </Button>
+        <Button variant={showSchedule ? 'default' : 'outline'} size="sm" onClick={openSchedule} aria-expanded={showSchedule}>
+          <Clock className="w-4 h-4 mr-1" />
+          Send later
         </Button>
         <Button size="sm" onClick={handleSend} disabled={sending}>
           <Send className="w-4 h-4 mr-1" />
