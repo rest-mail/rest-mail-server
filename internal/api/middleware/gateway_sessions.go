@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/rest-mail/rest-mail-server/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/mtls"
 )
 
 // GatewayServices maps the Common Name of a gateway's verified mTLS client
@@ -15,14 +16,15 @@ import (
 // its own certificate (#1586).
 type GatewayServices map[string]string
 
-// DefaultGatewayServices are the client certificate names `instance
-// mtls-issue` gives the gateways.
-var DefaultGatewayServices = GatewayServices{
-	"rest-mail-imap-gateway":    "imap",
-	"rest-mail-pop3-gateway":    "pop3",
-	"rest-mail-smtp-submission": "smtp-submission",
-	"rest-mail-smtp-delivery":   "smtp-delivery",
-}
+// DefaultGatewayServices are the client certificate names every install gives
+// the gateways, one per service (mtls.Gateways).
+var DefaultGatewayServices = func() GatewayServices {
+	s := make(GatewayServices, len(mtls.Gateways))
+	for _, g := range mtls.Gateways {
+		s[g.CommonName] = g.Service
+	}
+	return s
+}()
 
 // Service returns the gateway service that made r: the service its verified
 // client certificate names, or "" when r came without one (the public

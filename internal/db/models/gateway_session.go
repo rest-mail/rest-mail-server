@@ -1,14 +1,19 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"github.com/rest-mail/rest-mail-server/internal/mtls"
+)
 
 // Gateway services: the protocol gateways that call the API, each identified
-// by its own mTLS client certificate on the internal listener (#1586).
+// by its own mTLS client certificate on the internal listener (#1586). The
+// list and the certificate names are in internal/mtls.
 const (
-	GatewayServiceIMAP           = "imap"
-	GatewayServicePOP3           = "pop3"
-	GatewayServiceSMTPSubmission = "smtp-submission"
-	GatewayServiceSMTPDelivery   = "smtp-delivery"
+	GatewayServiceIMAP           = mtls.GatewayServiceIMAP
+	GatewayServicePOP3           = mtls.GatewayServicePOP3
+	GatewayServiceSMTPSubmission = mtls.GatewayServiceSMTPSubmission
+	GatewayServiceSMTPDelivery   = mtls.GatewayServiceSMTPDelivery
 )
 
 // GatewaySession is one mail client's connection to a protocol gateway, as the

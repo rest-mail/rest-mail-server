@@ -279,7 +279,7 @@ that listener exists to prevent.
 | Pod | Mounts | From |
 |-----|--------|------|
 | each gateway | `/certs/tls.crt`, `/certs/tls.key` | `tls.secretName`: the mail hosts' certificate, which it serves |
-| each gateway | `ca.crt`, `client.crt`, `client.key` under `internalMtls.mountPath` | the internal mTLS Secret: the CA certificate, to verify the API, and the gateways' client keypair |
+| each gateway | `ca.crt`, `client.crt`, `client.key` under `internalMtls.mountPath` | the internal mTLS Secret: the CA certificate, to verify the API, and that gateway service's own client keypair (`client-imap.*`, `client-pop3.*`, `client-smtp-delivery.*` for the SMTP gateway) |
 | API | `ca.crt`, `server.crt`, `server.key` under `internalMtls.mountPath` | the internal mTLS Secret: the CA certificate, to verify gateways, and the API's server keypair |
 | API | `/certs/ca.crt`, if the TLS Secret has one | `tls.secretName`: a CA certificate the API trusts on top of the system roots; it gets no mail key |
 | PostgreSQL | `tls.crt`, `tls.key` | `postgres.tls.secretName`, or `tls.secretName` |
@@ -298,9 +298,16 @@ that a new certificate means a new CA. The certificates last ten years. To
 replace them all, delete the Secret (`<release>-internal-mtls`) and run
 `helm upgrade`, then restart the API and the gateways.
 
-If you bring your own, the Secret needs `ca.crt`, `server.crt`, `server.key`,
-`client.crt` and `client.key`, and keep the CA's key somewhere else: the chart
-never mounts it, but anything that can read the Secret could.
+Each gateway service has its own client certificate, and its Common Name is
+how the API knows which gateway is calling: `rest-mail-imap-gateway`,
+`rest-mail-pop3-gateway`, `rest-mail-smtp-submission` and
+`rest-mail-smtp-delivery`. A certificate with any other name gets nothing.
+
+If you bring your own, the Secret needs `ca.crt`, `server.crt`, `server.key`
+and, for each gateway service, `client-<service>.crt` and `client-<service>.key`
+(`client-imap`, `client-pop3`, `client-smtp-submission`, `client-smtp-delivery`)
+with the names above, and keep the CA's key somewhere else: the chart never
+mounts it, but anything that can read the Secret could.
 
 **The mail certificate** comes from you, through `tls.secretName`; the chart
 issues nothing for it.

@@ -176,7 +176,7 @@ spec:
               - key: tls.key
                 path: {{ .Values.tls.keyFilename }}
         {{- if .Values.internalMtls.enabled }}
-        {{- include "restmail.internalMtls.volume" (list . "client") | nindent 8 }}
+        {{- include "restmail.internalMtls.volume" (list . "smtp-delivery") | nindent 8 }}
         {{- end }}
         {{- if .Values.smtp.dane.enabled }}
         - name: dane-config
