@@ -33016,6 +33016,28 @@
         "mediaType": "application/json"
       }
     },
+    "internal_error": {
+      "summary": "The shared error adapter sanitizes an unexpected failure",
+      "description": "The endpoint layer advertises a fallback 500. A recovery request answers its own storage and delivery failures with the same private 200 as every other request, so an account's existence never shows; this pair proves the shared response adapter directly and does not claim that a recovery request answers a database fault with it.",
+      "requires": {
+        "fault": "error_adapter"
+      },
+      "request": {
+        "body": {
+          "email": "person@example.test"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "invalid_field": {
       "request": {
         "body": {

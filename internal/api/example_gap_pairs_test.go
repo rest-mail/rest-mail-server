@@ -200,6 +200,28 @@ func TestRecoveryEmailStorageFailureRemainsPrivate(t *testing.T) {
 	}
 }
 
+// A recovery request answers its own storage and delivery failures with the
+// private 200 above, so no database fault reaches its documented 500. That 500 is
+// the endpoint layer's fallback for an unexpected error, which the shared adapter
+// writes without the error's detail.
+func TestRecoveryEmailFallbackFailureMatchesErrorAdapter(t *testing.T) {
+	pairs, err := examplepairs.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	examplepairs.Proven(t, "requestRecoveryEmail", "internal_error")
+	pair, ok := pairs["requestRecoveryEmail"]["internal_error"]
+	if !ok {
+		t.Fatal("the named fault pair is missing")
+	}
+	recorder := httptest.NewRecorder()
+	endpoint.WriteError(recorder, errors.New("dependency details must stay private"))
+	assertRequirementResponse(t, pair, recorder)
+	if strings.Contains(recorder.Body.String(), "dependency details") {
+		t.Fatal("private failure detail escaped in the fallback response")
+	}
+}
+
 func TestServerLimitsFailureExamplesWithVertrag(t *testing.T) {
 	binary := os.Getenv("RESTMAIL_VERTRAG_BINARY")
 	if binary == "" {
