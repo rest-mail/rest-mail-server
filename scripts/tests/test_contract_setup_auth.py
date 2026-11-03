@@ -70,18 +70,24 @@ class ContractSetupAuthTests(unittest.TestCase):
         principals = ({}, {"Authorization": "Bearer admin-session"},
                       {"Authorization": "Bearer ordinary-session"},
                       {"Authorization": "Basic app-password"})
-        for index, headers in enumerate(principals, 1):
+        sources = set()
+        for headers in principals:
             with self.subTest(headers=headers):
                 transaction = self.transaction("folders/old", {"name": "renamed"}, headers)
                 original = copy.deepcopy(transaction["request"])
                 self.responses = [({}, 201), (None, 204)]
                 self.module.give_each_rename_probe_a_folder(transaction)
                 self.assertEqual(transaction["request"], original)
-                self.assertEqual(transaction["fullPath"],
-                                 "/api/v1/accounts/7/folders/contract-rename-%d" % index)
+                # Each probe gets a source folder with a new name of its own.
+                prefix = "/api/v1/accounts/7/folders/"
+                self.assertTrue(transaction["fullPath"].startswith(prefix))
+                source = transaction["fullPath"][len(prefix):]
+                self.assertRegex(source, r"^contract-rename-\d+$")
+                self.assertNotIn(source, sources)
+                sources.add(source)
                 setup, cleanup = self.calls[-2:]
                 self.assertEqual(setup.full_url, "http://fixture.test:8080/api/v1/accounts/7/folders")
-                self.assertEqual(json.loads(setup.data), {"name": "contract-rename-%d" % index})
+                self.assertEqual(json.loads(setup.data), {"name": source})
                 # The previous probe's destination goes, or this rename is 409.
                 self.assertEqual(cleanup.get_method(), "DELETE")
                 self.assertEqual(cleanup.full_url, "http://fixture.test:8080/api/v1/accounts/7/folders/renamed")
