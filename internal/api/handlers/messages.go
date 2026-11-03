@@ -136,13 +136,15 @@ func (h *MessageHandler) signOutboundDKIM(senderDomain, raw string) (string, err
 }
 
 // listMessagesRequest is a page of a folder, newest first. limit is 1 to 100 (50 otherwise);
-// cursor is the next_cursor of the page before.
+// cursor is the next_cursor of the page before. include_snoozed lists the messages of snoozed
+// threads too, each with its snoozed_until, which the listing otherwise leaves out (#1599).
 type listMessagesRequest struct {
 	ID                 uint32 `path:"id" minimum:"1" example:"1"`
 	Folder             string `path:"folder" example:"INBOX"`
 	Limit              *int   `query:"limit"`
 	Cursor             string `query:"cursor"`
 	IncludeIMAPDeleted bool   `query:"include_imap_deleted"`
+	IncludeSnoozed     bool   `query:"include_snoozed" description:"true also lists the messages of snoozed threads, each with its snoozed_until; otherwise a snoozed thread is left out of the page and its total"`
 }
 
 // messagePath names a message by its id.
@@ -213,7 +215,7 @@ func (h *MessageHandler) RegisterMessages(rs endpoint.Routes) {
 		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.setThreadDue)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/threads/{threadID}/snooze",
 		OperationID: "snoozeThread", Summary: "Snooze a thread or cancel its snooze", Tags: tags,
-		Description: "Hides every message in this account's thread from folder listings without changing messages or search results. A future snoozed_until sets or replaces the durable deadline; null cancels it. The existing background worker returns due threads at startup and within 30 seconds of their deadline, publishing folder_update to the account's event streams.",
+		Description: "Hides every message in this account's thread from folder listings, unless a listing asks for include_snoozed=true, without changing messages or search results. A future snoozed_until sets or replaces the durable deadline; null cancels it. The existing background worker returns due threads at startup and within 30 seconds of their deadline, publishing folder_update to the account's event streams.",
 		Errors:      []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.snoozeThread)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/messages/{id}/raw",
 		OperationID: "getRawMessage", Summary: "Get the raw RFC 2822 message source", Tags: tags,
@@ -270,11 +272,13 @@ func (h *MessageHandler) listMessages(r *http.Request, in listMessagesRequest) (
 	// date is older, such as a copy, which keeps its source's date (#805).
 	query := h.db.Where("mailbox_id = ? AND folder = ? AND is_deleted = ?", mailboxID, folder, false).
 		Select(messageThreadFields).
-		Where(visibleThreads).
 		Order("received_at DESC, id DESC").
 		Limit(limit + 1)
 	if !in.IncludeIMAPDeleted {
 		query = query.Where("imap_deleted = false")
+	}
+	if !in.IncludeSnoozed {
+		query = query.Where(visibleThreads)
 	}
 	if after, ok := decodeMessageCursor(in.Cursor); ok {
 		query = query.Where("(received_at < ? OR (received_at = ? AND id < ?))", after.ReceivedAt, after.ReceivedAt, after.ID)
@@ -301,9 +305,12 @@ func (h *MessageHandler) listMessages(r *http.Request, in listMessagesRequest) (
 	}
 
 	var total int64
-	countQuery := h.db.Model(&models.Message{}).Where("mailbox_id = ? AND folder = ? AND is_deleted = ?", mailboxID, folder, false).Where(visibleThreads)
+	countQuery := h.db.Model(&models.Message{}).Where("mailbox_id = ? AND folder = ? AND is_deleted = ?", mailboxID, folder, false)
 	if !in.IncludeIMAPDeleted {
 		countQuery = countQuery.Where("imap_deleted = false")
+	}
+	if !in.IncludeSnoozed {
+		countQuery = countQuery.Where(visibleThreads)
 	}
 	if err := countQuery.Count(&total).Error; err != nil {
 		return zero, fmt.Errorf("count messages: %w", err)

@@ -334,3 +334,71 @@ func TestThreadSnoozeRefusals(t *testing.T) {
 		t.Fatalf("out-of-scope snooze: %d %s", recorder.Code, recorder.Body)
 	}
 }
+
+// A folder listing leaves a snoozed thread out unless include_snoozed=true asks for it, the
+// way include_imap_deleted=true asks for IMAP-deleted mail; the two combine (#1599).
+func TestListMessagesIncludesSnoozedOnRequest(t *testing.T) {
+	database := snoozeDB(t)
+	tx := database.Begin()
+	t.Cleanup(func() { tx.Rollback() })
+	fixture := seedMsgDeleteFixture(t, tx, 0)
+	now := time.Now()
+	messages := []models.Message{
+		{MailboxID: fixture.mailbox.ID, Folder: "INBOX", ThreadID: "snoozed", Sender: "sender@example.test", Subject: "snoozed", ReceivedAt: now},
+		{MailboxID: fixture.mailbox.ID, Folder: "INBOX", ThreadID: "snoozed", Sender: "sender@example.test", Subject: "snoozed, imap-deleted", IMAPDeleted: true, ReceivedAt: now.Add(-time.Minute)},
+		{MailboxID: fixture.mailbox.ID, Folder: "INBOX", ThreadID: "awake", Sender: "sender@example.test", Subject: "awake", ReceivedAt: now.Add(-2 * time.Minute)},
+	}
+	if err := tx.Create(&messages).Error; err != nil {
+		t.Fatal(err)
+	}
+	handler := NewMessageHandler(tx, nil, nil, "", nil)
+	at := now.Add(time.Hour).UTC().Truncate(time.Second)
+	snoozeCall(t, handler, fixture.mailbox.ID, "snoozed", fmt.Sprintf(`{"snoozed_until":%q}`, at.Format(time.RFC3339)), 200)
+	listing := fmt.Sprintf("/api/v1/accounts/%d/folders/INBOX/messages", fixture.mailbox.ID)
+	call := func(query string) *httptest.ResponseRecorder {
+		t.Helper()
+		recorder := httptest.NewRecorder()
+		messageRoutes(handler).ServeHTTP(recorder, authzRequest(http.MethodGet, listing+query, fixture.mailbox.ID, nil, ""))
+		return recorder
+	}
+	list := func(query string, want ...string) {
+		t.Helper()
+		recorder := call(query)
+		var page struct {
+			Data       []Message `json:"data"`
+			Pagination struct {
+				Total int64 `json:"total"`
+			} `json:"pagination"`
+		}
+		if recorder.Code != http.StatusOK || json.Unmarshal(recorder.Body.Bytes(), &page) != nil {
+			t.Fatalf("list %q: %d %s", query, recorder.Code, recorder.Body)
+		}
+		var got []string
+		for _, message := range page.Data {
+			got = append(got, message.Subject)
+			snoozed := message.ThreadID == "snoozed"
+			if snoozed != (message.SnoozedUntil != nil) || (snoozed && !message.SnoozedUntil.Equal(at)) {
+				t.Fatalf("list %q: %q carries snoozed_until %v", query, message.Subject, message.SnoozedUntil)
+			}
+		}
+		if !reflect.DeepEqual(got, want) || page.Pagination.Total != int64(len(want)) {
+			t.Fatalf("list %q: got %q, total %d; want %q", query, got, page.Pagination.Total, want)
+		}
+	}
+	list("", "awake")
+	list("?include_snoozed=false", "awake")
+	list("?include_snoozed=true", "snoozed", "awake")
+	list("?include_imap_deleted=true", "awake")
+	list("?include_snoozed=true&include_imap_deleted=true", "snoozed", "snoozed, imap-deleted", "awake")
+	refused := func(name string) string {
+		t.Helper()
+		recorder := call("?" + name + "=maybe")
+		if recorder.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("%s=maybe: %d %s", name, recorder.Code, recorder.Body)
+		}
+		return strings.ReplaceAll(recorder.Body.String(), name, "<name>")
+	}
+	if snoozed, deleted := refused("include_snoozed"), refused("include_imap_deleted"); snoozed != deleted {
+		t.Fatalf("a bad include_snoozed is refused unlike include_imap_deleted:\n%s\n%s", snoozed, deleted)
+	}
+}

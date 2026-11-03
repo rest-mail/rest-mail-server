@@ -503,7 +503,7 @@ export interface paths {
         };
         /**
          * Server-Sent Events stream for real-time updates
-         * @description A stream of the account's events, new_message, message_updated, message_deleted, message_sent or folder_update, each an id, the event's name and its JSON data. A Last-Event-ID header asks for the events after it that the server still holds. The session is checked when the stream opens, and again before every event and keepalive: once the account's sessions end, the stream ends without sending anything more. Access lookup failures return 500 before a stream opens; missing or inaccessible accounts retain 403.
+         * @description A stream of the account's events, new_message, message_updated, message_deleted, message_sent or folder_update, each an id, the event's name and its JSON data. A Last-Event-ID header asks for the events after it that the server still holds. The session is checked when the stream opens, and again before every event and keepalive: once the account's sessions end, the stream ends without sending anything more. Access lookup failures return 500 before a stream opens; a missing account, or one the caller may not know of, answers 404, and one the caller can see without mail:read answers 403.
          */
         get: operations["accountEvents"];
         put?: never;
@@ -853,7 +853,7 @@ export interface paths {
         put?: never;
         /**
          * Snooze a thread or cancel its snooze
-         * @description Hides every message in this account's thread from folder listings without changing messages or search results. A future snoozed_until sets or replaces the durable deadline; null cancels it. The existing background worker returns due threads at startup and within 30 seconds of their deadline, publishing folder_update to the account's event streams.
+         * @description Hides every message in this account's thread from folder listings, unless a listing asks for include_snoozed=true, without changing messages or search results. A future snoozed_until sets or replaces the durable deadline; null cancels it. The existing background worker returns due threads at startup and within 30 seconds of their deadline, publishing folder_update to the account's event streams.
          */
         post: operations["snoozeThread"];
         delete?: never;
@@ -9047,6 +9047,8 @@ export interface operations {
                 limit?: number;
                 cursor?: string;
                 include_imap_deleted?: boolean;
+                /** @description true also lists the messages of snoozed threads, each with its snoozed_until; otherwise a snoozed thread is left out of the page and its total */
+                include_snoozed?: boolean;
             };
             header?: never;
             path: {
