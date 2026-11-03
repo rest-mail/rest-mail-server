@@ -391,6 +391,36 @@ func TestBuildCalendarReply(t *testing.T) {
 	}
 }
 
+// The event's text comes from the invitation's sender, and a line break in it
+// adds no line to the reply: a summary keeps it escaped, and a UID or an organizer
+// name, which have no escape for it, lose it (#1594).
+func TestBuildCalendarReply_LineBreaksAddNoLine(t *testing.T) {
+	for name, lineBreak := range map[string]string{"LF": "\n", "CRLF": "\r\n", "CR": "\r"} {
+		t.Run(name, func(t *testing.T) {
+			reply := BuildCalendarReply(pipeline.CalendarEvent{
+				UID:     "uid-1" + lineBreak + "X-UID:1",
+				Summary: "Lunch" + lineBreak + "X-SUMMARY:1",
+				Organizer: pipeline.CalendarAddress{
+					Name:    "Olive" + lineBreak + "X-CN:1",
+					Address: "olive@example.com",
+				},
+			}, "bob@example.com", "ACCEPTED")
+
+			for _, line := range strings.Split(strings.TrimSuffix(reply, "\r\n"), "\r\n") {
+				if strings.ContainsAny(line, "\r\n") {
+					t.Errorf("the line %q holds a line break", line)
+				}
+				if strings.HasPrefix(line, "X-") {
+					t.Errorf("the event's text added the line %q", line)
+				}
+			}
+			if !strings.Contains(reply, "SUMMARY:Lunch\\nX-SUMMARY:1\r\n") {
+				t.Errorf("the summary is not escaped:\n%s", reply)
+			}
+		})
+	}
+}
+
 func TestBuildCalendarReply_Declined(t *testing.T) {
 	event := pipeline.CalendarEvent{
 		UID:       "decline-test@example.com",

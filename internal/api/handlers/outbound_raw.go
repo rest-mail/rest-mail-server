@@ -38,6 +38,10 @@ type outboundMessage struct {
 	ICS         []byte
 	ICSMethod   string
 	Attachments []pipeline.Attachment
+
+	// CalendarReply, when set, is an iCalendar REPLY sent as the alternative to
+	// BodyText, not as an attachment: it is the answer itself (RFC 6047 §2.4).
+	CalendarReply string
 }
 
 // buildOutboundRaw renders the message as the bytes handed to the outbound
@@ -95,6 +99,15 @@ func buildOutboundRaw(m outboundMessage) (string, error) {
 			Size:        int64(len(m.ICS)),
 			Content:     base64.StdEncoding.EncodeToString(m.ICS),
 		})
+	}
+	if m.CalendarReply != "" {
+		email.Body = pipeline.Body{
+			ContentType: "multipart/alternative",
+			Parts: []pipeline.Body{
+				{ContentType: "text/plain; charset=utf-8", Content: m.BodyText},
+				{ContentType: "text/calendar; charset=utf-8; method=REPLY", Content: m.CalendarReply},
+			},
+		}
 	}
 
 	raw, err := rmime.Serialize(email)

@@ -153,3 +153,46 @@ func TestSerialize_ExtraHeaderCannotInjectAHeader(t *testing.T) {
 		}
 	}
 }
+
+// A Subject with a line break in it reads back on one line. Encoded as it stood,
+// the break would not start a header in these bytes, but it would be there again
+// for whatever decoded the Subject (#1594).
+func TestSerialize_SubjectLosesItsLineBreaks(t *testing.T) {
+	for name, subject := range map[string]string{
+		"LF":          "Hello\nBcc: someone@example.com",
+		"CRLF":        "Hello\r\nBcc: someone@example.com",
+		"CR":          "Hello\rBcc: someone@example.com",
+		"non-ASCII":   "Grüße\nBcc: someone@example.com",
+		"long folded": strings.Repeat("Grüße ", 40) + "\nBcc: someone@example.com",
+	} {
+		t.Run(name, func(t *testing.T) {
+			raw, err := Serialize(&pipeline.EmailJSON{
+				Headers: pipeline.Headers{
+					From:    []pipeline.Address{{Address: "a@example.com"}},
+					Subject: subject,
+				},
+				Body: pipeline.Body{ContentType: "text/plain", Content: "hi"},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			msg, err := mail.ReadMessage(strings.NewReader(string(raw)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if bcc := msg.Header["Bcc"]; len(bcc) != 0 {
+				t.Errorf("a Subject added a header: Bcc: %q", bcc)
+			}
+			decoded, err := new(stdmime.WordDecoder).DecodeHeader(msg.Header.Get("Subject"))
+			if err != nil {
+				t.Fatalf("decode the Subject: %v", err)
+			}
+			if strings.ContainsAny(decoded, "\r\n") {
+				t.Errorf("the Subject decodes to %q, with a line break", decoded)
+			}
+			if !strings.Contains(decoded, "Bcc: someone@example.com") {
+				t.Errorf("the Subject decodes to %q, without its text", decoded)
+			}
+		})
+	}
+}

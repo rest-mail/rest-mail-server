@@ -344,6 +344,10 @@ func unescapeValue(s string) string {
 
 // BuildCalendarReply generates an iCalendar REPLY for a calendar invite.
 // partstat should be "ACCEPTED", "DECLINED", or "TENTATIVE".
+//
+// The event's text is whatever the invitation's sender wrote. A value iCalendar
+// can escape is escaped; a UID or a parameter has no escape for a line break, so
+// it loses it.
 func BuildCalendarReply(event pipeline.CalendarEvent, attendeeEmail string, partstat string) string {
 	var b strings.Builder
 	b.WriteString("BEGIN:VCALENDAR\r\n")
@@ -351,7 +355,7 @@ func BuildCalendarReply(event pipeline.CalendarEvent, attendeeEmail string, part
 	b.WriteString("PRODID:-//RESTmail//Calendar//EN\r\n")
 	b.WriteString("METHOD:REPLY\r\n")
 	b.WriteString("BEGIN:VEVENT\r\n")
-	b.WriteString("UID:" + event.UID + "\r\n")
+	b.WriteString("UID:" + sanitizeHeaderValue(event.UID) + "\r\n")
 	b.WriteString("DTSTAMP:" + time.Now().UTC().Format("20060102T150405Z") + "\r\n")
 
 	if !event.DTStart.IsZero() {
@@ -368,7 +372,7 @@ func BuildCalendarReply(event pipeline.CalendarEvent, attendeeEmail string, part
 	if event.Organizer.Address != "" {
 		orgLine := "ORGANIZER"
 		if event.Organizer.Name != "" {
-			orgLine += ";CN=" + event.Organizer.Name
+			orgLine += ";CN=" + sanitizeHeaderValue(event.Organizer.Name)
 		}
 		orgLine += ":mailto:" + event.Organizer.Address
 		b.WriteString(orgLine + "\r\n")
@@ -388,6 +392,8 @@ func escapeValue(s string) string {
 	s = strings.ReplaceAll(s, "\\", "\\\\")
 	s = strings.ReplaceAll(s, ";", "\\;")
 	s = strings.ReplaceAll(s, ",", "\\,")
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
 	s = strings.ReplaceAll(s, "\n", "\\n")
 	return s
 }
