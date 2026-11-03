@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
+	"io/fs"
 	"mime"
 	"mime/multipart"
 	"mime/quotedprintable"
@@ -52,6 +53,12 @@ func (h *TLSReportEmailReceiver) receive(ctx context.Context, recipient, raw str
 	}
 	report, body, err := readTLSReportEmail(message, parameters["boundary"])
 	if err != nil {
+		// A report that can't be read is ignored; the server's own disk failing says
+		// nothing about the report, and stays retryable.
+		var disk *fs.PathError
+		if errors.As(err, &disk) {
+			return true, err
+		}
 		return true, nil
 	}
 	submitter := strings.TrimSpace(message.Header.Get("TLS-Report-Submitter"))
@@ -73,7 +80,7 @@ func (h *TLSReportEmailReceiver) receive(ctx context.Context, recipient, raw str
 	// Use precisely the same validation and persistence as HTTPS; invalid and
 	// unrelated reports are ignored, while storage failures remain retryable.
 	err = h.handler.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		_, err := NewTLSReportHandler(tx).storeReport(report, body)
+		_, err := NewTLSReportHandler(tx).storeReport(report, func() ([]byte, error) { return body, nil })
 		return err
 	})
 	var refusal *endpoint.Error
@@ -83,6 +90,9 @@ func (h *TLSReportEmailReceiver) receive(ctx context.Context, recipient, raw str
 	return true, err
 }
 
+// readTLSReportEmail finds a message's report part. The part goes to a file, and a compressed
+// one inflates to another, each under the cap, and the report is decoded from there. Only a
+// report that decodes is read back whole, because it is stored whole.
 func readTLSReportEmail(message *mail.Message, boundary string) (*TLSRPTReport, []byte, error) {
 	if boundary == "" {
 		return nil, nil, errors.New("missing report boundary")
@@ -110,23 +120,46 @@ func readTLSReportEmail(message *mail.Message, boundary string) (*TLSRPTReport, 
 		default:
 			return nil, nil, errors.New("unsupported report encoding")
 		}
-		body, err := io.ReadAll(io.LimitReader(reader, tlsRPTMaxBodyBytes+1))
-		if err != nil || int64(len(body)) > tlsRPTMaxBodyBytes {
-			return nil, nil, errors.New("report exceeds body limit")
-		}
-		if mediaType == "application/tlsrpt+gzip" {
-			body, _, err = gunzipReport(body)
-			if err != nil {
-				return nil, nil, err
-			}
-		}
-		report := new(TLSRPTReport)
-		if err := endpoint.BindBody(report, body); err != nil {
-			return nil, nil, err
-		}
-		return report, body, nil
+		return readTLSReportPart(reader, mediaType == tlsReportGzipMedia)
 	}
 	return nil, nil, errors.New("too many MIME parts")
+}
+
+// readTLSReportPart spools one report part, and answers the report and its bytes.
+func readTLSReportPart(part io.Reader, compressed bool) (*TLSRPTReport, []byte, error) {
+	file, done, err := endpoint.Spool(io.LimitReader(part, tlsRPTMaxBodyBytes+1))
+	if err != nil {
+		return nil, nil, err
+	}
+	defer done()
+	if size, err := file.Seek(0, io.SeekEnd); err != nil {
+		return nil, nil, err
+	} else if size > tlsRPTMaxBodyBytes {
+		return nil, nil, errors.New("report exceeds body limit")
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return nil, nil, err
+	}
+	if compressed {
+		inflated, doneInflating, err := spoolInflatedReport(file)
+		if err != nil {
+			return nil, nil, err
+		}
+		defer doneInflating()
+		file = inflated
+	}
+	report, err := decodeSpooledReport(file, false)
+	if err != nil {
+		return nil, nil, err
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return nil, nil, err
+	}
+	body, err := readWholeReport(file)
+	if err != nil {
+		return nil, nil, err
+	}
+	return report, body, nil
 }
 
 func (h *TLSReportEmailReceiver) authenticated(ctx context.Context, raw, submitter string) bool {
