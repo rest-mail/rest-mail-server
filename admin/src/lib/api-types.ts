@@ -248,6 +248,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/accounts/{id}/addresses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the addresses an account receives at and may send from
+         * @description receives is the account's own address, then every active alias on an active domain whose destination is this account; no other alias or destination is shown. sends_as is every mailbox address the account may put in From, each with the modes allowed (from: on_behalf false; on_behalf: on_behalf true), decided by the same check sendMessage makes, so the two cannot disagree. Asked by the account itself, it answers for the credential the request is made with; asked by someone else who may read the account, for the account's own sign-in. Uses the same mail:read authorization as getAccount; an account the caller may not read is 404.
+         */
+        get: operations["listAccountAddresses"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/accounts/{id}/api-keys": {
         parameters: {
             query?: never;
@@ -3489,6 +3509,9 @@ export interface components {
         "Data-ThreadSnooze": {
             data: components["schemas"]["ThreadSnooze"];
         };
+        "Data-accountAddresses": {
+            data: components["schemas"]["accountAddresses"];
+        };
         "Data-accountResponse": {
             data: components["schemas"]["accountResponse"];
         };
@@ -4830,6 +4853,13 @@ export interface components {
             password: string;
             token?: string;
         };
+        accountAddresses: {
+            account_id: number;
+            /** Format: idn-email */
+            address: string;
+            receives: components["schemas"]["receivingAddress"][];
+            sends_as: components["schemas"]["sendingAddressMode"][];
+        };
         accountResponse: {
             address: string;
             display_name: string;
@@ -5297,6 +5327,11 @@ export interface components {
             start: unknown;
             time_zone: unknown;
         };
+        receivingAddress: {
+            /** Format: idn-email */
+            address: string;
+            primary: boolean;
+        };
         recoverRequest: {
             client?: string;
             email?: string;
@@ -5481,6 +5516,13 @@ export interface components {
             subject?: string;
             /** Format: email */
             to: string;
+        };
+        sendingAddressMode: {
+            /** Format: idn-email */
+            address: string;
+            from: boolean;
+            on_behalf: boolean;
+            primary: boolean;
         };
         serverCapabilitiesResponse: {
             /** @example mail:read,mail:send */
@@ -6581,6 +6623,102 @@ export interface operations {
                 };
             };
             /** @description unavailable: the session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listAccountAddresses: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-accountAddresses"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
             503: {
                 headers: {
                     [name: string]: unknown;

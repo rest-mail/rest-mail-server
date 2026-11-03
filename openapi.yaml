@@ -1851,6 +1851,61 @@ paths:
         "409":
           description: The session's own account
 
+  /api/v1/accounts/{id}/addresses:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    get:
+      operationId: listAccountAddresses
+      tags: [Accounts]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - APIKeyAuth: [mail:read]
+        - BasicAuth: [mail:read]
+      summary: List the addresses an account receives at and may send from
+      description: >
+        `receives` is the account's own address, then every active alias on an
+        active domain whose destination is this account; no other alias or
+        destination is shown. `sends_as` is every mailbox address the account
+        may put in From, each with the modes allowed (`from`: `on_behalf`
+        false; `on_behalf`: `on_behalf` true), decided by the same check
+        sendMessage makes, so the two cannot disagree. Asked by the account
+        itself, it answers for the credential the request is made with; asked
+        by someone else who may read the account, for the account's own
+        sign-in. Uses the same `mail:read` authorization as getAccount; an
+        account the caller may not read is 404.
+      responses:
+        "200":
+          description: The account's receiving and sending addresses
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/AccountAddresses"
+        "403":
+          description: The caller knows of the account but may not read it
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          description: Refused HTTP Basic credentials, throttled at login's rate
+          headers:
+            Retry-After:
+              description: Seconds until a request may be made again
+              required: true
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   # ═══════════════════════════════════════════════════════════════
   # Credentials (app passwords)
   # ═══════════════════════════════════════════════════════════════
@@ -15799,6 +15854,75 @@ components:
           description: >
             The owning account of an owned account (an agent's, or a sub
             account), which never holds more than its owner; absent otherwise.
+
+    AccountAddresses:
+      type: object
+      additionalProperties: false
+      description: >
+        What listAccountAddresses answers: the addresses that deliver to the
+        account and the addresses it may send from.
+      required: [account_id, address, receives, sends_as]
+      properties:
+        account_id:
+          type: integer
+          description: The account (mailbox) these addresses belong to.
+        address:
+          type: string
+          format: idn-email
+          description: The account's own address, its primary address.
+        receives:
+          type: array
+          description: >
+            The account's own address first, then every active alias on an
+            active domain whose destination is this account, by address.
+          items:
+            $ref: "#/components/schemas/ReceivingAddress"
+        sends_as:
+          type: array
+          description: >
+            Every mailbox address this account may put in From, its own first
+            and then by address. The check sendMessage makes decides each one,
+            so a From listed here is accepted and one missing is refused.
+          items:
+            $ref: "#/components/schemas/SendingAddress"
+
+    ReceivingAddress:
+      type: object
+      additionalProperties: false
+      required: [address, primary]
+      properties:
+        address:
+          type: string
+          format: idn-email
+          description: An address that delivers to this account.
+        primary:
+          type: boolean
+          description: True for the account's own address; false for an alias.
+
+    SendingAddress:
+      type: object
+      additionalProperties: false
+      required: [address, primary, from, on_behalf]
+      properties:
+        address:
+          type: string
+          format: idn-email
+          description: A mailbox address this account may send from.
+        primary:
+          type: boolean
+          description: True for the account's own address.
+        from:
+          type: boolean
+          description: >
+            Sending with this From and `on_behalf` false is allowed:
+            `mail:send` on the account's own mailbox, `mail:send_as` on
+            another.
+        on_behalf:
+          type: boolean
+          description: >
+            Sending with this From and `on_behalf` true is allowed:
+            `mail:send_on_behalf` on that mailbox, with the account's own
+            address as RFC 5322 Sender.
 
     CreateAccountRequest:
       type: object

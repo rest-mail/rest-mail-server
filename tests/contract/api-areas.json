@@ -51,6 +51,7 @@
     "createAppPassword",
     "createClientSecret",
     "getAccount",
+    "listAccountAddresses",
     "getAccountSendLimits",
     "linkAccount",
     "listAPIKeys",

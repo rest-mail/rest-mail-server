@@ -99,10 +99,32 @@ func (c accountReadConnection) QueryContext(_ context.Context, query string, arg
 		r.rows = withSessionRows(r.rows)
 		return r, nil
 	}
+	if strings.Contains(query, `FROM "aliases"`) {
+		// listAccountAddresses: one alias delivers to user@example.com and one
+		// to another account, which must not be listed.
+		if !strings.Contains(query, "aliases.active") || !strings.Contains(query, "domains.active") {
+			return nil, errors.New("alias lookup lost live restriction")
+		}
+		return &authReadSnapshotRows{columns: []string{"source_address", "destination_address"}, rows: [][]driver.Value{
+			{"help@example.com", "User@Example.com"}, {"sales@example.com", "linked@example.com"},
+		}}, nil
+	}
 	if len(args) == 0 {
 		return nil, errors.New("account read lost restriction")
 	}
 	id := fmt.Sprint(args[0].Value)
+	if strings.Contains(query, `FROM "mailboxes"`) && strings.Contains(query, "mailboxes.id <>") {
+		// listAccountAddresses' other mailboxes a send capability covers: none.
+		return &authReadSnapshotRows{columns: []string{"id", "address"}}, nil
+	}
+	if strings.Contains(query, `FROM "mailboxes"`) && strings.Contains(id, "@") {
+		// The send check finds the From mailbox by address.
+		r := &authReadSnapshotRows{columns: []string{"id", "address", "display_name", "active"}}
+		if id == "user@example.com" {
+			r.rows = [][]driver.Value{{int64(10), id, "Account café", true}}
+		}
+		return r, nil
+	}
 	if strings.Contains(query, `FROM "credentials"`) {
 		key, ok := c.state.keys[id]
 		r := &authReadSnapshotRows{columns: []string{"id", "account_id", "kind", "public_id", "secret_hash", "scope", "last_used_at"}}

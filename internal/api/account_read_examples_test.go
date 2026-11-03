@@ -14,10 +14,11 @@ import (
 )
 
 var accountReadPaths = map[string]string{
-	"getAccount":     "/api/v1/accounts/{id}",
-	"getQuota":       "/api/v1/accounts/{id}/quota",
-	"getSieveScript": "/api/v1/accounts/{id}/sieve",
-	"getVacation":    "/api/v1/accounts/{id}/vacation",
+	"getAccount":           "/api/v1/accounts/{id}",
+	"getQuota":             "/api/v1/accounts/{id}/quota",
+	"getSieveScript":       "/api/v1/accounts/{id}/sieve",
+	"getVacation":          "/api/v1/accounts/{id}/vacation",
+	"listAccountAddresses": "/api/v1/accounts/{id}/addresses",
 }
 
 func TestAccountReadExamples(t *testing.T) {
