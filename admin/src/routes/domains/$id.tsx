@@ -4,6 +4,9 @@ import { useDomainStore } from "../../lib/stores/domainStore";
 import { useAuthStore } from "../../lib/stores/authStore";
 import { AppShell } from "../../components/layout/AppShell";
 import { DomainDNS } from "../../components/domains/DomainDNS";
+import { DmarcPolicyField } from "../../components/domains/DmarcPolicyField";
+import { DomainPolicySections } from "../../components/domains/DomainPolicySections";
+import type { DmarcPolicy } from "../../lib/domainPolicy";
 
 export const Route = createFileRoute("/domains/$id")({
   component: DomainDetailsPage,
@@ -24,10 +27,15 @@ function DomainDetailsPage() {
   } = useDomainStore();
   const { accessToken, isAuthenticated } = useAuthStore();
   const [isEditing, setIsEditing] = useState(false);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    active: boolean;
+    dmarc_policy: DmarcPolicy;
+  }>({
     active: true,
+    dmarc_policy: "none",
   });
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const capabilities = useAuthStore((state) => state.user?.capabilities);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -57,6 +65,7 @@ function DomainDetailsPage() {
     if (currentDomain) {
       setFormData({
         active: currentDomain.active,
+        dmarc_policy: currentDomain.dmarc_policy,
       });
     }
   }, [currentDomain]);
@@ -272,6 +281,13 @@ function DomainDetailsPage() {
                   Domain is active
                 </label>
               </div>
+
+              <DmarcPolicyField
+                value={formData.dmarc_policy}
+                onChange={(dmarc_policy) =>
+                  setFormData({ ...formData, dmarc_policy })
+                }
+              />
             </form>
           ) : (
             <div
@@ -326,6 +342,17 @@ function DomainDetailsPage() {
                   className="text-xs mb-1"
                   style={{ color: "var(--gray-secondary)" }}
                 >
+                  DMARC POLICY
+                </p>
+                <p className="text-sm" style={{ color: "var(--black-soft)" }}>
+                  p={currentDomain.dmarc_policy}
+                </p>
+              </div>
+              <div>
+                <p
+                  className="text-xs mb-1"
+                  style={{ color: "var(--gray-secondary)" }}
+                >
                   CREATED
                 </p>
                 <p className="text-sm" style={{ color: "var(--black-soft)" }}>
@@ -346,6 +373,11 @@ function DomainDetailsPage() {
           )}
         </div>
       </div>
+
+      <DomainPolicySections
+        domainId={currentDomain.id}
+        capabilities={capabilities}
+      />
     </AppShell>
   );
 }
