@@ -28,9 +28,10 @@ func main() {
 	domainTenants := flag.Bool("domain-tenants", false, "prepare the domain administrators of the ownership phase")
 	mfaAdmin := flag.Bool("mfa-admin", false, "prepare the administrator the contract hooks enroll in real MFA")
 	deliveryRecipient := flag.Bool("delivery-recipient", false, "prepare the mailbox deliverMessage's fuzz probes are pinned to")
+	heldMailOnly := flag.Bool("held-mail-only", false, "replenish only the disposable held-mail targets, without touching the queue")
 	flag.Parse()
 	modes := 0
-	for _, on := range []bool{*linkOnly, *apiKeys, *domainTenants, *mfaAdmin, *deliveryRecipient} {
+	for _, on := range []bool{*linkOnly, *apiKeys, *domainTenants, *mfaAdmin, *deliveryRecipient, *heldMailOnly} {
 		if on {
 			modes++
 		}
@@ -64,6 +65,13 @@ func main() {
 			err = prepareMFAAdmin(database, *domain)
 		} else if *deliveryRecipient {
 			err = prepareDeliveryRecipient(database, *domain)
+		} else if *heldMailOnly {
+			var targets heldMailTargets
+			targets, err = prepareHeldMailTargets(database, *domain)
+			if err == nil {
+				body, _ := json.Marshal(targets)
+				fmt.Printf("HELD_MAIL_FIXTURE=%s\n", body)
+			}
 		} else if *linkOnly {
 			_, err = prepareLinkFixture(database, *domain)
 		} else {
@@ -398,19 +406,32 @@ func prepareQueueFixture(database *gorm.DB, domain, name string) (uint, error) {
 // example clears, on the fixture domain (#1334). Mail reaches neither state in
 // a healthy run on its own. Fresh rows on every run; the hooks take the newest.
 func prepareHeldMail(database *gorm.DB, domain string) error {
+	_, err := prepareHeldMailTargets(database, domain)
+	return err
+}
+
+type heldMailTargets struct {
+	AccountID     uint `json:"account_id"`
+	MessageID     uint `json:"message_id"`
+	DomainID      uint `json:"domain_id"`
+	SuppressionID uint `json:"suppression_id"`
+}
+
+func prepareHeldMailTargets(database *gorm.DB, domain string) (heldMailTargets, error) {
+	var targets heldMailTargets
 	if domain != "restmail.test" {
-		return errors.New("contract fixtures require restmail.test")
+		return targets, errors.New("contract fixtures require restmail.test")
 	}
 	plan, err := fixtureplan.Default()
 	if err != nil {
-		return err
+		return targets, err
 	}
 	var admin models.Mailbox
 	if err := database.Where("address = ?", plan.Principals["admin"].Address).First(&admin).Error; err != nil {
-		return err
+		return targets, err
 	}
 	now := time.Now()
-	return database.Transaction(func(tx *gorm.DB) error {
+	err = database.Transaction(func(tx *gorm.DB) error {
 		held := models.Quarantine{
 			MailboxID: admin.ID, Sender: "sender@example.net", Subject: "Held for review",
 			BodyPreview: "Preview only", QuarantineReason: "spam",
@@ -425,6 +446,14 @@ func prepareHeldMail(database *gorm.DB, domain string) error {
 			Reason: models.SuppressionHardBounce, FailureCategory: models.FailureBadMailbox,
 			LastError: "550 5.1.1 no such mailbox", ExpiresAt: now.Add(30 * 24 * time.Hour),
 		}
-		return tx.Create(&suppressed).Error
+		if err := tx.Create(&suppressed).Error; err != nil {
+			return err
+		}
+		targets = heldMailTargets{AccountID: admin.ID, MessageID: held.ID, DomainID: admin.DomainID, SuppressionID: suppressed.ID}
+		return nil
 	})
+	if err != nil {
+		return heldMailTargets{}, err
+	}
+	return targets, nil
 }

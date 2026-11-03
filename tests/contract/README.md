@@ -42,12 +42,12 @@ six login probes are expected: generated credentials cannot authenticate.
 | Group | Operations and skipped probe counts | This change |
 | --- | --- | --- |
 | Alias and sender-rule targets consumed/replaced before coverage | `getAlias` 1, `updateAlias` 5, `removeFromAllowlist` 2, `removeFromBlocklist` 2 | Repaired and removed from the skipped-probe baseline |
-| Credential targets absent | `revokeAPIKey` 2, `revokeCredential` 2 | Remaining: 4 |
+| Credential targets absent | `revokeAPIKey` 2, `revokeCredential` 2 | Repaired and removed from the skipped-probe baseline |
 | Contact/folder targets absent | `deleteContact` 2, `updateContact` 9, `deleteFolder` 2 | Remaining: 13 |
 | Filter/pipeline targets absent | `deleteCustomFilter` 1, `getCustomFilter` 1, `updateCustomFilter` 15, `testCustomFilter` 1, `deletePipeline` 1, `updatePipeline` 7 | Repaired and removed from the skipped-probe baseline |
-| Certificate target absent | `getCertificate` 1 | Remaining: 1 |
+| Certificate target absent | `getCertificate` 1 | Repaired and removed from the skipped-probe baseline |
 | Domain/policy targets absent | `deleteMtaStsPolicy` 1, `getMtaStsPolicy` 1, `setMtaStsPolicy` 11 | Repaired and removed from the skipped-probe baseline |
-| Held-mail/queue/scheduled fixtures | `deleteQuarantine` 2, `clearSuppression` 2, `bounceQueueEntry` 1, `cancelScheduledMessage` 1, `deleteQueueEntry` 1, `getQueueEntry` 1, `retryQueueEntry` 1 | Remaining: 9 |
+| Held-mail/queue/scheduled fixtures | `deleteQuarantine` 2, `clearSuppression` 2, `bounceQueueEntry` 1, `cancelScheduledMessage` 1, `deleteQueueEntry` 1, `getQueueEntry` 1, `retryQueueEntry` 1 | Quarantine/suppression repaired; remaining: 5 |
 | Draft/send requests | `updateDraft` 10, `sendDraft` 1, `sendMessage` 14 | Remaining: 25 |
 
 The log says 404 for absent targets, 422 for the draft/send examples, and
@@ -65,6 +65,29 @@ works with an empty process stash: its coverage placeholder gets a dedicated
 rule through the admin API, independently for each list and removal. Other IDs,
 invalid paths, request bodies and transaction credentials are unchanged.
 Other phases do not acquire this placeholder substitution.
+
+Credential revocation and certificate reads also receive a fresh target for
+each coverage success request aimed at placeholder `1`. Revocation creates a
+disposable credential through the API using a separate real MFA setup session;
+it never picks an existing credential that another phase may need. Certificate
+reads create a real self-signed certificate on a new disposable domain, without
+automatic renewal. Only the request path changes.
+
+Quarantine deletion and suppression clearing consumed the single fixture in
+coverage's initial examples, before its example preflight and valid probes.
+Their coverage hooks replenish held mail before each success request and use
+the exact newly created row IDs. `test:contract-held-mail-fixture` invokes the
+guarded Go fixture helper with `--held-mail-only`; it does not replenish or
+change queue entries. Original example IDs and schema-minimum IDs are handled;
+malformed paths, refusal examples, bodies and principals stay unchanged.
+Pinned Vertrag 0.42.0 reproduced nine skipped probes across these five
+operations before this setup and none afterward. No description or server
+validation change was needed. This is Part of #1443.
+
+`cancelScheduledMessage`'s historical "got no answer" did not reproduce on
+current main in the narrowed local run: its existing hook successfully creates
+a scheduled message. Its baseline entry is retained rather than claiming that
+the historical topology failure has been repaired.
 
 MTA-STS creation's documented domain `2` is not a topology fixture. Its hook
 creates a private domain through the admin API, then removes any policy before
@@ -96,7 +119,7 @@ The newly reached alias update probe exposed a real description defect:
 422. It now declares `format: idn-email`, like alias creation, without changing
 the handler's address policy or its support for omitted/null patch fields.
 
-`skipped-probes-baseline.txt` holds the **52 remaining probes across 16
+`skipped-probes-baseline.txt` holds the **43 remaining probes across 11
 operations**, individually, not as a shared budget. `gate.py` reads 0.42.0's
 JUnit skipped-case reason and fails on a new operation, an increased count,
 an unknown skip format, or a decrease not removed from the baseline. Skipped

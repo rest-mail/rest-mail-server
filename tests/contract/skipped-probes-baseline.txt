@@ -6,19 +6,16 @@
 # (Part of #1443); narrowed local coverage sends their 17 formerly skipped probes.
 # So do custom filter and pipeline examples, whose 26 formerly skipped probes are
 # sent the same way.
+# Disposable credential, certificate and held-mail targets also send their nine
+# formerly skipped probes (Part of #1443).
 # Login's six generated-credential probes are exempt in Vertrag itself.
 bounceQueueEntry 1
 cancelScheduledMessage 1
-clearSuppression 2
 deleteContact 2
 deleteFolder 2
-deleteQuarantine 2
 deleteQueueEntry 1
-getCertificate 1
 getQueueEntry 1
 retryQueueEntry 1
-revokeAPIKey 2
-revokeCredential 2
 sendDraft 1
 sendMessage 14
 updateContact 9

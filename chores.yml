@@ -682,6 +682,19 @@ tasks:
         docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test
       - task: test:contract-mtls
 
+  test:contract-held-mail-fixture:
+    desc: Replenish disposable quarantine and suppression targets without changing the queue
+    env:
+      CONTRACT_FIXTURE_CONFIG: '{{.CONFIG}}'
+      CONTRACT_FIXTURE_PROJECT: '{{.RESTMAIL_PROJECT}}'
+    cmds:
+      - |
+        if [ "$CONTRACT_FIXTURE_CONFIG" != "restmail.test" ] || [ -z "$CONTRACT_FIXTURE_PROJECT" ]; then
+          echo "contract fixtures require the disposable restmail.test config" >&2
+          exit 1
+        fi
+        docker exec -- "${CONTRACT_FIXTURE_PROJECT}-api" go run ./tests/contract/fixtures --test-domain=restmail.test --held-mail-only
+
   test:contract-mtls:
     desc: Copy the gateway's internal mTLS certificate for the contract run's machine routes (vertrag.yml endpoints)
     cmds:
