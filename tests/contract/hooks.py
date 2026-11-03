@@ -188,10 +188,6 @@ def the_domain_since_the_reset(transaction):
 @hooks.before("domainDNSCheck")
 @hooks.before("getDomainRelay")
 @hooks.before("listSuppressions")
-@hooks.before("setDKIMKey")
-@hooks.before("deleteDKIMKey")
-@hooks.before("getDKIMRotation")
-@hooks.before("setDKIMRotation")
 def a_live_domain_for_the_link(transaction):
     # These follow createDomain's link and have not moved. A reset before a moved
     # exchange removes the domain the link names, so after one each gets a domain
@@ -205,17 +201,42 @@ def a_live_domain_for_the_link(transaction):
     parts = transaction["fullPath"].partition("?")[0].split("/")
     if len(parts) < 6 or parts[5] not in linked:
         return
-    domain_id = the_domain_since_the_reset(transaction)
+    to_domain(transaction, the_domain_since_the_reset(transaction))
+
+
+def a_signing_key(transaction, domain_id):
+    """Install the fixture DKIM key on that domain through the admin API."""
+    with (Path(__file__).resolve().parent / "fixtures" / "dkim-key.pem").open() as key:
+        fixture_call(
+            transaction,
+            "PUT",
+            f"/api/v1/admin/dkim/{domain_id:d}",
+            {"selector": "contract", "private_key": key.read()},
+        )
+
+
+@hooks.before("setDKIMKey")
+@hooks.before("deleteDKIMKey")
+@hooks.before("getDKIMRotation")
+@hooks.before("setDKIMRotation")
+def a_dkim_domain_of_its_own(transaction):
+    # The DKIM operations, moved to a clean start: each exchange, refusals
+    # included, resets and seeds first. One aimed at a positive id other than
+    # missing's 2147483647 (the id createDomain's or setDKIMKey's link names, which
+    # the reset removed) gets a domain of its own, and a delete of the key also
+    # gets the key it deletes. 0 and the missing id need nothing made. A run with
+    # no reset changes nothing here.
+    if not asked_for_a_clean_start():
+        return
+    start_clean(transaction)
+    parts = transaction["fullPath"].partition("?")[0].split("/")
+    if len(parts) < 6 or not positive_id(parts[5]) or parts[5] == "2147483647":
+        return
+    domain_id = a_domain_of_its_own(transaction)
     to_domain(transaction, domain_id)
-    # The key the link names went with the domain.
-    if parts[4] == "dkim" and " > 204" in transaction.get("name", ""):
-        with (Path(__file__).resolve().parent / "fixtures" / "dkim-key.pem").open() as key:
-            fixture_call(
-                transaction,
-                "PUT",
-                f"/api/v1/admin/dkim/{domain_id:d}",
-                {"selector": "contract", "private_key": key.read()},
-            )
+    # Only the delete documents a 204.
+    if " > 204" in transaction.get("name", ""):
+        a_signing_key(transaction, domain_id)
 
 
 @hooks.before("getDomain")

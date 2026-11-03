@@ -185,6 +185,10 @@ class OwnDataHooks(unittest.TestCase):
             "saveDraft": "a_mailbox_for_the_draft",
             "updateDraft": "on_a_draft_of_its_own",
             "sendDraft": "send_a_draft_of_its_own",
+            "setDKIMKey": "a_dkim_domain_of_its_own",
+            "deleteDKIMKey": "a_dkim_domain_of_its_own",
+            "getDKIMRotation": "a_dkim_domain_of_its_own",
+            "setDKIMRotation": "a_dkim_domain_of_its_own",
         }
         self.assertEqual(set(hooks), set(own_data.MOVED))
         for operation, hook in hooks.items():
@@ -329,7 +333,7 @@ class OwnDataHooks(unittest.TestCase):
         for path in (
             "/api/v1/admin/domains/3/relay",
             "/api/v1/admin/domains/3/dns?x=1",
-            "/api/v1/admin/dkim/3/rotation",
+            "/api/v1/admin/domains/3/suppressions",
         ):
             transaction = self.transaction(200, path)
             self.hooks.a_live_domain_for_the_link(transaction)
@@ -359,17 +363,55 @@ class OwnDataHooks(unittest.TestCase):
         self.assertEqual(transaction["fullPath"], "/api/v1/admin/domains/9/relay")
         self.assertNotIn(4, self.server.domains)
 
-    def test_a_linked_key_is_set_again_before_its_delete(self):
+    def test_each_dkim_exchange_resets_and_gets_a_domain_of_its_own(self):
         self.clean_starts_on()
         self.the_run_created_its_domain()
-        self.hooks.get_a_domain_of_its_own(
-            self.transaction(422, "/api/v1/admin/domains/0")
-        )
-        transaction = self.transaction(204, "/api/v1/admin/dkim/3")
-        self.hooks.a_live_domain_for_the_link(transaction)
+        for path, status in (
+            ("/api/v1/admin/dkim/3", 200),
+            ("/api/v1/admin/dkim/3/rotation?x=1", 200),
+        ):
+            transaction = self.transaction(status, path)
+            headers = copy.deepcopy(transaction["request"])
+            self.hooks.a_dkim_domain_of_its_own(transaction)
+            # The reset left the seed's three domains, so the new one is 4.
+            self.assertEqual(transaction["fullPath"], path.replace("/3", "/4"))
+            self.assertEqual(transaction["request"], headers)
+            self.assertEqual(self.server.domains[4], self.hooks.OWN_DOMAIN)
+            self.assertEqual(self.server.keys, {})
+            self.assertLessEqual(set(self.stub.stash), set(self.hooks.SURVIVES_A_RESET))
+            self.assertNotIn("domain_id", self.stub.stash)
+        self.assertEqual(self.resets(), 2)
+
+    def test_the_dkim_delete_gets_the_key_it_deletes(self):
+        self.clean_starts_on()
+        transaction = self.transaction(204, "/api/v1/admin/dkim/7", name="/x > Delete")
+        transaction["name"] = transaction["name"].replace(" > application/json", "")
+        self.hooks.a_dkim_domain_of_its_own(transaction)
         self.assertEqual(transaction["fullPath"], "/api/v1/admin/dkim/4")
         self.assertIn("PRIVATE KEY", self.server.keys[4]["private_key"])
         self.assertEqual(self.server.keys[4]["selector"], "contract")
+
+    def test_dkim_refusals_keep_their_ids_after_the_reset(self):
+        self.clean_starts_on()
+        for path in (
+            "/api/v1/admin/dkim/0",
+            "/api/v1/admin/dkim/2147483647/rotation",
+            "/api/v1/admin/dkim/not-an-integer",
+        ):
+            transaction = self.transaction(404, path)
+            self.hooks.a_dkim_domain_of_its_own(transaction)
+            self.assertEqual(transaction["fullPath"], path)
+        self.assertEqual(self.resets(), 3)
+        self.assertNotIn(4, self.server.domains)
+        self.assertEqual(self.server.keys, {})
+
+    def test_without_the_switch_a_dkim_exchange_is_unchanged(self):
+        self.the_run_created_its_domain()
+        transaction = self.transaction(204, "/api/v1/admin/dkim/3")
+        before = copy.deepcopy(transaction)
+        self.hooks.a_dkim_domain_of_its_own(transaction)
+        self.assertEqual(transaction, before)
+        self.assertEqual(self.server.calls, [])
 
     def test_the_policy_file_asks_for_a_domain_that_exists_after_a_reset(self):
         self.clean_starts_on()

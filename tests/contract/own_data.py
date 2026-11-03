@@ -107,19 +107,22 @@ MOVED = (
     "saveDraft",
     "updateDraft",
     "sendDraft",
+    # The DKIM operations. Each follows createDomain's link, and setDKIMKey's
+    # reaches only deleteDKIMKey: all moved. Each gets a domain of its own after
+    # its reset, and the delete the key it deletes.
+    "setDKIMKey",
+    "deleteDKIMKey",
+    "getDKIMRotation",
+    "setDKIMRotation",
 )
 
 FOLLOWS_THE_CREATED_DOMAIN = (
     "createDomain",
-    "deleteDKIMKey",
     "deleteDomain",
     "domainDNSCheck",
-    "getDKIMRotation",
     "getDomainRelay",
     "listSuppressions",
     "mtaStsPolicyFile",
-    "setDKIMKey",
-    "setDKIMRotation",
     "setDomainRelay",
 )
 
