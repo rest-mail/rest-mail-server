@@ -11,13 +11,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/rest-mail/rest-mail-server/internal/api/endpoint"
 	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
+	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -203,6 +206,9 @@ func TestMessageImportOwnAccountOnly(t *testing.T) {
 	if err := db.Create(&models.QuotaUsage{MailboxID: fx.user.ID}).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := grants.EnsureImport(db, &fx.user); err != nil {
+		t.Fatal(err)
+	}
 	h := NewMessageImportHandler(db, 4096, nil, nil)
 	h.directory = t.TempDir()
 	router := importMessageRoutes(h)
@@ -225,5 +231,80 @@ func TestMessageImportOwnAccountOnly(t *testing.T) {
 	}
 	if got := call(fx.admin.ID, fx.user.ID); got != http.StatusNotFound {
 		t.Fatalf("someone else's mailbox: %d, want 404", got)
+	}
+}
+
+// mail:import is a revocable grant like mail:receive (#1498): a new account
+// holds it on its own mailbox, an owner removing it through the grants API
+// makes import refuse that account with 403, and granting it again restores
+// import. Receiving is untouched throughout.
+func TestMessageImportGrantRevocable(t *testing.T) {
+	db := importProofDB(t)
+	fx := seedAccountsFixture(t, db)
+	cache := grants.NewCache(db, grants.CacheTTL)
+	owner := &auth.Claims{AccountID: fx.admin.ID, AMR: []string{auth.AMRPassword, auth.AMROTP}, TwoFactor: true, AuthTime: jwt.NewNumericDate(time.Now())}
+	w := httptest.NewRecorder()
+	accountRoutes(NewAccountHandler(db, cache, "")).ServeHTTP(w, withClaims(httptest.NewRequest(http.MethodPost, "/api/v1/accounts",
+		strings.NewReader(fmt.Sprintf(`{"address":"agent@%s","owned":true}`, fx.domain.Name))), owner))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create agent: %d %s", w.Code, w.Body)
+	}
+	agent := decodeAccount(t, w)
+	var mailbox models.Mailbox
+	if err := db.First(&mailbox, agent.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	h := NewMessageImportHandler(db, 4096, nil, nil)
+	h.directory = t.TempDir()
+	router := importMessageRoutes(h)
+	imported := 0
+	importAs := func() int {
+		t.Helper()
+		imported++
+		encoded, err := json.Marshal(apitypes.ImportMessageBody{
+			RawMessage:   []byte(fmt.Sprintf("Message-ID: <grant-%d@example.test>\r\nSubject: mine\r\n\r\nbody\r\n", imported)),
+			InternalDate: time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		request := authzRequest(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/messages/import", agent.ID), agent.ID, nil, string(encoded))
+		request.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, request)
+		return w.Code
+	}
+	if got := importAs(); got != http.StatusOK {
+		t.Fatalf("new account import: %d, want 200", got)
+	}
+
+	var grant models.Grant
+	if err := db.Where("holder_kind = ? AND holder_id = ? AND scope = ? AND role_id = (SELECT id FROM roles WHERE name = ?)",
+		models.GrantHolderAccount, agent.ID, grants.Mailbox(agent.Address), models.RoleImporter).First(&grant).Error; err != nil {
+		t.Fatalf("new account has no importer grant: %v", err)
+	}
+	grantHandler := grantRoutes(NewGrantHandler(db, cache, ""))
+	change := func(method, path, body string) *httptest.ResponseRecorder {
+		t.Helper()
+		w := httptest.NewRecorder()
+		grantHandler.ServeHTTP(w, withClaims(httptest.NewRequest(method, path, strings.NewReader(body)), owner))
+		return w
+	}
+	if w := change(http.MethodDelete, fmt.Sprintf("/api/v1/admin/grants/%d", grant.ID), ""); w.Code != http.StatusNoContent {
+		t.Fatalf("revoke importer: %d %s", w.Code, w.Body)
+	}
+	if got := importAs(); got != http.StatusForbidden {
+		t.Fatalf("import after revoke: %d, want 403", got)
+	}
+	if allowed, err := grants.CanReceive(db, &mailbox); err != nil || !allowed {
+		t.Fatalf("revoking import changed receiving: %v %v", allowed, err)
+	}
+
+	body := fmt.Sprintf(`{"holder":{"kind":"account","id":%d},"role":%q,"scope":%q}`, agent.ID, models.RoleImporter, grants.Mailbox(agent.Address))
+	if w := change(http.MethodPost, "/api/v1/admin/grants", body); w.Code != http.StatusCreated {
+		t.Fatalf("restore importer: %d %s", w.Code, w.Body)
+	}
+	if got := importAs(); got != http.StatusOK {
+		t.Fatalf("import after restore: %d, want 200", got)
 	}
 }

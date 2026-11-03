@@ -26,14 +26,7 @@ func CanReceive(db *gorm.DB, mailbox *models.Mailbox) (bool, error) {
 // Never call this on startup for an existing mailbox: a removed grant must
 // stay removed.
 func EnsureReceive(db *gorm.DB, mailbox *models.Mailbox) error {
-	return db.Transaction(func(tx *gorm.DB) error {
-		var role models.Role
-		if err := tx.Where("name = ?", models.RoleReceiver).First(&role).Error; err != nil {
-			return err
-		}
-		_, err := EnsureSystem(tx, mailbox.ID, role.ID, Mailbox(mailbox.Address), models.GrantActive)
-		return err
-	})
+	return ensureOwn(db, mailbox, models.RoleReceiver)
 }
 
 // EnsureReceiveDefaults backfills the old implicit ability to receive exactly

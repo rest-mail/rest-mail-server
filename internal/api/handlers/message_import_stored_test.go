@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/grants"
 )
 
 // These speak only to the route, so they hold on any way of reading a request. The rows wanted
@@ -55,6 +56,9 @@ func importedRow(t *testing.T, name, message, extra string) string {
 	db := importProofDB(t)
 	fx := seedAccountsFixture(t, db)
 	if err := db.Create(&models.QuotaUsage{MailboxID: fx.user.ID}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := grants.EnsureImport(db, &fx.user); err != nil {
 		t.Fatal(err)
 	}
 	h := NewMessageImportHandler(db, 1<<20, nil, nil)
@@ -130,6 +134,9 @@ func TestMessageImportComparesWithWhatIsStored(t *testing.T) {
 	db := importProofDB(t)
 	fx := seedAccountsFixture(t, db)
 	if err := db.Create(&models.QuotaUsage{MailboxID: fx.user.ID}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := grants.EnsureImport(db, &fx.user); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Model(&models.Mailbox{}).Where("id = ?", fx.user.ID).Update("quota_bytes", 1<<30).Error; err != nil {
@@ -230,6 +237,9 @@ func TestMessageImportNotStoredIsNotHeld(t *testing.T) {
 	if err := db.Create(&models.QuotaUsage{MailboxID: fx.user.ID}).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := grants.EnsureImport(db, &fx.user); err != nil {
+		t.Fatal(err)
+	}
 	if err := db.Model(&models.Mailbox{}).Where("id = ?", fx.user.ID).Update("quota_bytes", int64(1)<<40).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -281,6 +291,9 @@ func TestMessageImportStoredHoldsOnlyWhatTheRowKeeps(t *testing.T) {
 	db := importProofDB(t)
 	fx := seedAccountsFixture(t, db)
 	if err := db.Create(&models.QuotaUsage{MailboxID: fx.user.ID}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := grants.EnsureImport(db, &fx.user); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Model(&models.Mailbox{}).Where("id = ?", fx.user.ID).Update("quota_bytes", int64(1)<<40).Error; err != nil {

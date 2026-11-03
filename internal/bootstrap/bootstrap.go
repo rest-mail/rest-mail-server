@@ -254,6 +254,9 @@ func EnsureRBAC(database *gorm.DB) error {
 	if err := grants.EnsureReceiveDefaults(database); err != nil {
 		return err
 	}
+	if err := grants.EnsureImportRole(database); err != nil {
+		return err
+	}
 	return grants.EnsureServerCeiling(database)
 }
 
@@ -341,7 +344,7 @@ func EnsureFirstAdminWith(database *gorm.DB, address string, credential Bootstra
 		}
 		created = res.RowsAffected > 0
 		if created {
-			if err := grants.EnsureReceive(tx, &account); err != nil {
+			if err := grants.EnsureDefaults(tx, &account); err != nil {
 				return err
 			}
 			if _, err := repositories.NewCredentialRepository(tx).SetPassword(account.ID, hash, nil, now); err != nil {
