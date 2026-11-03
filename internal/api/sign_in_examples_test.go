@@ -1,6 +1,7 @@
 package api
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -53,6 +54,38 @@ func TestSignInRefusalExamples(t *testing.T) {
 				if !expired[name] {
 					t.Fatalf("cookie %s was not expired: %s", name, strings.Join(rr.Header().Values("Set-Cookie"), "; "))
 				}
+			}
+		})
+	}
+}
+
+// The protocolSignIn body refusals (#632): a gateway signs a mail client in
+// with a real app password over HTTP Basic, which passes, so the body alone is
+// refused. Each case seeds its own scratch database and app password.
+func TestProtocolSignInBodyExamples(t *testing.T) {
+	pairs, err := examplepairs.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"invalid_body", "protocol_missing"} {
+		t.Run(name, func(t *testing.T) {
+			pair, ok := pairs["protocolSignIn"][name]
+			if !ok {
+				t.Fatalf("no pair protocolSignIn/%s", name)
+			}
+			examplepairs.Proven(t, "protocolSignIn", name)
+			f := newCredentialFixture(t)
+			app := f.createAppPassword("imap client")
+			// The credential is real: with a valid body the same Basic
+			// credential signs the client in.
+			if rr := f.do(http.MethodPost, "/api/v1/auth/protocol-sign-in", basic(f.address, app.Password), `{"protocol":"imap"}`); rr.Code != http.StatusOK {
+				t.Fatalf("sign in with the app password: %d %s", rr.Code, rr.Body.String())
+			}
+			before := f.credentialCount()
+			rr := f.do(http.MethodPost, "/api/v1/auth/protocol-sign-in", basic(f.address, app.Password), string(pair.Request.Body))
+			assertRequirementResponse(t, pair, rr)
+			if f.credentialCount() != before {
+				t.Fatal("the refusal changed the account's credentials")
 			}
 		})
 	}
