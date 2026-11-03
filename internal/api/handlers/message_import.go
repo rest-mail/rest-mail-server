@@ -165,12 +165,6 @@ func (h *MessageImportHandler) importMessage(r *http.Request, in importMessageRe
 	msg.SizeBytes = len(msg.Subject) + len(msg.BodyText) + len(msg.BodyHTML)
 	msg.InReplyTo = text(rmail.CanonicalID(parsed.Headers.InReplyTo))
 	msg.References = text(strings.Join(parsed.Headers.References, " "))
-	msg.ThreadID = msg.MsgID
-	if len(parsed.Headers.References) != 0 {
-		msg.ThreadID = text(rmail.CanonicalID(parsed.Headers.References[0]))
-	} else if msg.InReplyTo != "" {
-		msg.ThreadID = msg.InReplyTo
-	}
 	if len(parsed.Headers.From) != 0 {
 		msg.Sender, msg.SenderName = text(parsed.Headers.From[0].Address), text(parsed.Headers.From[0].Name)
 	}
@@ -221,6 +215,10 @@ func (h *MessageImportHandler) importMessage(r *http.Request, in importMessageRe
 		case existing != nil:
 			result = apitypes.ImportMessageResult{ID: existing.ID, MessageID: existing.MsgID, Folder: existing.Folder}
 		default:
+			msg.ThreadID, err = repositories.ResolveThreadID(tx, uint(in.ID), msg.MsgID, msg.InReplyTo, msg.References)
+			if err != nil {
+				return err
+			}
 			var rows []models.Attachment
 			var attachmentBytes int64
 			for _, group := range [][]pipeline.Attachment{parsed.Attachments, parsed.Inline} {

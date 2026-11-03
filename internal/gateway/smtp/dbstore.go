@@ -99,9 +99,9 @@ func (s *dbStore) PersistSubmittedMessage(msg SubmittedMessage) (*uint, error) {
 		return nil, err
 	}
 
-	threadID := msg.MessageID
-	if msg.InReplyTo != "" {
-		threadID = msg.InReplyTo
+	threadID, err := repositories.ResolveThreadID(s.db, mb.ID, msg.MessageID, msg.InReplyTo, msg.References)
+	if err != nil {
+		return nil, err
 	}
 	senderName := msg.SenderName
 	if senderName == "" {

@@ -535,6 +535,10 @@ func (h *MessageHandler) sendMessage(r *http.Request, req sendMessageRequest) (e
 }
 
 func (h *MessageHandler) sendMessageWithParts(r *http.Request, req sendMessageRequest, parts []pipeline.Attachment) (endpoint.Status[any], error) {
+	return h.sendComposedMessage(r, req, parts, "")
+}
+
+func (h *MessageHandler) sendComposedMessage(r *http.Request, req sendMessageRequest, parts []pipeline.Attachment, references string) (endpoint.Status[any], error) {
 	var zero endpoint.Status[any]
 	claims := middleware.GetClaims(r)
 	if claims == nil {
@@ -926,14 +930,17 @@ func (h *MessageHandler) sendMessageWithParts(r *http.Request, req sendMessageRe
 	now := time.Now()
 	sizeBytes := len(req.Subject) + len(req.BodyText) + len(req.BodyHTML)
 
-	// Compute thread ID for sent message. Canonicalize so it matches — byte for
-	// byte — the bracketed Message-IDs used everywhere else (thread grouping is
-	// an equality match on thread_id).
-	threadID := messageID
-	if req.InReplyTo != "" {
-		threadID = req.InReplyTo
+	if req.InReplyTo != "" || references == "" {
+		var err error
+		references, err = repositories.ReferencesForReply(h.db.WithContext(r.Context()), senderMailbox.ID, req.InReplyTo)
+		if err != nil {
+			return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to look up the reply parent")
+		}
 	}
-	threadID = rmail.CanonicalID(threadID)
+	threadID, err := repositories.ResolveThreadID(h.db.WithContext(r.Context()), senderMailbox.ID, messageID, req.InReplyTo, references)
+	if err != nil {
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to look up the reply thread")
+	}
 
 	// Create message in sender's Sent folder
 	sentMsg := models.Message{
@@ -941,6 +948,7 @@ func (h *MessageHandler) sendMessageWithParts(r *http.Request, req sendMessageRe
 		Folder:       "Sent",
 		MsgID:        messageID,
 		InReplyTo:    req.InReplyTo,
+		References:   references,
 		ThreadID:     threadID,
 		Sender:       req.From,
 		SenderName:   senderMailbox.DisplayName,
@@ -964,20 +972,21 @@ func (h *MessageHandler) sendMessageWithParts(r *http.Request, req sendMessageRe
 
 	// Build raw RFC 2822 message for outbound queue entries.
 	rawMessage, rawErr := buildOutboundRaw(outboundMessage{
-		Sender:    req.Sender,
-		FromName:  senderMailbox.DisplayName,
-		From:      req.From,
-		To:        req.To,
-		Cc:        req.Cc,
-		Subject:   req.Subject,
-		BodyText:  req.BodyText,
-		BodyHTML:  req.BodyHTML,
-		MessageID: messageID,
-		InReplyTo: req.InReplyTo,
-		Date:      now,
-		Extra:     withListUnsubscribe(extraHeaders, req.ListUnsubscribe),
-		ICS:       icsData,
-		ICSMethod: calendarMethod(req.CalendarEvent),
+		Sender:     req.Sender,
+		FromName:   senderMailbox.DisplayName,
+		From:       req.From,
+		To:         req.To,
+		Cc:         req.Cc,
+		Subject:    req.Subject,
+		BodyText:   req.BodyText,
+		BodyHTML:   req.BodyHTML,
+		MessageID:  messageID,
+		InReplyTo:  req.InReplyTo,
+		References: references,
+		Date:       now,
+		Extra:      withListUnsubscribe(extraHeaders, req.ListUnsubscribe),
+		ICS:        icsData,
+		ICSMethod:  calendarMethod(req.CalendarEvent),
 	})
 	if rawErr != nil {
 		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to build the outbound message")
@@ -1078,6 +1087,7 @@ func (h *MessageHandler) sendMessageWithParts(r *http.Request, req sendMessageRe
 			BodyHTML:     req.BodyHTML,
 			MessageID:    messageID,
 			InReplyTo:    req.InReplyTo,
+			References:   references,
 			RawMessage:   rawMessage,
 			RequireTLS:   req.RequireTLS,
 		})
@@ -1597,6 +1607,10 @@ func (h *MessageHandler) saveDraft(r *http.Request, req saveDraftBody) (Message,
 		ccJSON = []byte("[]")
 	}
 
+	threadID, err := repositories.ResolveThreadID(h.db.WithContext(r.Context()), mailboxID, "", req.InReplyTo, req.References)
+	if err != nil {
+		return Message{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to look up the reply thread")
+	}
 	draft := models.Message{
 		PendingDraft: true,
 		MailboxID:    mailboxID,
@@ -1609,6 +1623,7 @@ func (h *MessageHandler) saveDraft(r *http.Request, req saveDraftBody) (Message,
 		BodyHTML:     req.BodyHTML,
 		InReplyTo:    req.InReplyTo,
 		References:   req.References,
+		ThreadID:     threadID,
 		IsDraft:      true,
 		IsRead:       true,
 		SizeBytes:    len(req.Subject) + len(req.BodyText) + len(req.BodyHTML),
@@ -1696,9 +1711,18 @@ func (h *MessageHandler) updateDraft(r *http.Request, in updateDraftRequest) (Me
 
 	if req.InReplyTo != nil {
 		updates["in_reply_to"] = *req.InReplyTo
+		draft.InReplyTo = *req.InReplyTo
 	}
 	if req.References != nil {
 		updates["references"] = *req.References
+		draft.References = *req.References
+	}
+	if req.InReplyTo != nil || req.References != nil {
+		threadID, err := repositories.ResolveThreadID(h.db.WithContext(r.Context()), mailboxID, draft.MsgID, draft.InReplyTo, draft.References)
+		if err != nil {
+			return Message{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to look up the reply thread")
+		}
+		updates["thread_id"] = threadID
 	}
 
 	var updated models.Message
@@ -1769,7 +1793,7 @@ func (h *MessageHandler) sendDraftInTransaction(r *http.Request, in sendDraftReq
 		listUnsubscribe = in.Body.ListUnsubscribe
 		onBehalf = in.Body.OnBehalf
 	}
-	sent, err := h.sendMessage(r, sendMessageRequest{
+	sent, err := h.sendComposedMessage(r, sendMessageRequest{
 		OnBehalf:        onBehalf,
 		From:            draft.Sender,
 		To:              toList,
@@ -1779,7 +1803,7 @@ func (h *MessageHandler) sendDraftInTransaction(r *http.Request, in sendDraftReq
 		BodyHTML:        draft.BodyHTML,
 		InReplyTo:       draft.InReplyTo,
 		ListUnsubscribe: listUnsubscribe,
-	})
+	}, nil, draft.References)
 	if err != nil {
 		return zero, err
 	}
@@ -2049,6 +2073,11 @@ func (h *MessageHandler) respondToCalendar(r *http.Request, in calendarReplyRequ
 
 	messageID := rmail.GenerateMessageID(rmail.DomainFromAddress(req.From))
 	now := time.Now()
+	references := rmail.ReplyReferences(msg.MsgID, msg.InReplyTo, msg.References)
+	threadID, err := repositories.ResolveThreadID(h.db.WithContext(r.Context()), senderMailbox.ID, messageID, msg.MsgID, references)
+	if err != nil {
+		return CalendarReplied{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to look up the reply thread")
+	}
 
 	// Build raw RFC 2822 message with calendar reply
 	var b strings.Builder
@@ -2060,6 +2089,9 @@ func (h *MessageHandler) respondToCalendar(r *http.Request, in calendarReplyRequ
 	b.WriteString("Message-ID: " + messageID + "\r\n")
 	if msg.MsgID != "" {
 		b.WriteString("In-Reply-To: " + msg.MsgID + "\r\n")
+	}
+	if references != "" {
+		b.WriteString("References:\r\n " + strings.Join(strings.Fields(references), "\r\n ") + "\r\n")
 	}
 	b.WriteString("MIME-Version: 1.0\r\n")
 
@@ -2095,7 +2127,8 @@ func (h *MessageHandler) respondToCalendar(r *http.Request, in calendarReplyRequ
 		Folder:       "Sent",
 		MsgID:        messageID,
 		InReplyTo:    msg.MsgID,
-		ThreadID:     msg.ThreadID,
+		References:   references,
+		ThreadID:     threadID,
 		Sender:       req.From,
 		SenderName:   senderMailbox.DisplayName,
 		RecipientsTo: models.JSONB(toJSON),
@@ -2131,6 +2164,7 @@ func (h *MessageHandler) respondToCalendar(r *http.Request, in calendarReplyRequ
 			BodyText:     sentMsg.BodyText,
 			MessageID:    messageID,
 			InReplyTo:    msg.MsgID,
+			References:   references,
 			RawMessage:   rawMessage,
 		})
 		if deliverErr != nil {
@@ -2483,23 +2517,21 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	if params.MessageID == "" {
 		params.MessageID = rmail.GenerateMessageID(rmail.DomainFromAddress(params.Sender))
 	}
+	if params.InReplyTo == "" {
+		params.InReplyTo = emailJSON.Headers.InReplyTo
+	}
+	if params.References == "" {
+		params.References = strings.Join(emailJSON.Headers.References, " ")
+	}
 
 	// ── Quota check ──────────────────────────────────────────────────
 	sizeBytes := len(params.Subject) + len(params.BodyText) + len(params.BodyHTML)
 
 	// ── Compute thread ID ────────────────────────────────────────────
-	threadID := params.MessageID
-	if params.References != "" {
-		refs := strings.Fields(params.References)
-		if len(refs) > 0 {
-			threadID = refs[0]
-		}
-	} else if params.InReplyTo != "" {
-		threadID = params.InReplyTo
+	threadID, err := repositories.ResolveThreadID(h.db.WithContext(ctx), mailbox.ID, params.MessageID, params.InReplyTo, params.References)
+	if err != nil {
+		return nil, err
 	}
-	// Canonicalize to the bracketed form so a References-derived thread ID matches
-	// the root message's Message-ID (thread grouping is an equality match).
-	threadID = rmail.CanonicalID(threadID)
 
 	// ── Create message ───────────────────────────────────────────────
 	// The destination folder defaults to INBOX; the IMAP gateway sets params.Folder

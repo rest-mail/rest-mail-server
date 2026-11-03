@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
@@ -16,17 +17,18 @@ import (
 // produces it talks to the database and runs the outbound pipeline, neither of
 // which a test of the message format should have to stand up.
 type outboundMessage struct {
-	Sender    string // RFC 5322 Sender for Send on Behalf; empty for Send As.
-	FromName  string
-	From      string
-	To        []string
-	Cc        []string
-	Subject   string
-	BodyText  string
-	BodyHTML  string
-	MessageID string
-	InReplyTo string
-	Date      time.Time
+	Sender     string // RFC 5322 Sender for Send on Behalf; empty for Send As.
+	FromName   string
+	From       string
+	To         []string
+	Cc         []string
+	Subject    string
+	BodyText   string
+	BodyHTML   string
+	MessageID  string
+	InReplyTo  string
+	References string
+	Date       time.Time
 
 	// Extra holds headers added by pipeline transforms.
 	Extra map[string]string
@@ -67,7 +69,12 @@ func buildOutboundRaw(m outboundMessage) (string, error) {
 		email.Headers.Extra["Sender"] = m.Sender
 	}
 	if m.InReplyTo != "" {
-		email.Headers.InReplyTo = "<" + m.InReplyTo + ">"
+		email.Headers.InReplyTo = rmail.CanonicalID(m.InReplyTo)
+	}
+	for _, reference := range strings.Fields(m.References) {
+		if reference = rmail.CanonicalID(reference); reference != "" {
+			email.Headers.References = append(email.Headers.References, reference)
+		}
 	}
 	for _, part := range m.Attachments {
 		if part.Disposition == "inline" {
