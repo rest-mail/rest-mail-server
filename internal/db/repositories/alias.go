@@ -10,7 +10,8 @@ import (
 
 // AliasClaimsAddress reports whether an explicit alias reserves a hosted
 // recipient before plus-address fallback. Like the existing exact lookup, it
-// includes inactive aliases: claiming an address does not resolve or forward it.
+// includes inactive aliases, which reserve their address without delivering.
+// ResolveRecipient separately selects active destinations for delivery.
 // liveDomainOnly preserves the pipeline's requirement that domains are active.
 // No destination is selected, even if distinct legacy sources normalize alike.
 func AliasClaimsAddress(db *gorm.DB, address string, liveDomainOnly bool) (bool, error) {

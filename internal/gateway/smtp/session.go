@@ -540,6 +540,10 @@ func (s *session) Rcpt(to string, _ *gosmtp.RcptOptions) error {
 	}
 	resp, err := s.api.CheckMailbox(to)
 	if err != nil {
+		if reason, refused := aliasRoutingRefusal(err); refused {
+			s.tarpitReject()
+			return &gosmtp.SMTPError{Code: 550, EnhancedCode: gosmtp.EnhancedCode{5, 1, 1}, Message: reason}
+		}
 		// If the API is unreachable, temp fail.
 		slog.Error("smtp: API error checking mailbox", "address", to, "error", err)
 		return &gosmtp.SMTPError{
@@ -750,6 +754,22 @@ func (s *session) Data(r io.Reader) error {
 	localRaw, localClientIP, localHelo := data, extractIP(s.remoteAddr()), s.conn.Hostname()
 	prepareLocal := s.isSubmission && s.authenticated
 	var localErr error
+	type recipientLookup struct {
+		check *apiclient.MailboxCheckResponse
+		err   error
+	}
+	lookups := make(map[string]recipientLookup, len(s.rcptTo))
+	for _, rcpt := range s.rcptTo {
+		if _, bounce := s.srsRelays[rcpt]; bounce {
+			continue
+		}
+		check, err := s.api.CheckMailbox(rcpt)
+		if reason, refused := aliasRoutingRefusal(err); refused {
+			return &gosmtp.SMTPError{Code: 550, EnhancedCode: gosmtp.EnhancedCode{5, 1, 1}, Message: reason}
+		}
+		lookups[rcpt] = recipientLookup{check: check, err: err}
+	}
+	var aliasFailure string
 
 	for _, rcpt := range s.rcptTo {
 		// A bounce to a valid SRS address goes on to the sender it carries.
@@ -772,7 +792,7 @@ func (s *session) Data(r io.Reader) error {
 		}
 
 		// Check if this is a local recipient.
-		check, err := s.api.CheckMailbox(rcpt)
+		check, err := lookups[rcpt].check, lookups[rcpt].err
 		if err != nil {
 			// Classification failed: we cannot tell whether this recipient is
 			// local or remote. Do NOT fall through to the outbound queue — a
@@ -902,6 +922,9 @@ func (s *session) Data(r io.Reader) error {
 		}
 
 		if _, err := s.api.DeliverMessage(deliverReq); err != nil {
+			if reason, refused := aliasRoutingRefusal(err); refused {
+				aliasFailure = reason
+			}
 			slog.Error("smtp: delivery failed", "from", s.mailFrom, "to", rcpt, "error", err)
 			// Remember a representative reply for the all-failed case.
 			var apiErr *apiclient.APIError
@@ -935,6 +958,9 @@ func (s *session) Data(r io.Reader) error {
 		accepted++
 	}
 
+	if aliasFailure != "" {
+		return &gosmtp.SMTPError{Code: 550, EnhancedCode: gosmtp.EnhancedCode{5, 1, 1}, Message: aliasFailure}
+	}
 	// Single transaction reply: fail only if NOTHING was committed.
 	if accepted == 0 {
 		return &gosmtp.SMTPError{Code: failCode, EnhancedCode: failEnhanced, Message: failMsg}
@@ -944,6 +970,22 @@ func (s *session) Data(r io.Reader) error {
 			"from", s.mailFrom, "accepted", accepted, "failed", failed)
 	}
 	return nil
+}
+
+func aliasRoutingRefusal(err error) (string, bool) {
+	var apiError *apiclient.APIError
+	if !errors.As(err, &apiError) || apiError.StatusCode != 550 {
+		return "", false
+	}
+	var refusal struct {
+		Error struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if json.Unmarshal([]byte(apiError.Body), &refusal) != nil || !strings.HasPrefix(refusal.Error.Message, "alias ") || rmail.ContainsControlChar(refusal.Error.Message) {
+		return "", false
+	}
+	return refusal.Error.Message, true
 }
 
 // Reset discards the current transaction (RSET, or implicitly after DATA).

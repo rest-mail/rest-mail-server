@@ -1,7 +1,7 @@
 # Forwarding mail
 
-This page covers a person forwarding a message, and the forwarding a Sieve
-`redirect` does on its own.
+This page covers a person forwarding a message, active aliases, and the
+forwarding a Sieve `redirect` does on its own.
 
 ## Forwarding messages and attachments
 
@@ -29,6 +29,55 @@ Object storage is outside the database transaction. A failed transaction can
 leave unreferenced copied objects, while database references and quota changes
 roll back. The source message and its attachment objects are not modified.
 
+## Aliases
+
+SMTP inbound and RESTMAIL deliveries resolve an active alias to its one stored
+destination. There is no local copy and no multi-destination expansion. An exact
+mailbox still wins over an alias, including an unavailable mailbox reserving its
+identity. An explicit alias wins over plus-address fallback; an inactive alias
+continues to reserve its address and delivers nothing.
+
+A destination hosted here uses normal local mailbox delivery, without an
+outbound hop or SRS rewrite. The destination's receive permission, quota,
+inbound pipeline, account Sieve script and delivery notifications apply. When
+raw bytes are supplied, a `Delivered-To` header retains the original alias
+recipient. Structured-only local delivery keeps its ordinary body fields and
+does not manufacture a header-only raw message.
+
+A destination elsewhere uses the same forward construction and outbound queue
+as a Sieve `redirect`, not a separate relay mechanism. The forwarding domain is
+the original alias's hosted domain, even when another alias in the chain is on
+a different hosted domain. Its inbound pipeline checks the message before it
+is queued. The configured alias destination remains authoritative: a domain
+Sieve redirect cannot add destinations or turn the alias into a local copy.
+Signing and the bounce path follow the Sieve rules below. The original raw
+message is required for an external forward; structured-only deliveries are
+refused rather than acknowledged without anything to send.
+
+Resolution follows at most eight alias rows. A loop, a longer chain, an
+ambiguous legacy identity, an inactive alias or a missing hosted destination
+is refused with an explicit routing reason; none is relayed back to this
+server's own MX or silently acknowledged. SMTP refuses a broken route at RCPT
+with `550` and its routing reason; RESTMAIL refuses it with
+`422 undeliverable`. A database or queue failure defers delivery instead.
+An external message returning through an alias already in its `Delivered-To`
+chain is also refused.
+
+SMTP rechecks all recipients before DATA delivery starts. If an alias became
+a loop after RCPT, the message is refused before any recipient is stored. A
+permanent alias routing failure racing even later is still returned as `550`,
+not hidden behind another recipient's success. SMTP delivery to several
+recipients is not an atomic transaction: a mailbox committed before that late
+refusal remains delivered, as with the existing delivery path.
+
+The required delivery stage queues and stores nothing. For content-stage
+delivery, removing the inbound queue row and either storing the destination
+message or creating the external forward commit together. A stale replay
+whose inbound row has already been removed rolls back, without a second
+message or forward. This retains the existing limits: Sieve redirects and
+vacation replies performed by a local mailbox's pipeline before its storage
+transaction are not made exactly-once by alias resolution.
+
 ## Sieve redirects, SPF and SRS
 
 A Sieve `redirect` passes a message on to another address. The next server checks
@@ -37,6 +86,10 @@ record, so a forward that kept its sender could fail there. REST Mail therefore
 rewrites the sender with the Sender Rewriting Scheme (SRS). The forward is also
 DKIM-signed and ARC-sealed by the forwarding domain, the hosted domain of the
 mailbox that forwarded it.
+
+An existing author's DKIM signature is retained. It does not replace the
+forwarding domain's signature: the outbound worker adds that domain's DKIM
+signature before adding its ARC set, including when the original was signed.
 
 **What is rewritten.** Every forward sent over SMTP whose envelope sender is not
 on a domain hosted here. There is no per-domain switch. These are not rewritten:

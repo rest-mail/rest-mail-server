@@ -181,7 +181,7 @@ export interface paths {
         };
         /**
          * Check whether an address is a mailbox here (protocol gateways)
-         * @description Machine to machine: no user token. An address that is not a mailbox here is 200 with exists false: the gateway then routes it outbound.
+         * @description Machine to machine: no user token. An address that is not a mailbox here is 200 with exists false: the gateway then routes it outbound. A reserved alias that cannot route is 550 rejected, never an outbound recipient.
          */
         get: operations["checkMailboxAddress"];
         put?: never;
@@ -6049,6 +6049,14 @@ export interface operations {
             };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            550: {
                 headers: {
                     [name: string]: unknown;
                 };

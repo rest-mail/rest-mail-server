@@ -3281,6 +3281,23 @@
         "mediaType": "application/json"
       }
     },
+    "alias_refused": {
+      "request": {
+        "query": {
+          "address": "reserved@example.com"
+        }
+      },
+      "response": {
+        "status": 550,
+        "body": {
+          "error": {
+            "code": "rejected",
+            "message": "alias routing refused: inactive alias: record not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "found": {
       "request": {
         "query": {

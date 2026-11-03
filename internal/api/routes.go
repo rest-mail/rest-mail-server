@@ -348,6 +348,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		TrustedCIDRs: restmailDeliverAuth.TrustedCIDRs,
 	})
 	restmailH.SetTLSReportEmailReceiver(tlsReportEmail)
+	restmailH.SetLocalDelivery(messageH)
 
 	// ═══════════════════════════════════════════════════════════════
 	// API root — version and discovery (no auth)

@@ -27,13 +27,16 @@ import (
 // aligns with its From domain, so a spoofed-From injection into a local mailbox
 // is refused rather than silently accepted.
 type RestmailHandler struct {
-	db          *gorm.DB
-	engine      *pipeline.Engine
-	recorder    traceRecorder
-	tarpit      *negLookupTarpit
-	deliverAuth *restmailDeliverAuth
-	tlsReports  *TLSReportEmailReceiver
+	db            *gorm.DB
+	engine        *pipeline.Engine
+	recorder      traceRecorder
+	tarpit        *negLookupTarpit
+	deliverAuth   *restmailDeliverAuth
+	tlsReports    *TLSReportEmailReceiver
+	localDelivery *MessageHandler
 }
+
+func (h *RestmailHandler) SetLocalDelivery(handler *MessageHandler) { h.localDelivery = handler }
 
 // SetTLSReportEmailReceiver enables ingestion at the configured reporting mailbox.
 func (h *RestmailHandler) SetTLSReportEmailReceiver(receiver *TLSReportEmailReceiver) {
@@ -42,11 +45,12 @@ func (h *RestmailHandler) SetTLSReportEmailReceiver(receiver *TLSReportEmailRece
 
 func NewRestmailHandler(db *gorm.DB, engine *pipeline.Engine, recorder traceRecorder, tarpitCfg RestmailTarpitConfig, authCfg RestmailDeliverAuthConfig) *RestmailHandler {
 	return &RestmailHandler{
-		db:          db,
-		engine:      engine,
-		recorder:    recorder,
-		tarpit:      newNegLookupTarpit(tarpitCfg),
-		deliverAuth: newRestmailDeliverAuth(authCfg),
+		db:            db,
+		engine:        engine,
+		localDelivery: NewMessageHandler(db, nil, engine, "", recorder),
+		recorder:      recorder,
+		tarpit:        newNegLookupTarpit(tarpitCfg),
+		deliverAuth:   newRestmailDeliverAuth(authCfg),
 	}
 }
 
@@ -86,8 +90,8 @@ type restmailMailboxQuery struct {
 
 // checkMailbox verifies a recipient mailbox exists.
 func (h *RestmailHandler) checkMailbox(r *http.Request, in restmailMailboxQuery) (RestmailMailboxCheck, error) {
-	var mailbox models.Mailbox
-	if err := repositories.FindReceivingMailboxByAddress(h.db.WithContext(r.Context()), in.Address, &mailbox); err != nil {
+	recipient, err := repositories.ResolveRecipient(h.db.WithContext(r.Context()), in.Address, false)
+	if err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return RestmailMailboxCheck{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to look up mailbox")
 		}
@@ -98,7 +102,11 @@ func (h *RestmailHandler) checkMailbox(r *http.Request, in restmailMailboxQuery)
 		h.tarpit.delay(r.Context(), restmailClientIP(r))
 		return RestmailMailboxCheck{Exists: false}, nil
 	}
-	return RestmailMailboxCheck{Exists: true, Address: mailbox.Address}, nil
+	address := recipient.Address
+	if recipient.Alias {
+		address = in.Address
+	}
+	return RestmailMailboxCheck{Exists: true, Address: address}, nil
 }
 
 type restmailDeliverInput struct {
@@ -281,13 +289,18 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 	// side effects. An unavailable database is not an absent mailbox, and a
 	// later recipient lookup must not leave an earlier recipient accepted.
 	recipients := make(map[string]restmailRecipient, len(to))
+	resolvedRecipients := make(map[string]repositories.Recipient, len(to))
+	hasAlias := false
 	accepted := make([]string, 0, len(to))
 	refused := []string{}
 	for _, rcpt := range to {
 		if _, exists := recipients[rcpt]; exists {
 			continue
 		}
-		mailbox, deliveredTo, err := h.resolveRecipientMailbox(r.Context(), rcpt)
+		resolved, err := repositories.ResolveRecipient(h.db.WithContext(r.Context()), rcpt, false)
+		if errors.Is(err, repositories.ErrAliasRouting) {
+			return RestmailDelivery{}, endpoint.Refuse(http.StatusUnprocessableEntity, "undeliverable", err.Error())
+		}
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			refused = append(refused, rcpt)
 			continue
@@ -295,7 +308,9 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 		if err != nil {
 			return RestmailDelivery{}, restmailReadRefusal("recipient identity")
 		}
-		recipients[rcpt] = restmailRecipient{mailbox: mailbox, deliveredTo: deliveredTo}
+		recipients[rcpt] = restmailRecipient{mailbox: resolved.Mailbox, deliveredTo: resolved.DeliveredTo}
+		resolvedRecipients[rcpt] = resolved
+		hasAlias = hasAlias || resolved.Alias
 		accepted = append(accepted, rcpt)
 	}
 	if len(recipients) == 0 {
@@ -304,6 +319,9 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 	// Only receive-capable identities reach filters. In a mixed delivery a
 	// discard or redirect must not turn refused recipients into acceptances.
 	to = accepted
+	if hasAlias {
+		return h.deliverResolvedRecipients(r.Context(), req, envelopeFrom, clientIP, accepted, refused, resolvedRecipients)
+	}
 
 	delivered := []string{}
 	failed := refused
@@ -769,44 +787,23 @@ func buildInboundEmail(parsed *pipeline.EmailJSON, envelopeFrom, from string, to
 }
 
 // resolveRecipientMailbox resolves an envelope recipient to a deliverable local
-// mailbox, applying RFC 5233 subaddressing ("plus addressing"). An exact
+// mailbox, following active aliases and applying RFC 5233 subaddressing. An exact
 // stored spelling always wins; otherwise a unique NFC/IDNA identity is used.
 // When none exists and the local part carries a "+detail" tag, it retries
 // against the base address — but only when no explicit
 // alias claims the full "+detail" address (an explicit alias wins over the base
-// fallback). deliveredTo is the original recipient when a "+detail" tag was
+// fallback). deliveredTo is the original recipient when an alias resolved or a "+detail" tag was
 // stripped (so the caller can record a Delivered-To header preserving the tag
 // for downstream Sieve filters), and "" otherwise.
 func (h *RestmailHandler) resolveRecipientMailbox(ctx context.Context, rcpt string) (mailbox models.Mailbox, deliveredTo string, err error) {
-	_, err = rmail.CanonicalMailboxAddress(rcpt)
-	if err != nil || rmail.ContainsControlChar(rcpt) {
-		return models.Mailbox{}, "", gorm.ErrRecordNotFound
-	}
-	db := h.db.WithContext(ctx)
-	if err := repositories.FindReceivingMailboxByAddress(db, rcpt, &mailbox); err == nil {
-		return mailbox, "", nil
-	} else if !errors.Is(err, gorm.ErrRecordNotFound) || errors.Is(err, repositories.ErrMailboxUnavailable) {
-		return models.Mailbox{}, "", err
-	}
-
-	base, _, tagged := rmail.StripSubaddress(rcpt)
-	if !tagged {
-		return models.Mailbox{}, "", gorm.ErrRecordNotFound
-	}
-
-	// Even an inactive explicit alias reserves this full address. A failed
-	// reservation check must not redirect it into the base account.
-	aliasClaims, err := repositories.AliasClaimsAddress(db, rcpt, false)
+	resolved, err := repositories.ResolveRecipient(h.db.WithContext(ctx), rcpt, false)
 	if err != nil {
 		return models.Mailbox{}, "", err
 	}
-	if aliasClaims {
+	if resolved.Mailbox.ID == 0 {
 		return models.Mailbox{}, "", gorm.ErrRecordNotFound
 	}
-	if err := repositories.FindReceivingMailboxByAddress(db, base, &mailbox); err != nil {
-		return models.Mailbox{}, "", err
-	}
-	return mailbox, rcpt, nil
+	return resolved.Mailbox, resolved.DeliveredTo, nil
 }
 
 type restmailRecipient struct {

@@ -24,7 +24,7 @@ func openPlusAddrTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		testdb.Unreachable(t, "restmail plus-addressing DB test skipped: no database reachable (%v)", err)
 	}
-	if err := gdb.AutoMigrate(&models.Domain{}, &models.Mailbox{}, &models.Alias{}, &models.Message{}, &models.QuotaUsage{}, &models.Pipeline{}); err != nil {
+	if err := gdb.AutoMigrate(&models.Domain{}, &models.Mailbox{}, &models.Alias{}, &models.Message{}, &models.QuotaUsage{}, &models.Pipeline{}, &models.Attachment{}); err != nil {
 		t.Skipf("restmail plus-addressing DB test skipped: migrate failed (%v)", err)
 	}
 	return gdb
@@ -141,11 +141,25 @@ func TestRESTMAILDeliver_Subaddressing(t *testing.T) {
 	t.Run("alias wins over strip", func(t *testing.T) {
 		claimed := "claimed+promo@" + domainName
 		delivered, failed := deliverRESTMAIL(t, h, "sender@remote.test", raw(claimed), claimed)
-		if len(delivered) != 0 {
-			t.Fatalf("delivered = %v, want none (alias claims the address, no base strip)", delivered)
+		if len(delivered) != 1 || delivered[0] != claimed {
+			t.Fatalf("delivered = %v, want alias recipient %s", delivered, claimed)
 		}
-		if len(failed) != 1 || failed[0] != claimed {
-			t.Fatalf("failed = %v, want [%s]", failed, claimed)
+		if len(failed) != 0 {
+			t.Fatalf("failed = %v, want none", failed)
+		}
+		var destination models.Message
+		if err := db.Where("mailbox_id = ?", base.ID).Order("id DESC").First(&destination).Error; err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(destination.RawMessage, "Delivered-To: "+claimed) {
+			t.Fatal("alias recipient provenance missing")
+		}
+		var baseFallback int64
+		if err := db.Model(&models.Message{}).Where("mailbox_id = ?", claimedBox.ID).Count(&baseFallback).Error; err != nil {
+			t.Fatal(err)
+		}
+		if baseFallback != 0 {
+			t.Fatalf("alias fell back to claimed mailbox: %d messages", baseFallback)
 		}
 	})
 }

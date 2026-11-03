@@ -327,8 +327,8 @@ func (h *MailboxHandler) RegisterAddressCheck(rs endpoint.Routes) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/mailboxes",
 		OperationID: "checkMailboxAddress", Summary: "Check whether an address is a mailbox here (protocol gateways)", Tags: []string{"Mailboxes"},
 		Description: "Machine to machine: no user token. An address that is not a mailbox here is 200 with exists " +
-			"false: the gateway then routes it outbound.",
-		Errors: []int{http.StatusUnprocessableEntity}, Security: oapifly.Public}, h.checkAddress)
+			"false: the gateway then routes it outbound. A reserved alias that cannot route is 550 rejected, never an outbound recipient.",
+		Errors: []int{http.StatusUnprocessableEntity, 550}, Security: oapifly.Public}, h.checkAddress)
 }
 
 // checkAddress verifies a recipient exists: GET /api/mailboxes?address=...
@@ -339,8 +339,11 @@ func (h *MailboxHandler) checkAddress(r *http.Request, in addressCheckQuery) (Ad
 		return AddressCheck{}, endpoint.Invalid(map[string]string{"address": "address query parameter required"})
 	}
 
-	var mailbox models.Mailbox
-	if err := repositories.FindReceivingMailboxByAddress(h.db, address, &mailbox); err != nil {
+	recipient, err := repositories.ResolveRecipient(h.db, address, false)
+	if errors.Is(err, repositories.ErrAliasRouting) {
+		return AddressCheck{}, endpoint.Refuse(550, "rejected", err.Error())
+	}
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			// "Not local" is a valid answer to this query, not an error. The
 			// SMTP gateway's apiclient (and its tests) expect 200 + exists=false
@@ -351,5 +354,8 @@ func (h *MailboxHandler) checkAddress(r *http.Request, in addressCheckQuery) (Ad
 		}
 		return AddressCheck{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to check address")
 	}
-	return AddressCheck{Address: mailbox.Address, Exists: true, MailboxID: mailbox.ID}, nil
+	if recipient.Mailbox.ID != 0 && !recipient.Alias {
+		address = recipient.Mailbox.Address
+	}
+	return AddressCheck{Address: address, Exists: true, MailboxID: recipient.Mailbox.ID}, nil
 }
