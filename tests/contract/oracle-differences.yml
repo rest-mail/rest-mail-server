@@ -2331,41 +2331,35 @@
     The calendar invitations parsed from the message, stored JSON written as stored; omitted
     when there are none. The oracle omits them.
 - operation: saveDraft
-  difference: "request body application/json.properties.to.items.format: openapi.yaml \"email\", generated absent"
+  difference: "request body application/json.properties.to.items.format: openapi.yaml \"email\", generated \"idn-email\""
   reason: >-
-    Each address is checked in the handler (400 "invalid recipient address in to/cc"; the from
-    by whether the session may act as it), with that wording; a format would answer 422
-    instead.
+    The handler accepts an internationalized address, so the description says so; the oracle's
+    format is ASCII only.
 - operation: saveDraft
-  difference: "request body application/json.properties.cc.items.format: openapi.yaml \"email\", generated absent"
+  difference: "request body application/json.properties.cc.items.format: openapi.yaml \"email\", generated \"idn-email\""
   reason: >-
-    Each address is checked in the handler (400 "invalid recipient address in to/cc"; the from
-    by whether the session may act as it), with that wording; a format would answer 422
-    instead.
+    The handler accepts an internationalized address, so the description says so; the oracle's
+    format is ASCII only.
 - operation: saveDraft
   difference: "request body application/json.properties.from.format: openapi.yaml \"email\", generated absent"
   reason: >-
-    Each address is checked in the handler (400 "invalid recipient address in to/cc"; the from
-    by whether the session may act as it), with that wording; a format would answer 422
-    instead.
+    The handler accepts an empty from, which means none, so a format would call a body it accepts
+    invalid. Any other from is matched to a mailbox the session may act as, and is a 403 if not.
 - operation: updateDraft
-  difference: "request body application/json.properties.to.items.format: openapi.yaml \"email\", generated absent"
+  difference: "request body application/json.properties.to.items.format: openapi.yaml \"email\", generated \"idn-email\""
   reason: >-
-    Each address is checked in the handler (400 "invalid recipient address in to/cc"; the from
-    by whether the session may act as it), with that wording; a format would answer 422
-    instead.
+    The handler accepts an internationalized address, so the description says so; the oracle's
+    format is ASCII only.
 - operation: updateDraft
-  difference: "request body application/json.properties.cc.items.format: openapi.yaml \"email\", generated absent"
+  difference: "request body application/json.properties.cc.items.format: openapi.yaml \"email\", generated \"idn-email\""
   reason: >-
-    Each address is checked in the handler (400 "invalid recipient address in to/cc"; the from
-    by whether the session may act as it), with that wording; a format would answer 422
-    instead.
+    The handler accepts an internationalized address, so the description says so; the oracle's
+    format is ASCII only.
 - operation: updateDraft
   difference: "request body application/json.properties.from.format: openapi.yaml \"email\", generated absent"
   reason: >-
-    Each address is checked in the handler (400 "invalid recipient address in to/cc"; the from
-    by whether the session may act as it), with that wording; a format would answer 422
-    instead.
+    The handler accepts an empty from, which means none, so a format would call a body it accepts
+    invalid. Any other from is matched to a mailbox the session may act as, and is a 403 if not.
 - operation: updateDraft
   difference: "request body application/json.properties.from.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
   reason: >-

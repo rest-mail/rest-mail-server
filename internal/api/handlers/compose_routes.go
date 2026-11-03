@@ -134,7 +134,9 @@ type calendarReplyBody struct {
 }
 
 // saveDraftBody is a new draft; every field is optional. Without a from, the draft is kept
-// in the caller's own mailbox.
+// in the caller's own mailbox. The items of to and cc get their format in
+// internal/api/described_items.go, which a tag cannot do. From has none: an empty one is accepted
+// and means none, and the rest are matched to a mailbox, so a bad one is a 403, not a bad body.
 type saveDraftBody struct {
 	From       string   `json:"from,omitempty"`
 	To         []string `json:"to,omitempty"`
@@ -153,6 +155,7 @@ type updateDraftRequest struct {
 	Body updateDraftBody `body:""`
 }
 
+// updateDraftBody changes what it names. Its to, cc and from are described as saveDraftBody's are.
 type updateDraftBody struct {
 	From       *string  `json:"from,omitempty"`
 	To         []string `json:"to,omitempty"`
@@ -163,6 +166,14 @@ type updateDraftBody struct {
 	InReplyTo  *string  `json:"in_reply_to,omitempty"`
 	References *string  `json:"references,omitempty"`
 }
+
+// What a draft's addresses are held to, in the words of the operations that take them.
+// internal/api/handlers/draft_fields_test.go holds these words to the handlers.
+const (
+	draftRecipientsDescription = "to and cc items are described as bare addresses, internationalized or not; the handler also accepts " +
+		"whatever RFC 5322 reads as one address, such as a display name around one, and refuses any other item with 422. "
+	draftSenderDescription = "any other from must be the exact address of a mailbox the caller may write to, or the answer is 403."
+)
 
 // RegisterCompose mounts the drafts, the scheduled sends, the calendar invitations and the
 // replies to them.
@@ -181,12 +192,14 @@ func (h *MessageHandler) RegisterCompose(rs endpoint.Routes, audit ...func(strin
 	}
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/messages/draft",
 		OperationID: "saveDraft", Summary: "Save a new draft", Tags: []string{"Drafts"}, Status: http.StatusCreated,
-		Description: "Sender lookup and storage follow request cancellation; dependency failures return 500, not forbidden.",
-		Errors:      []int{http.StatusUnauthorized, http.StatusForbidden}, Security: writes}, h.saveDraft)
+		Description: "Sender lookup and storage follow request cancellation; dependency failures return 500, not forbidden. " +
+			draftRecipientsDescription + "An empty from, like none, keeps the draft in the caller's own mailbox with no sender; " + draftSenderDescription,
+		Errors: []int{http.StatusUnauthorized, http.StatusForbidden}, Security: writes}, h.saveDraft)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPut, Path: "/api/v1/messages/draft/{id}",
 		OperationID: "updateDraft", Summary: "Update an existing draft", Tags: []string{"Drafts"},
-		Description: "Update and reload commit together. A failed write/reload returns 500 and rolls back; an absent or no-longer-draft row is 404. Declared in_reply_to and references fields are persisted; omitted/null fields stay unchanged. Dependency errors are distinct from denied access, and SQL follows request cancellation.",
-		Errors:      []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.updateDraft)
+		Description: "Update and reload commit together. A failed write/reload returns 500 and rolls back; an absent or no-longer-draft row is 404. Declared in_reply_to and references fields are persisted; omitted/null fields stay unchanged. Dependency errors are distinct from denied access, and SQL follows request cancellation. " +
+			draftRecipientsDescription + "An omitted to or cc stays as it is, and an empty list clears it. An empty from clears the sender and leaves the draft in its mailbox; " + draftSenderDescription,
+		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.updateDraft)
 	// Seeing or cancelling a scheduled send needs its selected sending capability.
 	sends := delegatedSendSecurity()
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/messages/scheduled",

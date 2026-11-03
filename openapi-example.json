@@ -34417,6 +34417,76 @@
     }
   },
   "saveDraft": {
+    "bcc_not_allowed": {
+      "description": "A draft has no blind copies. A body naming one is refused while binding.",
+      "request": {
+        "body": {
+          "bcc": [
+            "someone@imap.restmail.test"
+          ]
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "bcc": "not allowed"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "capability_removed": {
+      "description": "The signed-in account 1 (admin@restmail.test) gives no from, so the draft would be kept in its own mailbox. The server capability ceiling permits mailbox:session but not mail:write. The account can know its own mailbox exists, so refusal is 403.",
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "body": {}
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "You are not authorized to write drafts to this mailbox"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "cc_empty_address": {
+      "description": "An empty item is not an address. Refused by the handler, before the sender is looked at.",
+      "request": {
+        "body": {
+          "cc": [
+            ""
+          ]
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "cc": "invalid recipient address in cc"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "empty": {
       "summary": "Start an empty draft in the signed-in account",
       "request": {
@@ -34569,6 +34639,55 @@
           "error": {
             "code": "unavailable",
             "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "to_not_an_address": {
+      "description": "Refused by the handler, before the sender is looked at.",
+      "request": {
+        "body": {
+          "to": [
+            "not-an-address"
+          ]
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "to": "invalid recipient address in to"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "to_null": {
+      "description": "to is omitted or a list, never null. Refused while binding.",
+      "request": {
+        "body": {
+          "to": null
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "to": "must not be null"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -42571,6 +42690,35 @@
     }
   },
   "updateDraft": {
+    "bcc_not_allowed": {
+      "description": "A draft has no blind copies. A body naming one is refused while binding, before the draft is looked for.",
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "bcc": [
+            "someone@imap.restmail.test"
+          ]
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "bcc": "not allowed"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "capability_removed": {
       "description": "Message 12 belongs to the signed-in account 1 (admin@restmail.test). It is a draft for draft operations. The server capability ceiling permits mailbox:session but not mail:write or mail:read. The account can know its own mailbox exists, so refusal is 403, not a foreign-resource 404.",
       "requires": {
@@ -42590,6 +42738,37 @@
           "error": {
             "code": "forbidden",
             "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "cc_empty_address": {
+      "description": "Draft 12 belongs to the signed-in account. An empty item is not an address. The live run has no draft at this id, so this is proved through the production router in process.",
+      "requires": {
+        "state": "existing_draft"
+      },
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "cc": [
+            ""
+          ]
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "cc": "invalid recipient address in cc"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -42670,6 +42849,30 @@
           "error": {
             "code": "message_not_found",
             "message": "Message not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "foreign_sender": {
+      "description": "Draft 12 belongs to the signed-in account. The new from is a mailbox the caller may not write to. The live run has no draft at this id, so this is proved through the production router in process.",
+      "requires": {
+        "state": "existing_draft"
+      },
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "from": "other@restmail.test"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "You are not authorized to send from this address"
           }
         },
         "mediaType": "application/json"
@@ -42845,6 +43048,64 @@
           "error": {
             "code": "unavailable",
             "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "to_not_an_address": {
+      "description": "Draft 12 belongs to the signed-in account. Refused by the handler, once the draft is found. The live run has no draft at this id, so this is proved through the production router in process.",
+      "requires": {
+        "state": "existing_draft"
+      },
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "to": [
+            "not-an-address"
+          ]
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "to": "invalid recipient address in to"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "to_null": {
+      "description": "to is omitted or a list, never null. Refused while binding, before the draft is looked for.",
+      "request": {
+        "path": {
+          "id": 12
+        },
+        "body": {
+          "to": null
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "to": "must not be null"
+              }
+            }
           }
         },
         "mediaType": "application/json"
