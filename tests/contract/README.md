@@ -1187,6 +1187,19 @@ unmoved. Rename sources are named by the time they are made, not by a count, so
 without a reset (the primary run and coverage) still removes only the repeated
 probe folders it made.
 
+`updateDomain` resets and seeds before each exchange too, refusals included. It
+follows `createDomain`'s link, and the reset removes the domain the link names,
+so an exchange aimed at a positive id other than missing's `2147483647` is sent
+to a domain of its own (`contract-own-domain.test`), the 422s included, so they
+are refused for their bodies and not for a domain that is gone. A non-positive
+or undecodable id and missing's keep theirs. A request that sets `active` to
+true gets a self-signed certificate for that domain first, made in the hook
+(the documented examples set none). No link starts from `updateDomain`, so
+nothing that follows it is left unmoved, and it no longer gets
+`a_live_domain_for_the_link`'s stand-in. Whether a domain is certified is read
+from the API (`listCertificates`), so `hooks.stash` holds no
+`certified_domains`.
+
 This happens only with `CONTRACT_RESET_SEED=1`, which `tests/contract/run.sh own-data`
 sets, and that phase is a gate of its own, sent by `chore test:contract-teardown`
 just before the teardown. It sends the moved operations with everything that follows
@@ -1564,9 +1577,10 @@ the pin takes away, in the gated examples phase, which is not pinned:
 Update probes (updateDomain) that set `active` to true would meet 409
 `certificate_required`: no created domain has a certificate when they run. A
 before hook gives the domain in the path a self-signed certificate through the
-admin API the first time such a request appears, then leaves it in place. The
-request is never rewritten, and a domain that does not exist is left to the
-probe's 404.
+admin API unless the API already lists one valid now for that domain, then
+leaves it in place. Whether a domain has one is read from the API, not kept in
+`hooks.stash`. The request is never rewritten, and a domain that does not exist
+is left to the probe's 404.
 
 Test send probes (sendTestEmail) send from and to a generated address
 (`someone@example.com`) that has no mailbox. A before hook hosts its domain and

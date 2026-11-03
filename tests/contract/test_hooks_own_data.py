@@ -146,6 +146,7 @@ class OwnDataHooks(unittest.TestCase):
             "createFolder": "remove_a_previous_folder_probe",
             "renameFolder": "give_each_rename_probe_a_folder",
             "deleteFolder": "a_folder_to_delete_of_its_own",
+            "updateDomain": "a_certificate_before_going_live",
         }
         self.assertEqual(set(hooks), set(own_data.MOVED))
         for operation, hook in hooks.items():
@@ -273,7 +274,6 @@ class OwnDataHooks(unittest.TestCase):
             created_sender_rules={"/x/allowlist": {"id": 1, "body": {}}},
             pipeline_id=9,
             probe_domain_id=8,
-            certified_domains={"o\n3": True},
             policy_absent_domains={"o": 7},
         )
         self.hooks.get_a_domain_of_its_own(
