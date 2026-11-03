@@ -403,7 +403,7 @@
   reason: >-
     Pointer fields preserve the existing acceptance of null: on PATCH null leaves the value unchanged; on create a null boolean selects the default.
 - operation: updateCustomFilter
-  difference: "request body application/json.properties.domain_id: openapi.yaml absent, generated {\"type\":[\"integer\",\"null\"]}"
+  difference: "request body application/json.properties.domain_id: openapi.yaml absent, generated {\"minimum\":0,\"type\":[\"integer\",\"null\"]}"
   reason: >-
     The production webmail PATCH form sends this field. It is explicitly declared, accepted and ignored as before; updating a pipeline or filter does not move it to another domain or change pipeline direction.
 - operation: updateCustomFilter
@@ -418,10 +418,6 @@
   difference: "request body application/json.properties.filter_type.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
   reason: >-
     Pointer fields preserve the existing acceptance of null: on PATCH null leaves the value unchanged; on create a null boolean selects the default.
-- operation: updateCustomFilter
-  difference: "request body application/json.properties.name.minLength: openapi.yaml 1, generated absent"
-  reason: >-
-    The handler keeps the required-name check and its pinned error message/precedence, including testFilter naming both filter_name and email when either is absent. Binding still checks field types and unknown properties.
 - operation: updateCustomFilter
   difference: "request body application/json.properties.name.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
   reason: >-
@@ -451,7 +447,7 @@
   reason: >-
     The production webmail PATCH form sends this field. It is explicitly declared, accepted and ignored as before; updating a pipeline or filter does not move it to another domain or change pipeline direction.
 - operation: updatePipeline
-  difference: "request body application/json.properties.domain_id: openapi.yaml absent, generated {\"type\":[\"integer\",\"null\"]}"
+  difference: "request body application/json.properties.domain_id: openapi.yaml absent, generated {\"minimum\":0,\"type\":[\"integer\",\"null\"]}"
   reason: >-
     The production webmail PATCH form sends this field. It is explicitly declared, accepted and ignored as before; updating a pipeline or filter does not move it to another domain or change pipeline direction.
 - operation: updatePipeline

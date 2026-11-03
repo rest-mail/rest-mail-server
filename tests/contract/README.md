@@ -44,7 +44,8 @@ six login probes are expected: generated credentials cannot authenticate.
 | Alias and sender-rule targets consumed/replaced before coverage | `getAlias` 1, `updateAlias` 5, `removeFromAllowlist` 2, `removeFromBlocklist` 2 | Repaired and removed from the skipped-probe baseline |
 | Credential targets absent | `revokeAPIKey` 2, `revokeCredential` 2 | Remaining: 4 |
 | Contact/folder targets absent | `deleteContact` 2, `updateContact` 9, `deleteFolder` 2 | Remaining: 13 |
-| Filter/pipeline/certificate targets absent | `deleteCustomFilter` 1, `getCustomFilter` 1, `updateCustomFilter` 15, `testCustomFilter` 1, `deletePipeline` 1, `updatePipeline` 7, `getCertificate` 1 | Remaining: 27 |
+| Filter/pipeline targets absent | `deleteCustomFilter` 1, `getCustomFilter` 1, `updateCustomFilter` 15, `testCustomFilter` 1, `deletePipeline` 1, `updatePipeline` 7 | Repaired and removed from the skipped-probe baseline |
+| Certificate target absent | `getCertificate` 1 | Remaining: 1 |
 | Domain/policy targets absent | `deleteMtaStsPolicy` 1, `getMtaStsPolicy` 1, `setMtaStsPolicy` 11 | Repaired and removed from the skipped-probe baseline |
 | Held-mail/queue/scheduled fixtures | `deleteQuarantine` 2, `clearSuppression` 2, `bounceQueueEntry` 1, `cancelScheduledMessage` 1, `deleteQueueEntry` 1, `getQueueEntry` 1, `retryQueueEntry` 1 | Remaining: 9 |
 | Draft/send requests | `updateDraft` 10, `sendDraft` 1, `sendMessage` 14 | Remaining: 25 |
@@ -75,12 +76,27 @@ narrowed local replay against the real API and PostgreSQL reproduced all 17
 MTA-STS/sender-rule skips before these hooks and none afterward. This is
 Part of #1443, not proof of the whole-topology result.
 
+Custom filter and pipeline examples name placeholder `1`, which nothing holds
+once the examples process has gone. In the coverage process each success request
+aimed at `1` gets a new row, disabled or inactive, on a disposable domain, and
+only its path changes. A new row each time means a delete or update before it
+cannot consume the target or remove the script `testCustomFilter` runs. A
+narrowed local replay reproduced all 26 skips before these hooks and none
+afterward. This is Part of #1443, not proof of the whole-topology result.
+
+The probes this reached exposed two description defects. `updateCustomFilter`'s
+`name` allowed an empty string, and the `domain_id` both updates accept and ignore
+allowed a negative number, while the server refused both with 422. They now
+declare `minLength: 1` and `minimum: 0`, keeping the same field messages. An empty
+name is now refused before the lookup, so aimed at a missing filter it answers
+422 rather than 404.
+
 The newly reached alias update probe exposed a real description defect:
 `destination_address` allowed an empty string, but the handler refused it with
 422. It now declares `format: idn-email`, like alias creation, without changing
 the handler's address policy or its support for omitted/null patch fields.
 
-`skipped-probes-baseline.txt` holds the **78 remaining probes across 22
+`skipped-probes-baseline.txt` holds the **52 remaining probes across 16
 operations**, individually, not as a shared budget. `gate.py` reads 0.42.0's
 JUnit skipped-case reason and fails on a new operation, an increased count,
 an unknown skip format, or a decrease not removed from the baseline. Skipped

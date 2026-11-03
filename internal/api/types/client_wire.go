@@ -201,7 +201,7 @@ type updatePipelineRequestBody struct {
 	Filters json.RawMessage `json:"filters,omitempty"`
 	Active  *bool           `json:"active,omitempty"`
 	// Webmail sends these on PATCH; historically they are accepted and ignored.
-	DomainID  *uint   `json:"domain_id,omitempty"`
+	DomainID  *uint   `json:"domain_id,omitempty" minimum:"0"`
 	Direction *string `json:"direction,omitempty"`
 }
 

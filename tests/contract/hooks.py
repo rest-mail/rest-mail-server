@@ -728,6 +728,79 @@ def a_custom_filter_on_the_created_domain(transaction):
     on_the_created_domain(transaction)
 
 
+def the_probe_domain_id(transaction):
+    """A disposable domain's id, made once per run, for what probes may change."""
+    if hooks.stash.get("probe_domain_id") is None:
+        domain = fixture_call(
+            transaction,
+            "POST",
+            "/api/v1/admin/domains",
+            {
+                "name": f"contract-probe-{time.time_ns()}.test",
+                "server_type": "traditional",
+            },
+        )
+        hooks.stash["probe_domain_id"] = domain["id"]
+    return hooks.stash["probe_domain_id"]
+
+
+def a_row_for_the_coverage_placeholder(transaction, collection, row):
+    # Coverage sends a success example and its valid probes to the description's
+    # placeholder id, 1, which names nothing: the examples process has gone, and
+    # with it whatever its links made. Only the path changes, because a changed
+    # body ends a probe uncounted (README, "A hook cannot change a generated
+    # body"). Every request gets a new row, since one before it may have deleted
+    # the row or rewritten it. The rows sit on a disposable domain, inactive, so
+    # that a probe's values can never reach the fixture admin's mail.
+    if os.environ.get("CONTRACT_COVERAGE") != "1" or " > 200" not in transaction.get("name", ""):
+        return
+    path, _, query = transaction["fullPath"].partition("?")
+    parts = path.split("/")
+    if len(parts) < 6 or parts[4] != collection or parts[5] != "1":
+        return
+    created = fixture_call(
+        transaction,
+        "POST",
+        "/api/v1/admin/" + collection,
+        dict(row, domain_id=the_probe_domain_id(transaction)),
+    )
+    parts[5] = str(created["id"])
+    transaction["fullPath"] = "/".join(parts) + ("?" + query if query else "")
+
+
+@hooks.before("updatePipeline")
+@hooks.before("deletePipeline")
+def a_pipeline_for_the_coverage_placeholder(transaction):
+    a_row_for_the_coverage_placeholder(
+        transaction,
+        "pipelines",
+        {
+            "direction": "inbound",
+            "filters": [{"name": "header_validate", "config": {}}],
+            "active": False,
+        },
+    )
+
+
+@hooks.before("getCustomFilter")
+@hooks.before("updateCustomFilter")
+@hooks.before("testCustomFilter")
+@hooks.before("deleteCustomFilter")
+def a_custom_filter_for_the_coverage_placeholder(transaction):
+    a_row_for_the_coverage_placeholder(
+        transaction,
+        "custom-filters",
+        {
+            "name": f"contract-probe-{time.time_ns()}",
+            "filter_type": "action",
+            "direction": "inbound",
+            # testCustomFilter runs this, and refuses a config without a script.
+            "config": {"script": 'function filter(email) {\n  return { action: "continue" };\n}\n'},
+            "enabled": False,
+        },
+    )
+
+
 def openssl(*args):
     subprocess.run(["openssl"] + list(args), check=True, capture_output=True)
 
@@ -771,18 +844,7 @@ def off_the_admin_domain(transaction):
         return
     if int(parts[5]) != the_admin_domain_id(transaction):
         return
-    if hooks.stash.get("probe_domain_id") is None:
-        domain = fixture_call(
-            transaction,
-            "POST",
-            "/api/v1/admin/domains",
-            {
-                "name": f"contract-probe-{time.time_ns()}.test",
-                "server_type": "traditional",
-            },
-        )
-        hooks.stash["probe_domain_id"] = domain["id"]
-    parts[5] = str(hooks.stash["probe_domain_id"])
+    parts[5] = str(the_probe_domain_id(transaction))
     transaction["fullPath"] = "/".join(parts) + ("?" + query if query else "")
 
 

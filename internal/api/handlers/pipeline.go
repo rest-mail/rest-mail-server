@@ -814,14 +814,14 @@ type createCustomFilterRequestBody struct {
 	Enabled     *bool           `json:"enabled,omitempty"`
 }
 type updateCustomFilterRequestBody struct {
-	Name        *string         `json:"name,omitempty"`
+	Name        *string         `json:"name,omitempty" minLength:"1" minLengthMessage:"required"`
 	Description *string         `json:"description,omitempty"`
 	FilterType  *string         `json:"filter_type,omitempty" enums:"action,transform" message:"must be action or transform"`
 	Direction   *string         `json:"direction,omitempty" enums:"inbound,outbound,both" message:"must be inbound, outbound or both"`
 	Config      json.RawMessage `json:"config,omitempty"`
 	Enabled     *bool           `json:"enabled,omitempty"`
 	// Webmail sends domain_id on PATCH; it does not move the filter.
-	DomainID *uint `json:"domain_id,omitempty"`
+	DomainID *uint `json:"domain_id,omitempty" minimum:"0"`
 }
 type updateCustomFilterRequest struct {
 	ID   uint32                        `path:"id" minimum:"1" example:"1"`
