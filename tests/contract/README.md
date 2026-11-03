@@ -65,12 +65,10 @@ Vertrag sequences examples with linked resource IDs, but coverage starts from
 the description's original placeholder IDs. Its before hooks receive the
 original transaction name, **not** the reporter's `coverage:` prefix.
 `run.sh` therefore scopes `CONTRACT_COVERAGE=1` to the coverage process (and its
-retry). Sender-rule hooks resolve only placeholder `1` to the
-fixture they own, recreating that fixture if consumed. The alias hooks send
-placeholder `1`, like any positive id other than missing's that no alias has,
-to an alias of their own. Sender-rule removal also
-works with an empty process stash: its coverage placeholder gets a dedicated
-rule through the admin API, independently for each list and removal. Other IDs,
+retry). The sender-rule and alias hooks send placeholder `1`, like any positive
+id other than missing's that no entry or alias has, to one of their own, made
+through the admin API with an empty process stash, independently for each list.
+Other IDs,
 invalid paths, request bodies and transaction credentials are unchanged.
 Other phases do not acquire this placeholder substitution.
 
@@ -961,9 +959,9 @@ RESTMAIL_INTERNAL_MTLS=true`, then `tests/contract/run.sh gate --operation-id
   and, for `addToAllowlist`, `addToBlocklist` and `createAlias`, the entry a
   previous probe added removed when generated bodies repeat it (the domain
   stays for the whole run, so a repeat is otherwise a 409), with an alias
-  probe's domain hosted first. The entries `removeFromAllowlist` and
-  `removeFromBlocklist` are linked to are followed to their current id, and
-  added again if a probe left none. `getAlias`, `updateAlias` and
+  probe's domain hosted first. `removeFromAllowlist` and
+  `removeFromBlocklist` keep a linked id the list still holds, and otherwise
+  get an entry of their own (`on_a_sender_rule_of_its_own`). `getAlias`, `updateAlias` and
   `deleteAlias` keep a linked id that still has an alias, and otherwise get
   an alias of their own (`on_an_alias_of_its_own`).
   TLS-RPT reports are sent a second apart: the route is rate-limited. Their
@@ -1224,6 +1222,27 @@ principal's own, so after its reset it makes an eligible admin grant on
 The other examples need nothing made: their ids are the refusals' (`0` and
 `2147483647`), and the lists read the seeded grants. No link starts from or
 reaches any grant operation, and none of their hooks reads a stash value.
+
+The domain sender rule operations (`listAllowlist`, `addToAllowlist`,
+`removeFromAllowlist`, `listBlocklist`, `addToBlocklist` and
+`removeFromBlocklist`) reset and seed before each exchange too, refusals
+included. Each follows `createDomain`'s link, which the reset empties, so an
+exchange aimed at a positive domain id other than missing's `2147483647` is sent
+to a domain of its own (`contract-own-domain.test`), and they no longer get
+`a_live_domain_for_the_link`'s stand-in. A list reads that domain's empty list,
+and an add is sent there as documented, the 422 included. A remove documented to
+succeed gets an entry of its own there (`@contract-own-rule.test`), since the
+entry the add's link names is gone; the 404 and a non-positive or undecodable
+entry id keep theirs, on a domain that exists. Each add's link reaches only the
+remove of its list, so nothing that follows it is left unmoved. No entry is
+carried between exchanges, so `hooks.stash` holds no `created_sender_rules`:
+without a reset, a remove whose positive entry id the list no longer holds (the
+documented remove, or a probe repeating the add's pattern, removed it, or
+coverage's placeholder `1` never had one) gets the entry at
+`@contract-own-rule.test` on that domain, made if absent; an id the list holds
+is followed unchanged. `created_sender_rule_probes` stays, because an add
+without a reset (the primary run and coverage) still removes only the repeated
+probe entries it made.
 
 This happens only with `CONTRACT_RESET_SEED=1`, which `tests/contract/run.sh own-data`
 sets, and that phase is a gate of its own, sent by `chore test:contract-teardown`

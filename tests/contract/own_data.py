@@ -66,23 +66,25 @@ MOVED = (
     "makeGrantEligible",
     "listGrants",
     "listMyGrants",
+    # The sender rule operations. Each follows createDomain's link, and the
+    # add's link reaches only the remove of its list: all moved.
+    "listAllowlist",
+    "addToAllowlist",
+    "removeFromAllowlist",
+    "listBlocklist",
+    "addToBlocklist",
+    "removeFromBlocklist",
 )
 
 FOLLOWS_THE_CREATED_DOMAIN = (
     "createDomain",
-    "addToAllowlist",
-    "addToBlocklist",
     "deleteDKIMKey",
     "deleteDomain",
     "domainDNSCheck",
     "getDKIMRotation",
     "getDomainRelay",
-    "listAllowlist",
-    "listBlocklist",
     "listSuppressions",
     "mtaStsPolicyFile",
-    "removeFromAllowlist",
-    "removeFromBlocklist",
     "setDKIMKey",
     "setDKIMRotation",
     "setDomainRelay",

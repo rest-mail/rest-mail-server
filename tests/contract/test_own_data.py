@@ -49,6 +49,17 @@ GRANTS = (
     "listMyGrants",
 )
 
+# Every domain sender rule operation of the area map. Each follows
+# createDomain's link, and each add's link reaches only the remove of its list.
+SENDER_RULES = (
+    "listAllowlist",
+    "addToAllowlist",
+    "removeFromAllowlist",
+    "listBlocklist",
+    "addToBlocklist",
+    "removeFromBlocklist",
+)
+
 
 def link_followers(description, start):
     """The operations reachable from start through the description's links."""
@@ -180,6 +191,36 @@ class Selection(unittest.TestCase):
             reached |= link_followers(description, operation)
         self.assertFalse(reached & set(GRANTS))
         self.assertLessEqual(set(GRANTS), set(own_data.MOVED))
+
+    def test_it_selects_every_sender_rule_operation_and_its_links(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        areas = json.loads(
+            (ROOT / "tests/contract/api-areas.json").read_text()
+        )
+        self.assertEqual(
+            {
+                operation
+                for operation in areas["646"]
+                if operation.endswith(("Allowlist", "Blocklist"))
+            },
+            set(SENDER_RULES),
+        )
+        self.assertEqual(
+            link_followers(description, "addToAllowlist"), {"removeFromAllowlist"}
+        )
+        self.assertEqual(
+            link_followers(description, "addToBlocklist"), {"removeFromBlocklist"}
+        )
+        for operation in SENDER_RULES:
+            if not operation.startswith("addTo"):
+                self.assertEqual(link_followers(description, operation), set())
+        self.assertLessEqual(
+            set(SENDER_RULES), link_followers(description, "createDomain")
+        )
+        self.assertLessEqual(set(SENDER_RULES), set(own_data.MOVED))
+        self.assertFalse(
+            set(SENDER_RULES) & set(own_data.FOLLOWS_THE_CREATED_DOMAIN)
+        )
 
     def test_a_skipped_exchange_is_not_a_pass(self):
         with tempfile.TemporaryDirectory() as directory:
