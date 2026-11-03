@@ -22,6 +22,7 @@ import (
 	smtpgw "github.com/rest-mail/rest-mail-server/internal/gateway/smtp"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/tlsutil"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
+	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"github.com/rest-mail/rest-mail-server/internal/sendlimits"
 	"github.com/rest-mail/rest-mail-server/internal/srs"
 )
@@ -68,6 +69,8 @@ func main() {
 		slog.Error("failed to load config", "error", err)
 		os.Exit(1)
 	}
+	// Every message this process parses is held to the inbound limits (#1647, #1641).
+	rmime.SetLimits(cfg.MIMELimits())
 
 	// Trust the operator/testbed CA for the gateway's outbound HTTP client. The
 	// path is config-driven and defaults to the historical /certs/ca.crt, so the

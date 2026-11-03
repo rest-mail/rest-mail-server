@@ -22,11 +22,17 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
 
-// Parse converts a raw RFC 2822 message into the pipeline's EmailJSON format.
+// Parse converts a raw RFC 2822 message into the pipeline's EmailJSON format. A message nested
+// deeper or holding more parts than the Limits in force is an error wrapping ErrStructureLimit,
+// answered as soon as the limit is passed.
 func Parse(raw []byte) (*pipeline.EmailJSON, error) {
+	return parseFrom(bytes.NewReader(raw))
+}
+
+func parseFrom(source io.Reader) (*pipeline.EmailJSON, error) {
 	// go-message returns a usable *Entity even when it reports an unknown charset
 	// or transfer encoding, so only a nil entity is a hard failure.
-	entity, err := gomessage.Read(bytes.NewReader(raw))
+	entity, err := gomessage.Read(source)
 	if entity == nil {
 		return nil, fmt.Errorf("parse message: %w", err)
 	}
@@ -35,7 +41,10 @@ func Parse(raw []byte) (*pipeline.EmailJSON, error) {
 		Headers: parseHeaders(entity.Header),
 	}
 
-	body, attachments, inline, calendarEvents := parseEntity(entity)
+	body, attachments, inline, calendarEvents, err := parseEntity(entity, newPartBudget())
+	if err != nil {
+		return nil, fmt.Errorf("parse message: %w", err)
+	}
 	email.Body = body
 	email.Attachments = attachments
 	email.Inline = inline
@@ -133,12 +142,15 @@ var headerLineBreakStripper = strings.NewReplacer("\r", "", "\n", "")
 
 // parseEntity converts a go-message entity (whole message or a single part)
 // into the body tree, attachments, inline parts, and calendar events.
-func parseEntity(e *gomessage.Entity) (pipeline.Body, []pipeline.Attachment, []pipeline.Attachment, []pipeline.CalendarEvent) {
+func parseEntity(e *gomessage.Entity, budget *partBudget) (pipeline.Body, []pipeline.Attachment, []pipeline.Attachment, []pipeline.CalendarEvent, error) {
 	mediaType, _, _ := e.Header.ContentType()
 	mediaType = strings.ToLower(mediaType)
 
 	if mr := e.MultipartReader(); mr != nil {
-		return parseMultipart(mr, mediaType)
+		if err := budget.enter(1); err != nil {
+			return pipeline.Body{}, nil, nil, nil, err
+		}
+		return parseMultipart(mr, mediaType, 1, budget)
 	}
 
 	// Single-part body. go-message has already decoded the transfer encoding
@@ -156,10 +168,13 @@ func parseEntity(e *gomessage.Entity) (pipeline.Body, []pipeline.Attachment, []p
 		}
 	}
 
-	return body, nil, nil, calEvents
+	return body, nil, nil, calEvents, nil
 }
 
-func parseMultipart(mr gomessage.MultipartReader, mediaType string) (pipeline.Body, []pipeline.Attachment, []pipeline.Attachment, []pipeline.CalendarEvent) {
+// parseMultipart reads the parts of a multipart at depth. Each nested multipart wraps every
+// reader above it, so reading a byte at depth d costs d boundary scans: the depth limit is what
+// keeps a deeply nested message from costing the square of its depth.
+func parseMultipart(mr gomessage.MultipartReader, mediaType string, depth int, budget *partBudget) (pipeline.Body, []pipeline.Attachment, []pipeline.Attachment, []pipeline.CalendarEvent, error) {
 	body := pipeline.Body{ContentType: mediaType}
 	var attachments, inline []pipeline.Attachment
 	var calendarEvents []pipeline.CalendarEvent
@@ -177,13 +192,23 @@ func parseMultipart(mr gomessage.MultipartReader, mediaType string) (pipeline.Bo
 			}
 		}
 
+		if err := budget.part(); err != nil {
+			return body, attachments, inline, calendarEvents, err
+		}
+
 		partMediaType, _, _ := part.Header.ContentType()
 		partMediaType = strings.ToLower(partMediaType)
 
 		// Recurse into nested multiparts (e.g. multipart/alternative inside
 		// multipart/mixed), preserving the body tree.
 		if pmr := part.MultipartReader(); pmr != nil {
-			subBody, subAtt, subInl, subCal := parseMultipart(pmr, partMediaType)
+			if err := budget.enter(depth + 1); err != nil {
+				return body, attachments, inline, calendarEvents, err
+			}
+			subBody, subAtt, subInl, subCal, err := parseMultipart(pmr, partMediaType, depth+1, budget)
+			if err != nil {
+				return body, attachments, inline, calendarEvents, err
+			}
 			body.Parts = append(body.Parts, subBody)
 			attachments = append(attachments, subAtt...)
 			inline = append(inline, subInl...)
@@ -249,7 +274,7 @@ func parseMultipart(mr gomessage.MultipartReader, mediaType string) (pipeline.Bo
 		})
 	}
 
-	return body, attachments, inline, calendarEvents
+	return body, attachments, inline, calendarEvents, nil
 }
 
 // partFilename returns the part's filename, preferring the Content-Disposition

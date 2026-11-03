@@ -29,6 +29,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"github.com/rest-mail/rest-mail-server/internal/greylist"
 	"github.com/rest-mail/rest-mail-server/internal/metrics"
+	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"github.com/rest-mail/rest-mail-server/internal/rollup"
 	"github.com/rest-mail/rest-mail-server/internal/trace"
 	"github.com/rest-mail/rest-mail-server/internal/vacation"
@@ -84,6 +85,8 @@ func main() {
 		slog.Error("failed to load config", "error", err)
 		os.Exit(1)
 	}
+	// Every message this process parses is held to the inbound limits (#1647, #1641).
+	rmime.SetLimits(cfg.MIMELimits())
 
 	// Trust the operator/testbed CA for the API's outbound HTTP client. The path
 	// is config-driven and defaults to the historical /certs/ca.crt, so the

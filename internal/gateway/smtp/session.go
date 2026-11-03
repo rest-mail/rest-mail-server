@@ -21,6 +21,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"github.com/rest-mail/rest-mail-server/internal/ratelimit"
 	"github.com/rest-mail/rest-mail-server/internal/srs"
 )
@@ -647,6 +648,18 @@ func (s *session) Data(r io.Reader) error {
 		return err
 	}
 
+	// Hop count (RFC 5321 §6.3): a message carrying more Received: fields than the limit,
+	// counting the one this server stamps below, is taken as a mail loop and refused for good,
+	// as Postfix's hopcount_limit refuses it (RFC 3463 5.4.6, routing loop detected).
+	if rmime.ReceivedCount(data)+1 > rmime.CurrentLimits().MaxReceived {
+		slog.Warn("smtp: rejecting DATA: too many Received headers", "remote", s.remoteAddr(), "event", "smtp_hop_limit")
+		return &gosmtp.SMTPError{
+			Code:         554,
+			EnhancedCode: gosmtp.EnhancedCode{5, 4, 6},
+			Message:      "Routing loop detected: too many Received headers",
+		}
+	}
+
 	// Per-account submission rate limit (#171): a compromised credential must not
 	// be able to flood outbound mail. Enforced after the body is fully read (so the
 	// DATA stream is consumed) and before any recipient is delivered or queued, so a
@@ -665,7 +678,17 @@ func (s *session) Data(r io.Reader) error {
 	}
 
 	// Parse the message and deliver to each recipient.
-	subject, bodyText, bodyHTML, messageID, senderName, inReplyTo, references, toList, ccList, fromAddr := parseRawMessage(data)
+	subject, bodyText, bodyHTML, messageID, senderName, inReplyTo, references, toList, ccList, fromAddr, limitErr := parseRawMessageLimited(data)
+	if limitErr != nil {
+		// Nested deeper or holding more parts than the MIME limits allow (#1641): a media
+		// problem the sender must fix, so refused for good (RFC 3463 5.6.0).
+		slog.Warn("smtp: rejecting DATA: MIME structure over limit", "remote", s.remoteAddr(), "error", limitErr, "event", "smtp_mime_limit")
+		return &gosmtp.SMTPError{
+			Code:         554,
+			EnhancedCode: gosmtp.EnhancedCode{5, 6, 0},
+			Message:      "Message structure too complex: too deeply nested or too many MIME parts",
+		}
+	}
 
 	// #181: on the authenticated submission path the message From: header must
 	// belong to an identity the account may send as — mirroring the MAIL FROM

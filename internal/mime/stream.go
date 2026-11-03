@@ -58,11 +58,13 @@ func ParseStream(ctx context.Context, source io.Reader, options StreamOptions) (
 	if entity == nil {
 		return nil, fmt.Errorf("parse message: %w", err)
 	}
-	s := &streamParse{ctx: ctx, options: options, email: &pipeline.EmailJSON{Headers: parseHeaders(entity.Header)}}
+	s := &streamParse{ctx: ctx, options: options, budget: newPartBudget(), email: &pipeline.EmailJSON{Headers: parseHeaders(entity.Header)}}
 	mediaType, _, _ := entity.Header.ContentType()
 	mediaType = strings.ToLower(mediaType)
 	if mr := entity.MultipartReader(); mr != nil {
-		s.email.Body = s.walk(mr, mediaType)
+		if s.failed = s.budget.enter(1); s.failed == nil {
+			s.email.Body = s.walk(mr, mediaType, 1)
+		}
 	} else {
 		content, _ := s.readText(entity.Body)
 		s.email.Body = pipeline.Body{ContentType: mediaType, Content: content}
@@ -71,6 +73,9 @@ func ParseStream(ctx context.Context, source io.Reader, options StreamOptions) (
 		}
 	}
 	if s.failed != nil {
+		if errors.Is(s.failed, ErrStructureLimit) {
+			return nil, fmt.Errorf("parse message: %w", s.failed)
+		}
 		return nil, s.failed
 	}
 	return s.email, nil
@@ -79,11 +84,14 @@ func ParseStream(ctx context.Context, source io.Reader, options StreamOptions) (
 type streamParse struct {
 	ctx     context.Context
 	options StreamOptions
+	budget  *partBudget
 	email   *pipeline.EmailJSON
 	failed  error
 }
 
-func (s *streamParse) walk(mr gomessage.MultipartReader, mediaType string) pipeline.Body {
+// walk reads the parts of a multipart at depth, which the Limits in force bound as Parse's
+// parseMultipart bounds them.
+func (s *streamParse) walk(mr gomessage.MultipartReader, mediaType string, depth int) pipeline.Body {
 	body := pipeline.Body{ContentType: mediaType}
 	for s.failed == nil {
 		part, err := mr.NextPart()
@@ -93,10 +101,16 @@ func (s *streamParse) walk(mr gomessage.MultipartReader, mediaType string) pipel
 		if err != nil && !gomessage.IsUnknownCharset(err) && !gomessage.IsUnknownEncoding(err) {
 			break // a malformed boundary: nothing further can be read
 		}
+		if s.failed = s.budget.part(); s.failed != nil {
+			break
+		}
 		partType, _, _ := part.Header.ContentType()
 		partType = strings.ToLower(partType)
 		if nested := part.MultipartReader(); nested != nil {
-			body.Parts = append(body.Parts, s.walk(nested, partType))
+			if s.failed = s.budget.enter(depth + 1); s.failed != nil {
+				break
+			}
+			body.Parts = append(body.Parts, s.walk(nested, partType, depth+1))
 			continue
 		}
 		disposition, _, _ := part.Header.ContentDisposition()
