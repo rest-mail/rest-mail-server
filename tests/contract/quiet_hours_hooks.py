@@ -1,4 +1,4 @@
-"""Provide a live account and an IANA zone for the compiler's format placeholder."""
+"""Provide a live account for quiet-hours requests."""
 
 import json
 import urllib.request
@@ -33,17 +33,8 @@ def register_quiet_hours_hooks(admin_token):
         account_id = accounts[0].get("id") if accounts else None
         if type(account_id) is not int or account_id < 1:
             raise RuntimeError("quiet-hours fixture has no live account")
+        # Only the path: the generator's time_zone is held by a pin (probes.py).
         transaction["fullPath"] = f"/api/v1/accounts/{account_id}/quiet-hours"
-        body = transaction.get("request", {}).get("body")
-        if transaction.get("request", {}).get("method") != "PUT" or not body:
-            return
-        try:
-            setting = json.loads(body)
-        except (TypeError, ValueError):
-            return
-        if isinstance(setting, dict) and setting.get("time_zone") == "x":
-            setting["time_zone"] = "UTC"
-            transaction["request"]["body"] = json.dumps(setting)
 
     for operation in ("getQuietHours", "setQuietHours"):
         hooks.before(operation)(prepare_quiet_hours)

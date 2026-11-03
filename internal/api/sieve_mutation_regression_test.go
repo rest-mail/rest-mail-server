@@ -54,7 +54,7 @@ func newSieveMutationScenarios(t *testing.T) mailRemovalScenarios {
 		base := mailResourceReadConnection{personalDataReadConnection{accountCredentialListConnection{mode: mode, keys: keys}}}
 		return sieveMutationConnection{mailRemovalConnection{base, store}}
 	}, func(cfg *config.Config) { cfg.APIMaxBodyBytes = 256 })
-	for _, name := range []string{"script_missing", "script_null", "valid", "empty_script", "valid_keep", "invalid_syntax", "malformed_json", "internal_error"} {
+	for _, name := range []string{"script_missing", "script_null", "script_wrong_type", "valid", "empty_script", "valid_keep", "invalid_syntax", "malformed_json", "internal_error"} {
 		out[name] = out["found"]
 	}
 	out["domain_grant"] = out["domain_manager"]

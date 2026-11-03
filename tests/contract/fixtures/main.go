@@ -379,7 +379,9 @@ func prepareLinkFixture(database *gorm.DB, domain string) (uint, error) {
 	}
 	var account models.Mailbox
 	err := database.Transaction(func(tx *gorm.DB) error {
-		hosted := models.Domain{Name: "example.com", ServerType: "traditional"}
+		// Live, as the probes that made it left it: createDomain's probes remove it, and
+		// what follows them, such as autodiscover, needs to find it (hooks.py).
+		hosted := models.Domain{Name: "example.com", ServerType: "traditional", Active: true}
 		if err := tx.Where("name = ?", hosted.Name).FirstOrCreate(&hosted).Error; err != nil {
 			return err
 		}

@@ -163,7 +163,7 @@ func newMailRulesWriteScenarios(t *testing.T, connector func(mailRemovalConnecti
 	}
 	normal, current := makeRouter("normal", false), mailboxToken(t, jwt)
 	out := map[string]accountReadScenario{}
-	for _, name := range []string{"found", "valid", "script_missing", "script_null", "created", "active_false", "active_true", "active_null", "empty_script", "utf8_script", "invalid_syntax", "malformed_json", "create_unavailable", "update_unavailable", "lookup_unavailable", "invalid_id", "invalid_format", "request_too_large", "target_unavailable", "primary", "missing", "inaccessible"} {
+	for _, name := range []string{"found", "valid", "script_missing", "script_null", "script_wrong_type", "created", "active_false", "active_true", "active_null", "empty_script", "utf8_script", "invalid_syntax", "malformed_json", "create_unavailable", "update_unavailable", "lookup_unavailable", "invalid_id", "invalid_format", "request_too_large", "target_unavailable", "primary", "missing", "inaccessible"} {
 		out[name] = accountReadScenario{normal, current}
 	}
 	for name, mode := range map[string]string{"no_grants": "no_grants", "domain_grant": "domain_manager", "write_only": "write_only", "grant_unavailable": "grant_failure", "ownership_unavailable": "ownership_failure"} {
