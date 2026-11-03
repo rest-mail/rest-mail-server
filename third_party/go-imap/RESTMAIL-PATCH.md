@@ -54,3 +54,15 @@ advertised.
   are added to a revision of this protocol" (§7.1), and RFC 7162 §3.2.11
   requires CLOSED of a server that "advertises "QRESYNC" or "CONDSTORE"",
   which this one does not. ENABLE IMAP4rev2 will turn it on.
+
+## Banned clients are refused before their credentials are checked
+
+The [Limiter] ban used to be read only after a failed LOGIN or AUTHENTICATE,
+so a banned client could open a new connection and sign in with the right
+password (rest-mail/rest-mail-server#1678). A banned address is now refused in
+the greeting with `* BYE`, and LOGIN or AUTHENTICATE from a session opened
+before the ban gets `* BYE` and a tagged `NO [UNAVAILABLE]` (RFC 5530: a
+temporary refusal, unlike AUTHENTICATIONFAILED) without calling the backend,
+then the connection closes. The failure that earns the ban gets the same reply.
+`TestAuthenticationFailureBudgetAppliesToBothForms` asserted the old reply text,
+so it is corrected.

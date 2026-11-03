@@ -83,9 +83,12 @@ func TestAuthenticationFailureBudgetAppliesToBothForms(t *testing.T) {
 	if first != "A1 NO [AUTHENTICATIONFAILED] Invalid credentials" || limiter.failures != 1 {
 		t.Fatalf("first failure: %q, count=%d", first, limiter.failures)
 	}
-	second := c.authenticate("A2", "PLAIN", plainResponse("nonexistent@example.test", "wrong-password"))
-	if second != "A2 NO Too many authentication failures" || limiter.failures != 2 || limiter.resets != 0 || b.calls != 2 {
-		t.Fatalf("limit reply=%q failures=%d resets=%d backend=%d", second, limiter.failures, limiter.resets, b.calls)
+	bye := c.authenticate("A2", "PLAIN", plainResponse("nonexistent@example.test", "wrong-password"))
+	second := c.line()
+	if bye != "* BYE Too many authentication failures, try again later" ||
+		second != "A2 NO [UNAVAILABLE] Too many authentication failures, try again later" ||
+		limiter.failures != 2 || limiter.resets != 0 || b.calls != 2 {
+		t.Fatalf("limit reply=%q %q failures=%d resets=%d backend=%d", bye, second, limiter.failures, limiter.resets, b.calls)
 	}
 	if _, err := c.r.ReadByte(); !errors.Is(err, io.EOF) {
 		t.Fatalf("connection remains open after exhausted budget: %v", err)
