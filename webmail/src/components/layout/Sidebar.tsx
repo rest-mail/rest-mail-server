@@ -307,6 +307,7 @@ export function Sidebar() {
       {/* Bottom nav — settings shortcuts */}
       <div className="px-1.5 py-1.5 space-y-px shrink-0">
         {([
+          { view: 'scheduled' as const, label: 'scheduled' },
           { view: 'vacation' as const, label: 'vacation' },
           { view: 'quarantine' as const, label: 'quarantine' },
           { view: 'tlsReports' as const, label: 'tls_reports' },

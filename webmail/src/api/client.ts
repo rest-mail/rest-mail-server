@@ -1,6 +1,6 @@
 import type { LoginResponse, Folder, MessageSummary, MessageDetail, Account, Pagination, Attachment, AwaitingThreadsPage } from '../types';
 import { API_BASE as BASE } from './base';
-import type { paths } from './types';
+import type { components, paths } from './types';
 
 // BASE is the same-origin API path (default `/api/v1`); see ./base for how it is
 // resolved and why a missing/invalid VITE_API_URL no longer falls back to a
@@ -390,6 +390,26 @@ export async function sendMessage(data: {
     method: 'POST',
     body: JSON.stringify(data),
   });
+}
+
+// Scheduled sends. scheduleMessage is sendMessage with scheduled_at: the API
+// keeps the message and sends it then (202), and refuses a time under a minute
+// ahead or over a year ahead.
+export type ScheduledMessage = components['schemas']['ScheduledMessage'];
+
+export async function scheduleMessage(data: Parameters<typeof sendMessage>[0] & { scheduled_at: string }): Promise<{ data: ScheduledMessage }> {
+  return request(`${BASE}/messages/send`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function listScheduledMessages(): Promise<{ data: ScheduledMessage[] }> {
+  return request(`${BASE}/messages/scheduled`);
+}
+
+export async function cancelScheduledMessage(id: number): Promise<void> {
+  await requestNoContent(`${BASE}/messages/scheduled/${id}`, { method: 'DELETE' });
 }
 
 // Drafts

@@ -16,6 +16,7 @@ import { AddAccountView } from '@/components/account/AddAccountView';
 import { AccountDetailsView } from '@/components/account/AccountDetailsView';
 import { VacationView } from '@/components/settings/VacationView';
 import { QuarantineView } from '@/components/settings/QuarantineView';
+import { ScheduledView } from '@/components/mail/ScheduledView';
 import { TLSReportsView } from '@/components/admin/TLSReportsView';
 import { PipelineTesterView } from '@/components/admin/PipelineTesterView';
 import { PipelineConfigView } from '@/components/admin/PipelineConfigView';
@@ -136,6 +137,7 @@ function MailApp() {
             {view === 'accountDetails' && <div className="h-full animate-fade-in"><AccountDetailsView /></div>}
             {view === 'vacation' && <div className="h-full animate-fade-in"><VacationView /></div>}
             {view === 'quarantine' && <div className="h-full animate-fade-in"><QuarantineView /></div>}
+            {view === 'scheduled' && <div className="h-full animate-fade-in"><ScheduledView /></div>}
             {view === 'tlsReports' && <div className="h-full animate-fade-in"><TLSReportsView /></div>}
             {view === 'pipelineTester' && <div className="h-full animate-fade-in"><PipelineTesterView /></div>}
             {view === 'pipelineConfig' && <div className="h-full animate-fade-in"><PipelineConfigView /></div>}

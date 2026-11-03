@@ -4,7 +4,7 @@ import { THEME_IDS, DARK_THEME_IDS, type ThemeId } from '@/theme/packs';
 export type Theme = ThemeId;
 type View =
   | 'mail' | 'compose' | 'addAccount' | 'accountDetails'
-  | 'vacation' | 'quarantine' | 'tlsReports'
+  | 'vacation' | 'quarantine' | 'scheduled' | 'tlsReports'
   | 'pipelineTester' | 'pipelineConfig'
   | 'settings' | 'accountSettings';
 
