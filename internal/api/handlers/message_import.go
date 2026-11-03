@@ -74,7 +74,7 @@ func (h *MessageImportHandler) Register(rs endpoint.Routes) {
 	}}
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/messages/import",
 		OperationID: "importMessage", Summary: "Store a message the account already has", Tags: []string{"Messages"},
-		Description: "Stores original message octets, folder, supported system flags and required internal_date without delivery rules or push notifications. Requires mail:import on the destination, which every account is granted on its own mailbox by the importer role; an owner can revoke that grant, and the account is then refused with 403. A message whose Message-ID and exact octets are already in that account and folder is skipped without changing its flags or date; the same Message-ID with different octets is stored as another message. Messages without Message-ID use a deterministic SHA-256 import identity; the raw source remains unchanged. Every attempt is audited; successful imports and skips also receive a transactional messages.import audit entry. The decoded message is bounded by SMTP_MAX_MESSAGE_SIZE (10 MiB by default); the general API body limit may be stricter. Deleted state and up to 100 case-insensitive keywords of 1–255 ASCII bytes are preserved. Keywords must be RFC 3501 atoms without backslash. Deleted messages use IMAP deletion state, not API tombstones; EXPUNGE removes them.",
+		Description: "Stores original message octets, folder, supported system flags and required internal_date without delivery rules or push notifications. Requires mail:import on the destination, which every account is granted on its own mailbox by the importer role; an owner can revoke that grant, and the account is then refused with 403. A message whose Message-ID and exact octets are already in that account and folder is skipped without changing its flags or date; the same Message-ID with different octets is stored as another message. With always_store true no such check is made: a new message is stored with its own id, flags and date, and the one already there is left as it was. Messages without Message-ID use a deterministic SHA-256 import identity; the raw source remains unchanged. Every attempt is audited; successful imports and skips also receive a transactional messages.import audit entry. The decoded message is bounded by SMTP_MAX_MESSAGE_SIZE (10 MiB by default); the general API body limit may be stricter. Deleted state and up to 100 case-insensitive keywords of 1–255 ASCII bytes are preserved. Keywords must be RFC 3501 atoms without backslash. Deleted messages use IMAP deletion state, not API tombstones; EXPUNGE removes them.",
 		Errors:      []int{http.StatusForbidden, http.StatusNotFound, http.StatusConflict, http.StatusRequestEntityTooLarge},
 		Security:    handlerChecked(models.CapMailImport, folderSchemes...),
 		Middleware:  []endpoint.Middleware{cap}, DescribedRequest: importMessageRequest{}}, h.importSpooledMessage)
@@ -200,12 +200,17 @@ func (h *MessageImportHandler) storeImportedMessage(r *http.Request, accountID u
 		}
 		// The same Message-ID with the same octets is this message again, so a
 		// rerun skips it. Different octets are a different message that shares an
-		// ID (an edited draft, a badly made ID), so it is stored.
-		var sameID []storedImportSource
-		err := tx.Model(&models.Message{}).Select(storedImportSourceColumns).
-			Where("mailbox_id = ? AND folder = ? AND message_id IN ?", accountID, body.Folder,
-				[]string{msg.MsgID, strings.Trim(msg.MsgID, "<>")}).Order("id").Find(&sameID).Error
-		existing := sameContent(sameID, source.checksum)
+		// ID (an edited draft, a badly made ID), so it is stored. A caller asking to
+		// always store wants a new message either way, so nothing need be compared.
+		var existing *storedImportSource
+		var err error
+		if !body.AlwaysStore {
+			var sameID []storedImportSource
+			err = tx.Model(&models.Message{}).Select(storedImportSourceColumns).
+				Where("mailbox_id = ? AND folder = ? AND message_id IN ?", accountID, body.Folder,
+					[]string{msg.MsgID, strings.Trim(msg.MsgID, "<>")}).Order("id").Find(&sameID).Error
+			existing = sameContent(sameID, source.checksum)
+		}
 		switch {
 		case err != nil:
 			return err

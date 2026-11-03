@@ -459,7 +459,7 @@ type ImportResponse struct {
 
 // ImportMessage stores a message in an account as the signed-in user, without
 // delivery rules: an IMAP client's APPEND or COPY. The same message already in the
-// folder answers with that copy and Imported false.
+// folder answers with that copy and Imported false, unless req.AlwaysStore is set.
 func (c *Client) ImportMessage(token string, accountID uint, req *ImportRequest) (*ImportResponse, error) {
 	var resp ImportResponse
 	if err := c.postAuth(fmt.Sprintf("/api/v1/accounts/%d/messages/import", accountID), token, req, &resp); err != nil {

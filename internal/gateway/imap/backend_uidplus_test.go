@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"net"
 	"net/http"
@@ -191,8 +192,13 @@ func (f *fakeAPI) listMessages(w http.ResponseWriter, r *http.Request) {
 }
 
 func (f *fakeAPI) importMessage(w http.ResponseWriter, r *http.Request) {
+	body, _ := io.ReadAll(r.Body)
 	var req apiclient.ImportRequest
-	_ = json.NewDecoder(r.Body).Decode(&req)
+	_ = json.Unmarshal(body, &req)
+	var wire struct {
+		AlwaysStore bool `json:"always_store"`
+	}
+	_ = json.Unmarshal(body, &wire)
 	f.mu.Lock()
 	f.imports = append(f.imports, req)
 	// A test may force the outcome: a 200 with no data.id models an answer that
@@ -206,14 +212,27 @@ func (f *fakeAPI) importMessage(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	id := f.nextID
-	f.nextID++
 	// The message is created directly in its destination folder (empty = INBOX),
 	// carrying the flags and internal date the request gave.
 	folder := req.Folder
 	if folder == "" {
 		folder = "INBOX"
 	}
+	// As the real import does, identical octets in the folder are a rerun: the
+	// message already there is the answer, unless the caller asked to store.
+	if !wire.AlwaysStore {
+		for _, existing := range f.msgs {
+			if existing.folder == folder && existing.raw == string(req.RawMessage) {
+				f.mu.Unlock()
+				var resp apiclient.ImportResponse
+				resp.Data.ID, resp.Data.Folder = existing.id, folder
+				writeJSON(w, resp)
+				return
+			}
+		}
+	}
+	id := f.nextID
+	f.nextID++
 	m := &fakeMsg{id: id, folder: folder, raw: string(req.RawMessage), receivedAt: req.InternalDate}
 	m.isRead = slices.Contains(req.Flags, `\Seen`)
 	m.isFlagged = slices.Contains(req.Flags, `\Flagged`)

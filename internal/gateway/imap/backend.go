@@ -289,6 +289,11 @@ func (m *mailbox) Copy(uid uint32, dest string) error {
 // delivery that produces no message (pipeline quarantine/discard, or an
 // out-of-range UID) is surfaced as an error rather than reported as a bogus
 // success carrying UID 0.
+//
+// It always asks the import for a new message. COPY adds a message to the end of
+// dest (RFC 3501 §6.4.7), so a copy into the folder the source is in is a second
+// message with a higher UID. Reporting the source's UID instead would tell a client
+// that copies and then expunges the original to delete its only copy (#1553).
 func (m *mailbox) CopyUID(uid uint32, dest string) (uint32, error) {
 	if err := validateFolder(dest); err != nil {
 		return 0, err
@@ -310,6 +315,7 @@ func (m *mailbox) CopyUID(uid uint32, dest string) (uint32, error) {
 		Folder:       dest,
 		Flags:        flags,
 		InternalDate: received,
+		AlwaysStore:  true,
 	})
 	if err != nil {
 		return 0, err
@@ -337,7 +343,8 @@ func (m *mailbox) Append(dest string, f goimap.FlagUpdate, raw []byte) error {
 //
 // This is the account's own client storing its own mail, not mail arriving, so it
 // goes through the import operation as the signed-in account and no delivery rules
-// judge it. The same message again answers with the copy already there. An
+// judge it. APPEND adds a new message (RFC 3501 §6.3.11), so the same message again
+// is another message with a higher UID, and it asks the import for that (#1553). An
 // out-of-range UID is surfaced as an error rather than a bogus success carrying
 // UID 0.
 func (m *mailbox) AppendUID(dest string, f goimap.FlagUpdate, raw []byte) (uint32, error) {
@@ -370,6 +377,7 @@ func (m *mailbox) appendAt(dest string, f goimap.FlagUpdate, internalDate time.T
 		Folder:       dest,
 		Flags:        importFlags(f),
 		InternalDate: internalDate,
+		AlwaysStore:  true,
 	})
 	if err != nil {
 		return 0, err

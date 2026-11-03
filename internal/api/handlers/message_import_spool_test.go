@@ -384,6 +384,12 @@ func TestImportRefusalsDoNotHoldTheMessage(t *testing.T) {
 		{"a field refused by the binder", routes, importRequestJSON(message, `,"flags":1`), 422},
 		{"a field no one declared", routes, importRequestJSON(message, `,"x":1`), 422},
 		{"not base64", routes, bytes.Replace(importRequestJSON(message, ""), []byte("="), []byte("!"), 1), 422},
+		{"always_store/past the decoded limit", routesSmall, importRequestJSON(message[:size/2+1], `,"always_store":true`), 413},
+		{"always_store/no credentials", routes, importRequestJSON(message, `,"always_store":true`), 401},
+		{"always_store/a field refused by the handler", routes, importRequestJSON(message, `,"always_store":true,"flags":["bad keyword"]`), 422},
+		{"always_store/a field refused by the binder", routes, importRequestJSON(message, `,"always_store":true,"flags":1`), 422},
+		{"always_store/a field no one declared", routes, importRequestJSON(message, `,"always_store":true,"x":1`), 422},
+		{"always_store/not base64", routes, bytes.Replace(importRequestJSON(message, `,"always_store":true`), []byte("="), []byte("!"), 1), 422},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := httptest.NewRequest(http.MethodPost, "/api/v1/accounts/12/messages/import", bytes.NewReader(tc.body))
@@ -465,7 +471,7 @@ func TestImportDiskFailureIsNotARefusal(t *testing.T) {
 }
 
 func TestImportDeclaredFieldsAreTheType(t *testing.T) {
-	want := map[string]bool{"folder": true, "flags": true, "internal_date": true}
+	want := map[string]bool{"folder": true, "flags": true, "internal_date": true, "always_store": true}
 	if !reflect.DeepEqual(importDeclaredFields, want) {
 		t.Fatalf("declared %v, want %v", importDeclaredFields, want)
 	}

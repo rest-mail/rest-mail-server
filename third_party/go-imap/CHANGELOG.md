@@ -34,6 +34,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   backend. The ban used to be read only after a failed attempt, so a correct
   password still signed in. The reply to the failure that earns the ban is now
   the same `* BYE` and `NO [UNAVAILABLE]`.
+- COPY, UID COPY, MOVE and UID MOVE into the selected mailbox send EXISTS and
+  refresh sequence numbers, as APPEND does (RFC 3501 §5.2). They used to say
+  nothing, so the new message stayed out of sight until the next SELECT. EXISTS
+  now goes out only when the size changed. `TestMoveNames` required the old
+  behaviour for a move into INBOX and now requires this one.
 - A SELECT or EXAMINE refused with BAD keeps the mailbox already selected, with
   its read-only mode and deletion marks: a rejected command never changes state
   (RFC 3501 §6). Only a well-formed selection attempt that fails with NO
