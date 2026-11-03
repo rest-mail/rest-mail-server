@@ -12,8 +12,11 @@ Against a running E2E topology (`chore contract:faults`, nightly in
 
 Any fault that is not caught, or a baseline that is not green, fails the run.
 Reports land in .cache/contract/: faults.md and faults-<name>-<phase>.xml.
-Limit phases send their own login probes, not Vertrag examples. Known gaps
-remain until live proof is reviewed; a newly caught gap deliberately fails.
+Limit phases send their own login probes, not Vertrag examples. The secret_scan
+phase runs the same narrowed gate and judges its recording with secret_scan.py,
+because a secret in a free string fits the schema and passes the examples phase.
+Known gaps remain until live proof is reviewed; a newly caught gap deliberately
+fails.
 
 Usage:
   faults.py tags                       every build tag in the catalogue, comma separated
@@ -33,14 +36,17 @@ from urllib.parse import urlsplit
 
 import yaml
 
+import secret_scan
+
 ROOT = Path(__file__).resolve().parents[2]
 CATALOGUE = ROOT / "tests/contract/faults.yml"
 OUT = ROOT / ".cache/contract"
 ACTIVE = "fault injection active"
 
 # Each phase a fault can name: the run.sh phase that runs it, and its report.
-PHASES = {"examples": ("gate", "examples.xml"), "body_cap": None, "auth_throttle": None}
+PHASES = {"examples": ("gate", "examples.xml"), "body_cap": None, "auth_throttle": None, "secret_scan": ("gate", "examples.har")}
 LIMIT_PHASES = {"body_cap", "auth_throttle"}
+SCAN_PHASE = "secret_scan"
 LOGIN = "/api/v1/auth/login"
 BODY_BYTES = 32 << 20
 THROTTLE_ATTEMPTS = 200
@@ -84,16 +90,21 @@ def transactions_of(report, path):
     return sent, failed
 
 
-def limit_transactions_of(report, path, phase):
+def probe_transactions_of(report, path, phase):
+    """(1, failures) for the one case a limit probe or the scan writes. A case
+    that errored or was skipped could not judge, so it is no verdict at all."""
     cases = list(ET.parse(report).getroot().iter("testcase"))
-    if len(cases) != 1 or cases[0].get("name") != f"{path} > {phase}" or cases[0].get("classname") != "login":
+    if phase == SCAN_PHASE:
+        if len(cases) != 1 or cases[0].get("name") != f"{path} > {phase}":
+            raise ValueError("no unique secret scan verdict for the route")
+    elif len(cases) != 1 or cases[0].get("name") != f"{path} > {phase}" or cases[0].get("classname") != "login":
         raise ValueError("no unique login limit probe for the operation and reason")
     case = cases[0]
     if case.find("error") is not None or case.find("skipped") is not None:
-        raise ValueError("the limit probe errored or was skipped: " + ET.tostring(case, encoding="unicode"))
+        raise ValueError("the probe errored or was skipped: " + ET.tostring(case, encoding="unicode"))
     failures = case.findall("failure")
     if any(failure.get("type") != phase for failure in failures):
-        raise ValueError("the limit probe failed for a different reason")
+        raise ValueError("the probe failed for a different reason")
     return 1, [failure.get("message", phase) for failure in failures]
 
 
@@ -109,11 +120,12 @@ def judge(report, path, faulted, known_gap=None, phase="examples", expected_fail
     """
     if not Path(report).exists():
         return False, "the phase did not run: no report"
-    if phase in LIMIT_PHASES:
+    if phase in LIMIT_PHASES or phase == SCAN_PHASE:
         try:
-            sent, failed = limit_transactions_of(report, path, phase)
+            sent, failed = probe_transactions_of(report, path, phase)
         except (ValueError, ET.ParseError) as error:
-            return False, f"invalid limit proof: {error}"
+            kind = "scan" if phase == SCAN_PHASE else "limit"
+            return False, f"invalid {kind} proof: {error}"
     else:
         sent, failed = transactions_of(report, path)
     if faulted:
@@ -223,7 +235,53 @@ def run_limits(phase, operation, keep_as):
     return report
 
 
-def run_phase(phase, operation, keep_as):
+def answers_route(finding, path):
+    """Whether a scan finding names this route as the one answering. It starts
+    "<method> <url> [<transaction>] answers ...", or "the audit log's ..."."""
+    parts = finding.split(" ", 2)
+    return len(parts) == 3 and urlsplit(parts[1]).path == path
+
+
+def sent_secrets(har, path):
+    """The secrets the recording shows sent to this route. Without one the scan
+    has nothing to look for there, and a clean scan proves nothing."""
+    found = []
+    for entry in har["log"]["entries"]:
+        if secret_scan.path_of(entry) == path:
+            post = entry.get("request", {}).get("postData") or {}
+            found += secret_scan.json_secrets(secret_scan.body_text(post), secret_scan.SENT_FIELDS)
+    return found
+
+
+def scan_recording(har_path, operation, path, keep_as):
+    """Judge one recording with the scanner, as a report the run can read: a
+    failure per finding on this route. Any finding elsewhere, a missing recording
+    or a route sent no secret is an error, so it neither catches nor clears."""
+    report = OUT / keep_as
+    report.parent.mkdir(parents=True, exist_ok=True)
+    suite = ET.Element("testsuite", name=SCAN_PHASE)
+    case = ET.SubElement(suite, "testcase", classname=operation, name=f"{path} > {SCAN_PHASE}")
+    try:
+        har = json.loads(Path(har_path).read_text())
+        sent = sent_secrets(har, path)
+        if not sent:
+            raise ValueError(f"the recording shows no secret sent to {path}")
+        findings = secret_scan.scan(har)
+        elsewhere = [finding for finding in findings if not answers_route(finding, path)]
+        if elsewhere:
+            raise ValueError("a finding on another route: " + "; ".join(elsewhere))
+        for finding in findings:
+            ET.SubElement(case, "failure", type=SCAN_PHASE, message=finding)
+        ET.SubElement(case, "system-out").text = (
+            f"{len(har['log']['entries'])} recorded exchanges, {len(sent)} secrets sent to {path}, {len(findings)} findings"
+        )
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        ET.SubElement(case, "error", message=str(error)).text = str(error)
+    ET.ElementTree(suite).write(report, encoding="utf-8", xml_declaration=True)
+    return report
+
+
+def run_phase(phase, operation, keep_as, path=None):
     if phase in LIMIT_PHASES:
         return run_limits(phase, operation, keep_as)
     runner, report = PHASES[phase]
@@ -232,6 +290,8 @@ def run_phase(phase, operation, keep_as):
     ).returncode
     print(f"run.sh {runner} --operation-id {operation} exited {code}")
     source = OUT / report
+    if phase == SCAN_PHASE:
+        return scan_recording(source, operation, path, keep_as)
     kept = OUT / keep_as
     kept.unlink(missing_ok=True)
     if source.exists():
@@ -249,7 +309,7 @@ def run(container):
         print(f"::group::baseline: {phase} of {operation} on the normal API")
         if phase in LIMIT_PHASES:
             restart_api("")
-        report = run_phase(phase, operation, f"faults-baseline-{operation}-{phase}.xml")
+        report = run_phase(phase, operation, f"faults-baseline-{operation}-{phase}.xml", path)
         passed, why = judge(report, path, faulted=False, phase=phase)
         print("::endgroup::")
         rows.append(f"| (none) | {operation} | {phase} | {why} |")
@@ -264,7 +324,7 @@ def run(container):
             if not fault_active(container, name):
                 passed, why = False, f"the API did not log '{ACTIVE}' for {name}: the switch did not take"
             else:
-                report = run_phase(phase, operation, f"faults-{name}-{phase}.xml")
+                report = run_phase(phase, operation, f"faults-{name}-{phase}.xml", fault["path"])
                 passed, why = judge(
                     report, fault["path"], faulted=True, known_gap=fault.get("known_gap"), phase=phase,
                     expected_failure=fault.get("expected_failure"),

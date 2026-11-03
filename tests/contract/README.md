@@ -797,12 +797,21 @@ requires both to be caught. Local mocked HTTP tests and builds alone do not
 justify removing a `known_gap` marker: a caught fault with one deliberately
 fails with **now caught**, which is the signal to review the proof.
 
-No secrets fault is claimed here: the normal `contract` command gates on
-`secret_scan.py`, but the fault runner judges examples JUnit and the narrow
-limit probes, not that scan. A schema-valid password or key echo needs a scanner verdict
-integrated into the fault run before it can be required to turn that run red.
-The fixture administrator's password and session token are also redacted in
-HAR bodies, so their echoes alone are not proof for the recording scanner.
+A secret in a free string fits its schema, so the `examples` phase passes it. The
+`secret_scan` phase is what catches `change_password_refusal_echoes_password`, a
+wrong current password's 403 refusal repeating that password in `error.message`.
+It runs the same narrowed gate, then gives the recording (`examples.har`) to
+`secret_scan.py`, as `chore contract` does for the whole run. The fault is caught
+only by a finding on its own route, for its expected reason. A finding on another
+route, a missing recording, or a route the recording shows no secret sent to is
+an error, not a verdict. It reads the recording only, not the audit log, so it
+needs no audit reader's sign-in; the whole run's scan keeps reading both.
+
+The witness has to send a value the recording keeps. Vertrag redacts the values
+of its own login body, so login cannot be it: the only password login's examples
+record is the fixture admin's. Any operation sending another secret can be, and
+`faults-<name>-secret_scan.xml` says how many secrets were sent to the route.
+
 Authorization and ownership faults still wait until those phases stop being
 report-only.
 
@@ -813,7 +822,9 @@ report-only.
    the route's method and path, a `Break` that rewrites the recorded answer
    (`renameField`, `replaceField`, `addDataField` and `setMediaType` are in
    `faultinject.go`), and an `Example` of the route's normal answer for the
-   package test. Set `ExampleStatus` when that answer is not 200. A switch
+   package test. Set `ExampleStatus` when that answer is not 200. A fault that
+   repeats what the client sent uses `BreakSeeing`, which is given the request
+   body as well, with `ExampleRequest` for the package test. A switch
    disabling a real guard uses `Configure` instead of `Break`; only tagged
    builds apply it to the configuration before constructing the router. The
    switch check exercises the configured limit middleware as well as the

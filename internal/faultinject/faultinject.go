@@ -11,10 +11,13 @@
 package faultinject
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"sort"
 
 	"github.com/rest-mail/rest-mail-server/internal/config"
@@ -26,12 +29,17 @@ type Fault struct {
 	Method string
 	Path   string
 	// Break rewrites the recorded answer before it is sent.
-	Break     func(*httptest.ResponseRecorder)
-	Configure func(*config.Config)
+	Break func(*httptest.ResponseRecorder)
+	// BreakSeeing is Break for a fault that needs what the client sent: it is
+	// given the request body as well. The route still receives that body.
+	BreakSeeing func(sent []byte, rec *httptest.ResponseRecorder)
+	Configure   func(*config.Config)
 	// Example is an answer the route gives without the fault, for the
-	// package's own test that the fault changes it.
-	Example       string
-	ExampleStatus int
+	// package's own test that the fault changes it. ExampleRequest is the body
+	// sent for it, which a BreakSeeing needs.
+	Example        string
+	ExampleStatus  int
+	ExampleRequest string
 }
 
 var registry = map[string]Fault{}
@@ -90,11 +98,19 @@ func wrap(next http.Handler, faults []Fault) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		var sent []byte
+		if slices.ContainsFunc(matched, func(f Fault) bool { return f.BreakSeeing != nil }) {
+			sent, _ = io.ReadAll(r.Body)
+			r.Body = io.NopCloser(bytes.NewReader(sent))
+		}
 		rec := httptest.NewRecorder()
 		next.ServeHTTP(rec, r)
 		for _, f := range matched {
 			if f.Break != nil {
 				f.Break(rec)
+			}
+			if f.BreakSeeing != nil {
+				f.BreakSeeing(sent, rec)
 			}
 		}
 		for key, values := range rec.Header() {
