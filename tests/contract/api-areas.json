@@ -9,6 +9,8 @@
     "swaggerUI"
   ],
   "631": [
+    "acmeChallenge",
+    "headAcmeChallenge",
     "microsoftAutodiscover",
     "mozillaAutoconfig",
     "mozillaAutoconfigWellKnown",
@@ -17,11 +19,18 @@
   ],
   "632": [
     "acceptInvitation",
+    "getRecoveryEmail",
+    "issueClientCredentialsToken",
     "login",
     "logout",
     "protocolSignIn",
     "recoverAccount",
-    "refreshToken"
+    "recoveryEmailLink",
+    "redeemRecoveryEmail",
+    "refreshToken",
+    "registerRecoveryEmail",
+    "requestRecoveryEmail",
+    "verifyRecoveryEmail"
   ],
   "633": [
     "ownerChallenge",
@@ -40,13 +49,18 @@
     "createAPIKey",
     "createAccount",
     "createAppPassword",
+    "createClientSecret",
     "getAccount",
+    "getAccountSendLimits",
     "linkAccount",
     "listAPIKeys",
     "listAccounts",
+    "listClientSecrets",
     "listCredentials",
     "revokeAPIKey",
+    "revokeClientSecret",
     "revokeCredential",
+    "setAccountSendLimits",
     "unlinkAccount",
     "updateAPIKey"
   ],
@@ -74,14 +88,18 @@
     "listThreads",
     "renameFolder",
     "searchMessages",
+    "setThreadDue",
+    "snoozeThread",
     "updateMessage"
   ],
   "638": [
     "cancelScheduledMessage",
     "forwardMessage",
     "listCalendarEvents",
+    "listHeldMessages",
     "listScheduledMessages",
     "respondToCalendar",
+    "releaseHeldMessage",
     "saveDraft",
     "sendDraft",
     "sendMessage",
@@ -91,8 +109,10 @@
     "blockSender",
     "createContact",
     "deleteContact",
+    "getContactReplyTimeSetting",
     "importContacts",
     "listContacts",
+    "setContactReplyTimeSetting",
     "suggestContacts",
     "updateContact"
   ],
