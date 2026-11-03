@@ -7,6 +7,9 @@ the future, and omits the 4xx transactions whose probes gate.py already ignores.
 All probes from successful transactions remain enabled. The first run enforces
 the full surface gate.
 
+A fuzz run (a report named fuzz.xml) also holds a delivery's mailbox_id at the
+recipient the fixtures make. A coverage run does not.
+
 A run narrowed to operations without a pinned field has nothing for that pin to
 hold, and Vertrag refuses a pin that matches nothing. Such a run names the fields
 in --no-pin=<name,name>; --no-pin alone holds nothing.
@@ -14,6 +17,7 @@ in --no-pin=<name,name>; --no-pin alone holds nothing.
 Usage: probes.py <vertrag.yml> <out.yml> <report.xml> [--no-pin[=<name,name>]]
 """
 
+import json
 import sys
 from pathlib import Path
 
@@ -28,6 +32,17 @@ DKIM_KEY = Path(__file__).resolve().parent / "fixtures/dkim-key.pem"
 # (ErrChangedByHook) without counting it, so the valid probes would never be
 # sent. The pin is applied before the probe is rendered, so they are.
 SNOOZE_UNTIL = "2099-01-01T10:00:00Z"
+# A schema cannot say a mailbox must exist either. Fuzz draws a mailbox_id or an
+# address that names nothing and reads the 404 as a disagreement, so the rest of
+# delivery is never reached. The fuzz run holds mailbox_id at the recipient the
+# fixtures make (fixtures --delivery-recipient). The coverage run does not: it has
+# no valid delivery probe to hold, and a pin would stop its two mailbox_id probes.
+FIXTURE_PLAN = Path(__file__).resolve().parent / "fixtureplan/defaults.json"
+
+
+def fuzz_pins():
+    plan = json.loads(FIXTURE_PLAN.read_text())
+    return {"mailbox_id": plan["delivery_recipient"]["id"]}
 
 
 def main(config_path, out_path, report_path, pin=True, unpinned=()):
@@ -41,6 +56,8 @@ def main(config_path, out_path, report_path, pin=True, unpinned=()):
     # Public test fixture: a schema generator cannot construct a signing key.
     if pin:
         pins = {"private_key": DKIM_KEY.read_text(), "snoozed_until": SNOOZE_UNTIL}
+        if Path(report_path).stem == "fuzz":
+            pins.update(fuzz_pins())
         for name in unpinned:
             del pins[name]
         if pins:

@@ -20,7 +20,13 @@ import (
 // with internal mTLS off, where the route is on the public router (#642): a body that is
 // not JSON or not an object, a folder the rule refuses, and an address that is no mailbox
 // here. The mailbox lookup answers from the rows checkMailboxAddress's pairs use.
-var gatewayDeliveryExamples = []string{"malformed_json", "body_array", "folder_invalid", "no_mailbox"}
+//
+// address_empty, mailbox_id_zero, recipient_missing and no_mailbox_by_id are the refusals
+// the fuzz phase stops sending once it holds mailbox_id at a real recipient (probes.py).
+var gatewayDeliveryExamples = []string{
+	"malformed_json", "body_array", "folder_invalid", "no_mailbox",
+	"address_empty", "mailbox_id_zero", "recipient_missing", "no_mailbox_by_id",
+}
 
 func TestGatewayDeliveryExamples(t *testing.T) {
 	pairs, err := examplepairs.Read()

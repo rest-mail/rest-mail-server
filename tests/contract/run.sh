@@ -213,6 +213,8 @@ teardown)
   exit "$code"
   ;;
 fuzz)
+  # The mailbox probes.py pins deliverMessage's generated bodies to.
+  chore test:contract-delivery-recipient || echo "the delivery recipient could not be prepared; deliverMessage's fuzz probes answer 404"
   python3 -B tests/contract/probes.py "$out/vertrag-run.yml" "$out/vertrag-probes.yml" "$out/fuzz.xml"
   python3 -B tests/contract/reports.py "$out/vertrag-probes.yml" "$out/vertrag-probes.yml" "$out/fuzz" "${narrowed[@]}"
   "$CONTRACT_VERTRAG" run --config "$out/vertrag-probes.yml" --sequence --phases fuzz "${select[@]}" \

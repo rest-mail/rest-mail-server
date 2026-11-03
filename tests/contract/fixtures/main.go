@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/rest-mail/rest-mail-server/internal/auth"
@@ -17,6 +18,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/grants"
 	"github.com/rest-mail/rest-mail-server/tests/contract/fixtureplan"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 func main() {
@@ -25,9 +27,10 @@ func main() {
 	apiKeys := flag.Bool("api-keys", false, "prepare a fresh account for real-MFA API key checks")
 	domainTenants := flag.Bool("domain-tenants", false, "prepare the domain administrators of the ownership phase")
 	mfaAdmin := flag.Bool("mfa-admin", false, "prepare the administrator the contract hooks enroll in real MFA")
+	deliveryRecipient := flag.Bool("delivery-recipient", false, "prepare the mailbox deliverMessage's fuzz probes are pinned to")
 	flag.Parse()
 	modes := 0
-	for _, on := range []bool{*linkOnly, *apiKeys, *domainTenants, *mfaAdmin} {
+	for _, on := range []bool{*linkOnly, *apiKeys, *domainTenants, *mfaAdmin, *deliveryRecipient} {
 		if on {
 			modes++
 		}
@@ -59,6 +62,8 @@ func main() {
 			}
 		} else if *mfaAdmin {
 			err = prepareMFAAdmin(database, *domain)
+		} else if *deliveryRecipient {
+			err = prepareDeliveryRecipient(database, *domain)
 		} else if *linkOnly {
 			_, err = prepareLinkFixture(database, *domain)
 		} else {
@@ -131,6 +136,40 @@ func prepareAPIKeyFixture(database *gorm.DB, domain string) (*models.Mailbox, er
 // grant is made here because granting through the API takes 2FA itself. The
 // password is disposable test state, known to the hooks; it is not printed.
 const mfaAdminAddress, mfaAdminPassword = "contract-mfa-admin@restmail.test", "contract-mfa-admin123!@"
+
+// prepareDeliveryRecipient makes the mailbox a generated delivery reaches. A
+// generated body has no Date or Message-ID, so the default inbound pipeline rightly
+// refuses it with a 550 before delivery is reached. Its domain therefore stores an
+// inbound pipeline with no filters, and the rest of delivery runs: the recipient's
+// receive grant, its quota, storing the message and the answer. Only this domain
+// has that policy. Every row names its id, so no sequence moves and no literal id
+// in an example comes to name something else. Running it again changes nothing.
+func prepareDeliveryRecipient(database *gorm.DB, domain string) error {
+	if domain != "restmail.test" {
+		return errors.New("contract fixtures require restmail.test")
+	}
+	plan, err := fixtureplan.Default()
+	if err != nil {
+		return err
+	}
+	recipient := plan.DeliveryRecipient
+	local, name, _ := strings.Cut(recipient.Address, "@")
+	return database.Transaction(func(tx *gorm.DB) error {
+		account := models.Mailbox{ID: recipient.ID, DomainID: recipient.ID, LocalPart: local, Address: recipient.Address,
+			DisplayName: "Contract delivery recipient", Active: true}
+		for _, row := range []any{
+			&models.Domain{ID: recipient.ID, Name: name, ServerType: "restmail", Active: true},
+			&models.Pipeline{ID: recipient.ID, DomainID: recipient.ID, Direction: "inbound", Filters: json.RawMessage("[]"), Active: true},
+			&account,
+			&models.QuotaUsage{MailboxID: recipient.ID},
+		} {
+			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(row).Error; err != nil {
+				return err
+			}
+		}
+		return grants.EnsureReceive(tx, &account)
+	})
+}
 
 func prepareMFAAdmin(database *gorm.DB, domain string) error {
 	if domain != "restmail.test" {

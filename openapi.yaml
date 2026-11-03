@@ -6901,6 +6901,8 @@ paths:
             schema:
               $ref: "#/components/schemas/DeliverMessageRequest"
             examples:
+              address_empty:
+                value: {"address": ""}
               body_array:
                 value: []
               deferred:
@@ -6911,10 +6913,16 @@ paths:
                 value: {"address": "admin@restmail.test", "sender": "sender@example.net", "subject": "Hello", "body_text": "Hello", "folder": " Archive"}
               internal_error:
                 value: {"address": "admin@restmail.test", "sender": "sender@example.net", "subject": "Subject", "body_text": "Hello"}
+              mailbox_id_zero:
+                value: {"mailbox_id": 0}
               no_mailbox:
                 value: {"address": "nobody@restmail.test", "sender": "sender@example.net", "subject": "Hello", "body_text": "Hello"}
+              no_mailbox_by_id:
+                value: {"mailbox_id": 2147483647}
               processed:
                 value: {"address": "admin@restmail.test", "sender": "sender@example.net", "subject": "Hello", "body_text": "Hello"}
+              recipient_missing:
+                value: {"subject": "Hello", "body_text": "Hello"}
               rejected:
                 value: {"address": "admin@restmail.test", "sender": "sender@example.net", "subject": "Hello", "body_text": "Hello"}
       responses:
@@ -6935,10 +6943,16 @@ paths:
               schema:
                 $ref: '#/components/schemas/ValidationErrorResponse'
               examples:
+                address_empty:
+                  value: {"error": {"code": "validation_failed", "message": "Request body failed validation", "details": {"fields": {"address": "mailbox_id or address required"}}}}
                 body_array:
                   value: {"error": {"code": "validation_failed", "message": "Request body failed validation", "details": {"fields": {"body": "the body is not a JSON object"}}}}
                 folder_invalid:
                   value: {"error": {"code": "validation_failed", "message": "Request body failed validation", "details": {"fields": {"folder": "must not begin or end with a space"}}}}
+                mailbox_id_zero:
+                  value: {"error": {"code": "validation_failed", "message": "Request body failed validation", "details": {"fields": {"address": "mailbox_id or address required"}}}}
+                recipient_missing:
+                  value: {"error": {"code": "validation_failed", "message": "Request body failed validation", "details": {"fields": {"address": "mailbox_id or address required"}}}}
 
   # ═══════════════════════════════════════════════════════════════
   # RESTMAIL Protocol

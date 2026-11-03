@@ -10594,6 +10594,31 @@
     }
   },
   "deliverMessage": {
+    "address_empty": {
+      "summary": "The address is empty",
+      "description": "An empty address names no mailbox, so the body names none.",
+      "request": {
+        "body": {
+          "address": ""
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "address": "mailbox_id or address required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "body_array": {
       "summary": "The body is not a JSON object",
       "request": {
@@ -10740,6 +10765,31 @@
         "mediaType": "application/json"
       }
     },
+    "mailbox_id_zero": {
+      "summary": "The mailbox id is zero",
+      "description": "Zero names no mailbox, so the body names none.",
+      "request": {
+        "body": {
+          "mailbox_id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "address": "mailbox_id or address required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "malformed_json": {
       "summary": "The body is not JSON",
       "description": "The wire body is the raw truncated JSON byte {, with application/json content type: it is refused before anything else is read.",
@@ -10782,6 +10832,25 @@
         "mediaType": "application/json"
       }
     },
+    "no_mailbox_by_id": {
+      "summary": "No mailbox has that id",
+      "description": "A well-formed id that names nothing is 404, as an address that names nothing is.",
+      "request": {
+        "body": {
+          "mailbox_id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "mailbox_not_found",
+            "message": "Mailbox not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "processed": {
       "summary": "The inbound pipeline quarantines or discards it",
       "requires": {
@@ -10800,6 +10869,32 @@
         "body": {
           "data": {
             "status": "processed"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "recipient_missing": {
+      "summary": "The body names no mailbox",
+      "description": "Neither mailbox_id nor address is there.",
+      "request": {
+        "body": {
+          "subject": "Hello",
+          "body_text": "Hello"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "address": "mailbox_id or address required"
+              }
+            }
           }
         },
         "mediaType": "application/json"
