@@ -22,10 +22,12 @@ func (s *Session) resolveUIDValidity(folder string) uint32 {
 // handleSelect implements SELECT (readOnly=false) and EXAMINE (readOnly=true).
 // EXAMINE opens the mailbox read-only (RFC 3501 §6.3.2): the tagged OK carries
 // [READ-ONLY] and s.readOnly is set so state-mutating commands are refused.
-// deselect leaves the selected state, as a SELECT or EXAMINE does before it
-// attempts the new selection: "if a SELECT command that fails is attempted, no
-// mailbox is selected" (RFC 3501 §6.3.1). Without it a later FETCH, STORE or
-// SEARCH would keep operating on the previously selected mailbox. \Deleted
+// deselect leaves the selected state, as a SELECT or EXAMINE does once its
+// arguments parse and it attempts the new selection: "if a SELECT command that
+// fails is attempted, no mailbox is selected" (RFC 3501 §6.3.1). Without it a
+// later FETCH, STORE or SEARCH would keep operating on the previously selected
+// mailbox. A command refused with BAD has attempted nothing, and "never changes
+// the state of the connection or of the selected mailbox" (RFC 3501 §6). \Deleted
 // marks are keyed by folder-scoped UIDs, so they must not carry over either
 // (otherwise EXPUNGE could delete a same-numbered UID in the new mailbox).
 func (s *Session) deselect() {
@@ -43,11 +45,6 @@ func (s *Session) handleSelect(tag, args string, readOnly bool) {
 		return
 	}
 
-	// SELECT/EXAMINE begins a new selection (RFC 3501 §6.3.1/§6.3.2): drop any
-	// prior selection up front so that a failure below leaves no mailbox
-	// selected.
-	s.deselect()
-
 	// SELECT and EXAMINE take exactly one mailbox astring (RFC 3501 §9).
 	// Literal arguments were materialized by readLiteralArgs; retain their
 	// decoded value, including significant spaces, instead of trimming it.
@@ -56,6 +53,12 @@ func (s *Session) handleSelect(tag, args string, readOnly bool) {
 		s.tagged(tag, "BAD", "SELECT/EXAMINE requires one mailbox name")
 		return
 	}
+
+	// A well-formed SELECT/EXAMINE begins a new selection (RFC 3501 §6.3.1/§6.3.2):
+	// drop any prior selection now so that a failure below leaves no mailbox
+	// selected.
+	s.deselect()
+
 	folder, ok = s.folderName(folder)
 	if !ok {
 		s.tagged(tag, "NO", "No such mailbox")
