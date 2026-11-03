@@ -1,6 +1,7 @@
 package attachmentstore
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -33,5 +34,6 @@ func PutIndependentFilesystem(ctx context.Context, root string, data []byte) (st
 	if err != nil {
 		return "", "", err
 	}
-	return putFilesystemObject(ctx, root, filepath.Join("copies", namespace), data)
+	ref, checksum, _, err := putFilesystemObject(ctx, root, filepath.Join("copies", namespace), bytes.NewReader(data))
+	return ref, checksum, err
 }

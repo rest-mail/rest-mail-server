@@ -734,6 +734,16 @@ func BindBody(dst interface{}, body []byte) error {
 	return bindError(dst, body, oapifly.Bind(dst, func(string, string) (string, bool) { return "", false }, body))
 }
 
+// BindRequest reads r into dst, a pointer to its request type, as a registered operation binds
+// it, by the same rules and with the same refusals, with body in place of r's own. It is for a
+// route that reads its own body from a file, and can give the binder a stand-in for the part
+// too large to hold: the binder then judges everything else, in its own words.
+func BindRequest(r *http.Request, dst interface{}, body []byte) error {
+	standIn := r.WithContext(r.Context())
+	standIn.Body = io.NopCloser(bytes.NewReader(body))
+	return bind(standIn, dst, requestShape(reflect.TypeOf(dst).Elem()))
+}
+
 // bindError is the refusal a Bind error is: the 422 with the fields for violations, 400 for a
 // body that cannot be read, or one in a media type the request does not take.
 func bindError(dst interface{}, body []byte, err error) error {

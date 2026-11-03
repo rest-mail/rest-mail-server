@@ -6,9 +6,12 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"testing/iotest"
 )
 
 func TestImportFilesystemPreservesEmptyAndBinaryObjects(t *testing.T) {
@@ -36,6 +39,27 @@ func TestImportFilesystemPreservesEmptyAndBinaryObjects(t *testing.T) {
 				t.Fatalf("unpublished temporary objects retained: %v %v", entries, err)
 			}
 		})
+	}
+}
+
+func TestImportFilesystemReaderAnswersItsSizeAndPublishesOnlyAWholeSource(t *testing.T) {
+	root := t.TempDir()
+	data := []byte("historical\x00attachment\xff\r\n")
+	ref, checksum, size, err := PutFilesystemReader(context.Background(), root, bytes.NewReader(data))
+	if err != nil || size != int64(len(data)) || checksum != fmt.Sprintf("%x", sha256.Sum256(data)) {
+		t.Fatalf("store: %d %q %v", size, checksum, err)
+	}
+	same, _, err := PutFilesystem(context.Background(), root, data)
+	if err != nil || same != ref {
+		t.Fatalf("the two ways of storing differ: %q %q %v", ref, same, err)
+	}
+	broken := errors.New("broken")
+	if _, _, _, err := PutFilesystemReader(context.Background(), root, io.MultiReader(strings.NewReader("part"), iotest.ErrReader(broken))); !errors.Is(err, broken) {
+		t.Fatalf("failed source: %v", err)
+	}
+	entries, err := os.ReadDir(filepath.Join(root, "imports"))
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("a failed source left: %v %v", entries, err)
 	}
 }
 

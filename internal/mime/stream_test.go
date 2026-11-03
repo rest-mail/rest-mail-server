@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"testing/iotest"
 )
 
 // memoryStore counts what it is given, and keeps only small parts.
@@ -111,6 +112,69 @@ func TestParseStreamMatchesParse(t *testing.T) {
 	}
 	if got.Metadata != nil {
 		t.Errorf("metadata %v", got.Metadata)
+	}
+}
+
+// A message's only part keeps what could be decoded when the rest can't be, as Parse keeps it,
+// and a part of many that can't be read is left out, as Parse leaves it out.
+func TestParseStreamKeepsWhatParseKeeps(t *testing.T) {
+	for name, message := range map[string]string{
+		"single part, base64 that breaks":  "Subject: x\r\nContent-Type: text/plain\r\nContent-Transfer-Encoding: base64\r\n\r\naGVsbG8gd29ybGQh!!!!aGVsbG8=\r\n",
+		"single part, unknown encoding":    "Subject: x\r\nContent-Type: text/plain\r\nContent-Transfer-Encoding: x-nonsense\r\n\r\nbody\r\n",
+		"single part, unknown charset":     "Subject: x\r\nContent-Type: text/plain; charset=x-nonsense\r\n\r\nbody\r\n",
+		"single part, not text":            "Subject: x\r\nContent-Type: application/pdf\r\n\r\n%PDF\xff\x00\r\n",
+		"single part, no headers but one":  "Subject: x\r\n\r\nbody\xff\x00\r\n",
+		"multipart, a part that breaks":    "Subject: x\r\nContent-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain\r\nContent-Transfer-Encoding: base64\r\n\r\naGVsbG8!!!!\r\n--B\r\nContent-Type: text/plain\r\n\r\nkept\r\n--B--\r\n",
+		"multipart, no closing boundary":   "Subject: x\r\nContent-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain\r\n\r\nkept\r\n",
+		"multipart, no boundary parameter": "Subject: x\r\nContent-Type: multipart/mixed\r\n\r\nbody\r\n",
+		"multipart, nested":                "Subject: x\r\nContent-Type: multipart/mixed; boundary=A\r\n\r\n--A\r\nContent-Type: multipart/alternative; boundary=B\r\n\r\n--B\r\nContent-Type: text/plain\r\n\r\none\r\n--B\r\nContent-Type: text/html\r\n\r\n<p>two</p>\r\n--B--\r\n--A\r\nContent-Type: application/pdf; name=a.pdf\r\n\r\npdf\r\n--A--\r\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			want, err := Parse([]byte(message))
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := ParseStream(context.Background(), strings.NewReader(message), StreamOptions{Store: (&memoryStore{}).put, MaxText: 1 << 20})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got.Headers, want.Headers) {
+				t.Errorf("headers %+v, want %+v", got.Headers, want.Headers)
+			}
+			if !reflect.DeepEqual(got.Body, want.Body) {
+				t.Errorf("body %+v, want %+v", got.Body, want.Body)
+			}
+			if len(got.Attachments) != len(want.Attachments) || len(got.Inline) != len(want.Inline) {
+				t.Errorf("attachments %+v inline %+v, want %+v %+v", got.Attachments, got.Inline, want.Attachments, want.Inline)
+			}
+		})
+	}
+}
+
+// ParseHeaders answers Parse's headers, fails where Parse fails, and reads no part.
+func TestParseHeadersIsParsesHeaders(t *testing.T) {
+	want, err := Parse([]byte(streamedMessage))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := ParseHeaders(strings.NewReader(streamedMessage))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want.Headers) {
+		t.Errorf("headers %+v, want %+v", got, want.Headers)
+	}
+	for _, bad := range []string{"not a header\r\n\r\nbody", "Subject: x", strings.Repeat("X: y\r\n", 300000) + "\r\nbody"} {
+		_, parseErr := Parse([]byte(bad))
+		_, headerErr := ParseHeaders(strings.NewReader(bad))
+		if (parseErr == nil) != (headerErr == nil) {
+			t.Errorf("%.40q: Parse said %v, ParseHeaders said %v", bad, parseErr, headerErr)
+		}
+	}
+	// A source that fails past the headers isn't reached.
+	source := io.MultiReader(strings.NewReader(strings.Repeat("Subject: x\r\n", 1)+"\r\n"), iotest.ErrReader(errors.New("not to be read")))
+	if _, err := ParseHeaders(source); err != nil {
+		t.Fatalf("read past the headers: %v", err)
 	}
 }
 

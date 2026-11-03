@@ -33,6 +33,17 @@ type StreamOptions struct {
 	MaxText int64
 }
 
+// ParseHeaders reads a message's header block from source and nothing past it, for a caller that
+// can decide something about a message before reading its parts. It fails for what Parse and
+// ParseStream fail for, because those can only fail on the header block.
+func ParseHeaders(source io.Reader) (pipeline.Headers, error) {
+	entity, err := gomessage.Read(source)
+	if entity == nil {
+		return pipeline.Headers{}, fmt.Errorf("parse message: %w", err)
+	}
+	return parseHeaders(entity.Header), nil
+}
+
 // ParseStream decomposes a message read from source, and keeps in memory only headers,
 // structure and up to MaxText of each text part: attachments and inline parts go straight to
 // Store as they are decoded. A message is untrusted text, and its size is the sender's choice.
@@ -127,15 +138,16 @@ func attachmentOf(filename, contentType, disposition, contentID string, stored S
 }
 
 // readText reads up to MaxText of a text part and passes over the rest, which still has to be
-// read for the next part to be found.
+// read for the next part to be found. When reading fails it answers what it read as well as the
+// error: a message's only part keeps what could be decoded, as Parse keeps it.
 func (s *streamParse) readText(part io.Reader) (string, error) {
 	var text strings.Builder
 	if _, err := io.Copy(&text, io.LimitReader(part, s.options.MaxText)); err != nil {
-		return "", err
+		return text.String(), err
 	}
 	rest, err := io.Copy(io.Discard, part)
 	if err != nil {
-		return "", err
+		return text.String(), err
 	}
 	if rest > 0 {
 		if s.email.Metadata == nil {
