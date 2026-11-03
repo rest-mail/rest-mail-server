@@ -32,9 +32,17 @@ func NewRestmailDiscoveryHandler(db *gorm.DB, hostname string) *RestmailDiscover
 // to, appending /messages. It is written as it is, without the API's data envelope.
 type RestmailDiscovery = apitypes.RestmailDiscovery
 
-// restmailDiscoverQuery names the recipient domain, once.
+// restmailDiscoverQuery names the recipient domain, once. Its pattern is the shape
+// validateDomainName needs: a dot with something after it, since a name's one trailing dot
+// is removed, or one of the full stops IDNA maps to a dot. Whether the name is a valid
+// hostname is IDNA's to say, so a domain that matches can still be refused, but the pattern
+// never refuses one the handler looks up.
+//
+// The first branch permits nothing the second does not. It is first because a generated
+// value takes the first branch: a.a is a name the handler looks up, where the second
+// branch alone generates ".!", which it refuses.
 type restmailDiscoverQuery struct {
-	Domain string `query:"domain,required" example:"restmail.test"`
+	Domain string `query:"domain,required" pattern:"[a-z]\\.[a-z]|\\.\\S|[。．｡]" message:"Invalid domain query parameter" example:"restmail.test" description:"Exactly one fully-qualified recipient domain, never a single label or a mailbox address. Case, a trailing dot and internationalized names are normalized as for domain creation; a name IDNA refuses is 422 validation_failed even when it matches this pattern."`
 }
 
 // Register mounts discovery. Like the rest of RESTMAIL, any server may ask.

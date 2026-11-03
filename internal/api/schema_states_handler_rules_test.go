@@ -174,3 +174,62 @@ func TestRelayHostIsRefusedByItsDescription(t *testing.T) {
 		t.Errorf("direct with an empty host = %d %s, want the missing domain's 404", rr.Code, rr.Body.String())
 	}
 }
+
+// The nightly fuzz run sent domain=a, which the description permitted and the handler
+// refused (#1748). The description now states the dot validateDomainName needs, and binding
+// refuses a name without one with the handler's own words, still no-store.
+func TestDiscoveryDomainIsRefusedByItsDescription(t *testing.T) {
+	var pattern string
+	for _, p := range describedDocumentOf(t).Paths["/.well-known/restmail"]["get"].Parameters {
+		if p.In == "query" && p.Name == "domain" {
+			pattern = p.Schema.Pattern
+		}
+	}
+	if pattern == "" {
+		t.Fatal("domain states no pattern")
+	}
+	re := regexp.MustCompile(pattern)
+	if re.MatchString("a") {
+		t.Errorf("the pattern %q permits a, which the handler refuses", pattern)
+	}
+
+	handler := publicDiscoveryRouters(t)["configured"]
+	get := func(query string) *httptest.ResponseRecorder {
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/.well-known/restmail?"+query, nil))
+		if got := rr.Header().Get("Cache-Control"); got != "no-store" {
+			t.Errorf("%s: Cache-Control %q, want no-store", query, got)
+		}
+		return rr
+	}
+
+	for query, want := range map[string]string{
+		"domain=a":                       "Invalid domain query parameter",
+		"domain=a.":                      "Invalid domain query parameter",
+		"domain=":                        "Invalid domain query parameter",
+		"domain=alice%40example.test":    "Invalid domain query parameter",
+		"domain=example.test&domain=b.c": "Exactly one domain query parameter required",
+		// Binding reads the first value before the handler counts them.
+		"domain=a&domain=b": "Invalid domain query parameter",
+	} {
+		if got := validationFields(t, get(query))["domain"]; got != want {
+			t.Errorf("%s: domain refused as %q, want %q", query, got, want)
+		}
+	}
+
+	// The fixtures host example.test and münchen.test, whichever way they are written.
+	for query, status := range map[string]int{
+		"domain=example.test":              http.StatusOK,
+		"domain=EXAMPLE.TEST.":             http.StatusOK,
+		"domain=m%C3%BCnchen.test":         http.StatusOK,
+		"domain=M%C3%9CNCHEN.TEST.":        http.StatusOK,
+		"domain=xn--mnchen-3ya.test":       http.StatusOK,
+		"domain=example%E3%80%82test":      http.StatusOK,
+		"domain=m%C3%BCnchen%EF%BC%8Etest": http.StatusOK,
+		"domain=not-hosted.test":           http.StatusNotFound,
+	} {
+		if got := get(query); got.Code != status {
+			t.Errorf("%s: got %d, want %d: %s", query, got.Code, status, got.Body.String())
+		}
+	}
+}
