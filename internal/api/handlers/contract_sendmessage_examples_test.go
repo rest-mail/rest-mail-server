@@ -81,7 +81,7 @@ func TestSendMessage_DocumentedPolicyRefusal(t *testing.T) {
 	if err := h.db.Create(&models.Domain{Name: domain, SendingPolicy: models.SendingPolicyTransactional}).Error; err != nil {
 		t.Fatalf("seed the domain: %v", err)
 	}
-	sender := seedSendingMailbox(t, h.db, domain, "admin")
+	sender := seedSenderWithOwnData(t, h.db, domain, "admin")
 	request, ok := requests["unsubscribe_not_allowed"].(map[string]interface{})
 	if !ok {
 		t.Fatalf("unsubscribe_not_allowed is %s, want an object", mustJSON(requests["unsubscribe_not_allowed"]))
