@@ -1,0 +1,17 @@
+{
+  "644": [
+    "activateGrant",
+    "createGrant",
+    "deactivateGrant",
+    "deleteGrant",
+    "getServerCapabilities",
+    "getServerLimits",
+    "listCapabilities",
+    "listGrants",
+    "listMyGrants",
+    "listRoles",
+    "makeGrantEligible",
+    "updateServerCapabilities",
+    "updateServerLimits"
+  ]
+}

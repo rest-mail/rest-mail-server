@@ -44146,7 +44146,7 @@
       }
     },
     "storage_unavailable": {
-      "description": "A signed-in administrator with a second factor reaches a server-limits transaction that cannot start; private storage errors are not returned.",
+      "description": "A signed-in administrator's human session with a second factor reaches unavailable storage; the server-limits transaction cannot start, and private storage errors are not returned.",
       "requires": {
         "fault": "database"
       },
