@@ -11,6 +11,7 @@ import (
 	"time"
 
 	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
+	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 	"github.com/rest-mail/rest-mail-server/internal/mtls"
 	"github.com/rest-mail/rest-mail-server/internal/netallow"
 )
@@ -190,6 +191,19 @@ type Config struct {
 	// negative values are a startup configuration error (a maximum must
 	// always exist; "unlimited" is not an option).
 	SMTPMaxMessageSize int64
+	// SMTPMaxReceivedHeaders is the hop limit (SMTP_MAX_RECEIVED_HEADERS, default 50 as
+	// Postfix's hopcount_limit): a message arriving with more Received: header fields than this,
+	// this server's own included, is a mail loop (RFC 5321 §6.3) and refused for good, 554 5.4.6
+	// over SMTP and the matching refusal on REST delivery. Import and IMAP APPEND, which file
+	// mail the account already has, do not count it.
+	SMTPMaxReceivedHeaders int
+	// MIMEMaxNestingDepth (MIME_MAX_NESTING_DEPTH, default 100 as Postfix's mime_nesting_limit)
+	// and MIMEMaxParts (MIME_MAX_PARTS, default 1000 as Go's multipart part limit) bound how
+	// deep a message's multiparts may nest and how many parts it may hold. Past either, the
+	// message is refused for good: 554 5.6.0 over SMTP, the matching refusal on REST delivery,
+	// 422 on import. Parsing stops at the limit, so the cost of a pathological message is bounded.
+	MIMEMaxNestingDepth int
+	MIMEMaxParts        int
 	// SMTPMinTransferRate is the anti-slowloris average transfer-rate floor in
 	// bytes per second, enforced only while a message body is being
 	// transferred (DATA/BDAT) and only after SMTPTransferGracePeriod. Zero
@@ -610,6 +624,28 @@ func Load() (*Config, error) {
 	}
 	cfg.SMTPMaxMessageSize = smtpMax
 
+	// Inbound structure limits (#1647, #1641): strict like the size limit, and always positive,
+	// since "unlimited" is what made them necessary.
+	for _, limit := range []struct {
+		key      string
+		fallback int64
+		unit     string
+		into     *int
+	}{
+		{"SMTP_MAX_RECEIVED_HEADERS", rmime.DefaultMaxReceived, "Received header fields", &cfg.SMTPMaxReceivedHeaders},
+		{"MIME_MAX_NESTING_DEPTH", rmime.DefaultMaxNestingDepth, "nesting levels", &cfg.MIMEMaxNestingDepth},
+		{"MIME_MAX_PARTS", rmime.DefaultMaxParts, "MIME parts", &cfg.MIMEMaxParts},
+	} {
+		value, err := getEnvInt64Strict(limit.key, limit.fallback, limit.unit)
+		if err != nil {
+			return nil, err
+		}
+		if value <= 0 || value > 1<<20 {
+			return nil, fmt.Errorf("%s must be a positive number of %s (a limit must always exist), got %d", limit.key, limit.unit, value)
+		}
+		*limit.into = int(value)
+	}
+
 	// Authenticated-API request-body cap (#184). Same strictness rationale as the
 	// SMTP max message size: a malformed value is a hard startup error, never a
 	// silent fallback. 0 explicitly disables the cap. The default scales with the
@@ -960,6 +996,11 @@ func (c *Config) InternalMTLSServerTLS() (*tls.Config, error) {
 // path is unset or unreadable.
 func (c *Config) InternalMTLSClientTLS() (*tls.Config, error) {
 	return mtls.ClientTLSConfig(c.InternalMTLSCACert, c.InternalMTLSClientCert, c.InternalMTLSClientKey)
+}
+
+// MIMELimits are the inbound message limits, for rmime.SetLimits at startup.
+func (c *Config) MIMELimits() rmime.Limits {
+	return rmime.Limits{MaxReceived: c.SMTPMaxReceivedHeaders, MaxNestingDepth: c.MIMEMaxNestingDepth, MaxParts: c.MIMEMaxParts}
 }
 
 func getEnv(key, fallback string) string {

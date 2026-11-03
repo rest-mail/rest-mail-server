@@ -1203,6 +1203,14 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody)
 		folder = rmail.CanonicalFolder(folder)
 	}
 
+	// Hop count (RFC 5321 §6.3, #1647): an arrival from another server (ReceivedTLS set) with
+	// more Received: fields than the limit is a mail loop, refused as the SMTP gateway refuses it.
+	// A message filed into a mailbox (IMAP APPEND, ReceivedTLS nil) is not a hop: old mail may
+	// carry any number of Received fields, and filing it cannot loop.
+	if req.ReceivedTLS != nil && rmime.TooManyReceived(req.RawMessage) {
+		return zero, endpoint.Refuse(550, "rejected", "Routing loop detected: too many Received headers")
+	}
+
 	var mailbox models.Mailbox
 	var lookupErr error
 	if req.MailboxID > 0 {
@@ -2363,7 +2371,12 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	// on). Fall back to the params only when there is no parseable raw message.
 	var emailJSON *pipeline.EmailJSON
 	if params.RawMessage != "" {
-		if parsed, perr := rmime.Parse([]byte(params.RawMessage)); perr == nil {
+		parsed, perr := rmime.Parse([]byte(params.RawMessage))
+		if errors.Is(perr, rmime.ErrStructureLimit) {
+			// Nested deeper or holding more parts than the MIME limits allow (#1641).
+			return nil, fmt.Errorf("rejected: message structure too complex: %w", perr)
+		}
+		if perr == nil {
 			emailJSON = parsed
 		}
 	}

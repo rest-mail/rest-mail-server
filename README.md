@@ -549,6 +549,9 @@ For standalone issuance and automated renewal, follow the
 | `SMTP_PORT_INBOUND`           | `25`               | SMTP inbound (relay) port; offers STARTTLS |
 | `SMTP_PORT_SUBMISSION_TLS`    | `465`              | SMTP submission port, implicit TLS |
 | `SMTP_MAX_MESSAGE_SIZE`       | `10485760` (10 MiB) | Maximum accepted message size in bytes — drives both the EHLO `SIZE` advertisement and DATA enforcement. A maximum always exists: zero/negative values are a startup error, and values over 100 MiB log a startup warning (messages are buffered and parsed in memory) |
+| `SMTP_MAX_RECEIVED_HEADERS`   | `50`               | Hop limit: an arriving message with more `Received:` fields than this, ours included, is a mail loop (RFC 5321 §6.3) and refused `554 5.4.6` over SMTP, `550`/`403 rejected` on REST and RESTMAIL delivery. Postfix's `hopcount_limit` default. Import and IMAP APPEND do not count it |
+| `MIME_MAX_NESTING_DEPTH`      | `100`              | Deepest multipart nesting a message may have (Postfix's `mime_nesting_limit`); past it the message is refused `554 5.6.0` over SMTP, `550`/`403 rejected` on delivery, `422` on import |
+| `MIME_MAX_PARTS`              | `1000`             | Most MIME parts, containers included, a message may hold (Go's `mime/multipart` part limit); refused as for `MIME_MAX_NESTING_DEPTH` |
 | `IMAP_TLS_PORT`               | `993`              | IMAP implicit TLS port        |
 | `POP3_TLS_PORT`               | `995`              | POP3 implicit TLS port        |
 | `QUEUE_WORKERS`               | `4`                | Number of outbound queue workers |

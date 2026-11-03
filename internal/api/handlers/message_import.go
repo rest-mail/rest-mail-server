@@ -222,6 +222,12 @@ func (h *MessageImportHandler) storeImportedMessage(r *http.Request, accountID u
 			}
 			// The text columns keep a part's whole text, so no part is cut short here.
 			parsed, err := rmime.ParseStream(ctx, reader, rmime.StreamOptions{Store: h.storeAttachmentPart, MaxText: math.MaxInt64})
+			if errors.Is(err, rmime.ErrStructureLimit) {
+				// Imported mail is held to the same MIME limits as arriving mail (#1641). Its
+				// Received: fields are not counted: old mail may carry any number, and storing
+				// it in the account is not a hop that could loop (#1647).
+				return endpoint.Invalid(map[string]string{"raw_message": "MIME structure over limit: nested too deep or too many parts"})
+			}
 			if err != nil {
 				return fmt.Errorf("store imported attachment: %w", err)
 			}

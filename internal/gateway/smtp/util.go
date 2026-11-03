@@ -2,6 +2,7 @@ package smtp
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 
 	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
@@ -79,18 +80,28 @@ func splitHostPort(addr string) (string, string, error) {
 // parses with that package, so the same message now yields the same fields
 // whether it arrives over SMTP or over REST (issue #298).
 func parseRawMessage(data []byte) (subject, bodyText, bodyHTML, messageID, senderName, inReplyTo, references string, toList, ccList []string, fromAddr string) {
+	subject, bodyText, bodyHTML, messageID, senderName, inReplyTo, references, toList, ccList, fromAddr, _ = parseRawMessageLimited(data)
+	return
+}
+
+// parseRawMessageLimited is parseRawMessage that also answers a message nested deeper or holding
+// more parts than the MIME limits allow, which wraps rmime.ErrStructureLimit and is refused.
+func parseRawMessageLimited(data []byte) (subject, bodyText, bodyHTML, messageID, senderName, inReplyTo, references string, toList, ccList []string, fromAddr string, limitErr error) {
 	// An empty or whitespace-only message has nothing to parse. Handing it over
 	// would come back as a default text/plain body holding that whitespace.
 	if len(bytes.TrimSpace(data)) == 0 {
-		return "", "", "", "", "", "", "", nil, nil, ""
+		return "", "", "", "", "", "", "", nil, nil, "", nil
 	}
 
 	email, err := rmime.Parse(terminateHeaders(data))
+	if errors.Is(err, rmime.ErrStructureLimit) {
+		return "", "", "", "", "", "", "", nil, nil, "", err
+	}
 	if err != nil || email == nil {
 		// Nothing parseable: keep whatever body text can be recovered rather
 		// than delivering an empty message. Headers stay empty, which is what
 		// an unparseable message can honestly report.
-		return "", recoverBody(data), "", "", "", "", "", nil, nil, ""
+		return "", recoverBody(data), "", "", "", "", "", nil, nil, "", nil
 	}
 
 	h := email.Headers

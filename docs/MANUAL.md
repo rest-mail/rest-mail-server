@@ -898,6 +898,9 @@ gateways: run the instance task before restarting a gateway with a broken pair.
 | `SMTP_PORT_INBOUND` | `25` | Inbound relay; offers STARTTLS |
 | `SMTP_PORT_SUBMISSION_TLS` | `465` | Submission, implicit TLS |
 | `SMTP_MAX_MESSAGE_SIZE` | `10485760` (10 MiB) | Max accepted message size, bytes. Drives EHLO `SIZE`, `MAIL SIZE=` check, and DATA enforcement. Must be positive; a malformed/non-positive value is a hard startup error |
+| `SMTP_MAX_RECEIVED_HEADERS` | `50` | Hop limit (Postfix `hopcount_limit`). An arriving message with more `Received:` fields than this, ours included, is a mail loop (RFC 5321 §6.3): `554 5.4.6` over SMTP, `550 rejected` on `/api/v1/messages/deliver` (arrivals only, not IMAP APPEND), `403 rejected` on RESTMAIL. Import does not count it. Must be positive |
+| `MIME_MAX_NESTING_DEPTH` | `100` | Deepest multipart nesting (Postfix `mime_nesting_limit`). Past it: `554 5.6.0` over SMTP, `550 rejected` on delivery, `403 rejected` on RESTMAIL, `422` on import. Parsing stops at the limit. Must be positive |
+| `MIME_MAX_PARTS` | `1000` | Most MIME parts in one message, containers included (Go `mime/multipart` limit). Refused as for `MIME_MAX_NESTING_DEPTH`. Must be positive |
 | `SMTP_MIN_TRANSFER_RATE` | `16384` (16 KiB/s) | Anti-slowloris average transfer-rate floor for message bodies, bytes/sec. `0` disables the rate floor |
 | `SMTP_TRANSFER_GRACE_PERIOD` | `60` | Seconds at the start of a body transfer during which the rate floor is not enforced |
 | `SMTP_TRANSFER_STALL_TIMEOUT` | `300` | Seconds a body transfer may deliver zero bytes before the connection is dropped |

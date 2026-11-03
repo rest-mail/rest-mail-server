@@ -179,9 +179,18 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 	// from this server: they are removed first, before anything parses,
 	// verifies or stores the message (RFC 8601 §5).
 	req.RawMessage = rmime.StripAuthResults(req.RawMessage, pipeline.AuthServID)
+	// A message from another server with more Received: fields than the hop limit is a mail
+	// loop (RFC 5321 §6.3, #1647), refused as the SMTP gateway refuses it.
+	if rmime.TooManyReceived([]byte(req.RawMessage)) {
+		return RestmailDelivery{}, endpoint.Refuse(http.StatusForbidden, "rejected", "Routing loop detected: too many Received headers")
+	}
 	var parsed *pipeline.EmailJSON
 	if req.RawMessage != "" {
 		p, err := rmime.Parse([]byte(req.RawMessage))
+		if errors.Is(err, rmime.ErrStructureLimit) {
+			// Nested deeper or holding more parts than the MIME limits allow (#1641).
+			return RestmailDelivery{}, endpoint.Refuse(http.StatusForbidden, "rejected", "Message structure too complex: too deeply nested or too many MIME parts")
+		}
 		if err != nil {
 			slog.Warn("restmail: failed to parse raw_message", "error", err)
 			// Fall through to use whatever structured fields were provided

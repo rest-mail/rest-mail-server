@@ -20,6 +20,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/gateway/metricsrv"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/tlsutil"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
+	rmime "github.com/rest-mail/rest-mail-server/internal/mime"
 )
 
 func main() {
@@ -35,6 +36,8 @@ func main() {
 		slog.Error("failed to load config", "error", err)
 		os.Exit(1)
 	}
+	// Every message this process parses is held to the inbound limits (#1647, #1641).
+	rmime.SetLimits(cfg.MIMELimits())
 
 	switch cfg.LogLevel {
 	case "debug":

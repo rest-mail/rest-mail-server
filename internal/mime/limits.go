@@ -1,0 +1,125 @@
+package mime
+
+import (
+	"bufio"
+	"bytes"
+	"errors"
+	"fmt"
+	"sync/atomic"
+)
+
+// Defaults for Limits. Each is what an established implementation already applies to real mail:
+//
+//   - DefaultMaxReceived is Postfix's hopcount_limit (50): more Received: header fields than
+//     that is taken as a mail loop (RFC 5321 §6.3).
+//   - DefaultMaxNestingDepth is Postfix's mime_nesting_limit (100).
+//   - DefaultMaxParts is Go's mime/multipart limit on the parts of one form (1000, GODEBUG
+//     multipartmaxparts).
+const (
+	DefaultMaxReceived     = 50
+	DefaultMaxNestingDepth = 100
+	DefaultMaxParts        = 1000
+)
+
+// Limits bounds what a message may be made of before it is refused.
+type Limits struct {
+	// MaxReceived is the most Received: header fields a message may carry, this server's own
+	// included, before it is taken as looping.
+	MaxReceived int
+	// MaxNestingDepth is how deep multiparts may nest: a multipart message is depth 1.
+	MaxNestingDepth int
+	// MaxParts is how many parts a message may hold, multipart containers included.
+	MaxParts int
+}
+
+// DefaultLimits are the limits in force until SetLimits changes them.
+func DefaultLimits() Limits {
+	return Limits{MaxReceived: DefaultMaxReceived, MaxNestingDepth: DefaultMaxNestingDepth, MaxParts: DefaultMaxParts}
+}
+
+var limits atomic.Pointer[Limits]
+
+func init() {
+	l := DefaultLimits()
+	limits.Store(&l)
+}
+
+// SetLimits replaces the limits every parse in this process applies. A value that is not
+// positive keeps that limit's default: a limit always exists.
+func SetLimits(l Limits) {
+	d := DefaultLimits()
+	if l.MaxReceived <= 0 {
+		l.MaxReceived = d.MaxReceived
+	}
+	if l.MaxNestingDepth <= 0 {
+		l.MaxNestingDepth = d.MaxNestingDepth
+	}
+	if l.MaxParts <= 0 {
+		l.MaxParts = d.MaxParts
+	}
+	limits.Store(&l)
+}
+
+// CurrentLimits answers the limits in force.
+func CurrentLimits() Limits { return *limits.Load() }
+
+// ErrStructureLimit is what a parse answers, wrapped, for a message nested deeper or holding
+// more parts than Limits allows. Nothing past the limit is read.
+var ErrStructureLimit = errors.New("message structure over limit")
+
+func structureLimit(format string, args ...any) error {
+	return fmt.Errorf("%w: "+format, append([]any{ErrStructureLimit}, args...)...)
+}
+
+// partBudget counts the parts and depth of one parse against the limits in force.
+type partBudget struct {
+	limits Limits
+	parts  int
+}
+
+func newPartBudget() *partBudget { return &partBudget{limits: CurrentLimits()} }
+
+// part counts one more part, and answers an error once there are too many.
+func (b *partBudget) part() error {
+	b.parts++
+	if b.parts > b.limits.MaxParts {
+		return structureLimit("more than %d MIME parts", b.limits.MaxParts)
+	}
+	return nil
+}
+
+// enter answers an error when a multipart at depth would nest too deep.
+func (b *partBudget) enter(depth int) error {
+	if depth > b.limits.MaxNestingDepth {
+		return structureLimit("multipart nested deeper than %d", b.limits.MaxNestingDepth)
+	}
+	return nil
+}
+
+// ReceivedCount counts the Received: header fields in raw's header block, which ends at the
+// first empty line. A folded field counts once.
+func ReceivedCount(raw []byte) int {
+	count := 0
+	scanner := bufio.NewScanner(bytes.NewReader(raw))
+	scanner.Buffer(make([]byte, 0, 4096), len(raw)+1)
+	for scanner.Scan() {
+		line := bytes.TrimRight(scanner.Bytes(), "\r")
+		if len(line) == 0 {
+			break
+		}
+		if line[0] == ' ' || line[0] == '\t' {
+			continue
+		}
+		name, _, found := bytes.Cut(line, []byte(":"))
+		if found && bytes.EqualFold(bytes.TrimRight(name, " \t"), []byte("Received")) {
+			count++
+		}
+	}
+	return count
+}
+
+// TooManyReceived reports whether raw carries more Received: header fields than the limit in
+// force, which RFC 5321 §6.3 takes as a mail loop.
+func TooManyReceived(raw []byte) bool {
+	return ReceivedCount(raw) > CurrentLimits().MaxReceived
+}
