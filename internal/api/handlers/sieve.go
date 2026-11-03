@@ -70,16 +70,17 @@ type SieveValidation struct {
 	Valid   bool   `json:"valid"`
 }
 
-// putSieveRequest replaces the account's script. script is required (null is refused like a
-// missing one); active defaults to true.
+// putSieveRequest replaces the account's script. script is required: the binder refuses a
+// missing or null one with 422 fields.script "required", so the description says it is a
+// string and never null; active defaults to true.
 type putSieveRequest struct {
 	ID   uint32       `path:"id" minimum:"1" example:"1"`
 	Body putSieveBody `body:""`
 }
 
 type putSieveBody struct {
-	Script *string `json:"script"`
-	Active *bool   `json:"active,omitempty"`
+	Script string `json:"script" nullMessage:"required"`
+	Active *bool  `json:"active,omitempty"`
 }
 
 type validateSieveRequest struct {
@@ -87,11 +88,10 @@ type validateSieveRequest struct {
 	Body validateSieveBody `body:""`
 }
 
+// validateSieveBody is refused like putSieveBody when script is missing or null.
 type validateSieveBody struct {
-	Script *string `json:"script"`
+	Script string `json:"script" nullMessage:"required"`
 }
-
-var errSieveScriptRequired = endpoint.Invalid(map[string]string{"script": "required"})
 
 // Register mounts the account's Sieve script.
 func (h *SieveHandler) Register(rs endpoint.Routes) {
@@ -144,16 +144,13 @@ func (h *SieveHandler) put(r *http.Request, in putSieveRequest) (endpoint.Status
 	}
 
 	req := in.Body
-	if req.Script == nil {
-		return endpoint.Status[SieveScript]{}, errSieveScriptRequired
-	}
 
 	// Validate at INSTALL time: parse + a safe, side-effect-free dry-run. A script
 	// that fails here is rejected NOW with HTTP 422 and an actionable field message
 	// (parse error + the extension missing a `require`, or the dry-run failure) and
 	// is NOT stored — moving the failure off the delivery path, where a bad script
 	// fails closed and silently defers the mailbox's mail.
-	if err := filters.ValidateSieveForInstall(*req.Script); err != nil {
+	if err := filters.ValidateSieveForInstall(req.Script); err != nil {
 		return endpoint.Status[SieveScript]{}, endpoint.Invalid(map[string]string{"script": err.Error()})
 	}
 
@@ -166,7 +163,7 @@ func (h *SieveHandler) put(r *http.Request, in putSieveRequest) (endpoint.Status
 	// bytes and the validation time. The delivery path re-verifies this hash before
 	// trusting the script (see filters.newSieveFilter).
 	now := h.db.NowFunc()
-	scriptHash := filters.HashSieveScript(*req.Script)
+	scriptHash := filters.HashSieveScript(req.Script)
 
 	// Upsert
 	var script models.SieveScript
@@ -180,14 +177,14 @@ func (h *SieveHandler) put(r *http.Request, in putSieveRequest) (endpoint.Status
 		if err := h.db.WithContext(r.Context()).Raw(`INSERT INTO "sieve_scripts"
 ("mailbox_id", "script", "script_hash", "validated_at", "active", "created_at", "updated_at") VALUES (?, ?, ?, ?, ?, ?, ?)
 RETURNING "id", "mailbox_id", "script", "script_hash", "validated_at", "active", "created_at", "updated_at"`,
-			mailboxID, *req.Script, scriptHash, now, active, now, now).Scan(&script).Error; err != nil {
+			mailboxID, req.Script, scriptHash, now, active, now, now).Scan(&script).Error; err != nil {
 			return endpoint.Status[SieveScript]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to create script")
 		}
 		return endpoint.Status[SieveScript]{Code: http.StatusCreated, Value: sieveScriptOf(script)}, nil
 	}
 
 	// Update existing
-	script.Script = *req.Script
+	script.Script = req.Script
 	script.ScriptHash = scriptHash
 	script.ValidatedAt = &now
 	script.Active = active
@@ -224,17 +221,13 @@ func (h *SieveHandler) validate(r *http.Request, in validateSieveRequest) (Sieve
 	}
 
 	script := in.Body.Script
-	if script == nil {
-		return SieveValidation{}, errSieveScriptRequired
-	}
-
-	if *script == "" {
+	if script == "" {
 		return SieveValidation{Message: "Empty script is valid", Valid: true}, nil
 	}
 
 	// Same gate as install (put): parse + a safe dry-run, so "validate"
 	// reports exactly what "save" would accept.
-	if err := filters.ValidateSieveForInstall(*script); err != nil {
+	if err := filters.ValidateSieveForInstall(script); err != nil {
 		return SieveValidation{Message: err.Error(), Valid: false}, nil
 	}
 

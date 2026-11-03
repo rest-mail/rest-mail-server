@@ -28044,7 +28044,6 @@
       }
     },
     "script_null": {
-      "description": "Null is permitted by the published nullable string schema but refused as a missing required value at the runtime boundary. This pair is a schema-valid refusal, not an invalid-schema example.",
       "request": {
         "path": {
           "id": 1
@@ -28052,7 +28051,8 @@
         "body": {
           "script": null,
           "active": true
-        }
+        },
+        "invalid": true
       },
       "response": {
         "status": 422,
@@ -47599,14 +47599,14 @@
       }
     },
     "script_null": {
-      "description": "Null is permitted by the published nullable string schema but refused as a missing required value at the runtime boundary. This pair is a schema-valid refusal, not an invalid-schema example.",
       "request": {
         "path": {
           "id": 1
         },
         "body": {
           "script": null
-        }
+        },
+        "invalid": true
       },
       "response": {
         "status": 422,

@@ -1540,11 +1540,6 @@
   reason: >-
     The 422 is the API's validation envelope, with the fields at fault under details.fields;
     the oracle describes this operation's 422 without them.
-- operation: putSieveScript
-  difference: "request body application/json.properties.script.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
-  reason: >-
-    A null script is bound and then refused in the handler as 422 script required, the
-    documented script_null example, as a missing one is.
 - operation: validateSieveScript
   difference: "response 400: generated only"
   reason: "Malformed JSON or a body in the wrong media type is 400 bad_request. Parsed input that breaks a shape or field rule is 422 validation_failed with details.fields (#672)."
@@ -1553,11 +1548,6 @@
   reason: >-
     The 422 is the API's validation envelope, with the fields at fault under details.fields;
     the oracle describes this operation's 422 without them.
-- operation: validateSieveScript
-  difference: "request body application/json.properties.script.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
-  reason: >-
-    A null script is bound and then refused in the handler as 422 script required, the
-    documented script_null example, as a missing one is.
 - operation: putSieveScript
   difference: "request body application/json.properties.active.type: openapi.yaml \"boolean\", generated [\"boolean\",\"null\"]"
   reason: >-
