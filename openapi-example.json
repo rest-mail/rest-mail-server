@@ -19826,6 +19826,7 @@
       }
     },
     "write_only": {
+      "description": "The account holds mail:write but not mail:read, which this operation needs.",
       "requires": {
         "principal": "without_capability"
       },
@@ -19843,8 +19844,7 @@
           }
         },
         "mediaType": "application/json"
-      },
-      "description": "The account holds mail:write but not mail:read, which this operation needs."
+      }
     }
   },
   "getVacation": {
@@ -43544,6 +43544,7 @@
       }
     },
     "write_only": {
+      "description": "The account holds mail:write but not mail:read, which this operation needs.",
       "requires": {
         "principal": "without_capability"
       },
@@ -43562,8 +43563,7 @@
           }
         },
         "mediaType": "application/json"
-      },
-      "description": "The account holds mail:write but not mail:read, which this operation needs."
+      }
     }
   },
   "unsubscribeOneClick": {
@@ -43629,6 +43629,7 @@
       }
     },
     "read_only": {
+      "description": "The API key holds mail:read on the mailbox but not mail:write, which one-click needs.",
       "requires": {
         "principal": "without_capability"
       },
@@ -43646,8 +43647,7 @@
           }
         },
         "mediaType": "application/json"
-      },
-      "description": "The API key holds mail:read on the mailbox but not mail:write, which one-click needs."
+      }
     },
     "request_too_large": {
       "requires": {
