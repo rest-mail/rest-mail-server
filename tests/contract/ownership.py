@@ -31,7 +31,16 @@ With --mailboxes it writes the third: the same administrators, each declaring
 its own mailbox, sent on the /api/v1/admin/mailboxes/{id} operations and the
 mailbox list.
 
-Usage: ownership.py [--domains|--mailboxes] <openapi.yaml> <vertrag.yml> <tenants.json> <out.yml> <report.xml>
+With --messages it writes the fourth: the two accounts again, sent the other's
+messages, drafts, scheduled sends and attachments (#1163). Their ids are a
+message's, not an account's, so the run declares none: the victim tenant makes
+each cell's resource itself, by the chain the description's links lead from
+(sendMessage, saveDraft, updateDraft, getRawMessage), and the cells no link
+leads to are reported unsent. hooks.py sends that chain, and the attacker's
+request, from the sender's own address (ownership_hooks.py). Its tenants'
+principals file is the account run's.
+
+Usage: ownership.py [--domains|--mailboxes|--messages] <openapi.yaml> <vertrag.yml> <tenants.json> <out.yml> <report.xml>
 """
 
 import base64
@@ -63,6 +72,22 @@ DOMAIN_OPERATIONS = (
 # The mailbox run: the admin mailbox routes and their list, with each tenant's
 # administrator's own mailbox as the declared id.
 MAILBOX_OPERATIONS = r"^/api/v1/admin/mailboxes(/\{id\}| > )"
+# The message run: the operations on one message, draft, scheduled send or
+# attachment, and the creates their links start from (sendMessage, saveDraft),
+# which are not rows themselves (no path id) but must be sent for a chain to
+# be. Not the held-message release, the seal or the scheduled list: #1163 names
+# the twelve rows here.
+MESSAGE_OPERATIONS = (
+    r"^/api/v1/(messages/(send|draft) > "
+    r"|messages/\{id\}(/(raw|forward|attachments|calendar-reply))? > "
+    r"|messages/draft/\{id\}(/send)? > "
+    r"|messages/scheduled/\{id\} > "
+    r"|attachments/\{id\} > )"
+)
+# Someone else's account, or an object in it, is answered as if it did not
+# exist: 404, never 403 (docs/api-conventions.md, rows 11 and 12, decided on
+# #672 on 2026-11-01). The message run holds its cells to that.
+NOT_YOURS = [404]
 # What the admin role holds on its own domain (internal/bootstrap).
 DOMAIN_ROLES = [
     "domains:read",
@@ -168,12 +193,8 @@ def administrators(
     return 0
 
 
-def main(spec_path, config_path, principals_path, out_path, report_path):
-    with open(principals_path) as source:
-        fixture = json.load(source)
-    config = run_config(spec_path, config_path, report_path)
-    config["only-matching"] = [ACCOUNT_OPERATIONS]
-    config["principals"] = [
+def account_principals(fixture):
+    return [
         {
             "name": "ordinary",
             "auth": sign_in(fixture["ordinary"]),
@@ -191,17 +212,48 @@ def main(spec_path, config_path, principals_path, out_path, report_path):
             "roles": MAIL_ROLES,
         },
     ]
+
+
+# Each account tenant's principals: the signed-in owner first, so the owner is
+# who a chain is sent as when it may call every operation of it.
+ACCOUNT_TENANTS = {"a": ["ordinary", "app-password"], "b": ["other", "other-app-password"]}
+
+
+def main(spec_path, config_path, principals_path, out_path, report_path):
+    with open(principals_path) as source:
+        fixture = json.load(source)
+    config = run_config(spec_path, config_path, report_path)
+    config["only-matching"] = [ACCOUNT_OPERATIONS]
+    config["principals"] = account_principals(fixture)
     config["tenants"] = {
-        "a": {
-            "principals": ["ordinary", "app-password"],
-            "ids": {"path.id": str(fixture["ordinary"]["id"])},
-        },
-        "b": {
-            "principals": ["other", "other-app-password"],
-            "ids": {"path.id": str(fixture["other"]["id"])},
-        },
+        tenant: {
+            "principals": principals,
+            "ids": {"path.id": str(fixture[principals[0]]["id"])},
+        }
+        for tenant, principals in ACCOUNT_TENANTS.items()
     }
     config["ownership"] = {"refuse": [403, 404]}
+    write_private(config, out_path)
+    return 0
+
+
+def messages(spec_path, config_path, principals_path, out_path, report_path):
+    """The message run: the account tenants, declaring no ids, sent the
+    message operations, with ownership_hooks.py loaded after the run's hooks."""
+    with open(principals_path) as source:
+        fixture = json.load(source)
+    config = run_config(spec_path, config_path, report_path)
+    here = os.path.dirname(os.path.abspath(__file__))
+    config["hookfiles"] = [
+        config["hookfiles"],
+        os.path.join(here, "ownership_hooks.py"),
+    ]
+    config["only-matching"] = [MESSAGE_OPERATIONS]
+    config["principals"] = account_principals(fixture)
+    config["tenants"] = {
+        tenant: {"principals": principals} for tenant, principals in ACCOUNT_TENANTS.items()
+    }
+    config["ownership"] = {"refuse": NOT_YOURS}
     write_private(config, out_path)
     return 0
 
@@ -213,8 +265,10 @@ if __name__ == "__main__":
         run, arguments = domains, arguments[1:]
     elif arguments[:1] == ["--mailboxes"]:
         run, arguments = mailboxes, arguments[1:]
+    elif arguments[:1] == ["--messages"]:
+        run, arguments = messages, arguments[1:]
     if len(arguments) != 5:
         sys.exit(
-            "usage: ownership.py [--domains|--mailboxes] <spec> <config> <tenants> <out.yml> <report.xml>"
+            "usage: ownership.py [--domains|--mailboxes|--messages] <spec> <config> <tenants> <out.yml> <report.xml>"
         )
     sys.exit(run(*arguments))

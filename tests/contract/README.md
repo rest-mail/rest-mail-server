@@ -1265,6 +1265,24 @@ sent on `/api/v1/admin/mailboxes/{id}` and the mailbox list. Its report is `owne
 Tenant ids are keyed by parameter name, and the account run already declares
 `path.id`, so the domains need a run of their own.
 
+A fourth run, `ownership-messages` (`ownership.py --messages`), sends the two
+account tenants each other's messages, drafts, scheduled sends and attachments
+(#1163): `getMessage`, `updateMessage`, `deleteMessage`, `getRawMessage`,
+`forwardMessage`, `listAttachments`, `respondToCalendar`, `updateDraft`,
+`sendDraft`, `cancelScheduledMessage` and `getAttachment`, with the creates
+their links start from. Their ids are not an account's, so the run declares
+none: for each cell the victim tenant's signed-in owner sends the chain the
+links lead from (`sendMessage`, `saveDraft`, `updateDraft`, `getRawMessage`),
+and the attacker is sent the id it made. An operation no link leads to, and
+whose success needs state the run does not make, is reported unsent rather than
+sent with an id that names nothing. Every answer must be 404: someone else's
+account, or an object in it, is answered as if it did not exist
+(`docs/api-conventions.md`, rows 11 and 12). The examples send from the fixture
+administrator, which an account may not, so `ownership_hooks.py`, loaded after
+`hooks.py`, sends the chain and the attacker's request from, and only to, the
+sender's own address; `run.sh` sets `CONTRACT_OWNERSHIP` for these runs, and
+the draft send then keeps the draft its link filled.
+
 ```sh
 python3 tests/contract/ownership.py openapi.yaml vertrag.yml \
   .cache/contract-principals.json .cache/contract/vertrag-ownership.yml \

@@ -2862,6 +2862,10 @@ def send_a_draft_of_its_own(transaction):
     # sent (201) and missing (404) both name the placeholder draft 12: sent is
     # given a fresh draft of the fixture admin's to send, and missing an id no
     # draft holds. Coverage probes keep their ids.
+    # The message ownership run sends another account's draft, made by that
+    # account's own chain: it keeps the id its link filled (#1163).
+    if os.environ.get("CONTRACT_OWNERSHIP") == "1":
+        return
     path, _, query = transaction["fullPath"].partition("?")
     drafts, placeholder, action = path.rstrip("/").rsplit("/", 2)
     name = transaction.get("name", "")

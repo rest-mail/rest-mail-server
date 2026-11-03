@@ -20,6 +20,7 @@ PHASES = (
     ("ownership", "ownership (report only)"),
     ("ownership-domains", "ownership of domains (report only)"),
     ("ownership-mailboxes", "ownership of mailboxes (report only)"),
+    ("ownership-messages", "ownership of messages (report only)"),
     ("fuzz", "fuzz (report only)"),
     ("own-data", "own data"),
     ("teardown", "teardown"),
