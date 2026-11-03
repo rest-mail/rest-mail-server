@@ -160,6 +160,23 @@ MOVED = (
     "getAccountSendLimits",
     "setAccountSendLimits",
     "getQuota",
+    # The delivery queue, held and scheduled mail operations. listQueue's link
+    # reaches the read, retry and bounce of an entry, and the bounce's the
+    # delete: all moved. Each success gets an entry, an account or a
+    # scheduled message of its own after its reset, made through the API.
+    "listQueue",
+    "getQueueStats",
+    "getQueueEntry",
+    "retryQueueEntry",
+    "bounceQueueEntry",
+    "deleteQueueEntry",
+    "bulkRetryQueue",
+    "bulkBounceQueue",
+    "bulkDeleteQueue",
+    "listHeldMessages",
+    "releaseHeldMessage",
+    "listScheduledMessages",
+    "cancelScheduledMessage",
 )
 
 # deletePipeline, the other, has moved.
