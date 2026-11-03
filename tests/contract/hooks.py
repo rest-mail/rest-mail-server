@@ -196,6 +196,8 @@ def the_domain_since_the_reset(transaction):
 @hooks.before("deleteDKIMKey")
 @hooks.before("getDKIMRotation")
 @hooks.before("setDKIMRotation")
+@hooks.before("stopDomainOutbound")
+@hooks.before("restartDomainOutbound")
 def a_live_domain_for_the_link(transaction):
     # These follow createDomain's link and have not moved. A reset before a moved
     # exchange removes the domain the link names, so after one each gets a domain
