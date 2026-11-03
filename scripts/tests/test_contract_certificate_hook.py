@@ -82,7 +82,10 @@ class ContractCertificateHookTests(unittest.TestCase):
         )
 
     def test_renewal_policy_and_nonfixture_domain_are_preserved(self):
+        # A domain the fixtures did not make is looked up on the server; one
+        # that is not there (a 404 is None) keeps the placeholder name.
         def generate(*args):
+            self.assertIn("/CN=example.org", args)
             Path(args[args.index("-keyout") + 1]).write_text("fresh key")
             Path(args[args.index("-out") + 1]).write_text("fresh certificate")
 
@@ -96,8 +99,17 @@ class ContractCertificateHookTests(unittest.TestCase):
                         "auto_renew": policy,
                     }
                 )
-                with patch.object(self.module, "openssl", side_effect=generate):
+                with patch.object(
+                    self.module, "openssl", side_effect=generate
+                ), patch.object(
+                    self.module, "fixture_call", return_value=None
+                ) as lookup:
                     self.module.a_self_signed_certificate(transaction)
+                lookup.assert_called_once()
+                self.assertEqual(
+                    lookup.call_args.args[1:],
+                    ("GET", "/api/v1/admin/domains/2147483647"),
+                )
                 body = json.loads(transaction["request"]["body"])
                 self.assertEqual(body["domain_id"], 2147483647)
                 self.assertEqual(body["auto_renew"], policy)
