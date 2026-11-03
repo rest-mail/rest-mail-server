@@ -74,7 +74,11 @@ type Message struct {
 	Headers      JSONB      `gorm:"type:jsonb" json:"headers,omitempty"`
 	RawMessage   string     `gorm:"type:text" json:"-"`
 	SealedHash   string     `gorm:"size:64;default:null" json:"sealed_hash,omitempty"`
-	PendingDraft bool       `gorm:"-" json:"-"`
+	// RuleClass is the class a Sieve rule assigned at delivery, recorded once with the message
+	// so the answer stays the same when the script later changes. NULL on every row delivered
+	// before this column existed, with no backfill, and when no rule assigned one.
+	RuleClass    string `gorm:"size:16;default:null" json:"-"`
+	PendingDraft bool   `gorm:"-" json:"-"`
 	// RawOctets preserves imported sources that PostgreSQL text cannot represent.
 	RawOctets         []byte `gorm:"type:bytea" json:"-"`
 	CalendarEventsRaw JSONB  `gorm:"column:calendar_events;type:jsonb" json:"calendar_events,omitempty"`

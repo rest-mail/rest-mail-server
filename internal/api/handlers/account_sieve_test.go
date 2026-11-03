@@ -94,6 +94,10 @@ func TestSieveFolderAndFlags(t *testing.T) {
 	if want := (sieveFlags{seen: true, flagged: true, draft: true}); got != want {
 		t.Errorf("flags %+v, want %+v", got, want)
 	}
+	got = sieveFlagsOf(email(map[string]string{"imap_flags": `$RECEIPT`}))
+	if want := (sieveFlags{ruleClass: "receipt"}); got != want {
+		t.Errorf("flags %+v, want %+v", got, want)
+	}
 }
 
 // An account's stored script runs on its mail, delivered as the SMTP gateway delivers it

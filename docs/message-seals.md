@@ -63,8 +63,9 @@ are the empty array `[]`, matching the model's JSONB storage default. JSONB's ke
 order and formatting therefore cannot invalidate a receipt. The exact original
 header octets remain independently covered by the source digest.
 
-IDs, mailbox ownership, thread grouping, folder, flags, timestamps, quotas,
-transport metrics, and attachment storage references are not in the transcript.
+IDs, mailbox ownership, thread grouping, folder, flags, rule class, timestamps,
+quotas, transport metrics, and attachment storage references are not in the
+transcript.
 A flag update, folder rename, or move therefore leaves the receipt valid. The
 original MIME attachment bytes remain covered wherever a source exists; this
 is not a separate integrity check of extracted attachment objects or calendar

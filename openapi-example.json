@@ -14883,7 +14883,7 @@
   },
   "getMessage": {
     "classification_newsletter": {
-      "description": "Classification is derived from the stored headers, with no delivery changes. Only newsletter is list-shaped; person is never hidden. Commercial receipts without list signals use notification when automated, otherwise person.",
+      "description": "Classification is derived on read from the stored headers and any class a Sieve rule recorded at delivery. Only newsletter is list-shaped; person is never hidden. Without a rule, receipts are not told apart: they use newsletter when list-shaped, notification when automated, otherwise person.",
       "request": {
         "path": {
           "id": 101
@@ -14937,7 +14937,7 @@
       }
     },
     "classification_notification": {
-      "description": "Classification is derived from the stored headers, with no delivery changes. Only newsletter is list-shaped; person is never hidden. Commercial receipts without list signals use notification when automated, otherwise person.",
+      "description": "Classification is derived on read from the stored headers and any class a Sieve rule recorded at delivery. Only newsletter is list-shaped; person is never hidden. Without a rule, receipts are not told apart: they use newsletter when list-shaped, notification when automated, otherwise person.",
       "request": {
         "path": {
           "id": 102
@@ -14971,6 +14971,109 @@
             "mailbox_id": 1,
             "message_id": "\u003cmessage@example.net\u003e",
             "raw_size": 137,
+            "received_at": "2026-10-20T00:00:00Z",
+            "received_tls": true,
+            "recipients_cc": [],
+            "recipients_to": [
+              "recipient@example.com"
+            ],
+            "references": "",
+            "sender": "sender@example.net",
+            "sender_name": "Sender café",
+            "size_bytes": 80,
+            "subject": "Subject café",
+            "thread_id": "",
+            "tls_version": "TLS1.3",
+            "updated_at": "2026-10-20T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "classification_receipt_rule": {
+      "description": "A Sieve rule added the $receipt keyword at delivery, and that wins over the list header. No header says a message is a receipt, so this is the only way mail gets this class. A receipt never collapses.",
+      "request": {
+        "path": {
+          "id": 103
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
+            "body_text": "Hello café",
+            "class": "receipt",
+            "created_at": "2026-10-20T00:00:00Z",
+            "date_header": null,
+            "downgraded_size": 0,
+            "folder": "INBOX",
+            "has_attachments": true,
+            "headers": {
+              "List-Id": [
+                "\u003cshop.example.test\u003e"
+              ]
+            },
+            "id": 103,
+            "in_reply_to": "",
+            "is_deleted": false,
+            "is_draft": false,
+            "is_dsn": false,
+            "is_flagged": false,
+            "is_read": false,
+            "is_starred": false,
+            "mailbox_id": 1,
+            "message_id": "\u003cmessage@example.net\u003e",
+            "raw_size": 137,
+            "received_at": "2026-10-20T00:00:00Z",
+            "received_tls": true,
+            "recipients_cc": [],
+            "recipients_to": [
+              "recipient@example.com"
+            ],
+            "references": "",
+            "sender": "sender@example.net",
+            "sender_name": "Sender café",
+            "size_bytes": 80,
+            "subject": "Subject café",
+            "thread_id": "",
+            "tls_version": "TLS1.3",
+            "updated_at": "2026-10-20T00:00:00Z"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "classification_source_headers": {
+      "description": "Delivery stored the source and no decoded headers, so the class comes from the source header section, unfolded, without reading the body.",
+      "request": {
+        "path": {
+          "id": 104
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "body_html": "\u003cp\u003eHello café\u003c/p\u003e",
+            "body_text": "Hello café",
+            "class": "newsletter",
+            "created_at": "2026-10-20T00:00:00Z",
+            "date_header": null,
+            "downgraded_size": 0,
+            "folder": "INBOX",
+            "has_attachments": true,
+            "id": 104,
+            "in_reply_to": "",
+            "is_deleted": false,
+            "is_draft": false,
+            "is_dsn": false,
+            "is_flagged": false,
+            "is_read": false,
+            "is_starred": false,
+            "mailbox_id": 1,
+            "message_id": "\u003cmessage@example.net\u003e",
+            "raw_size": 78,
             "received_at": "2026-10-20T00:00:00Z",
             "received_tls": true,
             "recipients_cc": [],

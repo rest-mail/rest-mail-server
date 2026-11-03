@@ -6,6 +6,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useUIStore } from '@/stores/uiStore';
 import { getThemePack, TYPEFACE_CLASS, avatarTint, initialsOf } from '@/theme/packs';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { ClassLabel } from '@/components/mail/signals';
 import { cn } from '@/lib/utils';
 import { Mail, X, Paperclip } from 'lucide-react';
 
@@ -206,6 +207,7 @@ export function MessageList() {
                   )}>
                     {msg.subject || '(no subject)'}
                   </span>
+                  <ClassLabel messageClass={msg.class} />
                   {msg.has_attachments && (
                     <Paperclip className="w-3 h-3 text-muted-foreground shrink-0" />
                   )}
