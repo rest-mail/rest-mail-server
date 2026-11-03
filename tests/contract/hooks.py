@@ -2585,6 +2585,40 @@ def send_a_draft_of_its_own(transaction):
     )
 
 
+@hooks.before("retryQueueEntry")
+def retry_a_held_entry_after_bulk_examples(transaction):
+    name = transaction.get("name", "")
+    path, _, query = transaction["fullPath"].partition("?")
+    queue, entry, action = path.rstrip("/").rsplit("/", 2)
+    if " > 200 > " not in name or not positive_id(entry):
+        return
+    current = fixture_call(transaction, "GET", f"{queue}/{entry}", expect=(404, 422))
+    recipient = FIXTURE_PLAN["queue"]["retry"]["recipient"]
+    if not current or current.get("recipient") != recipient:
+        return
+    if current.get("status") in ("pending", "deferred"):
+        return
+    # Only this row: the whole fixture set would also add a suppression and a
+    # quarantined message, which other operations' examples and probes count.
+    subprocess.run(
+        ["chore", "test:contract-retry-fixture"],
+        check=True,
+        capture_output=True,
+        timeout=20,
+    )
+    listed = fixture_call(
+        transaction,
+        "GET",
+        queue + "?" + urllib.parse.urlencode({"recipient": recipient, "status": "deferred"}),
+    )
+    items = (listed or {}).get("items") or []
+    if not items:
+        raise RuntimeError("the replenished contract retry fixture is missing")
+    transaction["fullPath"] = f"{queue}/{items[0]['id']:d}/{action}" + (
+        "?" + query if query else ""
+    )
+
+
 @hooks.before("bounceQueueEntry")
 def bounce_the_held_bounce_entry(transaction):
     # The documented bounce and the retry would both take the one entry the

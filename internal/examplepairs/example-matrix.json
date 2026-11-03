@@ -902,23 +902,6 @@
         "mediaType": "application/json"
       }
     },
-    "empty_filter": {
-      "description": "An explicit empty filter selects the entire controlled queue fixture, as the existing client flow expects. No live database or queue is mutated by these tests.",
-      "request": {
-        "body": {
-          "filter": {}
-        }
-      },
-      "response": {
-        "status": 200,
-        "body": {
-          "data": {
-            "affected": 3
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
     "ids_take_precedence": {
       "description": "Nonempty IDs take precedence over every supplied filter; filter predicates must not appear in the mutation.",
       "request": {
@@ -956,29 +939,6 @@
         "body": {
           "data": {
             "affected": 0
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "null_filter": {
-      "request": {
-        "body": {
-          "filter": null
-        },
-        "invalid": true
-      },
-      "response": {
-        "status": 422,
-        "body": {
-          "error": {
-            "code": "validation_failed",
-            "message": "Request body failed validation",
-            "details": {
-              "fields": {
-                "ids": "ids or filter required"
-              }
-            }
           }
         },
         "mediaType": "application/json"
@@ -1102,23 +1062,6 @@
         "mediaType": "application/json"
       }
     },
-    "empty_filter": {
-      "description": "An explicit empty filter selects the entire controlled queue fixture, as the existing client flow expects. No live database or queue is mutated by these tests.",
-      "request": {
-        "body": {
-          "filter": {}
-        }
-      },
-      "response": {
-        "status": 200,
-        "body": {
-          "data": {
-            "affected": 3
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
     "ids_take_precedence": {
       "description": "Nonempty IDs take precedence over every supplied filter; filter predicates must not appear in the mutation.",
       "request": {
@@ -1156,29 +1099,6 @@
         "body": {
           "data": {
             "affected": 0
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "null_filter": {
-      "request": {
-        "body": {
-          "filter": null
-        },
-        "invalid": true
-      },
-      "response": {
-        "status": 422,
-        "body": {
-          "error": {
-            "code": "validation_failed",
-            "message": "Request body failed validation",
-            "details": {
-              "fields": {
-                "ids": "ids or filter required"
-              }
-            }
           }
         },
         "mediaType": "application/json"
@@ -1302,23 +1222,6 @@
         "mediaType": "application/json"
       }
     },
-    "empty_filter": {
-      "description": "An explicit empty filter selects the entire controlled queue fixture, as the existing client flow expects. No live database or queue is mutated by these tests.",
-      "request": {
-        "body": {
-          "filter": {}
-        }
-      },
-      "response": {
-        "status": 200,
-        "body": {
-          "data": {
-            "affected": 3
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
     "ids_take_precedence": {
       "description": "Nonempty IDs take precedence over every supplied filter; filter predicates must not appear in the mutation.",
       "request": {
@@ -1356,29 +1259,6 @@
         "body": {
           "data": {
             "affected": 0
-          }
-        },
-        "mediaType": "application/json"
-      }
-    },
-    "null_filter": {
-      "request": {
-        "body": {
-          "filter": null
-        },
-        "invalid": true
-      },
-      "response": {
-        "status": 422,
-        "body": {
-          "error": {
-            "code": "validation_failed",
-            "message": "Request body failed validation",
-            "details": {
-              "fields": {
-                "ids": "ids or filter required"
-              }
-            }
           }
         },
         "mediaType": "application/json"

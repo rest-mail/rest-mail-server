@@ -58,8 +58,8 @@ func TestBulkRetryQueue_PreLookupRefusals(t *testing.T) {
 				"null_ids":              {"ids": "must not be null"},
 				"absent_selection":      {"ids": "ids or filter required"},
 				"empty_ids":             {"ids": "ids or filter required"},
-				"null_filter":           {"ids": "ids or filter required"},
-				"empty_ids_null_filter": {"ids": "ids or filter required"},
+				"null_filter":           {"filter": "must not be null"},
+				"empty_ids_null_filter": {"filter": "must not be null"},
 				"1001_ids":              {"ids": "max 1000 IDs per request"},
 				"1001_ids_with_filter":  {"ids": "max 1000 IDs per request"},
 			}[tc.name]

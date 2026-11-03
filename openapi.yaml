@@ -9732,7 +9732,7 @@ paths:
   /api/v1/admin/queue/bulk-retry:
     post:
       operationId: bulkRetryQueue
-      description: Database work follows the HTTP request context, including cancellation and deadlines.
+      description: Select entries by nonempty IDs (which take precedence) or by an explicit filter object. An empty filter object selects all entries subject to the action's status eligibility. A supplied filter must never be null, even with IDs; null is refused with 422 before queue access. Database work follows the HTTP request context, including cancellation and deadlines.
       tags: ["Admin: Queue"]
       security:
         - CookieAuth: [queue:manage]
@@ -9815,7 +9815,7 @@ paths:
   /api/v1/admin/queue/bulk-bounce:
     post:
       operationId: bulkBounceQueue
-      description: Database work follows the HTTP request context, including cancellation and deadlines.
+      description: Select entries by nonempty IDs (which take precedence) or by an explicit filter object. An empty filter object selects all entries subject to the action's status eligibility. A supplied filter must never be null, even with IDs; null is refused with 422 before queue access. Database work follows the HTTP request context, including cancellation and deadlines.
       tags: ["Admin: Queue"]
       security:
         - CookieAuth: [queue:manage]
@@ -9898,7 +9898,7 @@ paths:
   /api/v1/admin/queue/bulk-delete:
     delete:
       operationId: bulkDeleteQueue
-      description: Database work follows the HTTP request context, including cancellation and deadlines.
+      description: Select entries by nonempty IDs (which take precedence) or by an explicit filter object. An empty filter object selects all entries subject to the action's status eligibility. A supplied filter must never be null, even with IDs; null is refused with 422 before queue access. Database work follows the HTTP request context, including cancellation and deadlines.
       tags: ["Admin: Queue"]
       security:
         - CookieAuth: [queue:manage]
@@ -16976,8 +16976,11 @@ components:
       description: >-
         Select entries by IDs (which take precedence) or by a filter. Nonempty
         filter fields are combined with AND. At least one ID or a filter object
-        is required; an empty filter satisfies this requirement. At most 1000 IDs may
-        be supplied, including when a filter is also present.
+        is required; an explicit empty filter object selects all entries (subject
+        to the action's status eligibility). A supplied filter must be an object,
+        never null, even when IDs are also supplied; null is refused with 422
+        before queue access. At most 1000 IDs may be supplied, including when a
+        filter is also present.
       anyOf:
         - required: [ids]
           properties:

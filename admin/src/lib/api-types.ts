@@ -1743,7 +1743,7 @@ export interface paths {
         put?: never;
         /**
          * Bounce multiple queue entries
-         * @description Database work follows the HTTP request context, including cancellation and deadlines.
+         * @description Select entries by nonempty IDs (which take precedence) or by an explicit filter object. An empty filter object selects all entries subject to the action's status eligibility. A supplied filter must never be null, even with IDs; null is refused with 422 before queue access. Database work follows the HTTP request context, including cancellation and deadlines.
          */
         post: operations["bulkBounceQueue"];
         delete?: never;
@@ -1764,7 +1764,7 @@ export interface paths {
         post?: never;
         /**
          * Delete multiple queue entries
-         * @description Database work follows the HTTP request context, including cancellation and deadlines.
+         * @description Select entries by nonempty IDs (which take precedence) or by an explicit filter object. An empty filter object selects all entries subject to the action's status eligibility. A supplied filter must never be null, even with IDs; null is refused with 422 before queue access. Database work follows the HTTP request context, including cancellation and deadlines.
          */
         delete: operations["bulkDeleteQueue"];
         options?: never;
@@ -1783,7 +1783,7 @@ export interface paths {
         put?: never;
         /**
          * Retry multiple queue entries
-         * @description Database work follows the HTTP request context, including cancellation and deadlines.
+         * @description Select entries by nonempty IDs (which take precedence) or by an explicit filter object. An empty filter object selects all entries subject to the action's status eligibility. A supplied filter must never be null, even with IDs; null is refused with 422 before queue access. Database work follows the HTTP request context, including cancellation and deadlines.
          */
         post: operations["bulkRetryQueue"];
         delete?: never;
@@ -4782,7 +4782,7 @@ export interface components {
                 recipient?: string;
                 sender?: string;
                 status?: string;
-            } | null;
+            };
             ids?: number[];
         } | {
             ids: unknown;
