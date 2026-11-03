@@ -1356,7 +1356,7 @@ corresponding command rows rather than counted as separate behavior.
 | IMAP2-CMD-70 | RFC 9051 §6.3.1 | MUST NOT | Change the CAPABILITY list as a consequence of ENABLE. | TestEnableUnknownAndCapabilityStability, TestEnableAdditiveAndPersistent |
 | IMAP2-CMD-72 | RFC 9051 §6.3.2–6.3.3 | MUST | Before successful SELECT or EXAMINE return FLAGS, EXISTS, LIST, PERMANENTFLAGS, UIDNEXT and UIDVALIDITY. | n/a: rev1 selection returns the older required set without the rev2 LIST response. UID persistence also has the base-backend gap in IMAP-SELECT-09; rest-mail/rest-mail-server#718. |
 | IMAP2-CMD-73 | RFC 9051 §6.3.2 | MUST | Return accurate selected-mailbox LIST attributes, and OLDNAME when accepting a normalized form of the supplied UTF-8 name. | n/a: selected-mailbox LIST and OLDNAME normalization responses are not implemented; rest-mail/rest-mail-server#718. |
-| IMAP2-CMD-74 | RFC 9051 §6.3.2 | MUST | Deselect the old mailbox before attempting another SELECT, leaving no selection on failure, and announce closure with CLOSED. | n/a: the deselection/state behavior is tested by IMAP-SELECT-07, but the rev2 CLOSED response code is not implemented; rest-mail/rest-mail-server#718. |
+| IMAP2-CMD-74 | RFC 9051 §6.3.2 | MUST | Deselect the old mailbox before attempting another SELECT, leaving no selection on failure, and announce closure with CLOSED. | n/a: the deselection/state behavior is tested by IMAP-SELECT-07. An IMAP4rev2 session is sent `* OK [CLOSED]` first when SELECT or EXAMINE, successful or not, replaces a selection, and not after CLOSE or UNSELECT (TestSelectClosedRev2, TestSelectClosedRev2OnFailure and TestSelectClosedRev2NotAfterClose in package server), but no command makes a session rev2 until ENABLE IMAP4rev2; rest-mail/rest-mail-server#718. Rev1 sessions are IMAP-CLOSED-01. |
 | IMAP2-CMD-75 | RFC 9051 §6.3.2 | SHOULD | Identify a successful writable SELECT with READ-WRITE in its tagged completion. | TestSelectionExamples |
 | IMAP2-CMD-76 | RFC 9051 §6.3.2 | MUST | When access permits reading but not writing, SELECT the mailbox read-only and announce READ-ONLY. | n/a: only EXAMINE explicitly makes a selection read-only; the backend cannot report read-only permissions to SELECT (IMAP-SELECT-10). Tracked in rest-mail/rest-mail-server#374. |
 | IMAP2-CMD-78 | RFC 9051 §6.3.3 | MUST | Begin the successful EXAMINE tagged response text with READ-ONLY. | TestSelectionExamples |
@@ -1564,7 +1564,8 @@ rev1 extension test to proof of a complete rev2 implementation.
    SEARCHRES, ENABLE, IDLE, SASL-IR, LIST-EXTENDED, LIST-STATUS, MOVE, LITERAL-,
    BINARY and SPECIAL-USE rows prove their stated slices. Rev2 baseline
    negotiation, ABNF and response-code coverage remain IMAP2-SEC-217/225.
-3. STATUS SIZE has IMAP-STATUS-SIZE rows; STATUS DELETED is IMAP2-DELTA-03.
+3. STATUS SIZE has IMAP-STATUS-SIZE rows; STATUS DELETED is IMAP2-DELTA-03,
+   tested by TestStatusDeleted.
 4. Default ESEARCH remains unsupported (IMAP2-CMD-135-02).
 5. SEARCH matching has IMAP-SEARCH rows and IMAP2-CMD-143; the full rev2
    key-by-key wording still needs non-keyword reconciliation.
@@ -1574,7 +1575,8 @@ rev1 extension test to proof of a complete rev2 implementation.
 7. COPYUID for MOVE/UID MOVE has the existing IMAP-MOVE rows.
 8. Missing COPY/MOVE destinations have IMAP2-CMD-157/163; arbitrary backend
    creation/preservation guarantees remain the explicit COPY/MOVE gaps.
-9. CLOSED on replacement selection remains IMAP2-CMD-74.
+9. CLOSED on replacement selection is built for rev2 sessions and waits on
+   ENABLE IMAP4rev2 (IMAP2-CMD-74); rev1 sessions get none (IMAP-CLOSED-01).
 10. Selected-mailbox LIST and normalized OLDNAME remain IMAP2-CMD-73.
 11. Rev2 deprecation of SELECT/EXAMINE UNSEEN requires mode-specific replies;
     the current rev1 engine still emits it (IMAP2-SEC-217/225).
@@ -1618,7 +1620,8 @@ rev1 extension test to proof of a complete rev2 implementation.
 
 | ID | Section | Level | Requirement | Tests |
 |----|---------|-------|-------------|-------|
-| IMAP2-DELTA-03 | RFC 9051 §6.3.11 | Normative | Return the number of messages marked Deleted for STATUS DELETED, alongside the other requested status items. | n/a: STATUS DELETED is not supported by the current rev1 parser; rev2 baseline status items remain rest-mail/rest-mail-server#718. |
+| IMAP2-DELTA-03 | RFC 9051 §6.3.11 | Normative | Return the number of messages marked Deleted for STATUS DELETED, alongside the other requested status items. | TestStatusDeleted |
+| IMAP-CLOSED-01 | RFC 3501 §7.1; RFC 7162 §3.2.11 | SHOULD | Send an IMAP4rev1 session no CLOSED response code: it is neither in RFC 3501 nor X-prefixed, and RFC 7162 requires it only of a server advertising CONDSTORE or QRESYNC, which this engine does not. Rev2 sessions get it (IMAP2-CMD-74). | TestSelectNoClosedForRev1 |
 
 ## RFC 9051 first-pass audit record
 

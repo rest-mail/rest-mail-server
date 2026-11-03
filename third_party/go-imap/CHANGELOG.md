@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- STATUS DELETED (RFC 9051 §6.3.11): STATUS, and LIST's STATUS return option,
+  report how many messages carry `\Deleted`.
+- The CLOSED response code (RFC 9051 §§6.3.2, 7.1): SELECT or EXAMINE that
+  replaces a selection sends `* OK [CLOSED]` first, to IMAP4rev2 sessions only.
+  Nothing enables IMAP4rev2 yet, so IMAP4rev1 sessions see no change.
+
 ### Fixed
 
 - A SELECT or EXAMINE refused with BAD keeps the mailbox already selected, with

@@ -149,7 +149,7 @@ port 4190.
   `MOVE`, `QUOTA`, `UIDPLUS`, `UNSELECT`, `ENABLE`, `UTF8=ACCEPT` and
   `SPECIAL-USE`, and with these parts of IMAP4rev2: `SASL-IR`, `LITERAL-`,
   `NAMESPACE`, `ESEARCH`, `SEARCHRES`, `LIST-EXTENDED`, `LIST-STATUS`,
-  `STATUS=SIZE` and `BINARY`. The protocol is [`rest-mail/go-imap`](https://github.com/rest-mail/go-imap),
+  `STATUS=SIZE`, `STATUS DELETED` and `BINARY`. The protocol is [`rest-mail/go-imap`](https://github.com/rest-mail/go-imap),
   a server library with a test for each RFC; REST Mail's gateway only supplies
   the mailboxes, from the REST API
   ([`internal/gateway/imap/`](../../../internal/gateway/imap/)). Sent, Drafts,

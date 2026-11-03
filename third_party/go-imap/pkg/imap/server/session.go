@@ -47,6 +47,11 @@ type Session struct {
 	// longer in the view matches nothing.
 	saved []uint32
 	utf8  bool // ENABLE UTF8=ACCEPT succeeded (RFC 6855)
+	// imap4rev2 is true once the session speaks IMAP4rev2 (RFC 9051). Nothing
+	// sets it yet: ENABLE IMAP4rev2 is still to be designed
+	// (rest-mail/rest-mail-server#718). It gates the CLOSED response code; see
+	// closedCode.
+	imap4rev2 bool
 }
 
 type authState struct {
