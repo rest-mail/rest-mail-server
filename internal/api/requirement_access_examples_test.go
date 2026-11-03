@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"database/sql"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -97,6 +98,8 @@ func TestRateRequirementExamples(t *testing.T) {
 						req.Header.Set("Authorization", "Bearer "+session.AccessToken)
 						r.Public.ServeHTTP(w, req)
 					})
+				case "openGatewaySession":
+					handler = gatewaySessionRefusalLimited(t)
 				default:
 					handler = apiKeyRefusalLimited(t)
 				}
@@ -110,6 +113,31 @@ func TestRateRequirementExamples(t *testing.T) {
 			})
 		}
 	}
+}
+
+// gatewaySessionRefusalLimited is the internal listener, as the IMAP gateway
+// sees it, after one refused sign-in from the caller's address has spent the
+// refusal throttle's only token: the next open is answered 429 before its
+// password is checked.
+func gatewaySessionRefusalLimited(t *testing.T) http.Handler {
+	t.Helper()
+	pool := sql.OpenDB(&authRequirementConnection{t: t, password: requirementHash(t, "fixture-password")})
+	t.Cleanup(func() { _ = pool.Close() })
+	jwt := auth.NewJWTService(routerTestSecret, time.Minute, time.Hour)
+	r := NewRouters(openAccountReadDB(t, pool), jwt, &config.Config{Environment: "test", InternalMTLSEnabled: true,
+		AuthRateLimitEnabled: true, AuthRateLimitRPS: 1.0 / 3600, AuthRateLimitBurst: 1}, nil)
+	t.Cleanup(r.Close)
+	internal := asGateway("rest-mail-imap-gateway", r.Internal)
+	prime := httptest.NewRequest(http.MethodPost, "/api/v1/gateway-sessions",
+		strings.NewReader(`{"protocol":"imap","address":"nobody@restmail.test","password":"not the password"}`))
+	prime.Header.Set("Content-Type", "application/json")
+	prime.RemoteAddr = "127.0.0.1:12345" // as requirementRequest sends the pair
+	refused := httptest.NewRecorder()
+	internal.ServeHTTP(refused, prime)
+	if refused.Code != http.StatusUnauthorized {
+		t.Fatalf("priming refusal got %d %s, want 401", refused.Code, refused.Body.String())
+	}
+	return internal
 }
 
 // Refusals with no SQL prerequisites still go through authentication and the

@@ -215,6 +215,17 @@ func (c *mailboxRemovalConnection) ExecContext(_ context.Context, q string, args
 		}
 		return driver.RowsAffected(2), nil
 	}
+	if strings.HasPrefix(q, `UPDATE "gateway_sessions"`) {
+		c.record(q, args)
+		if len(args) != 2 || args[1].Value != c.target || !strings.Contains(q, "account_id =") || !strings.Contains(q, "closed_at IS NULL") {
+			return nil, errors.New("gateway session close lost target/open selector")
+		}
+		stamp, ok := args[0].Value.(time.Time)
+		if !ok || stamp.Before(time.Now().Add(-time.Minute)) || stamp.After(time.Now()) {
+			return nil, errors.New("gateway session close lost request time")
+		}
+		return driver.RowsAffected(0), nil
+	}
 	if strings.HasPrefix(q, `DELETE FROM "grant_activations"`) || strings.HasPrefix(q, `DELETE FROM "grants"`) {
 		c.record(q, args)
 		return driver.RowsAffected(1), nil

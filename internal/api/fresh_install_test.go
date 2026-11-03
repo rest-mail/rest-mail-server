@@ -191,10 +191,13 @@ func TestFreshInstall_EndToEnd(t *testing.T) {
 	}
 
 	jwtSvc := auth.NewJWTService(routerTestSecret, 5*time.Minute, 24*time.Hour)
-	routers := NewRouters(db, jwtSvc, &config.Config{Environment: "test", TOTP2FAEnabled: true, MasterKey: accessMasterKey}, nil)
+	routers := NewRouters(db, jwtSvc, &config.Config{Environment: "test", TOTP2FAEnabled: true, MasterKey: accessMasterKey,
+		InternalMTLSEnabled: true}, nil)
 	t.Cleanup(routers.Close)
 	f := &freshInstall{t: t, db: db, router: routers.Public}
-	gateway, submission, rootCAs := startSubmission(t, db, f.router)
+	_, submission, rootCAs := startSubmission(t, db, f.router, routers.Internal)
+	// The IMAP gateway's client, for the IMAP sign-ins below.
+	gateway := gatewayAPI(t, f.router, routers.Internal, imapCN)
 
 	// 2. Signing in with the deploy password, by address: a session in setup
 	// that reaches nothing but setting up. A username is not an address.

@@ -33687,7 +33687,7 @@
         "body": {
           "error": {
             "code": "unauthorized",
-            "message": "Invalid authorization header format"
+            "message": "Invalid or expired token"
           }
         },
         "mediaType": "application/json"
@@ -34181,7 +34181,7 @@
         "body": {
           "error": {
             "code": "unauthorized",
-            "message": "Invalid authorization header format"
+            "message": "Invalid or expired token"
           }
         },
         "mediaType": "application/json"

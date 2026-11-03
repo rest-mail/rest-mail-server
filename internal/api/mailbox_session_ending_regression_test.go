@@ -154,6 +154,16 @@ func (c *mailboxSessionEndingConnection) ExecContext(_ context.Context, q string
 		}
 		return driver.RowsAffected(2), nil
 	}
+	if strings.HasPrefix(q, `UPDATE "gateway_sessions" SET`) {
+		c.mutation(q, args)
+		if len(args) != 2 || !strings.Contains(q, "WHERE account_id =") || !strings.Contains(q, "closed_at IS NULL") {
+			return nil, errors.New("gateway session close lost account/open selector")
+		}
+		if _, ok := args[0].Value.(time.Time); !ok {
+			return nil, errors.New("gateway session close lost its time")
+		}
+		return driver.RowsAffected(0), nil
+	}
 	return nil, errors.New("unexpected password/credential/resource mutation")
 }
 
