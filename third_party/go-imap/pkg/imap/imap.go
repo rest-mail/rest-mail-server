@@ -34,7 +34,10 @@
 // APPEND, and one that implements [UTF8Mailbox] turns on UTF8=ACCEPT
 // ([RFC 6855]) through ENABLE. One that implements [Subscriber] keeps a real
 // subscription list for SUBSCRIBE, UNSUBSCRIBE, LSUB and LIST's SUBSCRIBED
-// options ([RFC 5258]). The advertised CAPABILITY list reflects only the
+// options ([RFC 5258]). One that implements [RightsMailbox] tells the server
+// what the user may do with each mailbox, for read-only selections, TRYCREATE
+// and keeping APPENDUID and COPYUID from callers who cannot read the
+// destination ([RFC 9051] §§6.3.2, 6.3.12, 11.4). The advertised CAPABILITY list reflects only the
 // optional interfaces the concrete Mailbox satisfies, so a backend implementing
 // just [Mailbox] is unaffected and the list never over-promises.
 //
@@ -43,6 +46,7 @@
 // [RFC 6851]: https://www.rfc-editor.org/rfc/rfc6851
 // [RFC 6855]: https://www.rfc-editor.org/rfc/rfc6855
 // [RFC 5258]: https://www.rfc-editor.org/rfc/rfc5258
+// [RFC 9051]: https://www.rfc-editor.org/rfc/rfc9051
 package imap
 
 import (
@@ -220,6 +224,46 @@ type Subscriber interface {
 	// Unsubscribe removes name from the list; removing an unlisted name is not
 	// an error.
 	Unsubscribe(name string) error
+}
+
+// Rights is what the signed-in user may do with one mailbox.
+type Rights struct {
+	// Read lets the user SELECT or EXAMINE the mailbox, ask its STATUS and
+	// learn the UIDs its messages have, APPENDUID and COPYUID among them
+	// (RFC 9051 §§6.3.12, 6.4.7, 11.4).
+	Read bool
+	// Write lets the user put messages into the mailbox (APPEND, COPY, MOVE)
+	// and change or expunge the ones there. A mailbox the user may read but
+	// not write is selected read-only, even by SELECT (RFC 9051 §6.3.2).
+	Write bool
+	// Create says the user could create the mailbox when it does not exist,
+	// so a command that needs it answers NO [TRYCREATE]; false means creating
+	// it is known to be impossible and the answer is a plain NO (RFC 9051
+	// §6.3.12).
+	Create bool
+}
+
+// RightsMailbox is the optional interface a [Mailbox] may also implement to
+// tell the server the user's [Rights] on each mailbox. folder is a store name,
+// as [Folder.Name] holds it; it need not exist, and Create then says whether
+// it could be made. With it the server:
+//
+//   - selects a mailbox the user may read but not write read-only, with
+//     [READ-ONLY], and refuses SELECT, EXAMINE and STATUS of one the user may
+//     not read with NO [NOPERM];
+//   - marks a mailbox the user may not read \Noselect in LIST, without STATUS
+//     (RFC 9051 §6.3.9.2);
+//   - refuses APPEND, COPY and MOVE into a mailbox that does not exist with NO
+//     [TRYCREATE], or a plain NO when Create is false, before the store sees
+//     it, so no mailbox is ever made implicitly, and into one the user may not
+//     write with NO [NOPERM];
+//   - sends APPENDUID and COPYUID only for a destination the user may read.
+//
+// A lookup error counts as no rights for that command. A Mailbox that does not
+// implement it gives the user every right on every mailbox, and the store
+// alone decides whether a destination exists ([ErrNoSuchMailbox]).
+type RightsMailbox interface {
+	MailboxRights(folder string) (Rights, error)
 }
 
 // UTF8Mailbox is the optional interface a [Mailbox] may also implement to

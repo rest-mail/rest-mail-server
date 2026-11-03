@@ -54,6 +54,14 @@ advertised.
   are added to a revision of this protocol" (§7.1), and RFC 7162 §3.2.11
   requires CLOSED of a server that "advertises "QRESYNC" or "CONDSTORE"",
   which this one does not. ENABLE IMAP4rev2 will turn it on.
+- Mailbox access rights (RFC 9051 §§6.3.2, 6.3.9.2, 6.3.12, 6.4.7, 11.4). The
+  rev2 rules on READ-ONLY selections, TRYCREATE without implicit creation,
+  \Noselect for unopenable LIST-STATUS entries and withholding APPENDUID and
+  COPYUID from a caller who cannot read the destination all need the user's
+  rights, which upstream's Mailbox does not carry. The optional
+  `imap.RightsMailbox` interface reports them; a Mailbox without it keeps every
+  right, so existing hosts see no change. DELETE of a \Noselect level with
+  inferiors answers `NO [HASCHILDREN]` (§6.3.5) for every host.
 - LIST-EXTENDED in full (RFC 5258, folded into RFC 9051 §6.3.9) needs a real
   subscription list: "the list MUST include exactly those mailbox names that
   match the canonical list pattern and are subscribed to" (§3.1), names that

@@ -107,7 +107,21 @@ var (
 	_ goimap.UIDPlusMailbox = (*mailbox)(nil)
 	_ goimap.Mover          = (*mailbox)(nil)
 	_ goimap.UTF8Mailbox    = (*mailbox)(nil)
+	_ goimap.RightsMailbox  = (*mailbox)(nil)
 )
+
+// MailboxRights reports the signed-in user's rights on folder (RightsMailbox).
+// REST Mail keeps no rights per folder: a protocol sign-in reaches only the
+// account's own folders, and the mail.read and mail.write capabilities it is
+// checked against hold for the whole account, so every folder is readable and
+// writable, and the API stays the gate that refuses a call the session may not
+// make. What the gateway does know is which names can never become a folder:
+// one the API's folder name rule refuses (validateFolder). So APPEND, COPY and
+// MOVE to a missing folder answer NO [TRYCREATE] rather than creating it, and a
+// plain NO for a name that could not be created (RFC 9051 §6.3.12).
+func (m *mailbox) MailboxRights(folder string) (goimap.Rights, error) {
+	return goimap.Rights{Read: true, Write: true, Create: validateFolder(folder) == nil}, nil
+}
 
 // EnableUTF8 switches this session to UTF-8 (RFC 6855 UTF8=ACCEPT). The
 // library advertises the capability because the mailbox implements this, and

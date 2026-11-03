@@ -251,13 +251,17 @@ func (s *Session) handleList(tag, args, cmd string) {
 		// Folders and Messages must be marked Noselect, not just lose STATUS.
 		var status string
 		var statusErr error
-		statusRequested := req.status != nil && meets(e) && e.exists
+		// A mailbox the user may not read cannot be selected: it is \Noselect
+		// and gets no STATUS (RFC 9051 §6.3.9.2).
+		readable := !e.exists || s.mayRead(e.folder.Name)
+		statusRequested := req.status != nil && meets(e) && e.exists && readable
 		if statusRequested {
 			status, statusErr = s.statusData(e.folder.Name, req.status)
 		}
 
 		var attrs []string
-		if errors.Is(statusErr, imap.ErrNoSuchMailbox) {
+		noselect := !readable || errors.Is(statusErr, imap.ErrNoSuchMailbox)
+		if noselect {
 			attrs = append(attrs, `\Noselect`)
 		}
 		// The role is the store's, reported on every LIST (RFC 6154 §2 allows it
@@ -275,7 +279,7 @@ func (s *Session) handleList(tag, args, cmd string) {
 		case cmd == "LSUB":
 			// LSUB keeps \Noselect's second meaning: not subscribed itself. A
 			// subscribed name that does not exist is listed plainly.
-			if !meets(e) {
+			if !meets(e) && !noselect {
 				attrs = append(attrs, `\Noselect`)
 			}
 		case e.exists:
