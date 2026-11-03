@@ -521,7 +521,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List folders for an account */
+        /**
+         * List folders for an account
+         * @description Every folder of the account with how many messages it holds and how many are unread. INBOX, Sent, Drafts and Trash are listed even when empty. A standard folder carries its role (inbox, sent, drafts, trash, junk for Spam, archive), the one IMAP LIST gives it as an RFC 6154 special-use attribute; any other folder's role is null.
+         */
         get: operations["listFolders"];
         put?: never;
         /**
@@ -3652,6 +3655,8 @@ export interface components {
         };
         FolderSummary: {
             name: string;
+            /** @enum {string|null} */
+            role: "inbox" | "sent" | "drafts" | "trash" | "junk" | "archive" | null;
             /** Format: int64 */
             total: number;
             /** Format: int64 */

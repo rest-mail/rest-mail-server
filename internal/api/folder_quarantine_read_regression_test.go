@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"database/sql/driver"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -42,6 +43,12 @@ func (c folderQuarantineReadConnection) QueryContext(ctx context.Context, query 
 			return nil, errors.New("private folder aggregation detail")
 		}
 		r := &authReadSnapshotRows{columns: []string{"folder", "total", "unread"}}
+		if id == "7" {
+			for _, name := range []string{"Archive", "Drafts", "INBOX", "Projects/2026", "Sent", "Spam", "Trash", "sent", "spam"} {
+				r.rows = append(r.rows, []driver.Value{name, int64(1), int64(0)})
+			}
+			return r, nil
+		}
 		if id != "2" {
 			r.rows = [][]driver.Value{{"Archive", int64(2), int64(1)}, {"INBOX", int64(5), int64(2)}, {"Projects/2026", int64(0), int64(0)}}
 		}
@@ -125,6 +132,36 @@ func TestFolderQuarantineFailuresAreNotDeniedOrEmpty(t *testing.T) {
 		scenario.handler.ServeHTTP(rr, req)
 		if rr.Code != 500 || rr.Body.String() != "{\"error\":{\"code\":\"internal_error\",\"message\":\"Internal server error\"}}\n" {
 			t.Errorf("%s/%s: got %d %s, want sanitized 500", tc.path, tc.scenario, rr.Code, rr.Body.String())
+		}
+	}
+}
+
+// listFolders gives every standard folder its role, Spam's as junk, and any other folder
+// null: a "sent" or "spam" beside Sent and Spam is a folder of its own (#1611).
+func TestListFoldersCarriesRoles(t *testing.T) {
+	scenario := folderQuarantineReadScenarios(t)["domain_manager"]
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/7/folders", nil)
+	req.Header.Set("Authorization", "Bearer "+scenario.token)
+	rr := httptest.NewRecorder()
+	scenario.handler.ServeHTTP(rr, req)
+	var page struct {
+		Data []map[string]any `json:"data"`
+	}
+	if rr.Code != http.StatusOK || json.Unmarshal(rr.Body.Bytes(), &page) != nil {
+		t.Fatalf("got %d %s", rr.Code, rr.Body)
+	}
+	want := map[string]any{
+		"Archive": "archive", "Drafts": "drafts", "INBOX": "inbox", "Sent": "sent", "Spam": "junk", "Trash": "trash",
+		"Projects/2026": nil, "sent": nil, "spam": nil,
+	}
+	if len(page.Data) != len(want) {
+		t.Fatalf("listed %d folders, want %d: %s", len(page.Data), len(want), rr.Body)
+	}
+	for _, folder := range page.Data {
+		name, _ := folder["name"].(string)
+		role, present := folder["role"]
+		if expected, known := want[name]; !known || !present || role != expected {
+			t.Errorf("%q has role %v (present %v), want %v", name, role, present, expected)
 		}
 	}
 }

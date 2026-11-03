@@ -60,3 +60,39 @@ func TestStandardFolders(t *testing.T) {
 		}
 	}
 }
+
+// Each standard folder has its role and, but for INBOX, its RFC 6154 attribute; INBOX is
+// matched in any case and every other name only exactly, so a custom "sent" has no role (#1611).
+func TestRoleOf(t *testing.T) {
+	for _, tc := range []struct {
+		folder     string
+		role       FolderRole
+		specialUse string
+	}{
+		{"INBOX", RoleInbox, ""},
+		{"inbox", RoleInbox, ""},
+		{"Inbox", RoleInbox, ""},
+		{"Sent", RoleSent, `\Sent`},
+		{"Drafts", RoleDrafts, `\Drafts`},
+		{"Trash", RoleTrash, `\Trash`},
+		{"Spam", RoleJunk, `\Junk`},
+		{"Archive", RoleArchive, `\Archive`},
+		{"sent", "", ""},
+		{"SPAM", "", ""},
+		{"Junk", "", ""},
+		{"Projects/Sent", "", ""},
+		{"", "", ""},
+	} {
+		if got := RoleOf(tc.folder); got != tc.role {
+			t.Errorf("RoleOf(%q) = %q, want %q", tc.folder, got, tc.role)
+		}
+		if got := RoleOf(tc.folder).SpecialUse(); got != tc.specialUse {
+			t.Errorf("RoleOf(%q).SpecialUse() = %q, want %q", tc.folder, got, tc.specialUse)
+		}
+	}
+	for _, standard := range StandardFolders {
+		if RoleOf(standard) == "" {
+			t.Errorf("standard folder %q has no role", standard)
+		}
+	}
+}

@@ -16,6 +16,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/connlimiter"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/rawmsg"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 )
 
 // errAccountLocked is returned when an account is temporarily banned for too
@@ -127,21 +128,9 @@ func (m *mailbox) Folders() ([]goimap.Folder, error) {
 	}
 	out := make([]goimap.Folder, 0, len(resp.Data))
 	for _, f := range resp.Data {
-		out = append(out, goimap.Folder{Name: f.Folder, SpecialUse: specialUse[f.Folder]})
+		out = append(out, goimap.Folder{Name: f.Folder, SpecialUse: rmail.RoleOf(f.Folder).SpecialUse()})
 	}
 	return out, nil
-}
-
-// specialUse is the role (RFC 6154) of each of REST Mail's standard folders,
-// the ones every mailbox has and none can delete (the API's standardFolders):
-// a mail app then files junk into Spam and archives into Archive rather than
-// making folders of its own beside them. Any other folder has no role.
-var specialUse = map[string]string{
-	"Sent":    goimap.SpecialUseSent,
-	"Drafts":  goimap.SpecialUseDrafts,
-	"Trash":   goimap.SpecialUseTrash,
-	"Spam":    goimap.SpecialUseJunk,
-	"Archive": goimap.SpecialUseArchive,
 }
 
 // Messages returns a folder's messages oldest-first, mapped onto the library's

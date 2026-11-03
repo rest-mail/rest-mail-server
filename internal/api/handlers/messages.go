@@ -1371,6 +1371,9 @@ func (h *MessageHandler) RegisterFolders(rs endpoint.Routes) {
 	tags := []string{"Folders"}
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/folders",
 		OperationID: "listFolders", Summary: "List folders for an account", Tags: tags,
+		Description: "Every folder of the account with how many messages it holds and how many are unread. INBOX, Sent, " +
+			"Drafts and Trash are listed even when empty. A standard folder carries its role (inbox, sent, drafts, trash, " +
+			"junk for Spam, archive), the one IMAP LIST gives it as an RFC 6154 special-use attribute; any other folder's role is null.",
 		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.listFolders)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/folders",
 		OperationID: "createFolder", Summary: "Create a new folder", Tags: tags, Status: http.StatusCreated,
@@ -1408,7 +1411,7 @@ func (h *MessageHandler) accountMailbox(r *http.Request, accountID uint32, capab
 	return mailboxID, nil
 }
 
-// listFolders returns all folders for an account.
+// listFolders returns all folders for an account, each standard one with its role (#1611).
 func (h *MessageHandler) listFolders(r *http.Request, in accountPath) (endpoint.List[FolderSummary], error) {
 	h = h.forRequest(r)
 	mailboxID, err := h.accountMailbox(r, in.ID, models.CapMailRead)
@@ -1433,6 +1436,12 @@ func (h *MessageHandler) listFolders(r *http.Request, in accountPath) (endpoint.
 	for _, sf := range listedFolders {
 		if !folderMap[sf] {
 			folders = append(folders, FolderSummary{Folder: sf, Total: 0, Unread: 0})
+		}
+	}
+	for i := range folders {
+		if role := rmail.RoleOf(folders[i].Folder); role != "" {
+			name := string(role)
+			folders[i].Role = &name
 		}
 	}
 
