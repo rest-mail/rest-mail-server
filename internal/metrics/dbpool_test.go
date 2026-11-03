@@ -78,7 +78,11 @@ func TestDBPool_ReportsTrackedPool(t *testing.T) {
 	t.Cleanup(func() { dbPool.db.Store(prev) })
 
 	db := sql.OpenDB(fakeConnector{})
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	db.SetMaxOpenConns(1)
 	TrackDBPool(db)
 
@@ -116,9 +120,13 @@ restmail_db_pool_wait_count_total 1
 		t.Error(err)
 	}
 
-	first.Close()
+	if err := first.Close(); err != nil {
+		t.Error(err)
+	}
 	second := <-got
-	second.Close()
+	if err := second.Close(); err != nil {
+		t.Error(err)
+	}
 	expect = `
 # HELP restmail_db_pool_idle_connections Idle database pool connections
 # TYPE restmail_db_pool_idle_connections gauge
