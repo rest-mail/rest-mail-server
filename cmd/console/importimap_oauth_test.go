@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -256,6 +257,71 @@ func TestImportIMAPOAuthCopiesFolderAndKeepsFailuresPrivate(t *testing.T) {
 					}
 				})
 			}
+		}
+	}
+}
+
+// OAuth sign-in and flag preservation meet only here: a source that refuses every
+// password copies a Deleted message with keywords to the public import API, and the
+// flags are read from the request's JSON rather than from the importer's own types.
+func TestImportIMAPOAuthPreservesDeletedAndKeywords(t *testing.T) {
+	for _, mechanism := range []string{sasl.OAuthBearer, "XOAUTH2"} {
+		for _, transport := range []string{"implicit", "starttls"} {
+			t.Run(mechanism+"/"+transport, func(t *testing.T) {
+				fixture := &oauthImportFixture{mechanisms: []string{mechanism}, mode: "success"}
+				connection := newOAuthImportFixture(t, fixture, transport)
+				var mutex sync.Mutex
+				flags := make(map[string][]string)
+				destination := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+					var wire struct {
+						Folder string   `json:"folder"`
+						Flags  []string `json:"flags"`
+					}
+					if err := json.NewDecoder(request.Body).Decode(&wire); err != nil {
+						t.Error(err)
+					}
+					mutex.Lock()
+					flags[wire.Folder] = wire.Flags
+					id := len(flags)
+					mutex.Unlock()
+					_ = json.NewEncoder(writer).Encode(map[string]any{"data": map[string]any{"id": id, "message_id": "<history@example.test>", "folder": wire.Folder, "imported": true}})
+				}))
+				defer destination.Close()
+				scheme := "imaps://"
+				args := []string{"--account-id", "12", "--server", destination.URL, "--source-user", "source-user"}
+				if connection.StartTLS {
+					scheme = "imap://"
+					args = append(args, "--starttls")
+				}
+				args = append(args, "--source", scheme+connection.Address)
+				reader := func(ctx context.Context, options mailimport.IMAPOptions, limit int64, visit mailimport.Visit) error {
+					options.TLSConfig = connection.TLSConfig
+					return mailimport.IMAP(ctx, options, limit, visit)
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				var stdout, stderr bytes.Buffer
+				code := runImportIMAPSource(ctx, args, "FAKE-destination-key", "", fakeIMAPAccessToken, destination.Client(), &stdout, &stderr, reader)
+				if code != exitOK {
+					t.Fatalf("OAuth copy failed: code=%d stderr=%s", code, &stderr)
+				}
+				if fixture.auth.Load() != 1 || fixture.login.Load() != 0 {
+					t.Fatalf("sign-in attempts: OAuth %d, password %d", fixture.auth.Load(), fixture.login.Load())
+				}
+				want := map[string][]string{
+					"INBOX":        {"$Forwarded", "$Junk", `\Answered`, `\Deleted`, `\Seen`},
+					"Archive/2020": {`\Flagged`},
+				}
+				for folder, flagList := range flags {
+					slices.Sort(flagList)
+					if !slices.Equal(flagList, want[folder]) {
+						t.Errorf("%s flags on the wire: got %q, want %q", folder, flagList, want[folder])
+					}
+				}
+				if len(flags) != len(want) {
+					t.Fatalf("copied folders: got %d, want %d", len(flags), len(want))
+				}
+			})
 		}
 	}
 }
