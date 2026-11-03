@@ -474,55 +474,55 @@ func GenerateICS(event pipeline.CalendarEvent) ([]byte, error) {
 		return nil, fmt.Errorf("UID is required")
 	}
 
-	var b strings.Builder
-	b.WriteString("BEGIN:VCALENDAR\r\n")
-	b.WriteString("VERSION:2.0\r\n")
-	b.WriteString("PRODID:-//RESTmail//Calendar//EN\r\n")
-	b.WriteString("METHOD:" + method + "\r\n")
-	b.WriteString("BEGIN:VEVENT\r\n")
-	b.WriteString("UID:" + event.UID + "\r\n")
+	var b calendarWriter
+	b.line("BEGIN:VCALENDAR")
+	b.line("VERSION:2.0")
+	b.line("PRODID:-//RESTmail//Calendar//EN")
+	b.line("METHOD:" + method)
+	b.line("BEGIN:VEVENT")
+	b.line("UID:" + event.UID)
 
 	// DTSTAMP: required per RFC 5545; use the event's stamp or current time
 	if !event.DTStamp.IsZero() {
-		b.WriteString("DTSTAMP:" + event.DTStamp.UTC().Format("20060102T150405Z") + "\r\n")
+		b.line("DTSTAMP:" + event.DTStamp.UTC().Format("20060102T150405Z"))
 	} else {
-		b.WriteString("DTSTAMP:" + time.Now().UTC().Format("20060102T150405Z") + "\r\n")
+		b.line("DTSTAMP:" + time.Now().UTC().Format("20060102T150405Z"))
 	}
 
 	// DTSTART / DTEND
 	if !event.DTStart.IsZero() {
 		if event.AllDay {
-			b.WriteString("DTSTART;VALUE=DATE:" + event.DTStart.Format("20060102") + "\r\n")
+			b.line("DTSTART;VALUE=DATE:" + event.DTStart.Format("20060102"))
 		} else {
-			b.WriteString("DTSTART:" + event.DTStart.UTC().Format("20060102T150405Z") + "\r\n")
+			b.line("DTSTART:" + event.DTStart.UTC().Format("20060102T150405Z"))
 		}
 	}
 	if !event.DTEnd.IsZero() {
 		if event.AllDay {
-			b.WriteString("DTEND;VALUE=DATE:" + event.DTEnd.Format("20060102") + "\r\n")
+			b.line("DTEND;VALUE=DATE:" + event.DTEnd.Format("20060102"))
 		} else {
-			b.WriteString("DTEND:" + event.DTEnd.UTC().Format("20060102T150405Z") + "\r\n")
+			b.line("DTEND:" + event.DTEnd.UTC().Format("20060102T150405Z"))
 		}
 	}
 
 	// SUMMARY
 	if event.Summary != "" {
-		b.WriteString("SUMMARY:" + escapeValue(event.Summary) + "\r\n")
+		b.line("SUMMARY:" + escapeValue(event.Summary))
 	}
 
 	// DESCRIPTION
 	if event.Description != "" {
-		b.WriteString("DESCRIPTION:" + escapeValue(event.Description) + "\r\n")
+		b.line("DESCRIPTION:" + escapeValue(event.Description))
 	}
 
 	// LOCATION
 	if event.Location != "" {
-		b.WriteString("LOCATION:" + escapeValue(event.Location) + "\r\n")
+		b.line("LOCATION:" + escapeValue(event.Location))
 	}
 
 	// STATUS
 	if event.Status != "" {
-		b.WriteString("STATUS:" + event.Status + "\r\n")
+		b.line("STATUS:" + event.Status)
 	}
 
 	// ORGANIZER
@@ -532,7 +532,7 @@ func GenerateICS(event pipeline.CalendarEvent) ([]byte, error) {
 			orgLine += ";CN=" + event.Organizer.Name
 		}
 		orgLine += ":mailto:" + event.Organizer.Address
-		b.WriteString(orgLine + "\r\n")
+		b.line(orgLine)
 	}
 
 	// ATTENDEES
@@ -551,14 +551,14 @@ func GenerateICS(event pipeline.CalendarEvent) ([]byte, error) {
 			attLine += ";RSVP=TRUE"
 		}
 		attLine += ":mailto:" + att.Address
-		b.WriteString(attLine + "\r\n")
+		b.line(attLine)
 	}
 
 	// SEQUENCE
-	b.WriteString("SEQUENCE:" + intToStr(event.Sequence) + "\r\n")
+	b.line("SEQUENCE:" + intToStr(event.Sequence))
 
-	b.WriteString("END:VEVENT\r\n")
-	b.WriteString("END:VCALENDAR\r\n")
+	b.line("END:VEVENT")
+	b.line("END:VCALENDAR")
 
 	return []byte(b.String()), nil
 }

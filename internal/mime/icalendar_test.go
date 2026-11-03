@@ -494,7 +494,8 @@ func TestGenerateICS_BasicRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateICS returned error: %v", err)
 	}
-	ics := string(data)
+	// Lines past 75 octets are folded (RFC 5545 §3.1); check the unfolded text.
+	ics := unfoldLines(string(data))
 
 	checks := []string{
 		"BEGIN:VCALENDAR",
@@ -721,6 +722,75 @@ func TestBuildCalendarReply_FoldsLongLines(t *testing.T) {
 		}
 		if events[0].Summary != summary || events[0].UID != event.UID || events[0].Organizer.Address != "organizer@example.com" {
 			t.Errorf("%s: round trip %+v", name, events[0])
+		}
+	}
+}
+
+func TestGenerateICS_FoldsLongLines(t *testing.T) {
+	long := strings.TrimSuffix(strings.Repeat("Quarterly planning review, ", 8), ", ")
+	multibyte := strings.TrimSuffix(strings.Repeat("Überprüfung – 会議 – ", 10), " – ")
+	for name, value := range map[string]string{"long": long, "multibyte": multibyte} {
+		event := pipeline.CalendarEvent{
+			Method:      "REQUEST",
+			UID:         "fold-" + name + "-" + strings.Repeat("x", 80) + "@example.com",
+			Summary:     value,
+			Description: value + "\n" + value,
+			Location:    value,
+			DTStart:     time.Date(2024, 3, 15, 14, 0, 0, 0, time.UTC),
+			Organizer:   pipeline.CalendarAddress{Address: "organizer@example.com", Name: strings.TrimSpace(strings.Repeat("Organizer Name ", 6))},
+			Attendees: []pipeline.CalendarAddress{{
+				Address:  "a.very.long.attendee.address.that.goes.past.the.limit@example.com",
+				Name:     "Attendee Name",
+				Role:     "REQ-PARTICIPANT",
+				PartStat: "NEEDS-ACTION",
+				RSVP:     true,
+			}},
+		}
+		data, err := GenerateICS(event)
+		if err != nil {
+			t.Fatalf("%s: GenerateICS: %v", name, err)
+		}
+		ics := string(data)
+		if !strings.HasSuffix(ics, "\r\n") {
+			t.Fatalf("%s: output does not end in CRLF", name)
+		}
+		for i, line := range strings.Split(strings.TrimSuffix(ics, "\r\n"), "\r\n") {
+			if len(line) > 75 {
+				t.Errorf("%s: line %d is %d octets: %q", name, i, len(line), line)
+			}
+			if !utf8.ValidString(line) {
+				t.Errorf("%s: line %d splits a UTF-8 sequence: %q", name, i, line)
+			}
+			if strings.Contains(line, "\r") || strings.Contains(line, "\n") {
+				t.Errorf("%s: line %d holds a bare line break: %q", name, i, line)
+			}
+		}
+		unfolded := unfoldLines(ics)
+		for _, want := range []string{
+			"UID:" + event.UID + "\r\n",
+			"SUMMARY:" + escapeValue(value) + "\r\n",
+			"DESCRIPTION:" + escapeValue(event.Description) + "\r\n",
+			"LOCATION:" + escapeValue(value) + "\r\n",
+			"ORGANIZER;CN=" + event.Organizer.Name + ":mailto:organizer@example.com\r\n",
+			"ATTENDEE;CN=Attendee Name;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:" + event.Attendees[0].Address + "\r\n",
+		} {
+			if !strings.Contains(unfolded, want) {
+				t.Errorf("%s: unfolded output lacks %q", name, want)
+			}
+		}
+		events, err := ParseCalendar(ics)
+		if err != nil || len(events) != 1 {
+			t.Fatalf("%s: parse back: %v, %d events", name, err, len(events))
+		}
+		got := events[0]
+		if got.UID != event.UID || got.Summary != value || got.Description != event.Description || got.Location != value {
+			t.Errorf("%s: round trip %+v", name, got)
+		}
+		if got.Organizer.Address != "organizer@example.com" || got.Organizer.Name != event.Organizer.Name {
+			t.Errorf("%s: organizer round trip %+v", name, got.Organizer)
+		}
+		if len(got.Attendees) != 1 || got.Attendees[0].Address != event.Attendees[0].Address || got.Attendees[0].PartStat != "NEEDS-ACTION" {
+			t.Errorf("%s: attendee round trip %+v", name, got.Attendees)
 		}
 	}
 }
