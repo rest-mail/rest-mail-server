@@ -2797,6 +2797,8 @@ def send_a_draft_of_its_own(transaction):
 
 @hooks.before("retryQueueEntry")
 def retry_a_held_entry_after_bulk_examples(transaction):
+    if os.environ.get("CONTRACT_COVERAGE") == "1":
+        return
     name = transaction.get("name", "")
     path, _, query = transaction["fullPath"].partition("?")
     queue, entry, action = path.rstrip("/").rsplit("/", 2)
@@ -2831,6 +2833,8 @@ def retry_a_held_entry_after_bulk_examples(transaction):
 
 @hooks.before("bounceQueueEntry")
 def bounce_the_held_bounce_entry(transaction):
+    if os.environ.get("CONTRACT_COVERAGE") == "1":
+        return
     # The documented bounce and the retry would both take the one entry the
     # queue links lead to, and a bounced entry cannot be retried. The bounce
     # gets the fixture's own held entry; coverage probes keep their ids.

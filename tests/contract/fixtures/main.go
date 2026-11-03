@@ -30,10 +30,11 @@ func main() {
 	mfaAdmin := flag.Bool("mfa-admin", false, "prepare the administrator the contract hooks enroll in real MFA")
 	deliveryRecipient := flag.Bool("delivery-recipient", false, "prepare the mailbox deliverMessage's fuzz probes are pinned to")
 	heldMailOnly := flag.Bool("held-mail-only", false, "replenish only the disposable held-mail targets, without touching the queue")
+	queueEntryOnly := flag.Bool("queue-entry-only", false, "create one disposable deferred queue entry without changing other fixtures")
 	reportPhase := flag.String("report-targets", "", "top up the held mail one report-only phase consumes (authorization or ownership); no gate calls this")
 	flag.Parse()
 	modes := 0
-	for _, on := range []bool{*linkOnly, *apiKeys, *domainTenants, *mfaAdmin, *deliveryRecipient, *heldMailOnly, *reportPhase != ""} {
+	for _, on := range []bool{*linkOnly, *apiKeys, *domainTenants, *mfaAdmin, *deliveryRecipient, *heldMailOnly, *queueEntryOnly, *reportPhase != ""} {
 		if on {
 			modes++
 		}
@@ -70,6 +71,13 @@ func main() {
 			err = prepareMFAAdmin(database, *domain)
 		} else if *deliveryRecipient {
 			err = prepareDeliveryRecipient(database, *domain)
+		} else if *queueEntryOnly {
+			var id uint
+			id, err = prepareRetryFixture(database, *domain)
+			if err == nil {
+				body, _ := json.Marshal(map[string]uint{"id": id})
+				fmt.Printf("QUEUE_ENTRY_FIXTURE=%s\n", body)
+			}
 		} else if *heldMailOnly {
 			var targets heldMailTargets
 			targets, err = prepareHeldMailTargets(database, *domain)
