@@ -25,10 +25,16 @@ func (s *Session) handleExpunge(tag string) {
 // successful removals are still reported before the final NO (RFC 3501 §6.4.3,
 // RFC 4315 §2.1). Backends need not support an atomic multi-message deletion.
 func (s *Session) expungeMessages(tag, command string, targets map[int]bool) {
+	marks, err := s.expungeMarks()
+	if err != nil {
+		slog.Warn("imap: reading deleted marks failed", "command", command, "error", err)
+		s.tagged(tag, "NO", command+" failed")
+		return
+	}
 	failed := false
 	for i := len(s.messages) - 1; i >= 0; i-- {
 		msg := s.messages[i]
-		if !s.deleted[msg.UID] || (targets != nil && !targets[i+1]) {
+		if !marks[msg.UID] || (targets != nil && !targets[i+1]) {
 			continue
 		}
 		if err := s.mailbox.Delete(msg.UID); err != nil {
@@ -56,11 +62,17 @@ func (s *Session) expungeMessages(tag, command string, targets map[int]bool) {
 // sequence numbers stay valid, and failed messages keep their marks for a retry,
 // as with EXPUNGE (§6.4.3).
 func (s *Session) closeExpunge(tag string) bool {
+	marks, err := s.expungeMarks()
+	if err != nil {
+		slog.Warn("imap: reading deleted marks failed", "command", "CLOSE", "error", err)
+		s.tagged(tag, "NO", "CLOSE failed")
+		return false
+	}
 	var removed []int
 	failed := false
 	for i := len(s.messages) - 1; i >= 0; i-- {
 		msg := s.messages[i]
-		if !s.deleted[msg.UID] {
+		if !marks[msg.UID] {
 			continue
 		}
 		if err := s.mailbox.Delete(msg.UID); err != nil {
@@ -82,6 +94,27 @@ func (s *Session) closeExpunge(tag string) bool {
 	s.selected.total = int64(len(s.messages))
 	s.tagged(tag, "NO", "CLOSE failed")
 	return false
+}
+
+// expungeMarks returns the UIDs EXPUNGE and CLOSE remove: the store's \Deleted
+// marks as they are now when the mailbox keeps the flag ([imap.DeletedMailbox]),
+// so a mark another session set or cleared counts (RFC 3501 §2.3.2), and
+// otherwise the marks this session holds. Only messages in this session's view
+// are ever removed, so a mark on one it has not been told about waits.
+func (s *Session) expungeMarks() (map[uint32]bool, error) {
+	store, ok := s.mailbox.(imap.DeletedMailbox)
+	if !ok {
+		return s.deleted, nil
+	}
+	uids, err := store.DeletedUIDs(s.selected.name)
+	if err != nil {
+		return nil, err
+	}
+	marks := make(map[uint32]bool, len(uids))
+	for _, uid := range uids {
+		marks[uid] = true
+	}
+	return marks, nil
 }
 
 // handleUIDExpunge implements UID EXPUNGE (RFC 4315 §2.1): it permanently removes

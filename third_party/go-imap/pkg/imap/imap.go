@@ -266,6 +266,30 @@ type RightsMailbox interface {
 	MailboxRights(folder string) (Rights, error)
 }
 
+// DeletedMailbox is the optional interface a [Mailbox] may also implement to
+// say that the store keeps the \Deleted flag itself, so every session sees one
+// mark: [Message.Deleted] reports it and [Mailbox.Store] writes it through
+// [FlagUpdate.Deleted]. RFC 3501 §2.3.2 and RFC 9051 §2.3.2 make \Deleted a
+// permanent flag, kept from session to session.
+//
+// With it, EXPUNGE, CLOSE and UID EXPUNGE remove the messages DeletedUIDs
+// reports at that moment, not the marks this session last saw, so a mark
+// another session set is expunged and one it cleared is not (RFC 3501
+// §§6.4.2-6.4.3, RFC 4315 §2.1). UID EXPUNGE still removes only those in its
+// UID set, and a message the session has not yet been told about stays until
+// the session has seen it. If DeletedUIDs fails the command answers NO and
+// removes nothing.
+//
+// A Mailbox that does not implement it keeps the marks in the session as
+// before: SELECT seeds them from [Message.Deleted] and EXPUNGE removes the
+// messages this session marked.
+type DeletedMailbox interface {
+	// DeletedUIDs returns the UIDs of the messages in folder that carry
+	// \Deleted now, in any order. folder is a store name, as [Folder.Name]
+	// holds it.
+	DeletedUIDs(folder string) ([]uint32, error)
+}
+
 // UTF8Mailbox is the optional interface a [Mailbox] may also implement to
 // support internationalized email in IMAP ([RFC 6855] UTF8=ACCEPT). When the
 // authenticated Mailbox satisfies it, the server advertises UTF8=ACCEPT and

@@ -108,6 +108,7 @@ var (
 	_ goimap.Mover          = (*mailbox)(nil)
 	_ goimap.UTF8Mailbox    = (*mailbox)(nil)
 	_ goimap.RightsMailbox  = (*mailbox)(nil)
+	_ goimap.DeletedMailbox = (*mailbox)(nil)
 )
 
 // MailboxRights reports the signed-in user's rights on folder (RightsMailbox).
@@ -277,6 +278,29 @@ func (m *mailbox) MoveUID(uid uint32, dest string) (uint32, error) {
 		return 0, err
 	}
 	return newUID, nil
+}
+
+// DeletedUIDs reports the messages in folder that carry \Deleted now
+// (DeletedMailbox). The mark is the message's imap_deleted state in the API:
+// STORE writes it (Store), every session and device reads it back, and it
+// outlives the connection, as RFC 3501 §2.3.2 asks of a permanent flag. So
+// EXPUNGE, CLOSE and UID EXPUNGE remove what is marked when they run, never a
+// mark another session cleared.
+func (m *mailbox) DeletedUIDs(folder string) ([]uint32, error) {
+	if err := validateFolder(folder); err != nil {
+		return nil, err
+	}
+	resp, err := m.api.ListIMAPMessages(m.token, m.accountID, folder)
+	if err != nil {
+		return nil, err
+	}
+	var uids []uint32
+	for _, msg := range resp.Data {
+		if msg.IMAPDeleted {
+			uids = append(uids, toUID(msg.ID))
+		}
+	}
+	return uids, nil
 }
 
 // Delete permanently removes a message (EXPUNGE/CLOSE).

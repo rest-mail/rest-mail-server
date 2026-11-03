@@ -436,7 +436,7 @@ failed marks, so a retried CLOSE completes.
 | IMAP-CLOSE-04 | RFC 3501 §6.4.2 | Normative | CLOSE after EXAMINE succeeds silently and deselects without removing messages. | TestReadOnlyCloseAndExpunge |
 | IMAP-CLOSE-05 | RFC 3501 §6.4.2 | Normative | LOGOUT implicitly closes a selected mailbox without expunging marked messages. | TestLogoutDoesNotExpunge |
 | IMAP-CLOSE-06 | RFC 3501 §6.4.2 | Normative | Writable CLOSE removes every marked message before reporting successful completion. | TestCloseBackendFailure |
-| IMAP-EXPUNGE-07 | RFC 3501 §§2.3.2, 6.4.3 | Normative | Deleted is persistent mailbox state: a second session sees the stored mark, can clear it, and the first session observes that change on NOOP with a persistent backend. | TestRFC3501DeletedSurvivesSessions |
+| IMAP-EXPUNGE-07 | RFC 3501 §§2.3.2, 6.4.2, 6.4.3; RFC 4315 §2.1 | Normative | Deleted is persistent mailbox state: a second session sees the stored mark, can clear it, and the first session observes that change on NOOP with a persistent backend; a session opened later sees it. With a store that keeps the flag (DeletedMailbox), EXPUNGE, CLOSE and UID EXPUNGE remove the marks the store holds at that moment (UID EXPUNGE only within its set), never a mark another session cleared, and answer NO without removing anything when the marks cannot be read. | TestRFC3501DeletedSurvivesSessions, TestDeletedMarkReachesEverySession, TestExpungeRemovesTheStoredMarks, TestUIDExpungeRemovesOnlyStoredMarksInItsSet, TestCloseRemovesTheStoredMarks, TestExpungeRefusedWhenStoredMarksUnreadable |
 
 On EXPUNGE/UID EXPUNGE backend errors, this engine continues trying other
 marked messages and returns NO after reporting successful removals. This is
