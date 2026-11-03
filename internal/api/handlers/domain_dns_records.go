@@ -119,6 +119,19 @@ func dnsName(name string) string {
 	return strings.ToLower(strings.TrimSuffix(name, "."))
 }
 
+// absoluteLookup makes a lookup ask for the name exactly as given. A name without its final dot
+// is relative, so the resolver also tries it under the host's search domains: a pod with ndots:5
+// tries those first, and any host tries them after an NXDOMAIN, which is the normal answer for an
+// optional record such as _mta-sts. The DNS check is about the public name, nothing else.
+func absoluteLookup[T any](lookup func(context.Context, string) (T, error)) func(context.Context, string) (T, error) {
+	return func(ctx context.Context, name string) (T, error) {
+		if net.ParseIP(name) == nil && !strings.HasSuffix(name, ".") {
+			name += "."
+		}
+		return lookup(ctx, name)
+	}
+}
+
 func notFound(err error) bool {
 	var dnsErr *net.DNSError
 	return errors.As(err, &dnsErr) && dnsErr.IsNotFound

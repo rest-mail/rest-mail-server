@@ -124,17 +124,17 @@ func NewDomainHandler(db *gorm.DB, dnsProvider dns.Provider, caches ...*grants.C
 	resolver := net.DefaultResolver
 	h := &DomainHandler{
 		db: db, dns: dnsProvider,
-		lookupMX:  resolver.LookupMX,
-		lookupTXT: resolver.LookupTXT,
-		lookupSRV: func(ctx context.Context, name string) ([]*net.SRV, error) {
+		lookupMX:  absoluteLookup(resolver.LookupMX),
+		lookupTXT: absoluteLookup(resolver.LookupTXT),
+		lookupSRV: absoluteLookup(func(ctx context.Context, name string) ([]*net.SRV, error) {
 			_, records, err := resolver.LookupSRV(ctx, "", "", name)
 			return records, err
-		},
-		lookupIPv4: func(ctx context.Context, host string) ([]net.IP, error) {
+		}),
+		lookupIPv4: absoluteLookup(func(ctx context.Context, host string) ([]net.IP, error) {
 			return resolver.LookupIP(ctx, "ip4", host)
-		},
+		}),
 		lookupAddr:  resolver.LookupAddr,
-		lookupCNAME: resolver.LookupCNAME,
+		lookupCNAME: absoluteLookup(resolver.LookupCNAME),
 	}
 	if len(caches) > 0 {
 		h.cache = caches[0]

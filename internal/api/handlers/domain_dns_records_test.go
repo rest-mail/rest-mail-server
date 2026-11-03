@@ -522,3 +522,25 @@ func TestDNSCheck_NoMailHostConfigured(t *testing.T) {
 		}
 	}
 }
+
+func TestAbsoluteLookupAsksForTheExactName(t *testing.T) {
+	for given, want := range map[string]string{
+		"_mta-sts.example.com":  "_mta-sts.example.com.",
+		"_mta-sts.example.com.": "_mta-sts.example.com.",
+		"mail.example.net":      "mail.example.net.",
+		"203.0.113.25":          "203.0.113.25",
+		"2001:db8::25":          "2001:db8::25",
+	} {
+		var asked string
+		lookup := absoluteLookup(func(_ context.Context, name string) (int, error) {
+			asked = name
+			return 7, nil
+		})
+		if got, err := lookup(context.Background(), given); got != 7 || err != nil {
+			t.Fatalf("lookup(%q) = %d, %v", given, got, err)
+		}
+		if asked != want {
+			t.Errorf("lookup(%q) asked for %q, want %q", given, asked, want)
+		}
+	}
+}
