@@ -24814,6 +24814,89 @@
       }
     }
   },
+  "listMessageRecipients": {
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "message_not_found",
+            "message": "Message not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "partly_failed": {
+      "description": "One recipient's server refused the message and another accepted it. The reason comes from the failure category; the remote server's own reply is never returned.",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "message_id": 1,
+            "recipients": [
+              {
+                "address": "nobody@example.com",
+                "delivery": "remote",
+                "state": "failed",
+                "reason": "The recipient's mailbox does not exist.",
+                "category": "bad_mailbox",
+                "attempts": 1,
+                "last_attempt_at": "2026-11-03T12:00:00Z"
+              },
+              {
+                "address": "bob@example.com",
+                "delivery": "remote",
+                "state": "delivered",
+                "attempts": 1,
+                "last_attempt_at": "2026-11-03T12:00:00Z"
+              },
+              {
+                "address": "carol@restmail.test",
+                "delivery": "local",
+                "state": "delivered",
+                "attempts": 0
+              }
+            ]
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "listMessages": {
     "count_unavailable": {
       "summary": "A failed total-count query is not a successful page",

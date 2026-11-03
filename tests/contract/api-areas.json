@@ -79,6 +79,7 @@
     "getAttachment",
     "getMessage",
     "verifyMessageSeal",
+    "listMessageRecipients",
     "getQuota",
     "getRawMessage",
     "getThread",
