@@ -45,13 +45,13 @@ func (c *countingReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-func parseBoth(t *testing.T, message string) (parseErr, streamErr error, parseRead, streamRead int) {
+func parseBoth(t *testing.T, message string) (parseRead, streamRead int, parseErr, streamErr error) {
 	t.Helper()
 	direct := &countingReader{r: strings.NewReader(message)}
 	_, parseErr = parseFrom(direct)
 	streamed := &countingReader{r: strings.NewReader(message)}
 	_, streamErr = ParseStream(context.Background(), streamed, StreamOptions{Store: (&memoryStore{}).put, MaxText: 1 << 20})
-	return parseErr, streamErr, direct.n, streamed.n
+	return direct.n, streamed.n, parseErr, streamErr
 }
 
 func withLimits(t *testing.T, l Limits) {
@@ -68,7 +68,7 @@ func TestParsersRefuseNestingPastTheLimit(t *testing.T) {
 	var shortRead, shortStreamRead int
 	for _, depth := range []int{200, 2000} {
 		message := nestedMessage(depth)
-		parseErr, streamErr, parseRead, streamRead := parseBoth(t, message)
+		parseRead, streamRead, parseErr, streamErr := parseBoth(t, message)
 		if !errors.Is(parseErr, ErrStructureLimit) || !errors.Is(streamErr, ErrStructureLimit) {
 			t.Fatalf("depth %d: Parse %v, ParseStream %v; want ErrStructureLimit from both", depth, parseErr, streamErr)
 		}
@@ -85,11 +85,11 @@ func TestParsersRefuseNestingPastTheLimit(t *testing.T) {
 
 func TestParsersTakeNestingAtTheLimit(t *testing.T) {
 	withLimits(t, Limits{MaxNestingDepth: 20})
-	parseErr, streamErr, _, _ := parseBoth(t, nestedMessage(20))
+	_, _, parseErr, streamErr := parseBoth(t, nestedMessage(20))
 	if parseErr != nil || streamErr != nil {
 		t.Fatalf("depth at the limit: Parse %v, ParseStream %v; want both to parse", parseErr, streamErr)
 	}
-	parseErr, streamErr, _, _ = parseBoth(t, nestedMessage(21))
+	_, _, parseErr, streamErr = parseBoth(t, nestedMessage(21))
 	if !errors.Is(parseErr, ErrStructureLimit) || !errors.Is(streamErr, ErrStructureLimit) {
 		t.Fatalf("one past the limit: Parse %v, ParseStream %v; want ErrStructureLimit", parseErr, streamErr)
 	}
@@ -97,11 +97,11 @@ func TestParsersTakeNestingAtTheLimit(t *testing.T) {
 
 func TestParsersRefuseTooManyParts(t *testing.T) {
 	withLimits(t, Limits{MaxParts: 30})
-	parseErr, streamErr, _, _ := parseBoth(t, manyParts(30))
+	_, _, parseErr, streamErr := parseBoth(t, manyParts(30))
 	if parseErr != nil || streamErr != nil {
 		t.Fatalf("parts at the limit: Parse %v, ParseStream %v; want both to parse", parseErr, streamErr)
 	}
-	parseErr, streamErr, _, _ = parseBoth(t, manyParts(31))
+	_, _, parseErr, streamErr = parseBoth(t, manyParts(31))
 	if !errors.Is(parseErr, ErrStructureLimit) || !errors.Is(streamErr, ErrStructureLimit) {
 		t.Fatalf("one part past the limit: Parse %v, ParseStream %v; want ErrStructureLimit", parseErr, streamErr)
 	}
