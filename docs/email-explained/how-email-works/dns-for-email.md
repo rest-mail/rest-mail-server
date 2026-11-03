@@ -170,15 +170,18 @@ address.
 - **Null MX is honoured:** mail to a domain with `MX 0 .` fails at once with
   `556 5.1.10`, as RFC 7505 asks
   ([`internal/gateway/queue/worker.go`](../../../internal/gateway/queue/worker.go)).
-- **Implicit MX** is used for a domain without MX records. Today REST Mail
-  cannot tell that case from a domain that does not exist, so mail to a
-  misspelled domain is retried until it expires. Fixing that, as RFC 5321
-  requires, is [#713](https://github.com/rest-mail/rest-mail-server/issues/713).
+- **Implicit MX** is used for a domain without MX records, if the domain has an
+  address. A domain with neither, including one that does not exist, bounces at
+  once with `550 5.1.2`, so mail to a misspelled domain is not retried for days
+  ([`internal/gateway/queue/worker.go`](../../../internal/gateway/queue/worker.go),
+  [#713](https://github.com/rest-mail/rest-mail-server/issues/713)).
 - **International domain names** are looked up in their ASCII form (`xn--…`),
   while the queue keeps the Unicode form for display (#153).
-- **SRV records** for mail apps are not yet in the printed set, and the list in
-  the code names ports REST Mail does not listen on. Both are
-  [#712](https://github.com/rest-mail/rest-mail-server/issues/712).
+- **SRV records** for mail apps are in the printed set. They name the ports REST
+  Mail is configured to listen on, and say that the unencrypted services are not
+  offered ([`internal/dns/mail_records.go`](../../../internal/dns/mail_records.go),
+  [Finding the server](finding-the-server.md),
+  [#712](https://github.com/rest-mail/rest-mail-server/issues/712)).
 
 ## Sources
 

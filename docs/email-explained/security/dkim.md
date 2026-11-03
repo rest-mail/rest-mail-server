@@ -161,9 +161,15 @@ or why not.
 - **Incoming mail** is checked by the `dkim_verify` filter, one result per
   signature, recorded for DMARC; by default a failing signature alone does not
   reject ([`internal/pipeline/filters/dkim.go`](../../../internal/pipeline/filters/dkim.go)).
-- **Rotation:** a per-domain interval can be saved, and the code to stage and
-  activate a new key exists, but nothing runs it yet:
-  [#728](https://github.com/rest-mail/rest-mail-server/issues/728).
+- **Rotation:** a domain with a saved interval has its key rotated by a worker
+  in the API. It stages a new key, waits for that key's record to appear in the
+  DNS, signs with it one TTL later, and one TTL after that empties the old
+  key's record
+  ([`internal/dkimrotate/worker.go`](../../../internal/dkimrotate/worker.go),
+  [`docs/dkim-key-age.md`](../../dkim-key-age.md),
+  [#728](https://github.com/rest-mail/rest-mail-server/issues/728)). It never
+  writes DNS: someone has to publish each change, which `chore dns:show` lists,
+  or the rotation waits.
 
 ## Sources
 
