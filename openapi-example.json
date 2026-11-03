@@ -29220,6 +29220,7 @@
       }
     },
     "unauthenticated": {
+      "summary": "A wrong password",
       "request": {
         "body": {
           "protocol": "imap",
@@ -29236,8 +29237,7 @@
           }
         },
         "mediaType": "application/json"
-      },
-      "summary": "A wrong password"
+      }
     }
   },
   "openapiDocument": {

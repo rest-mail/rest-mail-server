@@ -92,7 +92,7 @@ func TestTestDataMutationExamples(t *testing.T) {
 						}
 					}
 					if op == "resetTestData" {
-						for _, table := range []string{"quota_usage", "quarantine", "domain_sender_rules", "suppressions", "refresh_tokens"} {
+						for _, table := range []string{"quota_usage", "quarantine", "domain_sender_rules", "suppressions", "refresh_tokens", "gateway_sessions"} {
 							if !deleted[table] {
 								t.Fatalf("reset did not target actual model table%s", table)
 							}

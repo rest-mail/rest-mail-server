@@ -39,6 +39,7 @@ type authRequirementConnection struct {
 	op, name, encrypted, password, recovery, publicKey string
 	confirmed, revoked, recoveryUsed, tokenUsed        bool
 	refreshRevoked                                     bool
+	gatewaySessionsClosed                              bool
 	epoch                                              int64
 	twoFactorRequired                                  bool
 	token                                              map[string]any
@@ -187,6 +188,11 @@ func (c *authRequirementConnection) ExecContext(_ context.Context, q string, arg
 			return nil, fmt.Errorf("unexpected refresh transition")
 		}
 		c.refreshRevoked = true
+	case strings.HasPrefix(q, `UPDATE "gateway_sessions"`):
+		if len(args) != 2 || args[1].Value != int64(1) || !strings.Contains(q, "closed_at IS NULL") {
+			return nil, fmt.Errorf("unexpected gateway session close")
+		}
+		c.gatewaySessionsClosed = true
 	case strings.HasPrefix(q, `UPDATE "one_time_tokens"`):
 		if c.tokenUsed || c.token == nil || len(args) != 4 || args[1].Value != c.token["token_hash"] || args[2].Value != models.OneTimeTokenResetAdmin || !c.token["expires_at"].(time.Time).After(time.Now()) {
 			return driver.RowsAffected(0), nil
@@ -304,7 +310,7 @@ func TestAuthStateRequirementExamples(t *testing.T) {
 			assertRequirementResponse(t, pair, rr)
 			switch tc.name {
 			case "changed", "recovered":
-				if c.epoch != 1 || !c.refreshRevoked || auth.CheckPassword("a new password of my own", c.password) != nil {
+				if c.epoch != 1 || !c.refreshRevoked || !c.gatewaySessionsClosed || auth.CheckPassword("a new password of my own", c.password) != nil {
 					t.Fatal("password change did not replace credential and end sessions")
 				}
 				if tc.name == "recovered" && !c.recoveryUsed {
@@ -315,11 +321,11 @@ func TestAuthStateRequirementExamples(t *testing.T) {
 					t.Fatal("enrollment stayed pending")
 				}
 			case "disabled":
-				if !c.revoked || c.epoch != 1 || !c.refreshRevoked {
+				if !c.revoked || c.epoch != 1 || !c.refreshRevoked || !c.gatewaySessionsClosed {
 					t.Fatal("authenticator or sessions survived disable")
 				}
 			default:
-				if c.epoch != 0 || c.revoked || c.recoveryUsed || c.refreshRevoked {
+				if c.epoch != 0 || c.revoked || c.recoveryUsed || c.refreshRevoked || c.gatewaySessionsClosed {
 					t.Fatal("refusal changed credentials")
 				}
 			}
@@ -405,7 +411,7 @@ func TestOwnerStateRequirementExamples(t *testing.T) {
 							t.Fatal(err)
 						}
 						claims, err := jwt.ValidateAccessToken(got["data"]["access_token"].(string))
-						if err != nil || !claims.SetupPending || claims.CredentialEpoch != 1 || !c.tokenUsed || !c.revoked || !c.refreshRevoked {
+						if err != nil || !claims.SetupPending || claims.CredentialEpoch != 1 || !c.tokenUsed || !c.revoked || !c.refreshRevoked || !c.gatewaySessionsClosed {
 							t.Fatalf("reset did not revoke credentials and require setup: %v", err)
 						}
 						if auth.CheckPassword("a new password of my own", c.password) != nil {
