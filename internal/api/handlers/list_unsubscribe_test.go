@@ -13,6 +13,8 @@ import (
 	dkim "github.com/rest-mail/go-dkim/pkg/dkim"
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
+	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"gorm.io/gorm"
 )
@@ -151,7 +153,7 @@ func TestWithListUnsubscribe_ReplacesTransformFields(t *testing.T) {
 // none is reachable.
 func TestSendMessage_ListUnsubscribeIsSignedOnTheWire(t *testing.T) {
 	h, domain, resolver := seedSigningDomain(t, "unsub")
-	sender := seedSendingMailbox(t, h.db, domain, "news")
+	sender := seedOwnedSendingMailbox(t, h.db, domain, "news")
 
 	for _, tc := range []struct {
 		name     string
@@ -235,7 +237,7 @@ func TestSendMessage_OneClickNeedsDKIM(t *testing.T) {
 	if err := h.db.Create(&models.Domain{Name: domain}).Error; err != nil {
 		t.Fatalf("seed the unsigned domain: %v", err)
 	}
-	sender := seedSendingMailbox(t, h.db, domain, "news")
+	sender := seedOwnedSendingMailbox(t, h.db, domain, "news")
 	claims := &auth.Claims{AccountID: sender.ID, CredentialKind: "app_password"}
 
 	rr := sendAs(h, claims, sendBody(sender.Address, `{"https":"https://`+domain+`/u"}`))
@@ -272,6 +274,30 @@ func seedSendingMailbox(t *testing.T, db *gorm.DB, domain, local string) models.
 	mb := models.Mailbox{DomainID: d.ID, LocalPart: local, Address: local + "@" + domain, DisplayName: "News", Active: true}
 	if err := db.Create(&mb).Error; err != nil {
 		t.Fatalf("seed the mailbox: %v", err)
+	}
+	return mb
+}
+
+// seedOwnedSendingMailbox is seedSendingMailbox for a test that runs alone on a
+// fresh database (#1385, #1603): it seeds every table, role and grant a send
+// reads, and gives the account the owner role on its mailbox, so it may send
+// from it.
+func seedOwnedSendingMailbox(t *testing.T, db *gorm.DB, domain, local string) models.Mailbox {
+	t.Helper()
+	if err := db.AutoMigrate(accountModels...); err != nil {
+		t.Skipf("list-unsubscribe send test skipped: migrate failed (%v)", err)
+	}
+	if err := rmdb.MigrateAuditLog(db); err != nil {
+		t.Skipf("list-unsubscribe send test skipped: audit log migrate failed (%v)", err)
+	}
+	if err := bootstrap.EnsureRBAC(db); err != nil {
+		t.Fatalf("seed the roles: %v", err)
+	}
+	mb := seedSendingMailbox(t, db, domain, local)
+	grantOwnerRole(t, db, mb.ID, mb.Address)
+	// A send's Sent copy is charged to the sender's quota row, which every account has.
+	if err := db.Create(&models.QuotaUsage{MailboxID: mb.ID}).Error; err != nil {
+		t.Fatalf("seed the sender's quota usage: %v", err)
 	}
 	return mb
 }
