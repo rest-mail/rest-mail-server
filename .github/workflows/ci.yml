@@ -34,12 +34,46 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha }}
+          # The history that says where this PR branched from its base.
+          fetch-depth: 0
           persist-credentials: false
+
+      # The comparison starts at the merge base, not the base tip: a head that has
+      # not seen a newer base commit did not remove what that commit added (#1752).
+      # This is inline because a PR's run takes this workflow from the merged ref but
+      # scripts from its own head, which on a stale branch would not have a new one.
+      # checkout fetches every branch. The base tip can be on none of them: a rerun
+      # keeps its event, and a stack's parent branch may have been force-pushed since.
+      - name: Find where the PR branched from its base
+        id: branch-point
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null || git fetch --quiet --no-tags origin "$BASE_SHA"
+          merge_base=$(git merge-base --all "$BASE_SHA" "$HEAD_SHA" || true)
+          case "$merge_base" in
+            "" | *$'\n'*)
+              echo "::error::$HEAD_SHA has no single merge base with $BASE_SHA: rebase it on its base" >&2
+              exit 1
+              ;;
+          esac
+          behind=$(git rev-list --count "$merge_base..$BASE_SHA")
+          mkdir -p "$RUNNER_TEMP/contract-diff"
+          printf '{"comparison": "merge-base", "base_tip": "%s", "merge_base": "%s", "head": "%s", "base_commits_since_merge_base": %s}\n' \
+            "$BASE_SHA" "$merge_base" "$HEAD_SHA" "$behind" > "$RUNNER_TEMP/contract-diff/comparison.json"
+          {
+            echo "Compared merge base \`$merge_base\` with PR head \`$HEAD_SHA\`."
+            echo "Commits on base tip \`$BASE_SHA\` since the merge base: $behind."
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "sha=$merge_base" >> "$GITHUB_OUTPUT"
 
       - name: Checkout the comparison base
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ steps.branch-point.outputs.sha }}
           path: .cache/contract-diff-base
           persist-credentials: false
 

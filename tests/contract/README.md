@@ -1618,15 +1618,23 @@ Live topology and broader mutation workflows still run in GitHub.
 ### Contract changes in pull requests (#653)
 
 The `API contract changes` CI job generates the description from the exact PR
-head and its target base. It uses the same `TestTheGeneratedDescriptionIsServed`
-export as the UI type builds, without a database. Neither document is committed.
-For a stack, the comparison follows each PR's base, so each layer shows its own
-changes.
+head and from where that head branched from its target base: their merge base,
+not the base's newest commit. It uses the same
+`TestTheGeneratedDescriptionIsServed` export as the UI type builds, without a
+database. Neither document is committed. For a stack, the comparison follows
+each PR's base, so each layer shows its own changes.
+
+The result is what the PR introduces. An operation or field its base gained
+after it branched is not reported as a removal, and a PR that removes one after
+rebasing is. It is not a check that the PR's head is compatible with the newest
+base. The job runs for pull requests only, so a merge group skips it. A branch
+with no single merge base fails the job rather than comparing from the tip.
 
 The checksum-pinned oasdiff 1.34.0 compares OpenAPI 3.1 operations, parameters,
 schemas, statuses, headers and security requirements, including capability roles.
-The check summary classifies the changes; the `api-contract-changes` artifact
-contains both generated documents and the JSON and Markdown comparison.
+The check summary names the exact revisions and classifies the changes; the
+`api-contract-changes` artifact contains both generated documents, the JSON and
+Markdown comparison, and `comparison.json` with the revisions compared.
 
 - Breaking changes require the `contract-change` PR label. Removing a field or
   enum value and changing a type require it even when a compatibility checker
