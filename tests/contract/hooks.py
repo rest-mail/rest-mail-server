@@ -1323,11 +1323,62 @@ def prepare_mta_sts_policy_example(transaction):
         )
 
 
+# The policy the found pair's response is the file of, byte for byte.
+FOUND_POLICY = {
+    "mode": "enforce",
+    "mx_hosts": "mail.example.com",
+    "max_age": 604800,
+    "active": True,
+}
+
+
+def a_domain_with_the_found_policy(transaction):
+    """The name of a domain of this hook's own whose active policy is
+    FOUND_POLICY, through the admin API: made once per server, and its policy
+    put again before each request, so nothing sent earlier (an update, a
+    delete, a reset) leaves it other than active. A domain a reset removed is
+    made again, as is one the stash forgot."""
+    origin = origin_of(transaction)
+    domains = hooks.stash.get("found_policy_domains", {})
+    for _ in range(2):
+        if origin not in domains:
+            domain = fixture_call(
+                transaction,
+                "POST",
+                "/api/v1/admin/domains",
+                {
+                    "name": f"contract-mta-sts-active-{time.time_ns()}.test",
+                    "server_type": "traditional",
+                },
+            )
+            domains[origin] = {"id": domain["id"], "name": domain["name"]}
+            hooks.stash["found_policy_domains"] = domains
+        domain = domains[origin]
+        if fixture_call(
+            transaction,
+            "PUT",
+            f"/api/v1/admin/domains/{domain['id']:d}/mta-sts",
+            FOUND_POLICY,
+            expect=(404,),
+        ):
+            return domain["name"]
+        del domains[origin]
+    raise RuntimeError("could not give a domain the found MTA-STS policy")
+
+
 @hooks.before("mtaStsPolicyFile")
 def ask_for_the_created_domains_policy(transaction):
+    # Served at mta-sts.<domain>: the domain is the Host's, not a parameter.
+    # found (200) needs an active policy (x-requires state active_policy, which
+    # vertrag.yml provides): the request asks for a domain that has one. Every
+    # other request asks for the domain the run created, as before.
+    if " > 200" in transaction.get("name", ""):
+        transaction["request"]["headers"]["Host"] = (
+            "mta-sts." + a_domain_with_the_found_policy(transaction)
+        )
+        return
     if hooks.stash.get("clean_starts"):
         the_domain_since_the_reset(transaction)
-    # Served at mta-sts.<domain>: the domain is the Host's, not a parameter.
     transaction["request"]["headers"]["Host"] = "mta-sts." + (
         hooks.stash.get("domain") or ""
     )

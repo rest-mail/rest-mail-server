@@ -97,7 +97,11 @@ exclude-matching: []
 # x-requires, that proving it needs a principal, a body, a spent limit or a
 # dependency fault this healthy topology cannot set up is not sent; it is
 # listed as unproven here, and its in-process *WithVertrag suite proves it.
-provides: {}
+# What the hooks do set up is provided, so those exchanges are sent:
+#   active_policy  mtaStsPolicyFile's found pair; its hook asks for a domain
+#                  it gives that exact active policy (tests/contract/hooks.py)
+provides:
+  state: [active_policy]
 unproven: .cache/contract/unproven.json
 
 # The pairs' path and query values are the in-process fixtures' ids, not the
