@@ -87,11 +87,26 @@ MOVED = (
     "getContactReplyTimeSetting",
     "setContactReplyTimeSetting",
     # The send operations. No link reaches either. sendMessage's 201 link
-    # reaches the message operations, which have not moved and are not
-    # selected here: the reset comes before the send, never between it and
-    # what follows its link, so the primary run still follows that link.
+    # reaches the message operations below, and getMessage's and
+    # getRawMessage's links three more: all moved. Each follower gets a message
+    # of its own after its reset, since the sent one went with it.
     "sendMessage",
     "sendTestEmail",
+    "getMessage",
+    "updateMessage",
+    "getRawMessage",
+    "forwardMessage",
+    "listAttachments",
+    "getMessageTrace",
+    "deleteMessage",
+    "verifyMessageSeal",
+    "getThread",
+    # The draft operations. saveDraft's link reaches the update, and the
+    # update's the send: all moved. The update gets a draft of its own after
+    # its reset, and the send makes its own already.
+    "saveDraft",
+    "updateDraft",
+    "sendDraft",
 )
 
 FOLLOWS_THE_CREATED_DOMAIN = (

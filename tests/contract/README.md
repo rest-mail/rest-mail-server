@@ -1272,19 +1272,43 @@ and its postmaster with no sending policy, so after the reset `sendMessage`'s
 hook sets the transactional policy `unsubscribe_not_allowed` needs and checks
 the sender's signing key and mailbox again, making what is missing, and
 `sendTestEmail`'s makes any account the seed did not give back. No link reaches either.
-`sendMessage`'s 201 link reaches the message operations, which have not moved
-and are not selected here: the reset comes before a send, never between it and
-what follows its link. Each send exchange runs after its own reset, a handful
-per run, far below the send rate limit (20 a minute per account). Both stash
-values stay, because without a reset (the primary run and coverage) they keep
-each address's setup to once per run; the reset clears them, so they start
-empty here.
+Each send exchange runs after its own reset, a handful per run, far below the
+send rate limit (20 a minute per account). Both stash values stay, because
+without a reset (the primary run and coverage) they keep each address's setup
+to once per run; the reset clears them, so they start empty here.
+
+The message operations `sendMessage`'s 201 link reaches (`getMessage`,
+`updateMessage`, `getRawMessage`, `forwardMessage`, `listAttachments`,
+`getMessageTrace`) and the three their links reach (`deleteMessage`,
+`verifyMessageSeal`, `getThread`) reset and seed before each exchange too,
+refusals included. The reset removes the message the link names, so an exchange
+aimed at a positive message id gets a message of its own, made after the reset
+(`on_a_message_of_its_own`): imported into the seeded `admin@restmail.test`,
+looked up by address, or for a trace sent from that address to itself, since
+only a send writes a trace. `getThread` reads the mailbox and thread of a
+message imported for it (`on_a_thread_of_its_own`). Missing's `2147483647`, a
+non-positive or undecodable id and every documented 404 keep their ids. One
+send per run is added, still far below the limit. No message id is carried
+across a reset, so no stash value stands in for the linked one.
+
+The draft operations, `saveDraft`, `updateDraft` and `sendDraft`, reset and
+seed before each exchange too. A save makes its sender's mailbox again after
+the reset, as before; an update aimed at a positive id other than missing's and
+a documented 404's gets a draft of its own (`on_a_draft_of_its_own`), since the
+one `saveDraft`'s link names is gone; a send already makes its own draft.
+`saveDraft`'s link reaches only the update, and the update's only the send, so
+nothing that follows them is left unmoved.
+
+The reset keeps the administrators, and gives each retained account a usage row
+again at nothing (`cleanResetData`): it clears `quota_usage` with the messages,
+and an import into an account with no usage row is refused (500, "destination
+quota usage is missing").
 
 This happens only with `CONTRACT_RESET_SEED=1`, which `tests/contract/run.sh own-data`
 sets, and that phase is a gate of its own, sent by `chore test:contract-teardown`
 just before the teardown. It sends the moved operations with everything that follows
 `createDomain`'s, `createPipeline`'s, `createAlias`'s, `createCustomFilter`'s,
-`createFolder`'s and `createContact`'s links
+`createFolder`'s, `createContact`'s, `sendMessage`'s and `saveDraft`'s links
 (`own_data.py`), and fails on a skipped
 exchange as well as a failed one.
 
