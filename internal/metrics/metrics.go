@@ -28,6 +28,16 @@ var (
 		Help: "Current outbound queue size",
 	})
 
+	// QueueDue counts the queued rows a worker should be taking now: pending
+	// or deferred rows whose next attempt has come, plus rows being sent.
+	// Rows waiting for a later retry are in QueueSize but not here, so
+	// QueueWorkerStalled does not fire on a queue that is correctly idle
+	// until its retries come due (#1630). No labels.
+	QueueDue = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "restmail_queue_due",
+		Help: "Outbound queue rows due for an attempt now (pending or deferred with next attempt passed, or delivering)",
+	})
+
 	// QueueProcessed counts total messages successfully processed from the queue.
 	QueueProcessed = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "restmail_queue_processed_total",
@@ -156,17 +166,6 @@ var (
 		[]string{"protocol"},
 	)
 
-	// CertExpiryDays tracks days until certificate expiry.
-	//
-	// The previous per-`domain` label was an unbounded-cardinality violation
-	// (one series per certificate domain). PR1 drops the label to restore the
-	// bounded-cardinality convention; a future change that needs per-cert
-	// visibility should gate it to a small, configured domain set.
-	CertExpiryDays = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "restmail_cert_expiry_days",
-		Help: "Days until certificate expires",
-	})
-
 	// TraceDropped counts per-message traces dropped by the async recorder's
 	// drop-on-full backpressure (buffer saturated / recorder shut down). It is
 	// the honest signal that trace detail was lost while mail kept flowing —
@@ -182,7 +181,7 @@ var (
 	// stored pair will not load. Serving another name's certificate instead is
 	// not an option, so every one of these is a domain that cannot receive mail
 	// until someone fixes it. No labels: one degradation condition, and a
-	// per-domain label would be unbounded (see CertExpiryDays above).
+	// per-domain label would be unbounded (see CertExpiryCollector).
 	TLSCertMissing = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "restmail_tls_cert_missing_total",
 		Help: "Handshakes refused because a domain served here has no usable certificate",
@@ -253,6 +252,7 @@ func init() {
 		HTTPRequestsTotal,
 		HTTPRequestDuration,
 		QueueSize,
+		QueueDue,
 		QueueProcessed,
 		AttachmentCleanupRemoved,
 		AttachmentCleanupBytes,
@@ -267,7 +267,6 @@ func init() {
 		PipelineRejectReason,
 		AuthVerdict,
 		AuthFailures,
-		CertExpiryDays,
 		TraceDropped,
 		TLSCertMissing,
 		DomainsOutOfService,

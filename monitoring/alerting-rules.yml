@@ -18,8 +18,8 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "Certificate for {{ $labels.domain }} expires in {{ $value }} days"
-          description: "The TLS certificate for domain {{ $labels.domain }} will expire in less than 7 days. Renew immediately."
+          summary: "A certificate expires in {{ $value | humanize }} days"
+          description: "The soonest-expiring certificate this server serves expires in less than 7 days (negative: already expired). The admin health endpoint names its domain. Renew immediately."
 
       # A domain served here has no usable certificate, so its handshakes are
       # refused. Mail for that domain is not being accepted.
@@ -78,18 +78,21 @@ groups:
           summary: "Queue processing error rate is elevated"
           description: "Queue errors are occurring at {{ $value }} per second."
 
-      # No messages processed (possible queue worker failure)
+      # No messages processed (possible queue worker failure). It reads the
+      # rows due now, not the whole queue: rows waiting for a later retry
+      # (after a remote outage the backoff runs for hours) leave the workers
+      # correctly idle, and must not page anyone (#1630).
       - alert: QueueWorkerStalled
         expr: >
           rate(restmail_queue_processed_total[15m]) == 0
           and
-          restmail_queue_size > 0
+          restmail_queue_due > 0
         for: 15m
         labels:
           severity: critical
         annotations:
           summary: "Queue workers appear stalled"
-          description: "No messages have been processed in the last 15 minutes despite {{ $value }} messages in the queue."
+          description: "No messages have been processed in the last 15 minutes although {{ $value }} queued messages are due for an attempt now. Messages waiting for a later retry are not counted."
 
       # DNSBL (issue #148): only when the operator has enabled the monitor.
       # Reputation: a blocklist's last answer listed one of our sending IPs.

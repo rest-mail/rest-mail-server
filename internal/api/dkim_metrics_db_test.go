@@ -14,7 +14,7 @@ import (
 
 func TestMetrics_DKIMAgeSharesTheExistingEndpoint(t *testing.T) {
 	database := createScratchDB(t, "dkim_metrics")
-	if err := database.AutoMigrate(&models.Domain{}, &models.DKIMRotationKey{}); err != nil {
+	if err := database.AutoMigrate(&models.Domain{}, &models.DKIMRotationKey{}, &models.Certificate{}); err != nil {
 		t.Fatal(err)
 	}
 	created := time.Now().Add(-time.Hour)
@@ -28,6 +28,13 @@ func TestMetrics_DKIMAgeSharesTheExistingEndpoint(t *testing.T) {
 	if err := database.Create(&models.DKIMRotationKey{
 		DomainID: domain.ID, Slot: models.DKIMRotationStaged, Selector: "next",
 		PrivateKey: "private-staged-sentinel", TTLSeconds: 3600, CreatedAt: created,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	// The certificate expiry gauge is served from the same registry (#1630).
+	if err := database.Create(&models.Certificate{
+		DomainID: domain.ID, CertPEM: "-", KeyPEM: "-", Issuer: "test",
+		NotBefore: created, NotAfter: time.Now().Add(3 * 24 * time.Hour),
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -48,6 +55,8 @@ func TestMetrics_DKIMAgeSharesTheExistingEndpoint(t *testing.T) {
 		`restmail_dkim_rotation_state{domain="metric-route.test",state="awaiting_publication"} 1`,
 		`restmail_dkim_rotation_step_started_seconds{domain="metric-route.test"}`,
 		"restmail_queue_size",
+		"# TYPE restmail_cert_expiry_days gauge",
+		"\nrestmail_cert_expiry_days 2.9",
 	} {
 		if !strings.Contains(rr.Body.String(), want) {
 			t.Errorf("scrape missing %s", want)
