@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- A SELECT or EXAMINE refused with BAD keeps the mailbox already selected, with
+  its read-only mode and deletion marks: a rejected command never changes state
+  (RFC 3501 §6). Only a well-formed selection attempt that fails with NO
+  deselects. `TestSelectionInvalidArguments` required the old behaviour and now
+  requires this one.
+- STORE and UID STORE naming `\Recent` answer BAD and write nothing, because the
+  RFC 3501 §9 `flag` production excludes it. They used to answer OK and ignore
+  it. `TestStoreLeavesRecentAlone` required the old behaviour and now requires
+  this one.
+
 ## [0.13.2] - 2026-10-27
 
 ### Fixed

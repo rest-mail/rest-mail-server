@@ -493,11 +493,6 @@ func (s *Session) Handle() {
 				return // buffered unread octets must never become new commands
 			}
 			if !argsOK {
-				// A refused SELECT or EXAMINE is still a failed selection
-				// attempt, so it deselects as handleSelect would.
-				if (ucmd == "SELECT" || ucmd == "EXAMINE") && s.auth.authenticated {
-					s.deselect()
-				}
 				continue // safe refusal before a continuation or after a complete command
 			}
 			args = materialized

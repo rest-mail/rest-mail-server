@@ -40,8 +40,13 @@ func (s *Session) handleStore(tag, args string) {
 		return
 	}
 
-	seqNums := s.seqNumbers(parts[0])
 	flags := wire.ParseFlags(parts[2])
+	if namesRecent(flags) {
+		s.tagged(tag, "BAD", recentRefusal)
+		return
+	}
+
+	seqNums := s.seqNumbers(parts[0])
 
 	for _, seq := range seqNums {
 		if seq < 1 || seq > len(s.messages) {
@@ -54,6 +59,19 @@ func (s *Session) handleStore(tag, args string) {
 	}
 
 	s.tagged(tag, "OK", "STORE completed")
+}
+
+// recentRefusal is the response text for a STORE that names \Recent.
+const recentRefusal = `STORE cannot name \Recent`
+
+// namesRecent reports whether a STORE flag list names \Recent, which RFC 3501
+// §9's flag production excludes: "\Recent can not be used as an argument in a
+// STORE or APPEND command" (§2.3.2). Flag names are case-insensitive, and a
+// keyword spelled Recent is a different flag because it has no backslash.
+func namesRecent(flags []string) bool {
+	return slices.ContainsFunc(flags, func(flag string) bool {
+		return strings.EqualFold(flag, `\Recent`)
+	})
 }
 
 // storeMode is the STORE operation selected by the data-item name: replace
@@ -291,6 +309,10 @@ func (s *Session) handleUIDStore(tag, args string) {
 		return
 	}
 	flags := wire.ParseFlags(flagParts[1])
+	if namesRecent(flags) {
+		s.tagged(tag, "BAD", recentRefusal)
+		return
+	}
 
 	seqNums := s.parseUIDSet(parts[0])
 	for _, seq := range seqNums {
