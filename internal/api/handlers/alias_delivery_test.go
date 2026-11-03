@@ -118,7 +118,7 @@ func (fixture *aliasDeliveryFixture) sendSMTP(t *testing.T, recipients ...string
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 	if err := client.Mail("sender@outside.test"); err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +159,7 @@ func TestAliasDeliverySMTPLoopRefusedBeforeAcceptance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 	if err := client.Mail("sender@outside.test"); err != nil {
 		t.Fatal(err)
 	}
