@@ -2651,7 +2651,7 @@ export interface paths {
         put?: never;
         /**
          * Send a message
-         * @description Sent at once (201), or with scheduled_at stored and sent then (202); the outbound pipeline may discard it (200). Sending from your own mailbox requires mail:send. From another mailbox requires mail:send_as on that mailbox. Set on_behalf to true to require mail:send_on_behalf instead: From stays the represented mailbox and RFC 5322 Sender is the authenticated account's own address. Read access grants neither mode. Both modes audit the real account, credential and represented mailbox.
+         * @description Sent at once (201), or with scheduled_at stored and sent then (202); the outbound pipeline may discard it (200). to needs at least one address. from, to, cc and bcc are described as bare addresses, internationalized or not; the handler also accepts an RFC 5322 display name around one. scheduled_at must be at least a minute ahead and within a year; null or omitted sends at once. Sending from your own mailbox requires mail:send. From another mailbox requires mail:send_as on that mailbox. Set on_behalf to true to require mail:send_on_behalf instead: From stays the represented mailbox and RFC 5322 Sender is the authenticated account's own address. Read access grants neither mode. Both modes audit the real account, credential and represented mailbox.
          */
         post: operations["sendMessage"];
         delete?: never;
@@ -5396,22 +5396,6 @@ export interface components {
         sendDraftBody: {
             list_unsubscribe?: components["schemas"]["listUnsubscribe"] | null;
             on_behalf?: boolean;
-        };
-        sendMessageDescription: {
-            bcc?: string[];
-            body_html?: string;
-            body_text?: string;
-            calendar_event?: components["schemas"]["CalendarEvent"] | null;
-            cc?: string[];
-            from: string;
-            in_reply_to?: string;
-            list_unsubscribe?: components["schemas"]["listUnsubscribe"] | null;
-            on_behalf?: boolean;
-            require_tls?: boolean;
-            /** Format: date-time */
-            scheduled_at?: string | null;
-            subject?: string;
-            to?: string[];
         };
         sendTestEmailRequest: {
             body?: string;
@@ -23142,7 +23126,23 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["sendMessageDescription"];
+                "application/json": {
+                    bcc?: string[];
+                    body_html?: string;
+                    body_text?: string;
+                    calendar_event?: components["schemas"]["CalendarEvent"] | null;
+                    cc?: string[];
+                    /** Format: idn-email */
+                    from: string;
+                    in_reply_to?: string;
+                    list_unsubscribe?: components["schemas"]["listUnsubscribe"] | null;
+                    on_behalf?: boolean;
+                    require_tls?: boolean;
+                    /** Format: date-time */
+                    scheduled_at?: string | null;
+                    subject?: string;
+                    to: string[];
+                };
             };
         };
         responses: {

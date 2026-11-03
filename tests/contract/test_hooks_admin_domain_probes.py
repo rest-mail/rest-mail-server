@@ -4,6 +4,7 @@ go to a disposable domain instead (#1167)."""
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
 import json
+import os
 from pathlib import Path
 import sys
 import threading
@@ -66,6 +67,9 @@ class AdminDomainProbeHookTests(unittest.TestCase):
         self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.shutdown)
         self.hooks, self.stub, self.registered = load_hooks()
+        coverage = patch.dict(os.environ, {"CONTRACT_COVERAGE": "1"})
+        coverage.start()
+        self.addCleanup(coverage.stop)
         self.origin = "http://127.0.0.1:" + str(self.server.server_address[1])
         self.stub.stash["setup_admin_tokens"] = {self.origin: "setup"}
 
@@ -107,20 +111,39 @@ class AdminDomainProbeHookTests(unittest.TestCase):
         self.hooks.a_certificate_before_going_live(transaction)
         self.assertEqual(transaction["fullPath"], "/api/v1/admin/domains/30")
 
-    def test_other_targets_and_transactions_are_left_alone(self):
-        for path, name in (
-            ("/api/v1/admin/dkim/18", "coverage: probe"),
-            ("/api/v1/admin/dkim/0", "coverage: probe"),
-            ("/api/v1/admin/dkim/1.5", "coverage: probe"),
-            ("/api/v1/admin/dkim/abc", "coverage: probe"),
-            ("/api/v1/admin/dkim/1", "/api/v1/admin/dkim/{id} > Set or replace DKIM key for a domain > 200"),
-            ("/api/v1/admin/domains/1", "ownership: PATCH /api/v1/admin/domains/{id} as domain-admin-b"),
-            ("/api/v1/admin/domains/1", "authorization: PATCH /api/v1/admin/domains/{id} as admin"),
-        ):
-            with self.subTest(path=path, name=name):
-                transaction = self.transaction(path, name)
+    def test_only_the_coverage_process_moves_a_request(self):
+        # The hook sees the transaction's own name; only the result gets a
+        # "coverage: " prefix. The ownership run sends this id on purpose.
+        name = "/api/v1/admin/domains/{id} > Update a domain > 200 > application/json"
+        transaction = self.transaction("/api/v1/admin/domains/1", name)
+        self.hooks.off_the_admin_domain(transaction)
+        self.assertEqual(transaction["fullPath"], "/api/v1/admin/domains/30")
+        with patch.dict(os.environ):
+            del os.environ["CONTRACT_COVERAGE"]
+            transaction = self.transaction("/api/v1/admin/domains/1", name)
+            self.hooks.off_the_admin_domain(transaction)
+        self.assertEqual(transaction["fullPath"], "/api/v1/admin/domains/1")
+
+    def test_other_targets_are_left_alone(self):
+        for path in ("/api/v1/admin/dkim/18", "/api/v1/admin/dkim/0", "/api/v1/admin/dkim/1.5", "/api/v1/admin/dkim/abc"):
+            with self.subTest(path=path):
+                transaction = self.transaction(path, "/api/v1/admin/dkim/{id} > Set or replace DKIM key for a domain > 200")
                 self.hooks.off_the_admin_domain(transaction)
                 self.assertEqual(transaction["fullPath"], path)
+        self.assertEqual(self.server.created, [])
+
+    def test_other_processes_keep_restmail_test(self):
+        with patch.dict(os.environ):
+            del os.environ["CONTRACT_COVERAGE"]
+            for path, name in (
+                ("/api/v1/admin/dkim/1", "/api/v1/admin/dkim/{id} > Set or replace DKIM key for a domain > 200"),
+                ("/api/v1/admin/domains/1", "ownership: PATCH /api/v1/admin/domains/{id} as domain-admin-b"),
+                ("/api/v1/admin/domains/1", "authorization: PATCH /api/v1/admin/domains/{id} as admin"),
+            ):
+                with self.subTest(path=path, name=name):
+                    transaction = self.transaction(path, name)
+                    self.hooks.off_the_admin_domain(transaction)
+                    self.assertEqual(transaction["fullPath"], path)
         self.assertEqual(self.server.created, [])
 
 

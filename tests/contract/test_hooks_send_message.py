@@ -9,6 +9,7 @@ import sys
 import threading
 import types
 import unittest
+import unittest.mock
 from unittest.mock import patch
 import urllib.parse
 
@@ -58,6 +59,8 @@ class FixtureAPI(BaseHTTPRequestHandler):
             state["domains"].append(domain)
             return self.answer(201, {"data": domain})
         if self.path == "/api/v1/accounts":
+            if self.headers.get("Authorization") != "Bearer two-factor":
+                return self.answer(403, {"error": {"code": "two_factor_required"}})
             address = self.read_body()["address"]
             domain = next(d for d in state["domains"] if d["name"] == address.split("@")[1])
             mailbox = {"id": 100 + len(state["mailboxes"]), "domain_id": domain["id"], "address": address}
@@ -97,6 +100,10 @@ class SendMessageProbes(unittest.TestCase):
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.shutdown)
+        # Making an account takes a second factor; the real sign-in is mfa_admin's.
+        two_factor = patch.object(self.hooks, "mfa_admin_token", lambda origin: "two-factor")
+        two_factor.start()
+        self.addCleanup(two_factor.stop)
         # The sending policy half of the hook is not what is tested here.
         patcher = patch.object(self.hooks, "set_the_admin_domains_policy", lambda transaction, policy: None)
         patcher.start()
@@ -135,6 +142,18 @@ class SendMessageProbes(unittest.TestCase):
         self.assertNotIn("POST /api/v1/accounts", calls)
         self.assertFalse([c for c in calls if c.startswith("PUT ")])
 
+    def test_a_generated_recipient_on_another_domain_stays_inside(self):
+        # A recipient with no mailbox here would be queued for the outside world.
+        self.send({"from": "someone@example.com", "to": ["a@elsewhere.example"], "cc": ["b@elsewhere.example"],
+                   "bcc": ["not-an-address"]})
+        self.assertEqual([m["address"] for m in self.server.state["mailboxes"]],
+                         ["admin@restmail.test", "someone@example.com", "a@elsewhere.example", "b@elsewhere.example"])
+
+    def test_a_named_example_from_the_fixture_admin_keeps_its_outside_recipient(self):
+        # valid's queue entry is what the queue operations' links retry.
+        self.send({"from": "admin@restmail.test", "to": ["someone@imap.restmail.test"]})
+        self.assertEqual([m["address"] for m in self.server.state["mailboxes"]], ["admin@restmail.test"])
+
     def test_malformed_or_unhostable_senders_are_left_to_the_probe(self):
         for sender in ("", "no-at-sign", "a@b@c", "someone@localhost", 42, "someone@example.invalid"):
             with self.subTest(sender=sender):
@@ -143,6 +162,41 @@ class SendMessageProbes(unittest.TestCase):
         self.send(["not", "an", "object"])
         self.assertNotIn("POST /api/v1/accounts", self.server.state["calls"])
         self.assertEqual(len(self.server.state["domains"]), 1)
+
+
+class SendingPolicySetup(unittest.TestCase):
+    """The policy half of the hook: an ordinary send asks nothing of the server."""
+
+    def setUp(self):
+        self.hooks, self.stub = load_hooks()
+        self.stub.stash["admin_domain_id"] = 1
+        self.patches = []
+        self.urlopen = patch.object(self.hooks.urllib.request, "urlopen", side_effect=self.answer)
+        self.urlopen.start()
+        self.addCleanup(self.urlopen.stop)
+        token = patch.object(self.hooks, "admin_token", lambda origin: "setup")
+        token.start()
+        self.addCleanup(token.stop)
+
+    def answer(self, request, timeout=None):
+        self.patches.append((request.full_url, json.loads(request.data)))
+        response = unittest.mock.MagicMock(status=200)
+        response.__enter__.return_value = response
+        return response
+
+    transaction = {"protocol": "http:", "host": "127.0.0.1", "port": "1"}
+
+    def test_a_new_process_makes_no_request_for_no_policy(self):
+        self.hooks.set_the_admin_domains_policy(self.transaction, "")
+        self.assertEqual(self.patches, [])
+
+    def test_a_policy_this_process_set_is_not_set_again(self):
+        self.hooks.set_the_admin_domains_policy(self.transaction, "transactional")
+        self.hooks.set_the_admin_domains_policy(self.transaction, "transactional")
+        self.assertEqual(self.patches, [("http://127.0.0.1:1/api/v1/admin/domains/1", {"sending_policy": "transactional"})])
+        self.hooks.set_the_admin_domains_policy(self.transaction, "")
+        self.hooks.set_the_admin_domains_policy(self.transaction, "")
+        self.assertEqual(self.patches[1:], [("http://127.0.0.1:1/api/v1/admin/domains/1", {"sending_policy": ""})])
 
 
 if __name__ == "__main__":

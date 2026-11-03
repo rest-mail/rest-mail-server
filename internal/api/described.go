@@ -188,6 +188,7 @@ func describeWith(registry *endpoint.Registry, version string, examples fs.FS) *
 		ExampleRequirements: exampleRequirements,
 	})
 	g.Register(withResponseLinks(registry.Endpoints())...)
+	withItemFormats(g.Generate())
 	return g
 }
 

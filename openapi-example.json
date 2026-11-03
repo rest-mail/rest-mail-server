@@ -35106,6 +35106,113 @@
         "mediaType": "application/json"
       }
     },
+    "scheduled_at_malformed": {
+      "description": "Refused while binding, before the sender is looked up. The coverage run holds scheduled_at at null, so this named example proves what that takes away.",
+      "request": {
+        "body": {
+          "from": "admin@restmail.test",
+          "to": [
+            "admin@restmail.test"
+          ],
+          "subject": "Hello",
+          "body_text": "Hello",
+          "scheduled_at": "tomorrow"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "scheduled_at": "must be a date-time"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "scheduled_at_past": {
+      "description": "A date-time less than a minute ahead. The coverage run holds scheduled_at at null, so this named example proves what that takes away.",
+      "request": {
+        "body": {
+          "from": "admin@restmail.test",
+          "to": [
+            "admin@restmail.test"
+          ],
+          "subject": "Hello",
+          "body_text": "Hello",
+          "scheduled_at": "2020-01-02T03:04:05Z"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "scheduled_at must be at least a minute in the future"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "scheduled_at_too_far": {
+      "description": "A date-time more than a year ahead. The coverage run holds scheduled_at at null, so this named example proves what that takes away.",
+      "request": {
+        "body": {
+          "from": "admin@restmail.test",
+          "to": [
+            "admin@restmail.test"
+          ],
+          "subject": "Hello",
+          "body_text": "Hello",
+          "scheduled_at": "2099-01-01T10:00:00Z"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "scheduled_at must be within a year"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "scheduled_at_wrong_type": {
+      "description": "Refused while binding, before the sender is looked up. The coverage run holds scheduled_at at null, so this named example proves what that takes away.",
+      "request": {
+        "body": {
+          "from": "admin@restmail.test",
+          "to": [
+            "admin@restmail.test"
+          ],
+          "subject": "Hello",
+          "body_text": "Hello",
+          "scheduled_at": 12345
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "scheduled_at": "must be a date-time"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
     "send_as": {
       "summary": "Delegated send as",
       "requires": {
