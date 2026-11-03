@@ -50,6 +50,19 @@ func (c mailboxLookupConnection) QueryContext(_ context.Context, query string, a
 	id := fmt.Sprint(args[0].Value)
 	stamp := time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC)
 	switch {
+	case strings.Contains(query, `FROM "aliases"`):
+		if !strings.Contains(query, "domains.name =") {
+			return nil, errors.New("alias query lost hosted-domain restriction")
+		}
+		matches := !strings.Contains(query, "aliases.source_address IN")
+		for _, argument := range args {
+			matches = matches || fmt.Sprint(argument.Value) == "reserved@example.com"
+		}
+		rows := &authReadSnapshotRows{columns: []string{"id", "domain_id", "source_address", "destination_address", "active"}}
+		if matches {
+			rows.rows = [][]driver.Value{{int64(1), int64(1), "reserved@example.com", "user@example.com", false}}
+		}
+		return rows, nil
 	case strings.Contains(query, `FROM "mailboxes"`):
 		if strings.Contains(query, "address =") {
 			switch id {
@@ -144,7 +157,7 @@ func mailboxLookupRouters(t *testing.T) (map[string]http.Handler, *auth.JWTServi
 	return map[string]http.Handler{"rate_limited": apiKeyRefusalLimited(t),
 		"found": global, "inactive": global, "quota_present": global, "missing": global, "internal_error": global, "domain_unavailable": global, "quota_unavailable": global,
 		"unauthenticated": unavailable, "session_unavailable": unavailable, "permission_store_unavailable": scoped(grants.Mailbox("user@example.com"), true),
-		"request_too_large": global, "invalid_id": global, "address_empty": global, "address_missing": global, "not_local": global, "invalid_address": global, "address_unavailable": failed,
+		"request_too_large": global, "invalid_id": global, "address_empty": global, "address_missing": global, "not_local": global, "invalid_address": global, "address_unavailable": failed, "alias_refused": global,
 		"mailbox_scope": scoped(grants.Mailbox("user@example.com"), true), "domain_scope": scoped(grants.Domain("example.com"), true), "outside_scope": scoped(grants.Mailbox("other@example.com"), false), "domain_redacted": scoped(grants.Mailbox("user@example.com"), false),
 	}, jwt
 }

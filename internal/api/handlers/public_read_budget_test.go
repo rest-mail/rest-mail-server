@@ -297,9 +297,12 @@ func TestPublicReadFaultsPreserveAbsenceAndPrivacy(t *testing.T) {
 				step.rows = nil
 			}
 			d := &publicReadDB{steps: []publicReadStep{step}}
+			if kind == "absent" {
+				d.steps = append(d.steps, publicReadStep{query: "aliases", columns: []string{"id"}}, publicReadStep{query: "aliases", columns: []string{"id"}})
+			}
 			rr := httptest.NewRecorder()
 			publicMailboxRoutes(publicReadGorm(t, d)).ServeHTTP(rr, publicReadRequest(t, "/restmail/mailboxes?address=reader@example.test", ""))
-			assertPublicReadBudget(t, d, rr, status, 1)
+			assertPublicReadBudget(t, d, rr, status, len(d.steps))
 			if kind != "fault" && !strings.Contains(rr.Body.String(), `"exists":false`) {
 				t.Fatalf("negative identity changed: %s", rr.Body)
 			}

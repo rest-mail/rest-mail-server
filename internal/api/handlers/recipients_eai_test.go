@@ -121,8 +121,8 @@ func TestRecipientsEAI(t *testing.T) {
 	if err := tx.Create(&alias).Error; err != nil {
 		t.Fatal(err)
 	}
-	if _, _, resolveErr := rest.resolveRecipientMailbox(t.Context(), "mu\u0308nchen+shop@"+unicodeDomain); resolveErr == nil {
-		t.Fatal("plus fallback bypassed the explicit alias")
+	if resolved, original, resolveErr := rest.resolveRecipientMailbox(t.Context(), "mu\u0308nchen+shop@"+unicodeDomain); resolveErr != nil || resolved.ID != legacy.ID || original != "mu\u0308nchen+shop@"+unicodeDomain {
+		t.Fatalf("alias destination not resolved: %d %q %v", resolved.ID, original, resolveErr)
 	}
 
 	for _, address := range []string{"MU\u0308NCHEN@" + unicodeDomain, "mu\u0308nchen+tag@" + unicodeDomain, "café@" + unicodeDomain} {

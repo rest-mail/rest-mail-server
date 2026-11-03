@@ -177,6 +177,9 @@ func TestGatewayDeliveryMissingRecipientKeepsNotFound(t *testing.T) {
 	for _, body := range []string{`{"mailbox_id":2}`, `{"address":"missing@example.test"}`} {
 		t.Run(body, func(t *testing.T) {
 			d := &deliveryReadDB{steps: []deliveryReadStep{{table: "mailboxes", columns: []string{"id"}}}}
+			if strings.Contains(body, `"address"`) {
+				d.steps = append(d.steps, deliveryReadStep{table: "aliases", columns: []string{"id"}}, deliveryReadStep{table: "aliases", columns: []string{"id"}})
+			}
 			rr := httptest.NewRecorder()
 			gatewayFaultRoutes(deliveryReadGorm(t, d)).ServeHTTP(rr, deliveryRequest(t, body, "/api/v1/messages/deliver"))
 			assertDeliveryReadRefusal(t, d, rr, 404, "mailbox_not_found")
@@ -236,10 +239,8 @@ func TestRESTMAILUntrustedSenderLookupFaultDefers(t *testing.T) {
 }
 func TestRESTMAILRecipientResolutionRetainsErrorsAndIdentity(t *testing.T) {
 	missing := deliveryReadStep{table: "mailboxes", columns: []string{"id"}}
-	count := func(n int64) deliveryReadStep {
-		return deliveryReadStep{table: "aliases", columns: []string{"count"}, values: []driver.Value{n}}
-	}
-	sources := deliveryReadStep{table: "aliases", columns: []string{"source_address"}}
+	aliasesMissing := deliveryReadStep{table: "aliases", columns: []string{"id"}}
+	inactiveAlias := deliveryReadStep{table: "aliases", columns: []string{"id", "domain_id", "source_address", "destination_address", "active"}, values: []driver.Value{int64(7), int64(1), "one+tag@example.test", "other@remote.test", false}}
 	fault := errors.New("private recipient lookup failed")
 	inactive := deliveryMailboxStep("one+tag@example.test")
 	inactive.values[3] = false
@@ -250,14 +251,14 @@ func TestRESTMAILRecipientResolutionRetainsErrorsAndIdentity(t *testing.T) {
 		wantAddress, wantDeliveredTo string
 	}{
 		{"exact identity wins", []deliveryReadStep{deliveryMailboxStep("one+tag@example.test")}, nil, "one+tag@example.test", ""},
-		{"plus fallback", []deliveryReadStep{missing, count(0), sources, deliveryMailboxStep("one@example.test")}, nil, "one@example.test", "one+tag@example.test"},
+		{"plus fallback", []deliveryReadStep{missing, aliasesMissing, aliasesMissing, deliveryMailboxStep("one@example.test")}, nil, "one@example.test", "one+tag@example.test"},
 		{"inactive identity never falls back", []deliveryReadStep{inactive}, gorm.ErrRecordNotFound, "", ""},
-		{"explicit alias reserves full identity", []deliveryReadStep{missing, count(1)}, gorm.ErrRecordNotFound, "", ""},
+		{"explicit alias reserves full identity", []deliveryReadStep{missing, inactiveAlias, deliveryDomainStep(), aliasesMissing}, gorm.ErrRecordNotFound, "", ""},
 		{"exact lookup fault", []deliveryReadStep{{table: "mailboxes", err: fault}}, fault, "", ""},
-		{"alias count fault", []deliveryReadStep{missing, {table: "aliases", err: fault}}, fault, "", ""},
-		{"legacy alias lookup fault", []deliveryReadStep{missing, count(0), {table: "aliases", err: fault}}, fault, "", ""},
-		{"base lookup fault", []deliveryReadStep{missing, count(0), sources, {table: "mailboxes", err: fault}}, fault, "", ""},
-		{"base absent", []deliveryReadStep{missing, count(0), sources, missing}, gorm.ErrRecordNotFound, "", ""},
+		{"alias lookup fault", []deliveryReadStep{missing, {table: "aliases", err: fault}}, fault, "", ""},
+		{"legacy alias lookup fault", []deliveryReadStep{missing, aliasesMissing, {table: "aliases", err: fault}}, fault, "", ""},
+		{"base lookup fault", []deliveryReadStep{missing, aliasesMissing, aliasesMissing, {table: "mailboxes", err: fault}}, fault, "", ""},
+		{"base absent", []deliveryReadStep{missing, aliasesMissing, aliasesMissing, missing}, gorm.ErrRecordNotFound, "", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			d := &deliveryReadDB{steps: tc.steps}

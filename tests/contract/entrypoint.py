@@ -9,6 +9,8 @@ directory = Path(__file__).resolve().parent
 shared = runpy.run_path(str(directory / "hooks.py"))
 # Only the path, and only after a reset (own_data.py): generated bodies stay whole.
 vertrag_hooks.before("setDomainRelay")(shared["a_live_domain_for_the_link"])
+alias = runpy.run_path(str(directory / "alias_refusal_hooks.py"))
+alias["register_alias_refusal_hooks"](shared["admin_token"])
 targets = runpy.run_path(str(directory / "coverage_target_hooks.py"))
 targets["register_coverage_target_hooks"](shared)
 queue = runpy.run_path(str(directory / "queue_entry_hooks.py"))

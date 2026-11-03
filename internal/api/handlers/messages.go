@@ -1223,13 +1223,19 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody)
 	}
 
 	var mailbox models.Mailbox
+	var recipient repositories.Recipient
 	var lookupErr error
 	if req.MailboxID > 0 {
 		lookupErr = h.db.WithContext(r.Context()).First(&mailbox, req.MailboxID).Error
 	} else if req.Address != "" {
-		lookupErr = repositories.FindActiveMailboxByAddress(h.db.WithContext(r.Context()), req.Address, &mailbox)
+		recipient, lookupErr = repositories.ResolveRecipient(h.db.WithContext(r.Context()), req.Address, false)
+		mailbox = recipient.Mailbox
 	} else {
 		return zero, endpoint.Invalid(map[string]string{"mailbox_id": "mailbox_id or address required", "address": "mailbox_id or address required"})
+	}
+	if errors.Is(lookupErr, repositories.ErrAliasRouting) {
+		slog.WarnContext(r.Context(), "delivery alias refused", "address", req.Address, "error", lookupErr)
+		return zero, endpoint.Refuse(550, "rejected", rmail.AliasRoutingRefusal)
 	}
 	if errors.Is(lookupErr, gorm.ErrRecordNotFound) {
 		return zero, endpoint.Refuse(http.StatusNotFound, "mailbox_not_found", "Mailbox not found")
@@ -1239,7 +1245,7 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody)
 	}
 
 	// Delegate to shared local delivery helper (pipeline + quota + attachments + SSE)
-	msg, err := h.deliverToLocal(r.Context(), localDeliveryParams{
+	msg, err := h.deliverToRecipient(r.Context(), recipient, localDeliveryParams{
 		Mailbox:      mailbox,
 		Sender:       req.Sender,
 		SenderName:   req.SenderName,

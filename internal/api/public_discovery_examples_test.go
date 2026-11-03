@@ -50,6 +50,11 @@ func (c publicDiscoveryConnection) QueryContext(_ context.Context, query string,
 	}
 	value := fmt.Sprint(args[0].Value)
 	switch {
+	case strings.Contains(query, `FROM "aliases"`):
+		if !strings.Contains(query, "domains.name =") {
+			return nil, errors.New("alias query lost hosted-domain restriction")
+		}
+		return &authReadSnapshotRows{columns: []string{"id"}}, nil
 	case strings.Contains(query, `FROM "domains"`):
 		if !strings.Contains(query, "name =") || !strings.Contains(query, "active =") || len(args) < 2 || args[1].Value != true {
 			return nil, errors.New("discovery lost active hosted-domain restriction")

@@ -310,6 +310,40 @@ that example pass, so the probes run and the skipped-probe baseline no longer
 matches. For `clearSuppression`, the next probe with the example's path then
 finds nothing to clear.
 
+### Reserved alias refusal
+
+`checkMailboxAddress`'s `alias_refused` example needs an inactive alias, not an
+absent address. `alias_refusal_hooks.py`, registered by `entrypoint.py`, creates
+a unique alias on the existing `restmail.test` domain through the public admin
+API and disables it before changing only that example's address query. Setup
+uses `CONTRACT_ENDPOINT` (the topology's public listener by default), not the
+gateway's internal mTLS listener. No body, credential or expected answer changes.
+The after hook deletes exactly that alias, including after a failed exchange,
+so later alias lists/counts, ownership cells and domain-delete fixtures retain
+their state. No domain or mailbox is created or modified. Coverage's generated
+queries do not match the named refusal's query and expected status; they are
+sent unchanged, with no probe hidden by a body rewrite or added requirement.
+
+The refusal is a 403, not a 5xx. The API uses REST semantics and the SMTP gateway
+turns them into SMTP (the owner's decision on #1533), and the surface gate never
+counts a 5xx as passed. The gateway answers its SMTP peer 550 for this 403.
+
+The #1539 local regression used the rebased PR's API build, disposable
+`postgres:16-alpine`, the seeded `restmail.test` domain, these hooks and
+checksum-verified Vertrag 0.42.0, with the description narrowed to this route and
+`surface: {count: passed, require: 100}`. It passed 1 of 1 operations and exited 0:
+the 200, 403 and 422 examples passed, and the 500 example needs a database fault,
+so it is unproven there and proven by `TestMailboxLookupExamplesWithVertrag`. The
+same surface rule against a loopback fixture answering HTTP 550 exited 3 (#1533).
+The inactive alias returned the fixed public sentence, the detailed reason appeared
+only in the API log, and no temporary refusal alias remained afterwards.
+
+An earlier local run, with the refusal still at HTTP 550, also covered the
+neighbouring operations. It passed all 54 selected alias, domain and mailbox
+examples, and left the ownership runs' cells unchanged: domains and aliases 9 of 16
+passing with the same 7 unsent, mailboxes 10 of 10. These counts were not repeated
+for the 403, and neither run is a claim about the whole-API merge-queue gate.
+
 ### Attachment download contract
 
 The topology examples send an ordinary download, `Range: bytes=0-0` for a
