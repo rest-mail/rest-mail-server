@@ -57,11 +57,12 @@ advertised.
   selection replaces one, even if the new selection then fails; never after a
   BAD, CLOSE or UNSELECT ("There is no need to return the CLOSED response code
   on completion of the CLOSE or the UNSELECT command", §7.1). It is sent only
-  to an IMAP4rev2 session, and no command makes one yet: RFC 3501 has no
-  CLOSED and asks that other codes "SHOULD be prefixed with an "X" until they
-  are added to a revision of this protocol" (§7.1), and RFC 7162 §3.2.11
-  requires CLOSED of a server that "advertises "QRESYNC" or "CONDSTORE"",
-  which this one does not. ENABLE IMAP4rev2 will turn it on.
+  to an IMAP4rev2 session, or when the store keeps mod-sequences: RFC 3501
+  has no CLOSED and asks that other codes "SHOULD be prefixed with an "X"
+  until they are added to a revision of this protocol" (§7.1), and RFC 7162
+  §3.2.11 requires CLOSED of a server that "advertises "QRESYNC" or
+  "CONDSTORE"", which this one does only with such a store. ENABLE IMAP4rev2
+  will turn it on for every session.
 - Mailbox access rights (RFC 9051 §§6.3.2, 6.3.9.2, 6.3.12, 6.4.7, 11.4). The
   rev2 rules on READ-ONLY selections, TRYCREATE without implicit creation,
   \Noselect for unopenable LIST-STATUS entries and withholding APPENDUID and
@@ -92,3 +93,14 @@ advertised.
   return options use it, and RFC 5258 §5 examples 2, 3, 5, 6, 8, 9 and 10 run
   against it in `rfctest`. A Mailbox without it keeps the all-folders-subscribed
   model, so existing hosts see no change.
+- CONDSTORE and QRESYNC (RFC 7162, go-imap#162). Without them a client that
+  reconnects must FETCH every message's flags to learn what changed. The
+  optional `imap.ModSeqMailbox` interface (`HighestModSeq`, `StoreModSeq`)
+  gives the server a folder's HIGHESTMODSEQ and each message's
+  `Message.ModSeq`, and turns on CONDSTORE: ENABLE CONDSTORE, SELECT/EXAMINE
+  (CONDSTORE) with HIGHESTMODSEQ or NOMODSEQ, STATUS HIGHESTMODSEQ, FETCH
+  MODSEQ and CHANGEDSINCE, STORE UNCHANGEDSINCE with MODIFIED, and SEARCH
+  MODSEQ (with ESEARCH's MODSEQ). `imap.VanishedMailbox` (`Vanished`) adds the
+  record of expunged UIDs and turns on QRESYNC: ENABLE QRESYNC, SELECT/EXAMINE
+  (QRESYNC ...), UID FETCH (CHANGEDSINCE n VANISHED), and VANISHED in place of
+  EXPUNGE once enabled. A Mailbox without them advertises neither.

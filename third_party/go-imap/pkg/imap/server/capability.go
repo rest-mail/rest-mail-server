@@ -2,6 +2,7 @@ package server
 
 import (
 	"log/slog"
+	"slices"
 	"strings"
 
 	"github.com/rest-mail/go-imap/pkg/imap"
@@ -41,6 +42,14 @@ func (s *Session) capabilities() string {
 	if _, ok := s.mailbox.(imap.UTF8Mailbox); ok {
 		caps = append(caps, "UTF8=ACCEPT")
 	}
+	// CONDSTORE and QRESYNC (RFC 7162 §§3.1.1, 3.2.3) need the store's
+	// mod-sequences, and QRESYNC its record of expunged UIDs too.
+	if _, ok := s.modSeqStore(); ok {
+		caps = append(caps, "CONDSTORE")
+	}
+	if _, ok := s.vanishedStore(); ok {
+		caps = append(caps, "QRESYNC")
+	}
 	if !s.usingTLS && s.tlsConfig != nil {
 		caps = append(caps, "STARTTLS")
 	}
@@ -58,9 +67,10 @@ func (s *Session) capabilities() string {
 	return strings.Join(caps, " ")
 }
 
-// handleEnable implements ENABLE (RFC 5161). UTF8=ACCEPT (RFC 6855) is the
-// only enable-able extension, and only when the Mailbox implements
-// [UTF8Mailbox]. RFC 6855 §3 allows it only in the authenticated state, so it
+// handleEnable implements ENABLE (RFC 5161). UTF8=ACCEPT (RFC 6855) is
+// enable-able when the Mailbox implements [UTF8Mailbox], CONDSTORE when it
+// implements [imap.ModSeqMailbox] and QRESYNC, which turns CONDSTORE on too,
+// when it also implements [imap.VanishedMailbox] (RFC 7162 §§3.1, 3.2.3). RFC 6855 §3 allows it only in the authenticated state, so it
 // is ignored once a mailbox is selected. Every other requested capability is
 // unknown and silently ignored per §3.1. Newly enabled names are echoed in an
 // untagged "* ENABLED" response; one already enabled is not repeated.
@@ -81,6 +91,23 @@ func (s *Session) handleEnable(tag, args string) {
 	}
 	var enabled []string
 	for _, name := range names {
+		// CONDSTORE (RFC 7162 §3.1) and QRESYNC (§3.2.3), which implies
+		// CONDSTORE, when the store keeps what they need.
+		if strings.EqualFold(name, "CONDSTORE") {
+			if _, ok := s.modSeqStore(); ok && !s.condstore && !slices.Contains(enabled, "CONDSTORE") {
+				s.enableCondstore()
+				enabled = append(enabled, "CONDSTORE")
+			}
+			continue
+		}
+		if strings.EqualFold(name, "QRESYNC") {
+			if _, ok := s.vanishedStore(); ok && !s.qresync {
+				s.qresync = true
+				s.enableCondstore()
+				enabled = append(enabled, "QRESYNC")
+			}
+			continue
+		}
 		if !strings.EqualFold(name, "UTF8=ACCEPT") || s.utf8 || s.selected != nil {
 			continue
 		}

@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/rest-mail/go-imap/actions/workflows/ci.yml/badge.svg)](https://github.com/rest-mail/go-imap/actions/workflows/ci.yml)
 [![Coverage gate: >=95%](https://img.shields.io/badge/coverage%20gate-%3E%3D95%25-brightgreen)](COVERAGE.md)
-[![Partial checklist: 541/787 mapped](https://img.shields.io/badge/partial%20checklist-541%2F787%20mapped-blue)](CHECKLIST.md)
+[![Partial checklist: 560/803 mapped](https://img.shields.io/badge/partial%20checklist-560%2F803%20mapped-blue)](CHECKLIST.md)
 [![Go Reference](https://pkg.go.dev/badge/github.com/rest-mail/go-imap.svg)](https://pkg.go.dev/github.com/rest-mail/go-imap/pkg/imap/server)
 [![Go Report Card](https://goreportcard.com/badge/github.com/rest-mail/go-imap)](https://goreportcard.com/report/github.com/rest-mail/go-imap)
 
@@ -147,6 +147,8 @@ func (a *account) MoveUID(srcUID uint32, dest string) (uint32, error) {
 | `Mover` | `MoveUID` | MOVE ([RFC 6851]) as one atomic backend call per message. Without it MOVE still works, through `Mailbox.Move`; with it and `UIDPlusMailbox`, MOVE reports `COPYUID`. |
 | `UTF8Mailbox` | `EnableUTF8` | UTF8=ACCEPT ([RFC 6855]), switched on per session with `ENABLE UTF8=ACCEPT`: UTF-8 quoted strings and mailbox names, raw UTF-8 headers (RFC 6532), and APPEND's `UTF8 (~{n})` data item. |
 | `DateAppender` | `AppendWithDate` | APPEND's date-time argument reaches the store as the message's INTERNALDATE. Without it the date is checked and then dropped. |
+| `ModSeqMailbox` | `HighestModSeq`, `StoreModSeq` | CONDSTORE ([RFC 7162] §3.1): HIGHESTMODSEQ in SELECT and STATUS, FETCH `MODSEQ` and `CHANGEDSINCE`, STORE `UNCHANGEDSINCE` with `MODIFIED`, and SEARCH `MODSEQ`, from `Message.ModSeq`. A folder whose `HighestModSeq` is 0 answers NOMODSEQ. |
+| `VanishedMailbox` | `Vanished` | With `ModSeqMailbox`, QRESYNC ([RFC 7162] §3.2): `ENABLE QRESYNC`, SELECT `(QRESYNC ...)`, UID FETCH `(CHANGEDSINCE n VANISHED)`, and `VANISHED` instead of `EXPUNGE` once enabled. |
 
 ### One connection
 
@@ -187,6 +189,8 @@ drives one whole conversation this way over an in-memory pipe.
 | BINARY | RFC 3516 | always: sections with their transfer encoding removed |
 | UIDPLUS | [RFC 4315] | the `Mailbox` implements `UIDPlusMailbox` |
 | UTF8=ACCEPT | [RFC 6855] | the `Mailbox` implements `UTF8Mailbox` |
+| CONDSTORE | [RFC 7162] | the `Mailbox` implements `ModSeqMailbox` |
+| QRESYNC | [RFC 7162] | the `Mailbox` implements `ModSeqMailbox` and `VanishedMailbox` |
 
 The list is computed per session from what the concrete `Mailbox` implements,
 so it never promises more than the backend does.
@@ -435,7 +439,6 @@ reason.
 | `\Deleted` now persists across sessions through `Store` and `Message.Deleted`; durable storage remains a host-backend responsibility. | [#159](https://github.com/rest-mail/go-imap/issues/159) (historical gap) |
 | CREATE succeeds without creating anything, and DELETE and RENAME move messages. An empty folder does not exist. | [#160](https://github.com/rest-mail/go-imap/issues/160) |
 | COPY and MOVE cannot roll back a partly applied command. | [#161](https://github.com/rest-mail/go-imap/issues/161) |
-| CONDSTORE and QRESYNC (RFC 7162). | [#162](https://github.com/rest-mail/go-imap/issues/162) |
 | ID (RFC 2971). | [#163](https://github.com/rest-mail/go-imap/issues/163) |
 | The IMAP4rev2 capability (RFC 9051). The checklist inventories its requirements. | [rest-mail/rest-mail-server#718](https://github.com/rest-mail/rest-mail-server/issues/718) |
 
@@ -504,3 +507,4 @@ other sources' changes.
 [RFC 4315]: https://www.rfc-editor.org/rfc/rfc4315
 [RFC 6851]: https://www.rfc-editor.org/rfc/rfc6851
 [RFC 6855]: https://www.rfc-editor.org/rfc/rfc6855
+[RFC 7162]: https://www.rfc-editor.org/rfc/rfc7162

@@ -30,9 +30,8 @@ func (s *Session) handleFetch(tag, args string) {
 		s.tagged(tag, "BAD", "Invalid sequence set")
 		return
 	}
-	tokens, ok := wire.ParseFetchItems(parts[1])
+	tokens, mods, ok := s.fetchArgs(tag, parts[1], false)
 	if !ok {
-		s.tagged(tag, "BAD", "Invalid FETCH data items")
 		return
 	}
 
@@ -44,6 +43,9 @@ func (s *Session) handleFetch(tag, args string) {
 			continue
 		}
 		msg := s.messages[seq-1]
+		if mods.changedSince > 0 && msg.ModSeq <= mods.changedSince {
+			continue
+		}
 
 		if err := s.fetchResponse(seq, msg, tokens); err != nil {
 			s.tagged(tag, "NO", fetchFailure(err, "FETCH failed"))
@@ -183,13 +185,18 @@ func (s *Session) fetchResponse(seq int, msg imap.Message, tokens []string) erro
 	// messages in a multi-message FETCH may already have succeeded; an error
 	// stops this command without rolling their completed writes back.
 	if marksSeen && !msg.Seen && !s.readOnly {
-		if err := s.mailbox.Store(msg.UID, imap.FlagUpdate{Seen: boolPtr(true)}); err != nil {
+		if err := s.storeFlags(seq, imap.FlagUpdate{Seen: boolPtr(true)}, storeCondition{}); err != nil {
 			return err
 		}
 		msg.Seen = true
 		s.messages[seq-1].Seen = true
 	}
 	plain[1] = fmt.Sprintf("FLAGS (%s)", s.flagString(msg))
+	// Once CONDSTORE is on, every FETCH carries MODSEQ (RFC 7162 §3.1); a
+	// FETCH that asks for MODSEQ or CHANGEDSINCE has turned it on.
+	if s.condstore && s.modSeqs() {
+		plain = append(plain, fmt.Sprintf("MODSEQ (%d)", s.messages[seq-1].ModSeq))
+	}
 
 	head := fmt.Sprintf("* %d FETCH (%s", seq, strings.Join(plain, " "))
 	if len(lits) == 0 {
@@ -240,10 +247,15 @@ func (s *Session) handleUIDFetch(tag, args string) {
 		s.tagged(tag, "BAD", "Invalid uid set")
 		return
 	}
-	tokens, ok := wire.ParseFetchItems(parts[1])
+	tokens, mods, ok := s.fetchArgs(tag, parts[1], true)
 	if !ok {
-		s.tagged(tag, "BAD", "Invalid FETCH data items")
 		return
+	}
+
+	// VANISHED (EARLIER) comes before any FETCH (RFC 7162 §3.2.6).
+	if mods.vanished {
+		uidNext, _ := s.uidNext(s.selected.name, s.messages)
+		s.sendVanishedEarlier(uidSetStr, mods.changedSince, uidNext)
 	}
 
 	seqNums := s.parseUIDSet(uidSetStr)
@@ -253,6 +265,9 @@ func (s *Session) handleUIDFetch(tag, args string) {
 			continue
 		}
 		msg := s.messages[seq-1]
+		if mods.changedSince > 0 && msg.ModSeq <= mods.changedSince {
+			continue
+		}
 
 		if err := s.fetchResponse(seq, msg, tokens); err != nil {
 			s.tagged(tag, "NO", fetchFailure(err, "UID FETCH failed"))
@@ -289,4 +304,40 @@ func fetchFailure(err error, text string) string {
 		return "[UNKNOWN-CTE] Cannot remove the section's Content-Transfer-Encoding"
 	}
 	return text
+}
+
+// fetchArgs parses a FETCH's data items and modifiers, answering BAD (ok
+// false) for any it cannot take. MODSEQ and CHANGEDSINCE need the selected
+// mailbox's mod-sequences and turn CONDSTORE on; VANISHED is only for UID
+// FETCH, with CHANGEDSINCE, once QRESYNC is enabled (RFC 7162 §§3.1.2.2,
+// 3.1.4, 3.2.6).
+func (s *Session) fetchArgs(tag, rest string, uid bool) ([]string, fetchModifiers, bool) {
+	items, mods, present, ok := splitFetchModifiers(rest)
+	if !ok || (present && !s.modSeqs()) {
+		s.tagged(tag, "BAD", "Invalid FETCH modifier")
+		return nil, mods, false
+	}
+	if mods.vanished && (!uid || !s.qresync || mods.changedSince == 0) {
+		s.tagged(tag, "BAD", "VANISHED needs UID FETCH, CHANGEDSINCE and ENABLE QRESYNC")
+		return nil, mods, false
+	}
+	tokens, ok := wire.ParseFetchItems(items)
+	if !ok {
+		s.tagged(tag, "BAD", "Invalid FETCH data items")
+		return nil, mods, false
+	}
+	wantModSeq := false
+	for _, t := range tokens {
+		if strings.EqualFold(t, "MODSEQ") {
+			wantModSeq = true
+		}
+	}
+	if wantModSeq && !s.modSeqs() {
+		s.tagged(tag, "BAD", "Invalid FETCH data items")
+		return nil, mods, false
+	}
+	if wantModSeq || mods.changedSince > 0 {
+		s.enableCondstore()
+	}
+	return tokens, mods, true
 }
