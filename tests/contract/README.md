@@ -587,7 +587,7 @@ their exclusions.
 `testCustomFilter` sends its `invalid_body` request (`[]`) with its paired
 422, the `validation_failed` naming the root `body`,
 before the filter is looked up. Its `valid` request (`{}`, the built-in sample
-email) runs the created filter and gets the 200
+email) runs a filter made for that exchange and gets the 200
 (`contract_testcustomfilter_examples_test.go`).
 
 The preview hooks pace `testPipeline`, `testFilter` and `testCustomFilter`
@@ -1156,10 +1156,25 @@ at `contract-own-alias@restmail.test`, made if absent. `created_alias_probes`
 stays, because a create without a reset (the primary run and coverage) still
 removes only the repeated probe aliases it made.
 
+`createCustomFilter`, `getCustomFilter`, `updateCustomFilter`, `testCustomFilter`
+and `deleteCustomFilter` reset and seed before each exchange too, refusals
+included. A create is sent as documented after its reset: no earlier exchange's
+filter is left, and the documented create names no domain. A read, update,
+preview or delete with a positive id gets a disabled filter of its own, made
+after the reset, so a 422 is refused for its body and not for a filter the reset
+removed. Missing's `2147483647`, a non-positive or undecodable id and every
+documented 404 keep their ids. `createCustomFilter`'s link reaches the read,
+update and preview, and the preview's reaches the delete, so nothing that
+follows it is left unmoved. No custom filter is carried between exchanges, so
+`hooks.stash` holds no `created_custom_filter_id`: without a reset, each success
+example aimed at placeholder `1` gets a new filter of its own
+(`on_a_custom_filter_of_its_own`), and other ids are sent as before.
+
 This happens only with `CONTRACT_RESET_SEED=1`, which `tests/contract/run.sh own-data`
 sets, and that phase is a gate of its own, sent by `chore test:contract-teardown`
 just before the teardown. It sends the moved operations with everything that follows
-`createDomain`'s, `createPipeline`'s and `createAlias`'s links (`own_data.py`), and fails on a skipped
+`createDomain`'s, `createPipeline`'s, `createAlias`'s and `createCustomFilter`'s links
+(`own_data.py`), and fails on a skipped
 exchange as well as a failed one.
 
 **The primary run does not reset.** It still sends these operations as before, because a

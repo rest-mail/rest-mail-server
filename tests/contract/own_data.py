@@ -2,9 +2,10 @@
 
 MOVED resets and seeds before each exchange and makes the data that exchange
 needs (hooks.py, start_clean). A reset removes what createDomain,
-createPipeline and createAlias made, so the run also sends everything that
-follows their links, which must still pass with that domain, pipeline or alias
-gone: the same operations without a reset are the comparison.
+createPipeline, createAlias and createCustomFilter made, so the run also sends
+everything that follows their links, which must still pass with that domain,
+pipeline, alias or custom filter gone: the same operations without a reset are
+the comparison.
 
 A reset also removes every principal and fixture the other phases use, and the
 primary run still has operations that depend on them, so this is sent after
@@ -37,6 +38,13 @@ MOVED = (
     "getAlias",
     "updateAlias",
     "deleteAlias",
+    # createCustomFilter's link reaches get, update and test, and test's
+    # reaches delete: all moved.
+    "createCustomFilter",
+    "getCustomFilter",
+    "updateCustomFilter",
+    "testCustomFilter",
+    "deleteCustomFilter",
 )
 
 FOLLOWS_THE_CREATED_DOMAIN = (

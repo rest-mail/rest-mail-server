@@ -19,6 +19,16 @@ PIPELINES = ("createPipeline", "testPipeline", "deletePipeline", "updatePipeline
 # link reaches.
 ALIASES = ("createAlias", "getAlias", "updateAlias", "deleteAlias")
 
+# What read or wrote the custom filter the run kept, which is also all
+# createCustomFilter's link reaches.
+CUSTOM_FILTERS = (
+    "createCustomFilter",
+    "getCustomFilter",
+    "updateCustomFilter",
+    "testCustomFilter",
+    "deleteCustomFilter",
+)
+
 
 def link_followers(description, start):
     """The operations reachable from start through the description's links."""
@@ -67,7 +77,7 @@ class Selection(unittest.TestCase):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
         selected = set(own_data.MOVED + own_data.FOLLOWS_THE_CREATED_DOMAIN)
         self.assertEqual(
-            selected - set(PIPELINES) - set(ALIASES),
+            selected - set(PIPELINES) - set(ALIASES) - set(CUSTOM_FILTERS),
             link_followers(description, "createDomain") | {"createDomain"},
         )
 
@@ -87,6 +97,14 @@ class Selection(unittest.TestCase):
             link_followers(description, "createAlias") | {"createAlias"}, set(ALIASES)
         )
         self.assertLessEqual(set(ALIASES), set(own_data.MOVED))
+
+    def test_it_selects_every_custom_filter_operation_and_its_links(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        self.assertEqual(
+            link_followers(description, "createCustomFilter") | {"createCustomFilter"},
+            set(CUSTOM_FILTERS),
+        )
+        self.assertLessEqual(set(CUSTOM_FILTERS), set(own_data.MOVED))
 
     def test_a_skipped_exchange_is_not_a_pass(self):
         with tempfile.TemporaryDirectory() as directory:
