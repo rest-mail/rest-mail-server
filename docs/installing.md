@@ -30,6 +30,17 @@ and act on the cluster your kubeconfig points at.
 name — `chore -y server:offline` — because after it, it is the task's first
 argument.
 
+## One region
+
+REST Mail runs in one region: one database, one API and one set of gateways,
+in one cluster. It does not replicate across regions or fail over to another
+one. Users far from that region see the round trip on every API call and IMAP
+command, and losing the region stops the install until it is back or restored
+from a backup. If latency for users on other continents, or surviving the loss
+of a whole region, matters to you, weigh that before choosing REST Mail. The
+[operator runbooks](runbooks/README.md) say what to do when something goes
+wrong.
+
 ## The admin password
 
 The installer makes it, unless you bring one:
