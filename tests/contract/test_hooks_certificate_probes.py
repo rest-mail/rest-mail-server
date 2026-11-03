@@ -108,6 +108,13 @@ class CertificateProbes(unittest.TestCase):
         issuer = self.read_pem(["x509", "-noout", "-issuer", "-nameopt", "RFC2253"], self.pinned["cert_pem"])
         self.assertEqual(issuer.strip().removeprefix("issuer="), self.hooks.PROBE_CERTIFICATE_ISSUER)
 
+    def test_the_pinned_certificate_is_expired_so_no_gateway_serves_it(self):
+        checked = subprocess.run(
+            ["openssl", "x509", "-noout", "-checkend", "0"],
+            input=self.pinned["cert_pem"], capture_output=True, text=True,
+        )
+        self.assertEqual(checked.returncode, 1, checked.stdout)
+
     def test_the_pinned_key_belongs_to_the_certificate(self):
         self.assertEqual(
             self.read_pem(["x509", "-noout", "-pubkey"], self.pinned["cert_pem"]),

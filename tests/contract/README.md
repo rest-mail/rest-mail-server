@@ -249,7 +249,9 @@ handler refuses, so `filter_name` alone would not have sent these probes.
 
 `createCertificate`'s `cert_pem` and `key_pem` hold a throwaway self-signed certificate
 that `probes.py` makes for each run, and its probes' `domain_id` is 1, the fixture
-admin's domain. A hook cannot change that. So `a_self_signed_certificate` leaves them
+admin's domain. A hook cannot change that, and the mail gateways serve a domain's current
+certificates by name. So this one is already expired: the handler accepts it, and neither
+the gateways nor `updateDomain`'s certificate check count it. `a_self_signed_certificate` leaves them
 as drawn, and the first hook after them, `remove_the_probe_certificates`, deletes each
 certificate with that issuer. The documented sends before them keep a certificate of
 their own, which `getCertificate`'s link needs, on the run's domain when the run has
