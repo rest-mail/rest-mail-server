@@ -161,7 +161,7 @@ These are the parts where if you change them sideways, three other things stop w
 
 ## What's missing relative to "a real mail server"
 
-Not a feature gap (those are in [03-FEATURE-GAPS.md](03-FEATURE-GAPS.md)) — this is architectural:
+Not a feature gap (those moved to the issue tracker, #1563) — this is architectural:
 
 - **No tenancy boundary.** Domain ownership exists but it's not enforced as a hard wall.
 - **No multi-region.** Not a "we should add this tomorrow" item, but it's the kind of thing that influences DB layout and you want to plan for.

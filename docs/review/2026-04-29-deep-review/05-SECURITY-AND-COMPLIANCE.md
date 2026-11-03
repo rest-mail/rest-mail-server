@@ -48,7 +48,7 @@ Short TTL alone leaves a 5-minute window after a stolen token is detected. For a
 
 ### A6 — Two-factor
 
-Not implemented per [03-FEATURE-GAPS.md](03-FEATURE-GAPS.md) item L. Until it ships, the account is a single password's worth of security. App-specific passwords + TOTP is a reasonable bridge.
+Not implemented per the feature gaps list, item L (since moved to the issue tracker, #1563). Until it ships, the account is a single password's worth of security. App-specific passwords + TOTP is a reasonable bridge.
 
 ## Multi-tenancy boundary
 
