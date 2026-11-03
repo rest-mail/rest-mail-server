@@ -39,6 +39,11 @@ type pushService struct {
 	devices    *handlers.DeviceHandler
 }
 
+// startPushDispatcher starts the background worker. This package's tests replace
+// it: a router test's database is a fake answering that test alone, and the
+// worker's own queries would race it.
+var startPushDispatcher = func(dispatcher *push.Dispatcher) { dispatcher.Start() }
+
 // newPushService starts push when APNs is configured, and is nil otherwise:
 // then the devices routes do not exist, and answer 404.
 func newPushService(db *gorm.DB, cfg *config.Config) *pushService {
@@ -53,7 +58,7 @@ func newPushService(db *gorm.DB, cfg *config.Config) *pushService {
 	}
 	store := push.NewStore(db)
 	dispatcher := push.NewDispatcher(store, sender, push.DefaultCoalesceWindow)
-	dispatcher.Start()
+	startPushDispatcher(dispatcher)
 	slog.Info("push notifications are on", "service", "apns", "topic", s.Topic)
 	return &pushService{dispatcher: dispatcher, store: store, devices: handlers.NewDeviceHandler(db, s.Topic)}
 }
