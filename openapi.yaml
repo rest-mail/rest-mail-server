@@ -3481,6 +3481,10 @@ paths:
               parameters:
                 id: '$response.body#/data/mailbox_id'
                 threadID: '$response.body#/data/thread_id'
+            getUnsubscribeOptions:
+              operationId: getUnsubscribeOptions
+              parameters:
+                id: '$response.body#/data/id'
             verifyMessageSeal:
               operationId: verifyMessageSeal
               parameters:

@@ -142,6 +142,7 @@ var responseLinks = map[string]map[string]map[string]oapifly.Link{
 	"getMessage": {
 		"200": {
 			"getThread":             {OperationID: "getThread", Parameters: map[string]string{"id": "$response.body#/data/mailbox_id", "threadID": "$response.body#/data/thread_id"}},
+			"getUnsubscribeOptions": {OperationID: "getUnsubscribeOptions", Parameters: map[string]string{"id": "$response.body#/data/id"}},
 			"listMessageRecipients": {OperationID: "listMessageRecipients", Parameters: map[string]string{"id": "$response.body#/data/id"}},
 			"verifyMessageSeal":     {OperationID: "verifyMessageSeal", Parameters: map[string]string{"id": "$response.body#/data/id"}},
 		},
