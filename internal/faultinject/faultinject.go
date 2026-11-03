@@ -126,6 +126,16 @@ func replaceField(name string, value any) func(*httptest.ResponseRecorder) {
 	})
 }
 
+// addDataField adds a field to the object under a top-level data field. An
+// answer with no such object is left as it is.
+func addDataField(name string, value any) func(*httptest.ResponseRecorder) {
+	return editJSON(func(body map[string]any) {
+		if data, ok := body["data"].(map[string]any); ok {
+			data[name] = value
+		}
+	})
+}
+
 // setMediaType answers with another Content-Type and the same body.
 func setMediaType(mediaType string) func(*httptest.ResponseRecorder) {
 	return func(rec *httptest.ResponseRecorder) {

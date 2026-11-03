@@ -6,8 +6,10 @@ package faultinject
 import (
 	"bufio"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -15,13 +17,14 @@ import (
 )
 
 type catalogueEntry struct {
-	Name      string `yaml:"name"`
-	BuildTags string `yaml:"build_tags"`
-	Operation string `yaml:"operation"`
-	Path      string `yaml:"path"`
-	Phase     string `yaml:"phase"`
-	KnownGap  string `yaml:"known_gap"`
-	Breaks    string `yaml:"breaks"`
+	Name            string `yaml:"name"`
+	BuildTags       string `yaml:"build_tags"`
+	Operation       string `yaml:"operation"`
+	Path            string `yaml:"path"`
+	Phase           string `yaml:"phase"`
+	KnownGap        string `yaml:"known_gap"`
+	Breaks          string `yaml:"breaks"`
+	ExpectedFailure string `yaml:"expected_failure"`
 }
 
 // The phases tests/contract/faults.py can run and judge.
@@ -122,5 +125,31 @@ func TestNoFaultCodeInANormalBuild(t *testing.T) {
 		if line := buildLine(t, file); !strings.HasPrefix(line, "//go:build faultinject") {
 			t.Errorf("%s starts %q; it must start //go:build faultinject", file, line)
 		}
+	}
+}
+
+// What the Go toolchain actually compiles for a build without the tags: the API
+// does not link this package, and takes the no-op hooks in cmd/api/nofaults.go.
+func TestANormalAPIBuildLinksNoFaultCode(t *testing.T) {
+	goList := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("go", append([]string{"list"}, args...)...)
+		cmd.Dir = "../.."
+		// This test also runs in the build with every fault's tag.
+		cmd.Env = append(os.Environ(), "GOFLAGS=")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("go list %v: %v\n%s", args, err, out)
+		}
+		return string(out)
+	}
+	for _, dep := range strings.Fields(goList("-deps", "./cmd/api")) {
+		if strings.HasSuffix(dep, "/internal/faultinject") {
+			t.Fatalf("a normal build of cmd/api links %s", dep)
+		}
+	}
+	files := strings.Fields(goList("-f", `{{join .GoFiles " "}}`, "./cmd/api"))
+	if !slices.Contains(files, "nofaults.go") || slices.Contains(files, "faults.go") {
+		t.Fatalf("a normal build of cmd/api compiles %v", files)
 	}
 }

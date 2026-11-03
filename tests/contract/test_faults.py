@@ -7,6 +7,7 @@ import tempfile
 import threading
 import unittest
 import xml.etree.ElementTree as ET
+from html import escape
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from unittest.mock import patch
@@ -109,6 +110,85 @@ class Judge(unittest.TestCase):
             passed, why = faults.judge(red, "/api/health", faulted=True, known_gap="#1")
             self.assertFalse(passed)
             self.assertIn("remove known_gap", why)
+
+
+class ShapeAndStatusFaults(unittest.TestCase):
+    # What pinned Vertrag reported against each fault's real build, and the
+    # transaction it named (tests/contract/README.md, "Fault catalogue").
+    REPORTED = {
+        "accounts_list_null": (
+            "listAccounts",
+            "/api/v1/accounts",
+            "/api/v1/accounts > List the accounts this one reaches > 200 > application/json",
+            "body: /data: got null, want array",
+        ),
+        "health_storage_ref_leaked": (
+            "getHealth",
+            "/api/health",
+            "/api/health > Health check > 200 > application/json",
+            "body: /data: additional properties 'storage_ref' not allowed",
+        ),
+        "discover_missing_status_ok": (
+            "restmailDiscover",
+            "/.well-known/restmail",
+            "/.well-known/restmail > Discover RESTMAIL delivery for a hosted domain > 404 > application/json",
+            "statusCode: Expected status code '404', but got '200'.",
+        ),
+    }
+
+    def entries(self):
+        catalogue = {fault["name"]: fault for fault in faults.load()}
+        return [(catalogue[name], *reported) for name, reported in self.REPORTED.items()]
+
+    def write(self, directory, name, message=None):
+        problem = f'<failure message="{escape(message, quote=True)}"/>' if message else ""
+        return report(directory, [f'<testcase name="{escape(name, quote=True)}">{problem}</testcase>'])
+
+    def test_each_is_catalogued_for_the_examples_phase_with_its_reason(self):
+        for fault, operation, path, _, reason in self.entries():
+            with self.subTest(fault=fault["name"]):
+                self.assertEqual((fault["operation"], fault["path"], fault["phase"]), (operation, path, "examples"))
+                self.assertEqual(fault["expected_failure"], reason)
+                self.assertNotIn("known_gap", fault)
+
+    def test_vertrags_reported_failure_catches_each_and_its_green_baseline_does_not(self):
+        for fault, _, path, transaction, reason in self.entries():
+            with self.subTest(fault=fault["name"]), tempfile.TemporaryDirectory() as directory:
+                red = self.write(directory, transaction, reason)
+                passed, why = faults.judge(red, path, faulted=True, expected_failure=reason)
+                self.assertTrue(passed, why)
+                self.assertIn(reason, why)
+                green = self.write(directory, transaction)
+                self.assertTrue(faults.judge(green, path, faulted=False)[0])
+                passed, why = faults.judge(green, path, faulted=True, expected_failure=reason)
+                self.assertFalse(passed)
+                self.assertIn("not caught", why)
+
+    def test_a_failure_for_another_reason_does_not_catch_any_of_them(self):
+        for fault, _, path, transaction, reason in self.entries():
+            with self.subTest(fault=fault["name"]), tempfile.TemporaryDirectory() as directory:
+                red = self.write(directory, transaction, "statusCode: Expected status code '200', but got '429'.")
+                passed, why = faults.judge(red, path, faulted=True, expected_failure=reason)
+                self.assertFalse(passed, why)
+                self.assertIn("wanted the failure", why)
+
+    def test_run_requires_the_catalogued_reason(self):
+        fault, _, _, transaction, reason = self.entries()[0]
+        for message, expected_code, verdict in [(reason, 0, "caught:"), ("something else", 1, "wanted the failure")]:
+            with self.subTest(message=message), tempfile.TemporaryDirectory() as directory, patch.object(
+                faults, "OUT", Path(directory)
+            ), patch.object(faults, "load", return_value=[fault]), patch.object(
+                faults, "restart_api"
+            ) as restart, patch.object(faults, "fault_active", return_value=True):
+                answers = iter([None, message])
+
+                def run_phase(*_):
+                    return self.write(directory, transaction, next(answers))
+
+                with patch.object(faults, "run_phase", side_effect=run_phase):
+                    self.assertEqual(faults.run("api"), expected_code)
+                self.assertEqual([call.args for call in restart.call_args_list], [(fault["build_tags"],), ("",)])
+                self.assertIn(verdict, (Path(directory) / "faults.md").read_text())
 
 
 class LimitProbes(unittest.TestCase):
