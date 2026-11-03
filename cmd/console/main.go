@@ -32,6 +32,7 @@ const topUsage = `restmail — run a rest-mail server
   restmail import-maildir import a Maildir and its folders through the public API
   restmail import-mbox    import a From-framed mbox through the public API
   restmail import-imap    copy an IMAP account read-only through the public API
+  restmail export-maildir export an account's mail as a Maildir through the public API
   restmail tlsa-records   prepare SMTP TLSA records from public certificates
   restmail version       print the version
   restmail [flags]       the interactive admin console (-api, -user, -pass)
@@ -118,6 +119,12 @@ func runSubcommand(args []string, stdout, stderr io.Writer) (code int, handled b
 		return runImportPasswdFile(context.Background(), args[2:], os.Stdin, os.Getenv("RESTMAIL_API_KEY"), client, stdout, stderr), true
 	case "import-maildir":
 		return runImportMail(context.Background(), "maildir", args[2:], os.Getenv("RESTMAIL_API_KEY"), client, stdout, stderr), true
+	case "export-maildir":
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		// A message source may be large: the 30-second whole-request limit would
+		// cut its download off.
+		return runExportMaildir(ctx, args[2:], os.Getenv("RESTMAIL_API_KEY"), &http.Client{Timeout: 30 * time.Minute}, stdout, stderr), true
 	case "import-imap":
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()

@@ -1,4 +1,7 @@
-# Importing historical mail
+# Importing and exporting mail
+
+To move an account's mail out of REST Mail, see
+[Exporting an account's mail](#exporting-an-accounts-mail).
 
 Create the destination accounts first using [account import](migrating-accounts.md).
 Then copy an IMAP source account, or import a mailbox's Maildir or a supported
@@ -185,3 +188,55 @@ from Dovecot with it and compares folders, counts, subjects and flags
 (`scripts/tests/test_imapsync_live.py`). The wider migration outcome
 stays tracked in [#734](https://github.com/rest-mail/rest-mail-server/issues/734);
 this does not claim its full acceptance criteria are complete.
+
+## Exporting an account's mail
+
+`export-maildir` writes one account's mail as a Maildir, through the public API,
+in exactly the layout `import-maildir` reads. It imports into another REST Mail
+server, or into Dovecot or any other Maildir++ server.
+
+```sh
+restmail export-maildir --server https://mail.example.com --account-id 12 --path ./Maildir
+restmail import-maildir --server https://new.example.com --account-id 7 --path ./Maildir
+```
+
+`RESTMAIL_API_KEY` needs `mail:read` on the account or its domain. Every account
+holds `mail:read` on its own mailbox, and the admin role holds it at its scope.
+The command reads only existing routes, each with its usual `mail:read` check and
+request audit: `GET /api/v1/accounts/{id}/folders`,
+`GET /api/v1/accounts/{id}/folders/{folder}/messages?include_imap_deleted=true`
+and `GET /api/v1/messages/{id}/raw`. It adds no audit entry of its own.
+
+INBOX becomes the Maildir root and every other folder a Maildir++ folder, `/`
+becoming `.`: `Archive/2020` is `.Archive.2020`. Empty folders get their
+directories too, but an import cannot create a folder without messages. A
+folder whose name contains `.` is refused before anything is written, since
+Maildir++ would read it back as a subfolder; rename it first.
+
+Each message is its stored source, byte for byte, in the folder's `cur/`. Its
+flags are the filename's `:2,` letters: `S` Seen, `R` Answered, `F` Flagged
+(flagged or starred), `D` Draft and `T` Deleted. Keywords are letters `a`–`z`,
+mapped by that folder's `dovecot-keywords` file; a folder with more than 26
+keywords is refused, because Maildir cannot name more. INTERNALDATE is the
+file's modification time. Keep modification times when copying the export.
+
+Messages are downloaded one at a time into the folder's `tmp/`, synced, checked
+against the size the server lists, and only then renamed into `cur/`, so no
+reader sees a half-written message and no whole message or folder is held in
+memory. A message the server keeps no source for stops the export rather than
+being written differently. Ctrl-C stops it and removes the unfinished message.
+
+The destination is created when missing. One that already holds files is
+refused unless `--allow-non-empty` is given; the export then writes beside them,
+reusing the keyword letters of an existing `dovecot-keywords` file. A message
+exported again gets the same filename, so rerunning into the same directory
+replaces it, unless its flags changed in between, in which case both copies
+remain. `--max-message-bytes` (default and maximum 1 GiB) refuses larger
+messages. `--json` writes one summary (`folders`, `messages`, `bytes`) or one
+error.
+
+Messages in a snoozed thread are not listed by the API until the snooze ends,
+so the export does not contain them
+([#1599](https://github.com/rest-mail/rest-mail-server/issues/1599)). Contacts,
+calendars and settings are not part of this export
+([#1577](https://github.com/rest-mail/rest-mail-server/issues/1577)).
