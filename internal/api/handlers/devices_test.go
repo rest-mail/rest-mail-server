@@ -359,8 +359,9 @@ func TestDevicesRegisterListRemove(t *testing.T) {
 	}
 
 	platforms, ids := e.devices(t, s)
-	if len(platforms) != 1 || platforms[0] != "apns" || len(ids) != 0 {
-		t.Fatalf("GET before registering = platforms %v devices %v; want [apns] and none", platforms, ids)
+	// The test server has both APNs and Web Push configured.
+	if len(platforms) != 2 || platforms[0] != "apns" || platforms[1] != "webpush" || len(ids) != 0 {
+		t.Fatalf("GET before registering = platforms %v devices %v; want [apns webpush] and none", platforms, ids)
 	}
 
 	token := pushTestToken(1)
