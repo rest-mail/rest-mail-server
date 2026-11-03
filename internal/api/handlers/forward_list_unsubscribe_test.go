@@ -11,6 +11,8 @@ import (
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
+	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 )
 
@@ -39,10 +41,23 @@ func TestForward_FollowsTheDomainSendingPolicy(t *testing.T) {
 		t.Fatalf("seed the domain: %v", err)
 	}
 	sender := seedSendingMailbox(t, h.db, domain, "news")
-	// A forward's Sent copy is charged to the sender's quota row, which every account has.
-	if err := h.db.AutoMigrate(&models.QuotaUsage{}); err != nil {
-		t.Fatalf("migrate quota usage: %v", err)
+	// The test seeds every table, role and grant it reads, so it runs alone (#1385).
+	if err := h.db.AutoMigrate(accountModels...); err != nil {
+		t.Skipf("forward test skipped: migrate failed (%v)", err)
 	}
+	// A forward reads the original's attachments.
+	if err := h.db.AutoMigrate(&models.Attachment{}); err != nil {
+		t.Skipf("forward test skipped: migrate failed (%v)", err)
+	}
+	if err := rmdb.MigrateAuditLog(h.db); err != nil {
+		t.Skipf("forward test skipped: audit log migrate failed (%v)", err)
+	}
+	if err := bootstrap.EnsureRBAC(h.db); err != nil {
+		t.Fatalf("seed the roles: %v", err)
+	}
+	// The account owns its mailbox, so it may read its mail and send from it.
+	grantOwnerRole(t, h.db, sender.ID, sender.Address)
+	// A forward's Sent copy is charged to the sender's quota row, which every account has.
 	if err := h.db.Create(&models.QuotaUsage{MailboxID: sender.ID}).Error; err != nil {
 		t.Fatalf("seed the sender's quota usage: %v", err)
 	}
