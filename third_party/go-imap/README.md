@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/rest-mail/go-imap/actions/workflows/ci.yml/badge.svg)](https://github.com/rest-mail/go-imap/actions/workflows/ci.yml)
 [![Coverage gate: >=95%](https://img.shields.io/badge/coverage%20gate-%3E%3D95%25-brightgreen)](COVERAGE.md)
-[![Partial checklist: 500/707 mapped](https://img.shields.io/badge/partial%20checklist-500%2F707%20mapped-blue)](CHECKLIST.md)
+[![Partial checklist: 509/786 mapped](https://img.shields.io/badge/partial%20checklist-509%2F786%20mapped-blue)](CHECKLIST.md)
 [![Go Reference](https://pkg.go.dev/badge/github.com/rest-mail/go-imap.svg)](https://pkg.go.dev/github.com/rest-mail/go-imap/pkg/imap/server)
 [![Go Report Card](https://goreportcard.com/badge/github.com/rest-mail/go-imap)](https://goreportcard.com/report/github.com/rest-mail/go-imap)
 
@@ -298,7 +298,8 @@ The library:
   from it. It calls `Fetch` only when content is needed.
 - Sets `\Seen` through `Store` on a non-peek body fetch, and answers `NO` when
   the backend refuses. In a folder selected with EXAMINE it never writes.
-- Keeps `\Deleted` marks in the session until EXPUNGE or CLOSE calls `Delete`.
+- Persists `\Deleted` through `Store`, reloads it from `Message.Deleted` across
+  sessions, and calls `Delete` on EXPUNGE or CLOSE in a writable selection.
 - Re-reads the selected folder on NOOP, CHECK and during IDLE, and reports what
   other sources changed: expunges, flag changes and new mail (RFC 3501 §5.2).
 
@@ -339,13 +340,14 @@ The host:
 
 ### The RFC checklist
 
-[CHECKLIST.md](CHECKLIST.md) is a partial, CI-checked list of RFC 3501
-requirements and those of every extension the server advertises. Each mapped
+[CHECKLIST.md](CHECKLIST.md) inventories RFC 3501 requirements with a complete
+section index and grammar dispositions. Its conformance proofs and other RFC
+inventories remain partial, including RFC 9051 (#718). Each mapped
 row names the wire tests in [`pkg/imap/rfctest`](pkg/imap/rfctest) that prove
 it: they drive a public `server.Session` over `net.Pipe`, as a client would.
 Rows the library does not meet, or that belong to the host or the client, are
-`n/a` with the reason. The checklist is growing; it is not a full conformance
-claim. The [core grammar crosswalk](RFC-GRAMMAR.md) inventories all
+`n/a` with the reason. The inventory explicitly includes unproved requirements;
+it is not a full conformance claim. The [core grammar crosswalk](RFC-GRAMMAR.md) inventories all
 section-9 production names independently of the narrower wire-test claims.
 
 [RFC-SESSION-EXTENSIONS.md](RFC-SESSION-EXTENSIONS.md) records the grouped
@@ -363,7 +365,8 @@ core/search/message reconciliation remains.
 [RFC-MESSAGE-EXTENSIONS.md](RFC-MESSAGE-EXTENSIONS.md) groups six search/message
 specifications with source pins, BINARY text canonicalization, saved-search/UID
 pipeline and UTF8 output proofs, and explicit host/client/unsupported boundaries.
-Core non-keyword/alternative and complete conformance work remains.
+RFC 3501 residual requirements are explicit in CHECKLIST.md; complete wire
+proofs, RFC 9051 reconciliation and conformance work remain.
 
 The checklist is a Markdown file of tables with this header:
 
@@ -421,8 +424,8 @@ reason.
 
 | Gap | Issue |
 |-----|-------|
-| Keywords (`$Forwarded`, `$Junk`, tags) are accepted but not stored, and PERMANENTFLAGS offers no `\*`. | [#158](https://github.com/rest-mail/go-imap/issues/158) |
-| `\Deleted` lives in one session until EXPUNGE, so other sessions do not see it. | [#159](https://github.com/rest-mail/go-imap/issues/159) |
+| Keyword protocol support and PERMANENTFLAGS `\*` are implemented; durable `Message.Keywords` storage remains a host-backend responsibility. | [#158](https://github.com/rest-mail/go-imap/issues/158) (historical gap) |
+| `\Deleted` now persists across sessions through `Store` and `Message.Deleted`; durable storage remains a host-backend responsibility. | [#159](https://github.com/rest-mail/go-imap/issues/159) (historical gap) |
 | CREATE succeeds without creating anything, and DELETE and RENAME move messages. An empty folder does not exist. | [#160](https://github.com/rest-mail/go-imap/issues/160) |
 | COPY and MOVE cannot roll back a partly applied command. | [#161](https://github.com/rest-mail/go-imap/issues/161) |
 | CONDSTORE and QRESYNC (RFC 7162). | [#162](https://github.com/rest-mail/go-imap/issues/162) |
