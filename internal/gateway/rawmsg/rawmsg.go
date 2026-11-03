@@ -33,6 +33,8 @@ const boundaryPrefix = "=_restmail_"
 // encoded-words. Pure-ASCII values pass through unchanged.
 var headerEncoder = mime.QEncoding
 
+var headerLineBreakStripper = strings.NewReplacer("\r", "", "\n", "")
+
 // Build renders msg as an RFC 5322 message with CRLF line endings.
 //
 // A message carrying both a text and an HTML body becomes multipart/alternative;
@@ -42,15 +44,18 @@ func Build(msg apiclient.MessageDetail) string {
 
 	// mail.Address quotes or encodes the display name as needed, and renders a
 	// bare <addr> when there is no name rather than leaving an empty gap.
-	from := (&mail.Address{Name: msg.SenderName, Address: msg.Sender}).String()
+	from := (&mail.Address{
+		Name:    headerLineBreakStripper.Replace(msg.SenderName),
+		Address: headerLineBreakStripper.Replace(msg.Sender),
+	}).String()
 	fmt.Fprintf(&b, "From: %s\r\n", from)
-	fmt.Fprintf(&b, "Subject: %s\r\n", headerEncoder.Encode("utf-8", msg.Subject))
+	fmt.Fprintf(&b, "Subject: %s\r\n", headerEncoder.Encode("utf-8", headerLineBreakStripper.Replace(msg.Subject)))
 	fmt.Fprintf(&b, "Date: %s\r\n", msg.ReceivedAt.Format(dateLayout))
-	if msg.MsgID != "" {
-		fmt.Fprintf(&b, "Message-ID: <%s>\r\n", msg.MsgID)
+	if messageID := headerLineBreakStripper.Replace(msg.MsgID); messageID != "" {
+		fmt.Fprintf(&b, "Message-ID: <%s>\r\n", messageID)
 	}
-	if msg.InReplyTo != "" {
-		fmt.Fprintf(&b, "In-Reply-To: <%s>\r\n", msg.InReplyTo)
+	if inReplyTo := headerLineBreakStripper.Replace(msg.InReplyTo); inReplyTo != "" {
+		fmt.Fprintf(&b, "In-Reply-To: <%s>\r\n", inReplyTo)
 	}
 	b.WriteString("MIME-Version: 1.0\r\n")
 
