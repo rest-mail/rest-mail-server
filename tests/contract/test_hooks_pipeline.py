@@ -168,9 +168,7 @@ class CleanStart(unittest.TestCase):
         )
 
     def forget(self):
-        stash = self.hooks.hooks.stash
-        stash.pop("domain_id", None)
-        stash["clean_starts"] = stash.get("clean_starts", 0) + 1
+        self.hooks.hooks.stash.pop("domain_id", None)
 
     def transaction(self, path, name, body=None):
         return {
@@ -228,27 +226,73 @@ class CleanStart(unittest.TestCase):
         self.hooks.delete_a_pipeline_of_its_own(missing)
         self.assertEqual(missing["fullPath"], "/api/v1/admin/pipelines/2147483647")
 
-    def test_an_update_the_link_reaches_gets_a_live_pipeline_after_a_reset(self):
-        transaction = self.transaction("/api/v1/admin/pipelines/5", "x > 200")
-        self.hooks.a_live_pipeline_for_the_link(transaction)
-        self.assertEqual(transaction["fullPath"], "/api/v1/admin/pipelines/5")
-        self.forget()
-        self.hooks.a_live_pipeline_for_the_link(transaction)
-        self.assertEqual(transaction["fullPath"], "/api/v1/admin/pipelines/32")
+    def test_an_update_resets_and_updates_a_pipeline_of_its_own(self):
+        for status in ("200", "422"):
+            with self.subTest(status=status):
+                self.made.clear()
+                self.start_clean.reset_mock()
+                transaction = self.transaction("/api/v1/admin/pipelines/5", "x > " + status)
+                self.hooks.update_a_pipeline_of_its_own(transaction)
+                self.start_clean.assert_called_once()
+                self.assertEqual([m[1] for m in self.made], [
+                    "/api/v1/admin/domains", "/api/v1/admin/pipelines",
+                ])
+                self.assertEqual(self.made[1][2]["domain_id"], 31)
+                self.assertFalse(self.made[1][2]["active"])
+                self.assertEqual(transaction["fullPath"], "/api/v1/admin/pipelines/32")
+
+    def test_a_refused_update_resets_and_keeps_its_id(self):
         for refused in ("2147483647", "0", "abc"):
-            other = self.transaction("/api/v1/admin/pipelines/" + refused, "x > 422")
-            self.hooks.a_live_pipeline_for_the_link(other)
-            self.assertEqual(other["fullPath"], "/api/v1/admin/pipelines/" + refused)
+            with self.subTest(id=refused):
+                self.start_clean.reset_mock()
+                other = self.transaction("/api/v1/admin/pipelines/" + refused, "x > 404")
+                self.hooks.update_a_pipeline_of_its_own(other)
+                self.start_clean.assert_called_once()
+                self.assertEqual(other["fullPath"], "/api/v1/admin/pipelines/" + refused)
+        self.assertEqual(self.made, [])
+
+    def test_a_pipeline_listing_gets_a_pipeline_of_its_own_after_its_reset(self):
+        events = []
+        self.start_clean.side_effect = lambda transaction: events.append("reset")
+        made = self.globals["fixture_call"]
+
+        def recorded(transaction, method, path, body=None):
+            events.append(path)
+            return made(transaction, method, path, body)
+
+        self.globals["fixture_call"] = recorded
+        transaction = self.transaction("/api/v1/admin/pipelines", "x > 200")
+        self.hooks.pipeline_reads_after_a_reset(transaction)
+        self.assertEqual(events, [
+            "reset", "/api/v1/admin/domains", "/api/v1/admin/pipelines",
+        ])
+        self.assertEqual(transaction["fullPath"], "/api/v1/admin/pipelines")
+
+    def test_the_other_pipeline_reads_only_reset(self):
+        for path, name in (
+            ("/api/v1/admin/pipelines?domain_id=x", "x > 422"),
+            ("/api/v1/admin/pipelines/logs", "x > 200"),
+            ("/api/v1/admin/pipelines/logs?limit=-1", "x > 422"),
+            ("/api/v1/admin/pipelines/analytics", "x > 200"),
+        ):
+            with self.subTest(path=path, name=name):
+                self.start_clean.reset_mock()
+                transaction = self.transaction(path, name)
+                self.hooks.pipeline_reads_after_a_reset(transaction)
+                self.start_clean.assert_called_once()
+                self.assertEqual(transaction["fullPath"], path)
+        self.assertEqual(self.made, [])
 
 
 class WithoutAReset(unittest.TestCase):
     def setUp(self):
         self.hooks = load_hooks()
 
-    def test_delete_and_update_follow_the_link_unchanged(self):
+    def test_delete_update_and_reads_change_nothing(self):
         for hook in (
             self.hooks.delete_a_pipeline_of_its_own,
-            self.hooks.a_live_pipeline_for_the_link,
+            self.hooks.update_a_pipeline_of_its_own,
+            self.hooks.pipeline_reads_after_a_reset,
         ):
             transaction = {
                 "fullPath": "/api/v1/admin/pipelines/5",

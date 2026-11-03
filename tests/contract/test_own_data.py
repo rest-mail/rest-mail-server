@@ -111,6 +111,8 @@ MAILBOXES = (
 )
 # The thread and import operations: no link starts from or reaches any of them.
 THREADS_AND_IMPORTS = ("listThreads", "setThreadDue", "snoozeThread", "importMessage")
+# The pipeline reads, which no link starts from or reaches.
+PIPELINE_READS = ("listPipelines", "listPipelineLogs", "getPipelineAnalytics")
 FOLLOWS_THE_SENT_MESSAGE = {
     "getMessage",
     "updateMessage",
@@ -165,7 +167,7 @@ class Selection(unittest.TestCase):
         out = own_data.configure(config)
         self.assertEqual(
             out["operation-id"],
-            list(own_data.MOVED + own_data.FOLLOWS_THE_CREATED_PIPELINE),
+            list(own_data.MOVED),
         )
         self.assertEqual(
             out["exclude-operation-id"], ["resetTestData", "restoreTestSnapshot"]
@@ -189,7 +191,8 @@ class Selection(unittest.TestCase):
             - FOLLOWS_THE_SENT_MESSAGE
             - set(DRAFTS)
             - set(MAILBOXES)
-            - set(THREADS_AND_IMPORTS),
+            - set(THREADS_AND_IMPORTS)
+            - set(PIPELINE_READS),
             link_followers(description, "createDomain") | {"createDomain"},
         )
 
@@ -199,9 +202,16 @@ class Selection(unittest.TestCase):
             link_followers(description, "createPipeline"),
             {"updatePipeline", "deletePipeline"},
         )
-        selected = set(own_data.MOVED + own_data.FOLLOWS_THE_CREATED_PIPELINE)
-        self.assertLessEqual(set(PIPELINES), selected)
-        self.assertEqual(own_data.FOLLOWS_THE_CREATED_PIPELINE, ("updatePipeline",))
+        self.assertLessEqual(set(PIPELINES), set(own_data.MOVED))
+        self.assertFalse(hasattr(own_data, "FOLLOWS_THE_CREATED_PIPELINE"))
+
+    def test_the_pipeline_reads_have_moved_and_no_link_touches_them(self):
+        description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
+        for operation in PIPELINE_READS:
+            self.assertEqual(link_followers(description, operation), set())
+            for start in description_operations(description):
+                self.assertNotIn(operation, link_followers(description, start), start)
+        self.assertLessEqual(set(PIPELINE_READS), set(own_data.MOVED))
 
     def test_it_selects_every_alias_operation_and_its_links(self):
         description = yaml.safe_load((ROOT / "openapi.yaml").read_text())
