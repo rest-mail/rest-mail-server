@@ -114,16 +114,17 @@ MOVED = (
     "deleteDKIMKey",
     "getDKIMRotation",
     "setDKIMRotation",
-)
-
-FOLLOWS_THE_CREATED_DOMAIN = (
+    # createDomain, and the rest of what its link reaches: the DNS check, the
+    # relay and the suppressions, each on a domain of its own after its reset.
+    # The policy file asks for a domain of its own, and the delete deletes one.
+    # Nothing that follows createDomain is left unmoved.
     "createDomain",
     "deleteDomain",
     "domainDNSCheck",
     "getDomainRelay",
+    "setDomainRelay",
     "listSuppressions",
     "mtaStsPolicyFile",
-    "setDomainRelay",
 )
 
 # deletePipeline, the other, has moved.
@@ -131,9 +132,7 @@ FOLLOWS_THE_CREATED_PIPELINE = ("updatePipeline",)
 
 
 def configure(config):
-    config["operation-id"] = list(
-        MOVED + FOLLOWS_THE_CREATED_DOMAIN + FOLLOWS_THE_CREATED_PIPELINE
-    )
+    config["operation-id"] = list(MOVED + FOLLOWS_THE_CREATED_PIPELINE)
     config.pop("surface", None)
     # The gate's list of what it could not send is its own.
     config["unproven"] = ".cache/contract/unproven-own-data.json"
