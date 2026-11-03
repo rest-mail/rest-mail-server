@@ -146,6 +146,13 @@ func main() {
 	// gateway client certificate; all token/credential routes keep using the
 	// public API_BASE_URL. Disabled → single plain client, unchanged.
 	var apiOpts []apiclient.Option
+	// Every mail client's connection gets a session with the API, opened and
+	// used on the internal listener with this gateway's own client certificate,
+	// which is what tells the API it is the IMAP gateway (#1586).
+	if !cfg.InternalMTLSEnabled {
+		slog.Error("the IMAP gateway needs internal mTLS (INTERNAL_MTLS_ENABLED=true, with its own client certificate): mail clients' sessions with the API are opened on the internal listener")
+		os.Exit(1)
+	}
 	if cfg.InternalMTLSEnabled {
 		if cfg.APIInternalBaseURL == "" {
 			slog.Error("internal mTLS enabled but API_INTERNAL_BASE_URL is not set (must point at the API's internal mTLS listener, e.g. https://api:8443)")

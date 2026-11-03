@@ -145,6 +145,7 @@ func autoMigrate(db *gorm.DB) error {
 		// Refresh-token rotation/revocation ledger (OSI-10): one row per issued
 		// refresh token, keyed by jti, tracking active/rotated/revoked state.
 		&models.RefreshToken{},
+		&models.GatewaySession{},
 		// Single-use account-reset tokens (internal/bootstrap).
 		&models.OneTimeToken{},
 		&models.RecoveryEmail{},

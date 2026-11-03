@@ -25,6 +25,10 @@ var securitySchemes = map[string]oapifly.SecurityScheme{
 		Description: "A mailbox's address and one of its app passwords, as HTTP Basic. Accepted only by the operations that list it."},
 	"BearerAuth": {Type: "http", Scheme: "bearer", BearerFormat: "JWT",
 		Description: "JWT access token as an Authorization: Bearer header. Exempt from the CSRF check."},
+	"GatewaySessionAuth": {Type: "http", Scheme: "bearer", BearerFormat: "rmgs",
+		Description: "A protocol gateway's connection session token (rmgs_...) from POST /api/v1/gateway-sessions, as an " +
+			"Authorization: Bearer header, sent only over the internal mTLS listener with the client certificate of the gateway " +
+			"that opened it. It reaches what the mail client's credential reaches, never the admin routes. Exempt from the CSRF check."},
 	"APIKeyAuth": {Type: "http", Scheme: "bearer", BearerFormat: "rmk",
 		Description: "A scoped API key (rmk_...) as an Authorization: Bearer header, allowed only where both the key's " +
 			"permissions and its owner's live grants cover the capability at the target. Exempt from the CSRF check."},
@@ -76,9 +80,9 @@ var (
 	// describedMailSession is the mail routes' authentication: a session, a scoped API key,
 	// or a credential sent with HTTP Basic, whose refusals are throttled at login's rate.
 	describedMailSession = oapifly.Middleware{
-		Security: []oapifly.SecurityRequirement{{"CookieAuth": nil}, {"BearerAuth": nil}, {"APIKeyAuth": nil}, {"BasicAuth": nil}},
+		Security: []oapifly.SecurityRequirement{{"CookieAuth": nil}, {"BearerAuth": nil}, {"APIKeyAuth": nil}, {"BasicAuth": nil}, {"GatewaySessionAuth": nil}},
 		Responses: []oapifly.EndpointResponse{
-			refusal(http.StatusUnauthorized, "unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential"),
+			refusal(http.StatusUnauthorized, "unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential"),
 			rateLimited("rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate"),
 			refusal(http.StatusServiceUnavailable, "unavailable: the credential or session check could not be made"),
 		},
@@ -203,7 +207,7 @@ var exampleRequirements = map[string][]string{
 	"body":      {"over_cap", "malformed", "compressed", "unsupported_media"},
 	"limit":     {"rate", "message_size"},
 	"fault":     {"database", "database_pool", "session_store", "permission_store", "context_cancelled", "sidecar_response", "error_adapter", "acme_responder"},
-	"network":   {"outside_metrics_allowlist"},
+	"network":   {"outside_metrics_allowlist", "without_gateway_certificate"},
 	"state": {
 		"password_only_session", "stale_two_factor_session",
 		"send_as_grant", "send_on_behalf_grant", "read_only_mailbox_grant",

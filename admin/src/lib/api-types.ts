@@ -2550,6 +2550,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/gateway-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open a mail client's connection session (protocol gateways)
+         * @description Internal: served on the mTLS listener, for a gateway presenting its own client certificate, which names its service (IMAP, POP3 or SMTP submission). The mail client's address and password or app password come once, as HTTP Basic, and are checked as the mail routes check them. The answer's token is sent as Bearer on every call the gateway then makes for that connection, over the internal listener with the same certificate; the session is checked on every request, so revoking the credential or the account's sessions ends it at the next one. protocol must be the one the service serves; a caller without a gateway certificate is 403 gateway_required.
+         */
+        post: operations["openGatewaySession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gateway-sessions/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Close a mail client's connection session (protocol gateways)
+         * @description Internal: the gateway that opened the session closes it at logout or disconnect, sending its token as Bearer with the same client certificate. Closing one already closed is not an error. A caller without a gateway certificate is 403 gateway_required.
+         */
+        delete: operations["closeGatewaySession"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messages/deliver": {
         parameters: {
             query?: never;
@@ -3390,6 +3430,9 @@ export interface components {
         "Data-FolderName": {
             data: components["schemas"]["FolderName"];
         };
+        "Data-GatewaySessionOpened": {
+            data: components["schemas"]["GatewaySessionOpened"];
+        };
         "Data-Health": {
             data: components["schemas"]["Health"];
         };
@@ -3726,6 +3769,15 @@ export interface components {
         };
         ForwardRefusalResponse: {
             error: components["schemas"]["ForwardRefusalBody"];
+        };
+        GatewaySessionOpened: {
+            credential_id: number;
+            /** @enum {string} */
+            credential_kind: "password" | "app_password";
+            /** @enum {string} */
+            protocol: "imap" | "pop3" | "smtp";
+            token: string;
+            user: components["schemas"]["userInfo"];
         };
         Headers: {
             bcc?: components["schemas"]["Address"][];
@@ -6160,7 +6212,7 @@ export interface operations {
                     "application/json": components["schemas"]["List-accountResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -6461,7 +6513,7 @@ export interface operations {
                     "application/json": components["schemas"]["Data-accountResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -7411,7 +7463,7 @@ export interface operations {
                     "application/json": components["schemas"]["Data-contactReplyTimeSetting"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -7520,7 +7572,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -7621,7 +7673,7 @@ export interface operations {
                     "application/json": components["schemas"]["List-Contact"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -7730,7 +7782,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -7857,7 +7909,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -7966,7 +8018,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -8064,7 +8116,7 @@ export interface operations {
                     "application/json": components["schemas"]["List-Contact"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -8159,7 +8211,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -8269,7 +8321,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -8719,7 +8771,7 @@ export interface operations {
                     "application/json": components["schemas"]["List-FolderSummary"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -8828,7 +8880,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -8932,7 +8984,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -9042,7 +9094,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -9154,7 +9206,7 @@ export interface operations {
                     "application/json": components["schemas"]["List-Message"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -9348,7 +9400,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -9456,7 +9508,7 @@ export interface operations {
                     "application/json": components["schemas"]["List-QuarantinedMessage"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -9553,7 +9605,7 @@ export interface operations {
                     "application/json": components["schemas"]["Data-QuarantineDeleted"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -9650,7 +9702,7 @@ export interface operations {
                     "application/json": components["schemas"]["Data-QuarantineReleased"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -9746,7 +9798,7 @@ export interface operations {
                     "application/json": components["schemas"]["Data-Setting"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -9855,7 +9907,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -9951,7 +10003,7 @@ export interface operations {
                     "application/json": components["schemas"]["Data-Quota"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -10056,7 +10108,7 @@ export interface operations {
                     "application/json": components["schemas"]["List-Message"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -10344,7 +10396,7 @@ export interface operations {
                     "application/json": components["schemas"]["Data-SieveScript"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -10462,7 +10514,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -10558,7 +10610,7 @@ export interface operations {
                     "application/json": components["schemas"]["Data-SieveDeleted"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -10667,7 +10719,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -10769,7 +10821,7 @@ export interface operations {
                     "application/json": components["schemas"]["List-AwaitingThread"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -10866,7 +10918,7 @@ export interface operations {
                     "application/json": components["schemas"]["List-Message"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -10981,7 +11033,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -11094,7 +11146,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -11190,7 +11242,7 @@ export interface operations {
                     "application/json": components["schemas"]["Data-vacationSetting"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -11299,7 +11351,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -11393,7 +11445,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -20999,7 +21051,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -22097,7 +22149,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -22834,6 +22886,149 @@ export interface operations {
                 headers: {
                     /** @description Seconds until a request may be made again */
                     "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    openGatewaySession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["protocolSignInRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-GatewaySessionOpened"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    closeGatewaySession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
                     [name: string]: unknown;
                 };
                 content: {
@@ -23714,7 +23909,7 @@ export interface operations {
                     "application/json": components["schemas"]["Data-Message"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -23811,7 +24006,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -23920,7 +24115,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -24016,7 +24211,7 @@ export interface operations {
                     "application/json": components["schemas"]["List-MessageAttachment"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -24348,7 +24543,7 @@ export interface operations {
                     "message/rfc822": string;
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -24540,7 +24735,7 @@ export interface operations {
                     "application/json": components["schemas"]["Data-MessageSeal"];
                 };
             };
-            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            /** @description unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential */
             401: {
                 headers: {
                     [name: string]: unknown;

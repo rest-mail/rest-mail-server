@@ -19,6 +19,7 @@ import (
 	goimap "github.com/rest-mail/go-imap/pkg/imap"
 	imapserver "github.com/rest-mail/go-imap/pkg/imap/server"
 
+	apitypes "github.com/rest-mail/rest-mail-server/internal/api/types"
 	"github.com/rest-mail/rest-mail-server/internal/gateway/apiclient"
 )
 
@@ -126,7 +127,8 @@ var fakeReceivedAt = time.Date(2025, 3, 15, 10, 0, 0, 0, time.UTC)
 
 func (f *fakeAPI) handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /api/v1/auth/protocol-sign-in", f.login)
+	mux.HandleFunc("POST /api/v1/gateway-sessions", f.login)
+	mux.HandleFunc("DELETE /api/v1/gateway-sessions/current", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	mux.HandleFunc("GET /api/v1/accounts/{acct}/folders/{folder}/messages", f.listMessages)
 	mux.HandleFunc("POST /api/v1/accounts/{acct}/messages/import", f.importMessage)
 	mux.HandleFunc("GET /api/v1/messages/{id}/raw", f.raw)
@@ -147,7 +149,10 @@ func pathID(r *http.Request) uint {
 }
 
 func (f *fakeAPI) login(w http.ResponseWriter, _ *http.Request) {
-	var lr apiclient.SignInResponse
+	var lr struct {
+		Data apitypes.GatewaySessionOpened `json:"data"`
+	}
+	lr.Data.Token, lr.Data.Protocol = "rmgs_test", "imap"
 	lr.Data.User.ID = 7
 	lr.Data.CredentialID, lr.Data.CredentialKind = 1, "password"
 	lr.Data.User.Email = "alice@example.com"

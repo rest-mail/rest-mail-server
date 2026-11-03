@@ -398,6 +398,9 @@ func (s *Session) Handle() {
 		}
 	}()
 	defer s.recoverPanic() // contain any panic from a backend method or handler
+	// The session's Mailbox is done with at LOGOUT or disconnect, whichever
+	// ends the connection: one that holds something for it is told.
+	defer s.closeMailbox()
 
 	slog.Info("imap: new connection", "remote", s.conn.RemoteAddr())
 
@@ -771,3 +774,12 @@ func (s *Session) writeString(str string) {
 
 // boolPtr returns a pointer to b, for building a FlagUpdate.
 func boolPtr(b bool) *bool { return &b }
+
+// closeMailbox closes the session's Mailbox, when it is a [imap.MailboxCloser].
+func (s *Session) closeMailbox() {
+	if closer, ok := s.mailbox.(imap.MailboxCloser); ok && closer != nil {
+		if err := closer.Close(); err != nil {
+			slog.Warn("imap: could not close the session's mailbox", "error", err)
+		}
+	}
+}
