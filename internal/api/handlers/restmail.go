@@ -145,9 +145,27 @@ type RestmailDelivery struct {
 	Failed    []string `json:"failed"`
 }
 
+// restmailDeclaredFields are the fields of a delivery the binder reads as they came.
+var restmailDeclaredFields = declaredFieldsOf(restmailDeliverBody{})
+
+// deliverSpooled is the route's handler. The body goes to a file before any of it is read, and
+// every file is gone when it answers, however it answers, a panic included.
+func (h *RestmailHandler) deliverSpooled(r *http.Request, _ struct{}) (RestmailDelivery, error) {
+	var in restmailDeliverInput
+	spool, err := spoolDelivery(r, &in, spooledBodySpec{rawIsText: true, declared: restmailDeclaredFields}, func() []byte { return []byte(in.Body.RawMessage) })
+	if err != nil {
+		return RestmailDelivery{}, err
+	}
+	defer spool.remove()
+	in.Body.RawMessage = ""
+	return h.deliver(r, in, spool)
+}
+
 // deliver receives a message from another RESTMAIL server. When no recipient takes it, the
-// answer is 422 undeliverable: every recipient failed.
-func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (RestmailDelivery, error) {
+// answer is 422 undeliverable: every recipient failed. The message and its text are in spool: its
+// headers and its structure are read first, and the rest once no refusal is left that can be made
+// without it.
+func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput, spool *deliverySpool) (RestmailDelivery, error) {
 	req := in.Body
 	var to []string
 	if req.To != nil {
@@ -171,69 +189,63 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 		headers, _ = json.Marshal(req.Headers)
 	}
 
-	// When raw_message is provided, parse RFC 2822 into structured fields. The
-	// parsed form is retained (not discarded) so it can seed the pipeline message
-	// below with its real headers, including Headers.Raw.
+	// When raw_message is provided, its headers fill the structured fields a request left empty.
 	//
 	// Authentication-Results claiming this server's authserv-id did not come
 	// from this server: they are removed first, before anything parses,
 	// verifies or stores the message (RFC 8601 §5).
-	req.RawMessage = rmime.StripAuthResults(req.RawMessage, pipeline.AuthServID)
+	headerSection, err := spool.headerSection()
+	if err != nil {
+		return RestmailDelivery{}, restmailReadRefusal("spooled message")
+	}
 	// A message from another server with more Received: fields than the hop limit is a mail
 	// loop (RFC 5321 §6.3, #1647), refused as the SMTP gateway refuses it.
-	if rmime.TooManyReceived([]byte(req.RawMessage)) {
+	if rmime.TooManyReceived([]byte(headerSection)) {
 		return RestmailDelivery{}, endpoint.Refuse(http.StatusForbidden, "rejected", "Routing loop detected: too many Received headers")
 	}
-	var parsed *pipeline.EmailJSON
-	if req.RawMessage != "" {
-		p, err := rmime.Parse([]byte(req.RawMessage))
+	if headerSection != "" {
+		// Nested deeper or holding more parts than the MIME limits allow (#1641). This passes over
+		// the message in its file and holds none of it, and it comes before any lookup.
+		err := spool.checkStructure()
 		if errors.Is(err, rmime.ErrStructureLimit) {
-			// Nested deeper or holding more parts than the MIME limits allow (#1641).
 			return RestmailDelivery{}, endpoint.Refuse(http.StatusForbidden, "rejected", "Message structure too complex: too deeply nested or too many MIME parts")
 		}
+		if err != nil {
+			return RestmailDelivery{}, restmailReadRefusal("spooled message")
+		}
+		parsedHeaders, err := rmime.ParseHeaders(strings.NewReader(headerSection))
 		if err != nil {
 			slog.Warn("restmail: failed to parse raw_message", "error", err)
 			// Fall through to use whatever structured fields were provided
 		} else {
-			parsed = p
-			if len(parsed.Headers.From) > 0 && req.From == "" {
-				req.From = parsed.Headers.From[0].Address
+			if len(parsedHeaders.From) > 0 && req.From == "" {
+				req.From = parsedHeaders.From[0].Address
 			}
-			if len(parsed.Headers.To) > 0 && len(to) == 0 {
-				addrs := make([]string, len(parsed.Headers.To))
-				for i, a := range parsed.Headers.To {
+			if len(parsedHeaders.To) > 0 && len(to) == 0 {
+				addrs := make([]string, len(parsedHeaders.To))
+				for i, a := range parsedHeaders.To {
 					addrs[i] = a.Address
 				}
 				to = addrs
 			}
-			if parsed.Headers.Subject != "" && req.Subject == "" {
-				req.Subject = parsed.Headers.Subject
+			if parsedHeaders.Subject != "" && req.Subject == "" {
+				req.Subject = parsedHeaders.Subject
 			}
-			if parsed.Headers.Date != "" && req.Date == "" {
-				req.Date = parsed.Headers.Date
+			if parsedHeaders.Date != "" && req.Date == "" {
+				req.Date = parsedHeaders.Date
 			}
-			if parsed.Headers.MessageID != "" && req.MessageID == "" {
-				req.MessageID = parsed.Headers.MessageID
+			if parsedHeaders.MessageID != "" && req.MessageID == "" {
+				req.MessageID = parsedHeaders.MessageID
 			}
-			if parsed.Headers.InReplyTo != "" && req.InReplyTo == "" {
-				req.InReplyTo = parsed.Headers.InReplyTo
+			if parsedHeaders.InReplyTo != "" && req.InReplyTo == "" {
+				req.InReplyTo = parsedHeaders.InReplyTo
 			}
-			if len(parsed.Headers.References) > 0 && req.References == "" {
-				req.References = strings.Join(parsed.Headers.References, " ")
-			}
-			// Extract body text and HTML from parsed parts
-			if req.BodyText == "" || req.BodyHTML == "" {
-				text, html := extractBodyParts(parsed.Body)
-				if req.BodyText == "" {
-					req.BodyText = text
-				}
-				if req.BodyHTML == "" {
-					req.BodyHTML = html
-				}
+			if len(parsedHeaders.References) > 0 && req.References == "" {
+				req.References = strings.Join(parsedHeaders.References, " ")
 			}
 			// Preserve raw headers as JSON
-			if headers == nil && parsed.Headers.Raw != nil {
-				headers, _ = json.Marshal(parsed.Headers.Raw)
+			if headers == nil && parsedHeaders.Raw != nil {
+				headers, _ = json.Marshal(parsedHeaders.Raw)
 			}
 		}
 	}
@@ -272,9 +284,15 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 	// DKIM verification does DNS lookups, so only pay for it when the decision
 	// depends on it: a trusted peer is already accepted, and a non-strict
 	// external sender is accepted regardless of signature.
+	// A message with no signature in its header section has nothing to verify, so it isn't read.
 	aligned := false
-	if !h.deliverAuth.trusted(clientIP) && (h.deliverAuth.strict || fromLocal) {
-		aligned = dkimAlignedWith(r.Context(), req.RawMessage, fromDomain)
+	if !h.deliverAuth.trusted(clientIP) && (h.deliverAuth.strict || fromLocal) && headerNamesDKIMSignature(headerSection) {
+		raw, err := spool.message()
+		if err != nil {
+			return RestmailDelivery{}, restmailReadRefusal("spooled message")
+		}
+		aligned = dkimAlignedWith(r.Context(), raw, fromDomain)
+		req.RawMessage = raw
 	}
 	if ok, reason := h.deliverAuth.authorize(clientIP, fromDomain, fromLocal, aligned); !ok {
 		slog.Warn("restmail: delivery refused by delivery-auth gate (OSI-3)",
@@ -310,6 +328,13 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 	if len(recipients) == 0 {
 		return RestmailDelivery{}, endpoint.Refuse(http.StatusUnprocessableEntity, "undeliverable", "No recipient accepted the message")
 	}
+	// Every refusal that needs no more than the headers has been made. Past this the pipeline and
+	// the row need the message whole, parsed for the body, attachments and calendar events.
+	var parsed *pipeline.EmailJSON
+	if parsed, err = spool.readRestmailMessage(&req); err != nil {
+		return RestmailDelivery{}, restmailReadRefusal("spooled message")
+	}
+
 	// Only receive-capable identities reach filters. In a mixed delivery a
 	// discard or redirect must not turn refused recipients into acceptances.
 	to = accepted
@@ -629,6 +654,48 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 		return RestmailDelivery{}, endpoint.Refuse(http.StatusUnprocessableEntity, "undeliverable", "No recipient accepted the message")
 	}
 	return RestmailDelivery{Delivered: delivered, Failed: failed}, nil
+}
+
+// headerNamesDKIMSignature says whether a header section may hold a DKIM signature. It is true of
+// anything DKIM verification would take for one, because that takes its own header section to
+// end no later than this one does.
+func headerNamesDKIMSignature(section string) bool {
+	return strings.Contains(strings.ToLower(section), "dkim-signature")
+}
+
+// readRestmailMessage reads the message and the text fields from their files into req, and fills
+// the text a request left empty from the message's own parts. It answers the parsed message, or
+// nil for one that doesn't parse.
+func (s *deliverySpool) readRestmailMessage(req *restmailDeliverBody) (*pipeline.EmailJSON, error) {
+	var err error
+	if req.BodyText, err = s.text(deliveryBodyText, req.BodyText); err != nil {
+		return nil, err
+	}
+	if req.BodyHTML, err = s.text(deliveryBodyHTML, req.BodyHTML); err != nil {
+		return nil, err
+	}
+	if req.RawMessage == "" {
+		if req.RawMessage, err = s.message(); err != nil {
+			return nil, err
+		}
+	}
+	if req.RawMessage == "" {
+		return nil, nil
+	}
+	parsed, err := rmime.ParseReader(strings.NewReader(req.RawMessage))
+	if err != nil {
+		return nil, nil // Said when its headers were read.
+	}
+	if req.BodyText == "" || req.BodyHTML == "" {
+		text, html := extractBodyParts(parsed.Body)
+		if req.BodyText == "" {
+			req.BodyText = text
+		}
+		if req.BodyHTML == "" {
+			req.BodyHTML = html
+		}
+	}
+	return parsed, nil
 }
 
 // runRecipientScripts runs each recipient's own Sieve script, the ones that have one, on its

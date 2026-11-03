@@ -1175,14 +1175,31 @@ func (h *MessageHandler) RegisterDelivery(rs endpoint.Routes, bodyLimit endpoint
 			{Status: http.StatusOK, Description: "Quarantined or discarded by the inbound pipeline", Type: oapifly.TypeOf[endpoint.Data[DeliveryProcessed]]()},
 		},
 		Errors:   []int{http.StatusUnprocessableEntity, http.StatusNotFound, 451, 550},
-		Security: oapifly.Public, Middleware: []endpoint.Middleware{bodyLimit}}, h.deliverMessage)
+		Security: oapifly.Public, Middleware: []endpoint.Middleware{bodyLimit}, DescribedRequest: deliverMessageBody{}}, h.deliverSpooledMessage)
 }
 
-// deliverMessage is the inbound delivery endpoint for the gateway.
-func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody) (endpoint.Status[any], error) {
+// deliveryDeclaredFields are the fields of a gateway's delivery the binder reads as they came.
+var deliveryDeclaredFields = declaredFieldsOf(deliverMessageBody{})
+
+// deliverSpooledMessage is the route's handler. The body goes to a file before any of it is read,
+// and every file is gone when it answers, however it answers, a panic included.
+func (h *MessageHandler) deliverSpooledMessage(r *http.Request, _ struct{}) (endpoint.Status[any], error) {
+	var req deliverMessageBody
+	spool, err := spoolDelivery(r, &req, spooledBodySpec{declared: deliveryDeclaredFields}, func() []byte { return req.RawMessage })
+	if err != nil {
+		return endpoint.Status[any]{}, err
+	}
+	defer spool.remove()
+	req.RawMessage = nil
+	return h.deliverMessage(r, req, spool)
+}
+
+// deliverMessage is the inbound delivery endpoint for the gateway. req holds the message in spool,
+// which is read only once nothing is left that could refuse it without it.
+func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody, spool *deliverySpool) (endpoint.Status[any], error) {
 	var zero endpoint.Status[any]
 	fields := make(map[string]string)
-	if bytes.IndexByte(req.RawMessage, 0) >= 0 {
+	if spool.raw.nul {
 		fields["raw_message"] = "must not contain a NUL byte"
 	}
 	for field, raw := range map[string]json.RawMessage{"recipients_to": req.RecipientsTo, "recipients_cc": req.RecipientsCc} {
@@ -1218,8 +1235,14 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody)
 	// more Received: fields than the limit is a mail loop, refused as the SMTP gateway refuses it.
 	// A message filed into a mailbox (IMAP APPEND, ReceivedTLS nil) is not a hop: old mail may
 	// carry any number of Received fields, and filing it cannot loop.
-	if req.ReceivedTLS != nil && rmime.TooManyReceived(req.RawMessage) {
-		return zero, endpoint.Refuse(550, "rejected", "Routing loop detected: too many Received headers")
+	if req.ReceivedTLS != nil {
+		headerSection, err := spool.headerSection()
+		if err != nil {
+			return zero, err
+		}
+		if rmime.TooManyReceived([]byte(headerSection)) {
+			return zero, endpoint.Refuse(550, "rejected", "Routing loop detected: too many Received headers")
+		}
 	}
 
 	var mailbox models.Mailbox
@@ -1238,6 +1261,31 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody)
 		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to look up mailbox")
 	}
 
+	// A mailbox that can't receive refuses here, so that the message needn't be read. Past this
+	// the pipeline and the row need it whole. An address that names no mailbox has none to check.
+	receiveChecked := mailbox.ID != 0
+	if receiveChecked {
+		if err := repositories.RequireMailboxReceive(h.db.WithContext(r.Context()), &mailbox); err != nil {
+			if errors.Is(err, repositories.ErrMailboxUnavailable) {
+				return zero, endpoint.Refuse(http.StatusNotFound, "mailbox_not_found", "Mailbox not found")
+			}
+			return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to deliver message")
+		}
+	}
+	bodyText, err := spool.text(deliveryBodyText, req.BodyText)
+	if err != nil {
+		return zero, err
+	}
+	bodyHTML, err := spool.text(deliveryBodyHTML, req.BodyHTML)
+	if err != nil {
+		return zero, err
+	}
+	rawMessage, err := spool.raw.text()
+	if err != nil {
+		return zero, err
+	}
+	spool.raw.remove()
+
 	// Delegate to shared local delivery helper (pipeline + quota + attachments + SSE)
 	msg, err := h.deliverToLocal(r.Context(), localDeliveryParams{
 		Mailbox:      mailbox,
@@ -1246,12 +1294,12 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody)
 		RecipientsTo: req.RecipientsTo,
 		RecipientsCc: req.RecipientsCc,
 		Subject:      req.Subject,
-		BodyText:     req.BodyText,
-		BodyHTML:     req.BodyHTML,
+		BodyText:     bodyText,
+		BodyHTML:     bodyHTML,
 		MessageID:    req.MessageID,
 		InReplyTo:    req.InReplyTo,
 		References:   req.References,
-		RawMessage:   string(req.RawMessage),
+		RawMessage:   rawMessage,
 		ClientIP:     req.ClientIP,
 		HeloName:     req.HeloName,
 		Folder:       folder,
@@ -1264,6 +1312,9 @@ func (h *MessageHandler) deliverMessage(r *http.Request, req deliverMessageBody)
 		ReceivedTLS:  req.ReceivedTLS,
 		TLSVersion:   req.TLSVersion,
 		RequireTLS:   req.RequireTLS,
+
+		// Checked above, and the check needn't run twice.
+		ReceiveChecked: receiveChecked,
 	})
 	if err != nil {
 		if errors.Is(err, repositories.ErrMailboxUnavailable) {
@@ -2313,6 +2364,8 @@ type localDeliveryParams struct {
 	InCommit func(tx *gorm.DB) error
 	// IndependentAttachments gives a forwarded local copy its own object lifetime.
 	IndependentAttachments bool
+	// ReceiveChecked says the caller has already found that the mailbox can receive.
+	ReceiveChecked bool
 }
 
 // receivedTLSFlag reports whether an inbound delivery arrived over TLS, for the
@@ -2344,8 +2397,10 @@ func recordInboundReceived(receivedTLS *bool) {
 // SendMessage (local recipient delivery).
 func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliveryParams) (*models.Message, error) {
 	mailbox := params.Mailbox
-	if err := repositories.RequireMailboxReceive(h.db.WithContext(ctx), &mailbox); err != nil {
-		return nil, err
+	if !params.ReceiveChecked {
+		if err := repositories.RequireMailboxReceive(h.db.WithContext(ctx), &mailbox); err != nil {
+			return nil, err
+		}
 	}
 
 	// Always-on: count every inbound-MX arrival (before the pipeline runs, so a
@@ -2392,16 +2447,21 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	// every attachment (and the Date header, which header_validate then rejected
 	// on). Fall back to the params only when there is no parseable raw message.
 	var emailJSON *pipeline.EmailJSON
+	// rawCalendar is what the message holds of calendar events when it parsed, kept for the row
+	// so that the message needn't be parsed again. A filter can't change it.
+	var rawCalendar []pipeline.CalendarEvent
 	if params.RawMessage != "" {
-		parsed, perr := rmime.Parse([]byte(params.RawMessage))
+		parsed, perr := rmime.ParseReader(strings.NewReader(params.RawMessage))
 		if errors.Is(perr, rmime.ErrStructureLimit) {
 			// Nested deeper or holding more parts than the MIME limits allow (#1641).
 			return nil, fmt.Errorf("rejected: message structure too complex: %w", perr)
 		}
 		if perr == nil {
 			emailJSON = parsed
+			rawCalendar = parsed.CalendarEvents
 		}
 	}
+	rawParsed := emailJSON != nil
 	if emailJSON == nil {
 		emailJSON = &pipeline.EmailJSON{
 			Headers: pipeline.Headers{
@@ -2705,12 +2765,19 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	// calendar reply and leaves the version history behind (#1266).
 	var calendarVersions []models.CalendarEventVersion
 	if params.RawMessage != "" {
-		if parsed, parseErr := rmime.Parse([]byte(params.RawMessage)); parseErr == nil && len(parsed.CalendarEvents) > 0 {
-			if calJSON, jsonErr := json.Marshal(parsed.CalendarEvents); jsonErr == nil {
+		if !rawParsed {
+			// Only a message that failed to parse before Authentication-Results went on it gets
+			// here, and failing again costs no more than its header section.
+			if parsed, parseErr := rmime.ParseReader(strings.NewReader(params.RawMessage)); parseErr == nil {
+				rawCalendar = parsed.CalendarEvents
+			}
+		}
+		if len(rawCalendar) > 0 {
+			if calJSON, jsonErr := json.Marshal(rawCalendar); jsonErr == nil {
 				msg.CalendarEventsRaw = models.JSONB(calJSON)
 			}
 			// Track calendar event versions for update/cancel detection
-			for _, evt := range parsed.CalendarEvents {
+			for _, evt := range rawCalendar {
 				if evt.UID == "" {
 					continue
 				}

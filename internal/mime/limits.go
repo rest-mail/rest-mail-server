@@ -5,7 +5,10 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"sync/atomic"
+
+	gomessage "github.com/emersion/go-message"
 )
 
 // Defaults for Limits. Each is what an established implementation already applies to real mail:
@@ -94,6 +97,54 @@ func (b *partBudget) enter(depth int) error {
 		return structureLimit("multipart nested deeper than %d", b.limits.MaxNestingDepth)
 	}
 	return nil
+}
+
+// CheckStructure reads a message from source and answers the ErrStructureLimit that Parse would,
+// wrapped, or nil. It holds no part's content, for a caller that must refuse such a message before
+// it does anything that needs the message in memory. A message Parse fails on for any other reason
+// is nil here.
+func CheckStructure(source io.Reader) error {
+	entity, _ := gomessage.Read(source)
+	if entity == nil {
+		return nil
+	}
+	mr := entity.MultipartReader()
+	if mr == nil {
+		return nil
+	}
+	budget := newPartBudget()
+	if err := budget.enter(1); err != nil {
+		return fmt.Errorf("parse message: %w", err)
+	}
+	if err := checkParts(mr, 1, budget); err != nil {
+		return fmt.Errorf("parse message: %w", err)
+	}
+	return nil
+}
+
+// checkParts counts the parts of a multipart at depth as parseMultipart counts them. Asking for the
+// next part passes over what is left of the one before.
+func checkParts(mr gomessage.MultipartReader, depth int, budget *partBudget) error {
+	for {
+		part, err := mr.NextPart()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil && !gomessage.IsUnknownCharset(err) && !gomessage.IsUnknownEncoding(err) {
+			return nil // a malformed boundary: nothing further can be read
+		}
+		if err := budget.part(); err != nil {
+			return err
+		}
+		if nested := part.MultipartReader(); nested != nil {
+			if err := budget.enter(depth + 1); err != nil {
+				return err
+			}
+			if err := checkParts(nested, depth+1, budget); err != nil {
+				return err
+			}
+		}
+	}
 }
 
 // ReceivedCount counts the Received: header fields in raw's header block, which ends at the

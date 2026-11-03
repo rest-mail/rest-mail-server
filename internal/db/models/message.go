@@ -156,7 +156,7 @@ func (Message) TableName() string { return "messages" }
 // source, on every path that stores one, so no delivery path can forget it.
 func (m *Message) BeforeCreate(*gorm.DB) error {
 	if m.DowngradedSize == 0 && m.RawSize > 0 {
-		m.DowngradedSize = rmail.DowngradedSize(string(m.Source()))
+		m.DowngradedSize = rmail.DowngradedSize(m.sourceText())
 	}
 	if m.PendingDraft || (m.IsDeleted && m.Sender == "system" && m.Subject == "" && m.BodyText == "" && m.BodyHTML == "" && m.RawMessage == "" && m.RawOctets == nil) {
 		m.SealedHash = ""
@@ -165,6 +165,14 @@ func (m *Message) BeforeCreate(*gorm.DB) error {
 	var err error
 	m.SealedHash, err = m.SealDigest()
 	return err
+}
+
+// sourceText is Source as text. A message held as text isn't copied for it.
+func (m Message) sourceText() string {
+	if m.RawOctets != nil {
+		return string(m.RawOctets)
+	}
+	return m.RawMessage
 }
 
 // Source returns original octets, including historical non-UTF-8 and NUL data.
