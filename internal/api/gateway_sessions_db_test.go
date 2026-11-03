@@ -204,6 +204,13 @@ func TestGatewaySessionEveryMailService(t *testing.T) {
 	}
 }
 
+// basic is an HTTP Basic Authorization header, which nothing takes.
+func basic(address, password string) string {
+	req, _ := http.NewRequest(http.MethodGet, "/", nil)
+	req.SetBasicAuth(address, password)
+	return req.Header.Get("Authorization")
+}
+
 // There is no HTTP Basic (#1586): a mail client's address and password, sent
 // with HTTP Basic, are refused on the public routes, on the internal listener,
 // and on the session-open route itself, which takes them only in its body.

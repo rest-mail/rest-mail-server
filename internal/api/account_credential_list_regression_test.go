@@ -184,18 +184,17 @@ func accountListScenarios(t *testing.T, connection func(string, map[string]accou
 		keys[public] = accountListKey{accountReadKey{hash: hash, scope: scope}, models.CredentialKindAPIKey}
 		tokens[name] = token
 	}
-	password, public, hash, err := auth.NewAppPassword()
-	if err != nil {
-		t.Fatal(err)
-	}
-	keys[public] = accountListKey{accountReadKey{hash: hash, scope: []byte(`{}`)}, models.CredentialKindAppPassword}
-	makeRouter := func(mode string, limited bool) http.Handler {
-		pool := sql.OpenDB(connection(mode, keys))
-		t.Cleanup(func() { _ = pool.Close() })
+	routerConfig := func(limited bool) *config.Config {
 		cfg := &config.Config{Environment: "test", APIMaxBodyBytes: 8, AuthRateLimitEnabled: limited, AuthRateLimitRPS: 1.0 / 3600, AuthRateLimitBurst: 1}
 		for _, apply := range configure {
 			apply(cfg)
 		}
+		return cfg
+	}
+	makeRouter := func(mode string, limited bool) http.Handler {
+		pool := sql.OpenDB(connection(mode, keys))
+		t.Cleanup(func() { _ = pool.Close() })
+		cfg := routerConfig(limited)
 		r := NewRouters(openAccountReadDB(t, pool), jwt, cfg, nil)
 		t.Cleanup(r.Close)
 		return r.Public
@@ -205,11 +204,6 @@ func accountListScenarios(t *testing.T, connection func(string, map[string]accou
 	if err != nil {
 		t.Fatal(err)
 	}
-	withBasic := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r = r.Clone(r.Context())
-		r.SetBasicAuth("user@example.com", password)
-		normal.ServeHTTP(w, r)
-	})
 	withCookie := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r = r.Clone(r.Context())
 		r.Header.Del("Authorization")
@@ -223,7 +217,7 @@ func accountListScenarios(t *testing.T, connection func(string, map[string]accou
 	for name, mode := range map[string]string{"no_grants": "no_grants", "domain_manager": "domain_manager", "write_only": "write_only", "grant_unavailable": "grant_failure", "ownership_unavailable": "ownership_failure", "primary_unavailable": "primary_failure", "primary_missing": "primary_missing", "list_unavailable": "list_failure"} {
 		out[name] = accountReadScenario{makeRouter(mode, false), current}
 	}
-	out["app_password"] = accountReadScenario{withBasic, ""}
+	out["app_password"] = gatewaySessionScenario(t, connection("normal", keys), jwt, *routerConfig(false))
 	out["cookie_session"] = accountReadScenario{withCookie, ""}
 	out["unauthenticated"] = accountReadScenario{normal, ""}
 	out["setup_required"] = accountReadScenario{normal, setup.AccessToken}

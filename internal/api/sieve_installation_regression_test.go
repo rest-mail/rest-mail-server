@@ -18,6 +18,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/auth"
 	"github.com/rest-mail/rest-mail-server/internal/config"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"gorm.io/gorm"
 )
 
 var sieveInstallationTime = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -144,20 +145,21 @@ func newMailRulesWriteScenarios(t *testing.T, connector func(mailRemovalConnecti
 		keys[public] = accountListKey{accountReadKey{hash: hash, scope: scope}, models.CredentialKindAPIKey}
 		tokens[name] = token
 	}
-	password, public, hash, err := auth.NewAppPassword()
-	if err != nil {
-		t.Fatal(err)
-	}
-	keys[public] = accountListKey{accountReadKey{hash: hash, scope: []byte(`{}`)}, models.CredentialKindAppPassword}
 	store := &bulkQueueExampleStore{}
-	makeRouter := func(mode string, limited bool) http.Handler {
+	connection := func(mode string) driver.Connector {
 		base := mailResourceReadConnection{personalDataReadConnection{accountCredentialListConnection{mode: mode, keys: keys}}}
-		pool := sql.OpenDB(connector(mailRemovalConnection{base, store}))
+		return connector(mailRemovalConnection{base, store})
+	}
+	installedAt := func(db *gorm.DB) { db.NowFunc = func() time.Time { return sieveInstallationTime } }
+	routerConfig := func(limited bool) *config.Config {
+		return &config.Config{Environment: "test", APIMaxBodyBytes: maxBodyBytes, AuthRateLimitEnabled: limited, AuthRateLimitRPS: 1.0 / 3600, AuthRateLimitBurst: 1}
+	}
+	makeRouter := func(mode string, limited bool) http.Handler {
+		pool := sql.OpenDB(connection(mode))
 		t.Cleanup(func() { _ = pool.Close() })
 		db := openAccountReadDB(t, pool)
-		db.NowFunc = func() time.Time { return sieveInstallationTime }
-		cfg := &config.Config{Environment: "test", APIMaxBodyBytes: maxBodyBytes, AuthRateLimitEnabled: limited, AuthRateLimitRPS: 1.0 / 3600, AuthRateLimitBurst: 1}
-		r := NewRouters(db, jwt, cfg, nil)
+		installedAt(db)
+		r := NewRouters(db, jwt, routerConfig(limited), nil)
 		t.Cleanup(r.Close)
 		return r.Public
 	}
@@ -174,13 +176,9 @@ func newMailRulesWriteScenarios(t *testing.T, connector func(mailRemovalConnecti
 		out[name] = accountReadScenario{normal, token}
 	}
 	out["key_write_holder_missing"] = accountReadScenario{out["no_grants"].handler, tokens["key_write_only"]}
-	basic := accountReadScenario{http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r = r.Clone(r.Context())
-		r.SetBasicAuth("user@example.com", password)
-		normal.ServeHTTP(w, r)
-	}), ""}
-	out["app_password"] = basic
-	out["app_password_other"] = basic
+	mailClient := gatewaySessionScenario(t, connection("normal"), jwt, *routerConfig(false), installedAt)
+	out["app_password"] = mailClient
+	out["app_password_other"] = mailClient
 	setup, err := jwt.GenerateSession(10, "user@example.com", 0, []string{auth.AMRPassword}, true)
 	if err != nil {
 		t.Fatal(err)

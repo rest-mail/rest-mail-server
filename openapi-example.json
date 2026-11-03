@@ -1424,7 +1424,7 @@
       }
     },
     "found": {
-      "description": "Real registered routes authenticate JWT/Basic/scoped keys and current holder grants/CSRF before contact operations. Local SQL verifies row/mailbox selectors, create fields, partial updates and reload outcomes. Fixed rows do not prove PostgreSQL/audit persistence or uniqueness constraints.",
+      "description": "Real registered routes authenticate JWT/gateway-session/scoped keys and current holder grants/CSRF before contact operations. Local SQL verifies row/mailbox selectors, create fields, partial updates and reload outcomes. Fixed rows do not prove PostgreSQL/audit persistence or uniqueness constraints.",
       "request": {
         "path": {
           "id": 1
@@ -5339,7 +5339,7 @@
       }
     },
     "credential": {
-      "summary": "HTTP Basic credentials cannot authenticate a session-only route",
+      "summary": "A mail client's gateway session cannot authenticate a session-only route",
       "requires": {
         "principal": "without_capability"
       },
@@ -5356,7 +5356,7 @@
         "body": {
           "error": {
             "code": "unauthorized",
-            "message": "Invalid authorization header format"
+            "message": "Invalid or expired token"
           }
         },
         "mediaType": "application/json"
@@ -6511,7 +6511,7 @@
       }
     },
     "found": {
-      "description": "Real registered routes authenticate JWT/Basic/scoped keys and current holder grants/CSRF before contact operations. Local SQL verifies row/mailbox selectors, create fields, partial updates and reload outcomes. Fixed rows do not prove PostgreSQL/audit persistence or uniqueness constraints.",
+      "description": "Real registered routes authenticate JWT/gateway-session/scoped keys and current holder grants/CSRF before contact operations. Local SQL verifies row/mailbox selectors, create fields, partial updates and reload outcomes. Fixed rows do not prove PostgreSQL/audit persistence or uniqueness constraints.",
       "request": {
         "path": {
           "id": 1
@@ -7269,7 +7269,7 @@
       }
     },
     "found": {
-      "description": "Real production routes authenticate JWT/Basic/scoped keys and check current holder grants and CSRF before folder storage. Local SQL verifies exact mailbox/name counts, deleted zero-byte markers and message/marker rename selectors, including lookup/write failures. Fixed rows do not prove PostgreSQL durability or concurrency serialization.",
+      "description": "Real production routes authenticate JWT/gateway-session/scoped keys and check current holder grants and CSRF before folder storage. Local SQL verifies exact mailbox/name counts, deleted zero-byte markers and message/marker rename selectors, including lookup/write failures. Fixed rows do not prove PostgreSQL durability or concurrency serialization.",
       "request": {
         "path": {
           "id": 1
@@ -12580,7 +12580,7 @@
   },
   "disableVacation": {
     "found": {
-      "description": "The real registered route, JWT/Basic/scoped-key checks, current holder ceilings and CSRF guards precede mailbox-bound configuration reads and writes. Local SQL verifies selectors, all configuration fields and date clearing; lookup errors do not become creation or success. Fixed rows do not prove PostgreSQL/audit persistence or actual vacation delivery; owner-blocked pipeline migration #772 remains unchanged.",
+      "description": "The real registered route, JWT/gateway-session/scoped-key checks, current holder ceilings and CSRF guards precede mailbox-bound configuration reads and writes. Local SQL verifies selectors, all configuration fields and date clearing; lookup errors do not become creation or success. Fixed rows do not prove PostgreSQL/audit persistence or actual vacation delivery; owner-blocked pipeline migration #772 remains unchanged.",
       "request": {
         "path": {
           "id": 1
@@ -30141,7 +30141,7 @@
       }
     },
     "found": {
-      "description": "Real registered route, JWT/Basic/scoped-key verification, holder grants and CSRF precede installation. Local SQL asserts exact mailbox selection, script bytes/hash, active defaults and explicit false, persistence-clock markers and lookup/create/update failures. Fixed rows do not prove PostgreSQL durability or delivery execution; PostgreSQL regression cases run when TEST_DATABASE_URL is configured.",
+      "description": "Real registered route, JWT/gateway-session/scoped-key verification, holder grants and CSRF precede installation. Local SQL asserts exact mailbox selection, script bytes/hash, active defaults and explicit false, persistence-clock markers and lookup/create/update failures. Fixed rows do not prove PostgreSQL durability or delivery execution; PostgreSQL regression cases run when TEST_DATABASE_URL is configured.",
       "requires": {
         "state": "existing_script"
       },
@@ -32859,7 +32859,7 @@
       }
     },
     "found": {
-      "description": "Real production routes authenticate JWT/Basic/scoped keys and check current holder grants and CSRF before folder storage. Local SQL verifies exact mailbox/name counts, deleted zero-byte markers and message/marker rename selectors, including lookup/write failures. Fixed rows do not prove PostgreSQL durability or concurrency serialization.",
+      "description": "Real production routes authenticate JWT/gateway-session/scoped keys and check current holder grants and CSRF before folder storage. Local SQL verifies exact mailbox/name counts, deleted zero-byte markers and message/marker rename selectors, including lookup/write failures. Fixed rows do not prove PostgreSQL durability or concurrency serialization.",
       "request": {
         "path": {
           "folder": "Work",
@@ -39647,7 +39647,7 @@
   },
   "setVacation": {
     "found": {
-      "description": "The real registered route, JWT/Basic/scoped-key checks, current holder ceilings and CSRF guards precede mailbox-bound configuration reads and writes. Local SQL verifies selectors, all configuration fields and date clearing; lookup errors do not become creation or success. Fixed rows do not prove PostgreSQL/audit persistence or actual vacation delivery; owner-blocked pipeline migration #772 remains unchanged.",
+      "description": "The real registered route, JWT/gateway-session/scoped-key checks, current holder ceilings and CSRF guards precede mailbox-bound configuration reads and writes. Local SQL verifies selectors, all configuration fields and date clearing; lookup errors do not become creation or success. Fixed rows do not prove PostgreSQL/audit persistence or actual vacation delivery; owner-blocked pipeline migration #772 remains unchanged.",
       "request": {
         "path": {
           "id": 1
@@ -43416,7 +43416,7 @@
   },
   "updateContact": {
     "found": {
-      "description": "Real registered routes authenticate JWT/Basic/scoped keys and current holder grants/CSRF before contact operations. Local SQL verifies row/mailbox selectors, create fields, partial updates and reload outcomes. Fixed rows do not prove PostgreSQL/audit persistence or uniqueness constraints.",
+      "description": "Real registered routes authenticate JWT/gateway-session/scoped keys and current holder grants/CSRF before contact operations. Local SQL verifies row/mailbox selectors, create fields, partial updates and reload outcomes. Fixed rows do not prove PostgreSQL/audit persistence or uniqueness constraints.",
       "request": {
         "path": {
           "cid": 1,
