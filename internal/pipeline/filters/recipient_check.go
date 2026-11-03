@@ -56,7 +56,7 @@ func (f *recipientCheckFilter) Execute(ctx context.Context, email *pipeline.Emai
 		recipient, err := repositories.ResolveRecipient(f.db.WithContext(ctx), rcpt, true)
 		if errors.Is(err, repositories.ErrAliasRouting) {
 			return &pipeline.FilterResult{Type: pipeline.FilterTypeAction, Action: pipeline.ActionReject,
-				RejectMsg: "550 5.1.1 " + err.Error(),
+				RejectMsg: "550 5.1.1 " + rmail.AliasRoutingRefusal,
 				Log:       pipeline.FilterLog{Filter: "recipient_check", Result: "reject", Detail: err.Error()}}, nil
 		}
 		if errors.Is(err, repositories.ErrMailboxUnavailable) {

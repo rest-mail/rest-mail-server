@@ -163,8 +163,8 @@ func TestAliasDeliverySMTPLoopRefusedBeforeAcceptance(t *testing.T) {
 	if err := client.Mail("sender@outside.test"); err != nil {
 		t.Fatal(err)
 	}
-	if err := client.Rcpt(fixture.alias.SourceAddress); err == nil || !strings.Contains(err.Error(), "alias loop") {
-		t.Fatalf("alias loop must be refused with its reason at RCPT, got %v", err)
+	if err := client.Rcpt(fixture.alias.SourceAddress); err == nil || !strings.Contains(err.Error(), "Alias delivery is not available for this recipient.") {
+		t.Fatalf("alias loop must be refused safely at RCPT, got %v", err)
 	}
 }
 
@@ -191,7 +191,7 @@ func TestAliasDeliverySMTPChangedLoopRefusesBeforePartialCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 	fmt.Fprint(writer, "From: sender@outside.test\r\nSubject: changed alias\r\n\r\nbody\r\n")
-	if err := writer.Close(); err == nil || !strings.Contains(err.Error(), "alias loop") {
+	if err := writer.Close(); err == nil || !strings.Contains(err.Error(), "Alias delivery is not available for this recipient.") {
 		t.Fatalf("loop accepted or unclear refusal: %v", err)
 	}
 	var count int64
@@ -394,11 +394,8 @@ func TestAliasDeliveryRoutes(t *testing.T) {
 				if (err != nil) != wantError {
 					t.Fatalf("delivery = %v, want error %v", err, wantError)
 				}
-				if scenario == "loop" && !strings.Contains(err.Error(), "alias loop") {
-					t.Fatalf("unclear loop refusal: %v", err)
-				}
-				if scenario == "too long" && !strings.Contains(err.Error(), "8 hops") {
-					t.Fatalf("unclear limit refusal: %v", err)
+				if (scenario == "loop" || scenario == "too long") && !strings.Contains(err.Error(), "Alias delivery is not available for this recipient.") {
+					t.Fatalf("unsafe or unclear alias refusal: %v", err)
 				}
 				var local, queued int64
 				fixture.db.Model(&models.Message{}).Where("mailbox_id = ?", fixture.mailbox.ID).Count(&local)

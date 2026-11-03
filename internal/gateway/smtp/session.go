@@ -982,7 +982,7 @@ func aliasRoutingRefusal(err error) (string, bool) {
 			Message string `json:"message"`
 		} `json:"error"`
 	}
-	if json.Unmarshal([]byte(apiError.Body), &refusal) != nil || !strings.HasPrefix(refusal.Error.Message, "alias ") || rmail.ContainsControlChar(refusal.Error.Message) {
+	if json.Unmarshal([]byte(apiError.Body), &refusal) != nil || refusal.Error.Message != rmail.AliasRoutingRefusal {
 		return "", false
 	}
 	return refusal.Error.Message, true

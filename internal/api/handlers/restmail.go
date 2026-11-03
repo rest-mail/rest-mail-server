@@ -299,7 +299,8 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 		}
 		resolved, err := repositories.ResolveRecipient(h.db.WithContext(r.Context()), rcpt, false)
 		if errors.Is(err, repositories.ErrAliasRouting) {
-			return RestmailDelivery{}, endpoint.Refuse(http.StatusUnprocessableEntity, "undeliverable", err.Error())
+			slog.WarnContext(r.Context(), "restmail alias refused", "address", rcpt, "error", err)
+			return RestmailDelivery{}, endpoint.Refuse(http.StatusUnprocessableEntity, "undeliverable", rmail.AliasRoutingRefusal)
 		}
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			refused = append(refused, rcpt)

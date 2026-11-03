@@ -3292,7 +3292,7 @@
         "body": {
           "error": {
             "code": "rejected",
-            "message": "alias routing refused: inactive alias: record not found"
+            "message": "Alias delivery is not available for this recipient."
           }
         },
         "mediaType": "application/json"

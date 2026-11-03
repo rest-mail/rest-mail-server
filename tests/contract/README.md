@@ -302,6 +302,39 @@ that example pass, so the probes run and the skipped-probe baseline no longer
 matches. For `clearSuppression`, the next probe with the example's path then
 finds nothing to clear.
 
+### Reserved alias refusal
+
+`checkMailboxAddress`'s `alias_refused` example needs an inactive alias, not an
+absent address. `alias_refusal_hooks.py`, registered by `entrypoint.py`, creates
+a unique alias on the existing `restmail.test` domain through the public admin
+API and disables it before changing only that example's address query. Setup
+uses `CONTRACT_ENDPOINT` (the topology's public listener by default), not the
+gateway's internal mTLS listener. No body, credential or expected answer changes.
+The after hook deletes exactly that alias, including after a failed exchange,
+so later alias lists/counts, ownership cells and domain-delete fixtures retain
+their state. No domain or mailbox is created or modified. Coverage's generated
+queries do not match the named refusal's query and expected status; they are
+sent unchanged, with no probe hidden by a body rewrite or added requirement.
+
+The #1539 local regression used the rebased PR's API build, disposable
+`postgres:16-alpine`, the seeded `restmail.test` domain, real MFA setup, and
+checksum-verified Vertrag 0.42.0. Both runs of the unchanged implementation
+passed 53 of 54 selected examples; only `alias_refused` failed (200, not 550).
+Both runs with the repair passed all 54, including the neighbouring alias,
+domain and mailbox operations, with no errors or skips. The inactive alias
+returned 550 with the fixed public sentence; the detailed inactive-alias reason
+appeared only in the API log. No temporary refusal alias remained afterwards.
+The generated frontend types were regenerated in scratch and matched both
+checked-in files byte for byte.
+
+The narrowed `checkMailboxAddress` coverage run emitted no generated boundary
+probes and skipped none before or after; its two prerequisite examples changed
+from one passing/one failing to both passing. Its query schema is unchanged.
+The same real ownership runs were repeated before and after: domains/aliases
+retained 9 passing of 16 cells and the same 7 unsent cells; mailboxes retained
+10 of 10 passing cells. These are local regression counts, not a claim that
+unsent ownership cells or the whole-API merge-queue gate have been proven.
+
 ### Attachment download contract
 
 The topology examples send an ordinary download, `Range: bytes=0-0` for a

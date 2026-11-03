@@ -11,7 +11,7 @@ type lateAliasRefusal struct{ *mockBackend }
 
 func (backend *lateAliasRefusal) DeliverMessage(request *apiclient.DeliverRequest) (*apiclient.DeliverResponse, error) {
 	if request.Address == "alias@local.test" {
-		return nil, &apiclient.APIError{StatusCode: 550, Body: `{"error":{"code":"rejected","message":"alias routing refused: alias loop"}}`}
+		return nil, &apiclient.APIError{StatusCode: 550, Body: `{"error":{"code":"rejected","message":"Alias delivery is not available for this recipient."}}`}
 	}
 	return backend.mockBackend.DeliverMessage(request)
 }
@@ -26,7 +26,7 @@ func TestSMTPAliasFailureIsNotHiddenByPartialSuccess(t *testing.T) {
 			t.Fatal(reply)
 		}
 	}
-	if reply := harness.dataBody(testBody); replyCode(reply) != "550" || !strings.Contains(reply, "alias loop") {
+	if reply := harness.dataBody(testBody); replyCode(reply) != "550" || !strings.Contains(reply, "Alias delivery is not available for this recipient.") {
 		t.Fatalf("alias failure hidden: %s", reply)
 	}
 	if delivered := backend.deliveredTo(); len(delivered) != 1 || delivered[0] != "mailbox@local.test" {
@@ -35,7 +35,7 @@ func TestSMTPAliasFailureIsNotHiddenByPartialSuccess(t *testing.T) {
 }
 
 func TestAliasRefusalNeverReflectsControlCharacters(t *testing.T) {
-	for _, body := range []string{`{"error":{"message":"alias loop\r\n250 accepted"}}`, `{"error":{"message":"policy denied"}}`, `not JSON`} {
+	for _, body := range []string{`{"error":{"message":"Alias delivery is not available for this recipient.\r\n250 accepted"}}`, `{"error":{"message":"alias routing refused: alias loop: record not found"}}`, `{"error":{"message":"policy denied"}}`, `not JSON`} {
 		if _, refused := aliasRoutingRefusal(&apiclient.APIError{StatusCode: 550, Body: body}); refused {
 			t.Fatalf("unsafe or unrelated refusal reflected: %q", body)
 		}

@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
 	"github.com/rest-mail/rest-mail-server/internal/grants"
+	rmail "github.com/rest-mail/rest-mail-server/internal/mail"
 	"gorm.io/gorm"
 )
 
@@ -341,7 +343,8 @@ func (h *MailboxHandler) checkAddress(r *http.Request, in addressCheckQuery) (Ad
 
 	recipient, err := repositories.ResolveRecipient(h.db, address, false)
 	if errors.Is(err, repositories.ErrAliasRouting) {
-		return AddressCheck{}, endpoint.Refuse(550, "rejected", err.Error())
+		slog.WarnContext(r.Context(), "recipient alias refused", "address", address, "error", err)
+		return AddressCheck{}, endpoint.Refuse(550, "rejected", rmail.AliasRoutingRefusal)
 	}
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
