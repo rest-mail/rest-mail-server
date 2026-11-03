@@ -47,6 +47,11 @@ func (connection metricsContractConnection) QueryContext(_ context.Context, quer
 		return &authReadSnapshotRows{
 			columns: []string{"domain_id", "slot", "created_at", "published_at", "retire_after", "ttl_seconds"},
 		}, nil
+	case strings.Contains(query, "FROM certificates GROUP BY domain_id"):
+		return &authReadSnapshotRows{
+			columns: []string{"min"},
+			rows:    [][]driver.Value{{time.Now().Add(30 * 24 * time.Hour)}},
+		}, nil
 	}
 	return nil, errors.New("unexpected query in metrics contract proof")
 }
@@ -137,13 +142,18 @@ func TestMetricsContractExamplesThroughProductionRouter(t *testing.T) {
 			if err != nil || recorder.Code != pair.Response.Status || media != pair.Response.MediaType {
 				t.Fatalf("got %d %q, want %d %q: %v: %s", recorder.Code, recorder.Header().Get("Content-Type"), pair.Response.Status, pair.Response.MediaType, err, recorder.Body.String())
 			}
-			wantQueries := int64(1)
+			// Each inventory collector stops at its first failing query.
+			wantQueries := int64(2)
 			switch test.pair {
 			case "available":
-				// The collector reads the domains, then their rotation keys.
-				wantQueries = 2
+				// The DKIM collector reads the domains, then their rotation keys;
+				// the certificate expiry collector reads the soonest expiry.
+				wantQueries = 3
 				if !strings.Contains(recorder.Body.String(), `restmail_dkim_key_age_seconds{domain="metrics.example.test",selector="mail"}`) {
 					t.Fatal("the production collector's metric is missing")
+				}
+				if !strings.Contains(recorder.Body.String(), "\nrestmail_cert_expiry_days 29.") {
+					t.Fatal("the certificate expiry metric is missing")
 				}
 			case "outside_allowlist":
 				wantQueries = 0

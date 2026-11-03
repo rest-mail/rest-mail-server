@@ -452,7 +452,7 @@
       "targets": [
         {
           "expr": "restmail_cert_expiry_days",
-          "legendFormat": "{{ domain }}",
+          "legendFormat": "soonest certificate",
           "refId": "A"
         }
       ],

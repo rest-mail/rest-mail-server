@@ -18,8 +18,8 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "Certificate for {{ $labels.domain }} expires in {{ $value }} days"
-          description: "The TLS certificate for domain {{ $labels.domain }} will expire in less than 7 days. Renew immediately."
+          summary: "A certificate expires in {{ $value | humanize }} days"
+          description: "The soonest-expiring certificate this server serves expires in less than 7 days (negative: already expired). The admin health endpoint names its domain. Renew immediately."
 
       # A domain served here has no usable certificate, so its handshakes are
       # refused. Mail for that domain is not being accepted.

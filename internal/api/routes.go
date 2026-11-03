@@ -369,13 +369,14 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// ═══════════════════════════════════════════════════════════════
 	// Prometheus metrics (no auth)
 	// ═══════════════════════════════════════════════════════════════
-	// Key inventory belongs to the API, rather than each protocol gateway.
+	// Key and certificate inventory belong to the API, rather than each
+	// protocol gateway, so each is one set of series per installation.
 	// A router-local registry avoids retaining DB handles in the global registry.
-	dkimRegistry := prometheus.NewRegistry()
-	dkimRegistry.MustRegister(metrics.NewDKIMKeyAgeCollector(db))
+	inventoryRegistry := prometheus.NewRegistry()
+	inventoryRegistry.MustRegister(metrics.NewDKIMKeyAgeCollector(db), metrics.NewCertExpiryCollector(db))
 	registerMetrics(publicRoutes(r), promhttp.InstrumentMetricHandler(prometheus.DefaultRegisterer,
 		promhttp.HandlerFor(prometheus.Gatherers{
-			prometheus.DefaultGatherer, dkimRegistry,
+			prometheus.DefaultGatherer, inventoryRegistry,
 		}, promhttp.HandlerOpts{})))
 
 	// ═══════════════════════════════════════════════════════════════

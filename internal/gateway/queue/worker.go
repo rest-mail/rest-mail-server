@@ -449,6 +449,50 @@ func (w *Worker) Start() {
 		defer w.wg.Done()
 		w.tlsReportLoop()
 	}()
+	// The queue depth gauge the backlog and stalled-worker alerts read (#1630).
+	w.wg.Add(1)
+	go func() {
+		defer w.wg.Done()
+		w.queueSizeLoop()
+	}()
+}
+
+// queueSizeInterval is how often the worker recounts the outbound queue for
+// restmail_queue_size: about Prometheus's scrape interval, and a single
+// indexed count, so it costs the database nothing worth noticing.
+const queueSizeInterval = 15 * time.Second
+
+// queuedStatuses are the rows still waiting to leave: not yet tried, waiting
+// for a retry, or being sent now. Delivered and bounced rows are history.
+var queuedStatuses = []string{"pending", "deferred", "delivering"}
+
+// queueSizeLoop keeps restmail_queue_size current until Shutdown. It runs in
+// the process that runs the queue workers, the SMTP gateway, so the gauge is
+// on the /metrics Prometheus scrapes there.
+func (w *Worker) queueSizeLoop() {
+	ticker := time.NewTicker(queueSizeInterval)
+	defer ticker.Stop()
+	for {
+		if err := refreshQueueSize(w.db); err != nil {
+			slog.Warn("queue: counting the outbound queue failed", "error", err)
+		}
+		select {
+		case <-w.shutdown:
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+// refreshQueueSize sets restmail_queue_size to the number of outbound rows
+// still waiting to leave. On an error it leaves the last value in place.
+func refreshQueueSize(db *gorm.DB) error {
+	var n int64
+	if err := db.Model(&models.OutboundQueue{}).Where("status IN ?", queuedStatuses).Count(&n).Error; err != nil {
+		return err
+	}
+	metrics.QueueSize.Set(float64(n))
+	return nil
 }
 
 // Shutdown stops the queue workers gracefully.
@@ -556,7 +600,14 @@ func (w *Worker) processNext(workerID int) {
 }
 
 // process sends a claimed message and records how that went.
+//
+// Every attempt that runs to an outcome — delivered, deferred or bounced —
+// counts in restmail_queue_processed_total, so a queue that is being worked
+// is never mistaken for a stalled one (#1630); a failed attempt also counts
+// in restmail_queue_errors_total.
 func (w *Worker) process(item models.OutboundQueue, now time.Time) {
+	defer metrics.QueueProcessed.Inc()
+
 	// A recipient that hard bounced from this sending domain isn't tried
 	// again until its suppression expires (#141).
 	if s, ok := w.suppression(item, now); ok {
@@ -582,6 +633,7 @@ func (w *Worker) process(item models.OutboundQueue, now time.Time) {
 		return
 	}
 
+	metrics.QueueErrors.Inc()
 	w.recordFailure(item, deliveryErr, time.Now())
 }
 
