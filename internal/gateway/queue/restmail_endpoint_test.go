@@ -182,9 +182,10 @@ func TestTryRESTMAILDeliversToDiscoveredEndpoint(t *testing.T) {
 	}
 }
 
-// TestTryRESTMAILVerifiedNotHosted: a verified 404 from discovery means the MX
-// does not take REST mail for the domain, so the worker records that and uses
-// SMTP without a REST attempt.
+// TestTryRESTMAILVerifiedNotHosted: a verified 404 from discovery means the
+// REST Mail server at the MX does not take mail for the domain. The server was
+// identified, so the message is not sent by SMTP instead (#291): the attempt
+// is a permanent refusal that bounces, and the cache keeps the MX as REST.
 func TestTryRESTMAILVerifiedNotHosted(t *testing.T) {
 	const domain = "restmail-291-gone.test"
 	gdb := restmailTestDB(t, domain)
@@ -198,14 +199,17 @@ func TestTryRESTMAILVerifiedNotHosted(t *testing.T) {
 
 	addr := fakeRESTMAILMX(t, "RESTMAIL")
 	upgraded, err := w.tryRESTMAILAt(addr, discovery.URL+"/.well-known/restmail?domain="+domain, "mx.test", item, nil, false)
-	if upgraded || err != nil {
-		t.Fatalf("upgraded=%v err=%v, want no REST attempt", upgraded, err)
+	if !upgraded || err == nil {
+		t.Fatalf("upgraded=%v err=%v, want a failed REST attempt the caller does not retry by SMTP", upgraded, err)
+	}
+	if !ClassifyFailure(err).Permanent() {
+		t.Errorf("not hosted classified %s, want a permanent refusal", ClassifyFailure(err))
 	}
 	var cap models.RESTMAILCapability
 	if err := gdb.Where("domain = ?", domain).First(&cap).Error; err != nil {
 		t.Fatalf("capability not cached: %v", err)
 	}
-	if cap.Supported || cap.MXHost != "mx.test" {
-		t.Errorf("cached %+v, want unsupported for mx.test", cap)
+	if !cap.Supported || cap.MXHost != "mx.test" {
+		t.Errorf("cached %+v, want supported for mx.test", cap)
 	}
 }

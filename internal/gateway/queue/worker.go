@@ -228,6 +228,9 @@ type Worker struct {
 	heartbeatDB    *gorm.DB
 	// smtpAddr maps an MX host to the address to dial; nil is its port 25. Tests only.
 	smtpAddr func(host string) string
+	// restmailDiscoveryURL maps an MX host and recipient domain to the RESTMAIL
+	// discovery URL; nil is restmailDiscoveryURL. Tests only.
+	restmailDiscoveryURL func(mxHost, dnsDomain string) string
 
 	// SSRF guard (#167). Outbound delivery dials whatever a recipient domain's
 	// MX resolves to, and POSTs to whatever RESTMAIL endpoint an MX advertises —
@@ -487,6 +490,7 @@ func (w *Worker) processOne(workerID int) {
 			bounceMax: w.bounceMax, bounceWindow: w.bounceWindow, suppressionTTL: w.suppressionTTL,
 			sendDeadline: w.sendDeadline, reclaim: w.reclaim, allowPrivateDest: w.allowPrivateDest,
 			smtpTimeouts: w.smtpTimeouts, heartbeatEvery: w.heartbeatEvery, smtpAddr: w.smtpAddr,
+			restmailDiscoveryURL: w.restmailDiscoveryURL,
 			// The heartbeat stays on the pool: conn is pinned to this delivery and
 			// holds the reset barrier, and a timed-out statement would close it.
 			heartbeatDB: w.db,
@@ -691,9 +695,10 @@ func (w *Worker) mxHosts(ctx context.Context, dnsDomain string) ([]*net.MX, erro
 	return []*net.MX{{Host: dnsDomain, Pref: 0}}, nil
 }
 
-// deliver attempts to send a message via SMTP to the destination MX.
-// It first checks if the primary MX supports the RESTMAIL protocol for
-// direct HTTPS delivery, falling back to standard SMTP if not.
+// deliver attempts to send a message to the destination MX. It first checks if
+// the primary MX supports the RESTMAIL protocol for direct HTTPS delivery and
+// uses standard SMTP only if it does not; once RESTMAIL is chosen the message
+// never goes by SMTP (#291).
 func (w *Worker) deliver(item models.OutboundQueue) error {
 	// Defense in depth against SMTP command / header injection (#166): never write
 	// a control-character-bearing address into a MAIL FROM / RCPT TO command or the
@@ -757,6 +762,12 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 	// enforcement is disabled, an enforce policy behaves like "testing".
 	enforcing := stsPolicy != nil && stsPolicy.Mode == mtasts.ModeEnforce && w.stsEnforce
 
+	// A message already pinned to RESTMAIL goes by RESTMAIL and nothing else
+	// (#291): see deliverPinnedRESTMAIL.
+	if item.Transport == models.TransportRESTMAIL {
+		return w.deliverPinnedRESTMAIL(item, firstHost, dnsDomain, stsPolicy, enforcing, daneSecure)
+	}
+
 	// RESTMAIL upgrade path, gated by the MTA-STS policy resolved above (#168). The
 	// capability cache entry is bound to the MX host that advertised it (OSI-20): a
 	// hit requires the stored row to be for THIS domain's current primary MX host
@@ -765,51 +776,49 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 	// time, never taken from a stored or advertised address (#291). Under an
 	// enforce-mode policy restmailUpgradePermitted must approve the MX host the
 	// discovery request goes to; otherwise we skip the upgrade and use the
-	// policy-guarded SMTP fallback.
+	// policy-guarded SMTP path.
 	// A message that requires TLS goes by SMTP alone, where REQUIRETLS is checked hop by
 	// hop (RFC 8689 §4.2.1); RESTMAIL's HTTPS cannot carry that promise on.
+	//
+	// Once the upgrade is taken the message is pinned to RESTMAIL (pinRESTMAIL)
+	// and a failure is a failure: it is deferred and retried by RESTMAIL when
+	// transient, bounced when permanent, and never sent by SMTP instead (#291).
+	// That server's SMTP gateway delivers through the same REST Mail API, so SMTP
+	// could not succeed where RESTMAIL failed, and a failure (a refused
+	// connection, say) is no proof that the peer stopped being a REST Mail server.
 	var cap models.RESTMAILCapability
 	found := !item.RequireTLS && !daneSecure && w.db.Where("domain = ?", item.Domain).First(&cap).Error == nil
 	cacheHit := found && capabilityApplies(cap, item.Domain, firstHost, time.Now())
 
 	if cacheHit {
 		if cap.Supported {
-			discoveryURL := restmailDiscoveryURL(firstHost, dnsDomain)
+			discoveryURL := w.restmailDiscoveryURLOf(firstHost, dnsDomain)
 			if restmailUpgradePermitted(discoveryURL, stsPolicy, enforcing) {
 				slog.Info("queue: using cached RESTMAIL capability", "domain", item.Domain, "mx", firstHost)
-				err := w.deliverRESTMAILDiscovered(discoveryURL, item)
-				if err == nil {
-					return nil
+				if err := w.pinRESTMAIL(item); err != nil {
+					return err
 				}
-				if errors.Is(err, errRESTMAILNotHosted) {
-					w.cacheCapability(item.Domain, firstHost, false)
-				} else {
-					slog.Warn("queue: cached RESTMAIL delivery failed, invalidating cache",
-						"domain", item.Domain, "error", err)
-					w.db.Where("domain = ?", item.Domain).Delete(&models.RESTMAILCapability{})
-				}
-				// Fall through to SMTP
-			} else {
-				// Enforce-mode policy does not name this MX host: refuse the
-				// upgrade and deliver over the policy-guarded SMTP path.
-				slog.Warn("queue: MTA-STS enforce — RESTMAIL discovery host not permitted by policy, using SMTP",
-					"domain", item.Domain, "url", discoveryURL)
+				return restmailFailure(firstHost, item, w.deliverRESTMAILDiscovered(discoveryURL, item))
 			}
+			// Enforce-mode policy does not name this MX host: refuse the
+			// upgrade and deliver over the policy-guarded SMTP path. This is
+			// the policy declining the upgrade before it is taken, not a
+			// fallback after a RESTMAIL failure.
+			slog.Warn("queue: MTA-STS enforce — RESTMAIL discovery host not permitted by policy, using SMTP",
+				"domain", item.Domain, "url", discoveryURL)
 		}
 		// cap.Supported == false: skip RESTMAIL, go straight to SMTP
 	} else if !item.RequireTLS && !daneSecure {
 		// No cache or expired — do EHLO probe (gated by the policy inside tryRESTMAIL).
-		upgraded, err := w.tryRESTMAIL(firstHost, dnsDomain, item, stsPolicy, enforcing)
-		if upgraded && err == nil {
-			return nil // RESTMAIL delivery succeeded
-		}
-		if upgraded && err != nil {
-			slog.Warn("queue: RESTMAIL delivery failed, falling back to SMTP",
-				"host", firstHost, "error", err)
+		// Once the probe has taken the upgrade, its outcome is final either way.
+		if upgraded, err := w.tryRESTMAIL(firstHost, dnsDomain, item, stsPolicy, enforcing); upgraded {
+			return err
 		}
 	}
 
-	// Fall back to SMTP delivery
+	// SMTP delivery, for a peer never identified as a REST Mail server (or one the
+	// gates above keep off RESTMAIL).
+	w.noteSMTP(item)
 	var lastErr, transientErr error
 	for _, mx := range mxRecords {
 		host := strings.TrimSuffix(mx.Host, ".")
@@ -1045,7 +1054,29 @@ func (w *Worker) deliverRESTMAILHTTPS(endpointURL string, item models.OutboundQu
 	// Cap the error body read: an unbounded read would let a hostile endpoint
 	// exhaust worker memory with a huge response (#169).
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxRESTMAILErrorBody))
-	return fmt.Errorf("RESTMAIL delivery got %d: %s", resp.StatusCode, string(body))
+	return restmailRefusal(resp.StatusCode, body)
+}
+
+// restmailRefusal reads a non-2xx answer to the RESTMAIL POST as a reply the
+// queue classifies like any other (#291): 408, 425, 429 and every 5xx (and an
+// unfollowed 3xx) are transient, so the message is deferred and retried by
+// RESTMAIL; any other 4xx is the receiving server refusing the message, so it
+// bounces with the server's own words in the DSN.
+func restmailRefusal(status int, body []byte) *SMTPError {
+	text := strings.TrimSpace(string(body))
+	if len(text) > 512 {
+		text = text[:512]
+	}
+	msg := fmt.Sprintf("RESTMAIL delivery got HTTP %d: %s", status, text)
+	switch {
+	case status == http.StatusTooManyRequests:
+		return &SMTPError{Code: 451, Enhanced: "4.7.0", Message: "rate limited: " + msg}
+	case status == http.StatusRequestTimeout || status == http.StatusTooEarly || status < 400 || status >= 500:
+		return &SMTPError{Code: 451, Enhanced: "4.3.0", Message: msg}
+	case status == http.StatusRequestEntityTooLarge:
+		return &SMTPError{Code: 552, Enhanced: "5.3.4", Message: msg}
+	}
+	return &SMTPError{Code: 550, Enhanced: "5.0.0", Message: msg}
 }
 
 // deliverRESTMAILDiscovered asks discoveryURL — the MX host's verified
@@ -1067,12 +1098,13 @@ func (w *Worker) deliverRESTMAILDiscovered(discoveryURL string, item models.Outb
 // via HTTPS POST instead of SMTP. dnsDomain is the recipient domain's IDNA
 // ASCII form.
 // Returns (true, nil) on successful RESTMAIL delivery,
-// (true, err) if RESTMAIL was detected but discovery or delivery failed,
-// (false, nil) if the host does not support RESTMAIL, its discovery endpoint
-// verifiably does not host the domain, or an enforce-mode policy does not name
-// the host (caller falls back to the SMTP path).
+// (true, err) if RESTMAIL was detected and taken but discovery or delivery
+// failed (the message is then pinned to RESTMAIL and the caller must not try
+// SMTP, #291), and (false, nil) if the probe failed, the host does not
+// advertise RESTMAIL, or an enforce-mode policy does not name the host (the
+// caller uses the SMTP path).
 func (w *Worker) tryRESTMAIL(host, dnsDomain string, item models.OutboundQueue, stsPolicy *mtasts.Policy, enforcing bool) (upgraded bool, err error) {
-	return w.tryRESTMAILAt(w.smtpAddrOf(host), restmailDiscoveryURL(host, dnsDomain), host, item, stsPolicy, enforcing)
+	return w.tryRESTMAILAt(w.smtpAddrOf(host), w.restmailDiscoveryURLOf(host, dnsDomain), host, item, stsPolicy, enforcing)
 }
 
 // tryRESTMAILAt is tryRESTMAIL with the probe address and discovery URL given
@@ -1103,15 +1135,88 @@ func (w *Worker) tryRESTMAILAt(addr, discoveryURL, host string, item models.Outb
 		return false, nil
 	}
 
-	err = w.deliverRESTMAILDiscovered(discoveryURL, item)
-	if errors.Is(err, errRESTMAILNotHosted) {
-		w.cacheCapability(item.Domain, host, false)
-		return false, nil
-	}
-	if err != nil {
+	if err := w.pinRESTMAIL(item); err != nil {
 		return true, err
 	}
-	return true, nil
+	return true, restmailFailure(host, item, w.deliverRESTMAILDiscovered(discoveryURL, item))
+}
+
+// restmailDiscoveryURLOf is restmailDiscoveryURL, or the worker's test seam.
+func (w *Worker) restmailDiscoveryURLOf(mxHost, dnsDomain string) string {
+	if w.restmailDiscoveryURL != nil {
+		return w.restmailDiscoveryURL(mxHost, dnsDomain)
+	}
+	return restmailDiscoveryURL(mxHost, dnsDomain)
+}
+
+// pinRESTMAIL records on the queue row, before the first RESTMAIL attempt, that
+// the message goes by RESTMAIL from now on (#291). A row that cannot be pinned
+// is not attempted: the attempt fails and is retried, so a delivery is never
+// made that a later retry could take back to SMTP.
+func (w *Worker) pinRESTMAIL(item models.OutboundQueue) error {
+	if w.db == nil || item.ID == 0 {
+		return nil
+	}
+	if err := w.db.Model(&models.OutboundQueue{}).Where("id = ?", item.ID).
+		Update("transport", models.TransportRESTMAIL).Error; err != nil {
+		return fmt.Errorf("pin message to RESTMAIL: %w", err)
+	}
+	return nil
+}
+
+// noteSMTP records that the message is going by SMTP, unless it is already
+// pinned to RESTMAIL. It is only a record: a later attempt may still upgrade it.
+func (w *Worker) noteSMTP(item models.OutboundQueue) {
+	if w.db == nil || item.ID == 0 || item.Transport != "" {
+		return
+	}
+	if err := w.db.Model(&models.OutboundQueue{}).Where("id = ? AND transport = ''", item.ID).
+		Update("transport", models.TransportSMTP).Error; err != nil {
+		slog.Debug("queue: recording the SMTP transport failed", "id", item.ID, "error", err)
+	}
+}
+
+// deliverPinnedRESTMAIL delivers a message pinned to RESTMAIL by an earlier
+// attempt (#291). It goes to the domain's current primary MX's verified
+// discovery endpoint and nowhere else: the capability cache and the EHLO probe
+// are not asked, because neither may take the message back to SMTP. A cache
+// entry that was invalidated, expired or now says "not supported", or a
+// cleartext EHLO that no longer advertises RESTMAIL, is exactly what a downgrade
+// attack would show; the verified HTTPS discovery answer decides instead, and
+// if it fails, so does the attempt (deferred while transient, bounced when
+// permanent). A gate that keeps RESTMAIL off the domain since it was pinned (an
+// enforce-mode MTA-STS policy no longer naming the MX host, or DANE now
+// covering the domain) is a transient failure too, never SMTP.
+func (w *Worker) deliverPinnedRESTMAIL(item models.OutboundQueue, firstHost, dnsDomain string, stsPolicy *mtasts.Policy, enforcing, daneSecure bool) error {
+	if daneSecure {
+		return fmt.Errorf("message pinned to RESTMAIL (#291): %s is now covered by DANE, which RESTMAIL cannot meet, and it is not sent by SMTP instead", item.Domain)
+	}
+	discoveryURL := w.restmailDiscoveryURLOf(firstHost, dnsDomain)
+	if !restmailUpgradePermitted(discoveryURL, stsPolicy, enforcing) {
+		return &mtasts.EnforceError{Domain: item.Domain, MXHost: firstHost,
+			Reason: "RESTMAIL discovery host not named by policy; the message is pinned to RESTMAIL and is not sent by SMTP (#291)"}
+	}
+	slog.Info("queue: message pinned to RESTMAIL", "id", item.ID, "domain", item.Domain, "mx", firstHost)
+	return restmailFailure(firstHost, item, w.deliverRESTMAILDiscovered(discoveryURL, item))
+}
+
+// restmailFailure is what a RESTMAIL attempt's error means for the message: nil
+// stays nil, and a failure is reported as one, never as a reason to try SMTP
+// (#291). A verified "not hosted" answer from discovery (errRESTMAILNotHosted)
+// is the REST Mail server at the MX refusing the domain, as its SMTP gateway
+// would refuse a relay: a permanent policy refusal that bounces. Anything else
+// keeps its own classification: deliverRESTMAILHTTPS reports the receiving
+// server's HTTP answer as a reply (restmailRefusal), and a discovery or network
+// failure is transient.
+func restmailFailure(host string, item models.OutboundQueue, err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, errRESTMAILNotHosted):
+		return &SMTPError{Code: 550, Enhanced: "5.7.1", Message: fmt.Sprintf(
+			"the REST Mail server %s does not accept mail for %s (RESTMAIL discovery answered not hosted)", host, item.Domain)}
+	}
+	return fmt.Errorf("RESTMAIL delivery via %s failed, not retried by SMTP: %w", host, err)
 }
 
 // probeRESTMAIL dials addr and runs the RESTMAIL capability probe against it:

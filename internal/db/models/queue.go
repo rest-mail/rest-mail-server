@@ -69,7 +69,22 @@ type OutboundQueue struct {
 	// TLS with a certificate verified for that MX, which offers REQUIRETLS, and never by
 	// RESTMAIL. When no MX meets that, it bounces (§4.2.1).
 	RequireTLS bool `gorm:"not null;default:false" json:"-"`
+
+	// Transport is how this message is delivered once the worker has chosen
+	// (#291): TransportRESTMAIL from the moment the recipient's MX is identified
+	// as a REST Mail server and the upgrade is taken, TransportSMTP while it goes
+	// by SMTP, empty before the first attempt chooses. TransportRESTMAIL is
+	// final: every later attempt goes by RESTMAIL whatever the capability cache
+	// or an EHLO probe says then, so the message can never be downgraded to SMTP.
+	// TransportSMTP is only a record; a later attempt may still upgrade it.
+	Transport string `gorm:"size:16;not null;default:''" json:"-"`
 }
+
+// Delivery transports an outbound queue row records (OutboundQueue.Transport).
+const (
+	TransportRESTMAIL = "restmail"
+	TransportSMTP     = "smtp"
+)
 
 func (OutboundQueue) TableName() string { return "outbound_queue" }
 
