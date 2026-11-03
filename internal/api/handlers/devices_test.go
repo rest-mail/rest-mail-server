@@ -27,6 +27,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/api/middleware"
 	"github.com/rest-mail/rest-mail-server/internal/audit"
 	"github.com/rest-mail/rest-mail-server/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/bootstrap"
 	rmdb "github.com/rest-mail/rest-mail-server/internal/db"
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/db/repositories"
@@ -131,6 +132,11 @@ func newPushEnv(t *testing.T) *pushEnv {
 	}
 	if err := rmdb.MigrateQuietNotifications(db); err != nil {
 		t.Fatalf("quiet notification outbox migrate failed: %v", err)
+	}
+	// Sign-in needs the built-in roles; seed them here instead of relying on an
+	// earlier test in the package having done it (#1385).
+	if err := bootstrap.EnsureRBAC(db); err != nil {
+		t.Fatalf("seed roles: %v", err)
 	}
 	tx := db.Begin()
 	t.Cleanup(func() { tx.Rollback() })
