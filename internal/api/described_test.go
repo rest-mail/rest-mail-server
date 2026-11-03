@@ -144,6 +144,8 @@ func TestDomainMailPolicyIsDescribed(t *testing.T) {
 		{"/api/v1/admin/domains/{id}/blocklist", "get", "listBlocklist", "domains:read", []string{"200", "404"}},
 		{"/api/v1/admin/domains/{id}/blocklist", "post", "addToBlocklist", "domains:write", []string{"201", "400", "404", "409"}},
 		{"/api/v1/admin/domains/{id}/blocklist/{eid}", "delete", "removeFromBlocklist", "domains:write", []string{"204", "404"}},
+		{"/api/v1/admin/sender-rules", "post", "addInstallationSenderRule", "domains:write", []string{"201", "400", "409"}},
+		{"/api/v1/admin/sender-rules/{id}", "delete", "removeInstallationSenderRule", "domains:write", []string{"204", "404"}},
 		{"/api/v1/admin/domains/{id}/suppressions", "get", "listSuppressions", "domains:read", []string{"200", "404"}},
 		{"/api/v1/admin/domains/{id}/suppressions/{sid}", "delete", "clearSuppression", "domains:write", []string{"204", "404"}},
 		{"/api/v1/admin/domains/{id}/mta-sts", "get", "getMtaStsPolicy", "domains:read", []string{"200", "404"}},
@@ -173,6 +175,19 @@ func TestDomainMailPolicyIsDescribed(t *testing.T) {
 				t.Errorf("describes %d responses, want %v", len(op.Responses), statuses)
 			}
 		})
+	}
+	// The installation's sender rules list takes no input, so it has no 422.
+	list := paths["/api/v1/admin/sender-rules"]["get"]
+	if list.OperationID != "listInstallationSenderRules" {
+		t.Errorf("GET /api/v1/admin/sender-rules operationId = %q", list.OperationID)
+	}
+	for _, status := range []string{"200", "401", "403", "413", "429", "500", "503"} {
+		if _, ok := list.Responses[status]; !ok {
+			t.Errorf("listInstallationSenderRules: missing response %s", status)
+		}
+	}
+	if security, _ := json.Marshal(list.Security); !strings.Contains(string(security), `"CookieAuth":["domains:read"]`) {
+		t.Errorf("listInstallationSenderRules security = %s, want domains:read", security)
 	}
 	// Check the generated response types, in addition to the runtime credential round trip.
 	doc := generatedDocument(t)

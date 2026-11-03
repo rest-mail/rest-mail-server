@@ -97,6 +97,22 @@ func (h *SenderRuleHandler) Register(rs endpoint.Routes, checks DomainPolicyRout
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/admin/domains/{id}/blocklist/{eid}",
 		OperationID: "removeFromBlocklist", Summary: "Remove a blocklist entry", Tags: []string{"Admin: Domain mail policy"}, Status: http.StatusNoContent, Errors: []int{http.StatusNotFound},
 		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsWrite)}}, h.removeFromBlocklist)
+	// The installation's sender rules, which every domain inherits (#1576), need the
+	// capability at "*": a domain administrator, whose grants name its domains, is
+	// refused, as on every other installation-wide mail policy route.
+	const installationRules = "Every domain inherits these rules. A block, whether the installation's or a domain's, wins over an allow at either scope: a domain cannot allow a sender the installation blocks, and a domain can add blocks of its own."
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/sender-rules",
+		OperationID: "listInstallationSenderRules", Summary: "List the installation's sender rules", Tags: []string{"Admin: Domain mail policy"},
+		Description: installationRules + " Requires domains:read at *.",
+		Middleware:  []endpoint.Middleware{checks.At(middleware.CapDomainsRead)}}, h.listInstallationSenderRules)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/sender-rules",
+		OperationID: "addInstallationSenderRule", Summary: "Add an installation sender rule", Tags: []string{"Admin: Domain mail policy"}, Status: http.StatusCreated, Errors: []int{http.StatusConflict},
+		Description: installationRules + " Requires domains:write at *.",
+		Middleware:  []endpoint.Middleware{checks.At(middleware.CapDomainsWrite)}}, h.addInstallationSenderRule)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/admin/sender-rules/{id}",
+		OperationID: "removeInstallationSenderRule", Summary: "Remove an installation sender rule", Tags: []string{"Admin: Domain mail policy"}, Status: http.StatusNoContent, Errors: []int{http.StatusNotFound},
+		Description: "Requires domains:write at *.",
+		Middleware:  []endpoint.Middleware{checks.At(middleware.CapDomainsWrite)}}, h.removeInstallationSenderRule)
 }
 
 // Register mounts the typed domain mail policy routes.

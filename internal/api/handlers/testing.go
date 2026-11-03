@@ -445,7 +445,7 @@ func clearTestData(tx *gorm.DB) error {
 		"DELETE FROM aliases", "DELETE FROM message_traces",
 		"DELETE FROM custom_filters", "DELETE FROM bans",
 		"DELETE FROM restmail_capabilities", "DELETE FROM certificates",
-		"DELETE FROM domain_sender_rules", "DELETE FROM greylist_entries",
+		"DELETE FROM domain_sender_rules", "DELETE FROM installation_sender_rules", "DELETE FROM greylist_entries",
 		"DELETE FROM mailboxes WHERE id NOT IN " + testDataAdmins,
 		"DELETE FROM pipelines WHERE domain_id NOT IN (SELECT domain_id FROM mailboxes)",
 		"DELETE FROM domains WHERE id NOT IN (SELECT domain_id FROM mailboxes)",

@@ -280,7 +280,7 @@ Each filter returns one of: `continue`, `reject`, `quarantine`, `discard`, `defe
 | `greylist` | Check | DB-backed |
 | `recipient_check` | Check | Verify recipient exists + quota |
 | `sender_verify` | Check | Sender domain callback |
-| `domain_allowlist` | Check | Domain-level allow/blocklist |
+| `domain_allowlist` | Check | Installation-wide and domain-level allow/blocklists |
 | `contact_whitelist` | Check | Per-user allowlist |
 | `extract_attachments` | Action | Extract to filesystem, create `attachments` row, write `storage_ref` back to message |
 | `vacation` | Action | DB-backed; reads `vacation_configs`, queues reply via `outbound_queue` with RFC 3834 headers: `Auto-Submitted: auto-replied`, `Precedence: bulk`, `In-Reply-To`, `References`, `X-Auto-Response-Suppress: All` |
@@ -303,6 +303,9 @@ Pipeline context carries `*gorm.DB` via `context.WithValue()`; filters access vi
 Adapter interface: `pipeline.ExternalAdapter` with `Name()`, `Scan()`, `Healthy()`. Write a custom adapter by implementing the interface and registering it.
 
 Recommended order (inbound): `size_check → {spf,dkim,arc,dmarc}_check → domain_allowlist → rspamd → clamav → greylist → recipient_check → extract_attachments → sieve → vacation`.
+
+#### Sender rules: installation and domain
+`domain_allowlist` checks two sets of sender rules, each an address (`spam@evil.example`) or an `@domain` pattern: the installation's (`/api/v1/admin/sender-rules`, needing `domains:read` / `domains:write` at `*`, so a domain administrator cannot read or change them), which every domain inherits, and each recipient domain's (`/api/v1/admin/domains/{id}/allowlist` and `/blocklist`). A block wins over an allow at either scope: the installation's blocks and every recipient domain's blocks are checked before any allow, so a domain cannot allow a sender the installation blocks, a domain can still add blocks of its own, and one recipient's allow does not carry a message past another recipient's block. An allow (domain first, then installation) lets the message through and skips spam scanning only for an authenticated, aligned sender (#177). Changes are audited as every admin change is (`admin.change`). The admin UI edits them under Settings → Installation sender rules (#1576).
 
 ### 4.3 Mail gateways
 

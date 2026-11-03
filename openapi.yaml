@@ -11057,6 +11057,146 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  # Sender rules for the whole installation, which every domain inherits (#1576).
+  # A block at either scope wins over an allow at either scope.
+  /api/v1/admin/sender-rules:
+    get:
+      operationId: listInstallationSenderRules
+      tags: ["Admin: Sender Rules"]
+      security:
+        - CookieAuth: [domains:read]
+        - BearerAuth: [domains:read]
+        - APIKeyAuth: [domains:read]
+      summary: List the installation's sender rules
+      description: >-
+        Every domain inherits these rules. A block, whether the installation's
+        or a domain's, wins over an allow at either scope: a domain cannot allow
+        a sender the installation blocks, and a domain can add blocks of its own.
+        Requires domains:read at *.
+      responses:
+        "200":
+          description: The installation's sender rules, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/InstallationSenderRule"
+        "429":
+          description: "rate_limited: refused API keys, throttled at login's rate"
+          headers:
+            Retry-After:
+              description: Seconds until a request may be made again
+              required: true
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: addInstallationSenderRule
+      tags: ["Admin: Sender Rules"]
+      security:
+        - CookieAuth: [domains:write]
+        - BearerAuth: [domains:write]
+        - APIKeyAuth: [domains:write]
+      summary: Add an installation sender rule
+      description: >-
+        Every domain inherits these rules. A block, whether the installation's
+        or a domain's, wins over an allow at either scope: a domain cannot allow
+        a sender the installation blocks, and a domain can add blocks of its own.
+        Requires domains:write at *.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInstallationSenderRuleRequest"
+      responses:
+        "201":
+          description: Rule added
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/InstallationSenderRule"
+          links:
+            removeInstallationSenderRule:
+              operationId: removeInstallationSenderRule
+              parameters:
+                id: '$response.body#/data/id'
+        "400":
+          description: "bad_request: malformed JSON or a body that is not JSON"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+        "429":
+          description: "rate_limited: refused API keys, throttled at login's rate"
+          headers:
+            Retry-After:
+              description: Seconds until a request may be made again
+              required: true
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/admin/sender-rules/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+        description: Installation sender rule ID
+        example: 1
+    delete:
+      operationId: removeInstallationSenderRule
+      tags: ["Admin: Sender Rules"]
+      security:
+        - CookieAuth: [domains:write]
+        - BearerAuth: [domains:write]
+        - APIKeyAuth: [domains:write]
+      summary: Remove an installation sender rule
+      description: Requires domains:write at *.
+      responses:
+        "204":
+          description: Rule removed
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          description: "rate_limited: refused API keys, throttled at login's rate"
+          headers:
+            Retry-After:
+              description: Seconds until a request may be made again
+              required: true
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   # ═══════════════════════════════════════════════════════════════
   # Admin: DKIM
   # ═══════════════════════════════════════════════════════════════
@@ -18686,6 +18826,40 @@ components:
           type: string
           minLength: 1
           description: "Email address (spam@evil.com) or domain pattern (@evil.com)"
+        reason:
+          type: string
+
+    InstallationSenderRule:
+      type: object
+      required: [id, pattern, list_type, created_at]
+      properties:
+        id:
+          type: integer
+        pattern:
+          type: string
+          description: Email address or @domain pattern
+        list_type:
+          type: string
+          enum: [allow, block]
+        reason:
+          type: string
+        created_by:
+          type: [integer, "null"]
+        created_at:
+          type: string
+          format: date-time
+
+    CreateInstallationSenderRuleRequest:
+      type: object
+      required: [pattern, list_type]
+      properties:
+        pattern:
+          type: string
+          minLength: 1
+          description: "Email address (spam@evil.com) or domain pattern (@evil.com)"
+        list_type:
+          type: string
+          enum: [allow, block]
         reason:
           type: string
 

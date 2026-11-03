@@ -128,6 +128,22 @@ type DomainSenderRule struct {
 
 func (DomainSenderRule) TableName() string { return "domain_sender_rules" }
 
+// InstallationSenderRule is an allow/block list entry for the whole installation:
+// every domain inherits it (#1576). It has the same shape as DomainSenderRule
+// without a domain. In the domain_allowlist filter a block, at either scope,
+// wins over an allow at either scope, so a domain's allow cannot lift an
+// installation block and a domain can still add blocks of its own.
+type InstallationSenderRule struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	Pattern   string    `gorm:"size:255;not null" json:"pattern"`  // "spam@evil.com" or "@evil.com"
+	ListType  string    `gorm:"size:10;not null" json:"list_type"` // "allow" or "block"
+	Reason    string    `gorm:"type:text" json:"reason,omitempty"`
+	CreatedBy *uint     `json:"created_by,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (InstallationSenderRule) TableName() string { return "installation_sender_rules" }
+
 // DefaultGreylistTTLDays is the greylist entry lifetime used when a greylist
 // filter's config omits ttl_days. It is both the auto-whitelist horizon (a
 // passed triple is honored for at most this long, then reconsidered) and the
