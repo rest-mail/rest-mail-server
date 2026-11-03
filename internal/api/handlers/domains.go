@@ -71,8 +71,15 @@ type DomainHandler struct {
 	masterKey string
 
 	// Capture the configured resolver and carry each HTTP request context into DNS.
-	lookupMX  func(context.Context, string) ([]*net.MX, error)
-	lookupTXT func(context.Context, string) ([]string, error)
+	lookupMX    func(context.Context, string) ([]*net.MX, error)
+	lookupTXT   func(context.Context, string) ([]string, error)
+	lookupSRV   func(context.Context, string) ([]*net.SRV, error)
+	lookupIPv4  func(context.Context, string) ([]net.IP, error)
+	lookupAddr  func(context.Context, string) ([]string, error)
+	lookupCNAME func(context.Context, string) (string, error)
+
+	// What the DNS check needs to work out the records a domain must publish.
+	publish domainPublishing
 }
 
 // SetMasterKey supplies the key stored certificate keys are encrypted with, so
@@ -114,7 +121,21 @@ func (h *DomainHandler) servableCertificate(ctx context.Context, domain models.D
 }
 
 func NewDomainHandler(db *gorm.DB, dnsProvider dns.Provider, caches ...*grants.Cache) *DomainHandler {
-	h := &DomainHandler{db: db, dns: dnsProvider, lookupMX: net.DefaultResolver.LookupMX, lookupTXT: net.DefaultResolver.LookupTXT}
+	resolver := net.DefaultResolver
+	h := &DomainHandler{
+		db: db, dns: dnsProvider,
+		lookupMX:  resolver.LookupMX,
+		lookupTXT: resolver.LookupTXT,
+		lookupSRV: func(ctx context.Context, name string) ([]*net.SRV, error) {
+			_, records, err := resolver.LookupSRV(ctx, "", "", name)
+			return records, err
+		},
+		lookupIPv4: func(ctx context.Context, host string) ([]net.IP, error) {
+			return resolver.LookupIP(ctx, "ip4", host)
+		},
+		lookupAddr:  resolver.LookupAddr,
+		lookupCNAME: resolver.LookupCNAME,
+	}
 	if len(caches) > 0 {
 		h.cache = caches[0]
 	}
@@ -174,7 +195,7 @@ func (h *DomainHandler) Register(rs endpoint.Routes, checks DomainRouteChecks) {
 		Status:      http.StatusNoContent, Errors: []int{http.StatusNotFound, http.StatusConflict},
 		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsDelete)}}, h.delete)
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/domains/{id}/dns",
-		OperationID: "domainDNSCheck", Summary: "Live DNS record check (MX, SPF, DMARC, DKIM, MTA-STS, TLS-RPT) for a domain",
+		OperationID: "domainDNSCheck", Summary: "The DNS records a domain must publish, compared with a live lookup of each",
 		Tags: tags, Errors: missing,
 		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsRead)}}, h.dnsCheck)
 }
@@ -377,7 +398,7 @@ func (h *DomainHandler) delete(r *http.Request, in domainPath) (endpoint.Empty, 
 	return endpoint.Empty{}, nil
 }
 
-// DomainDNSCheck is what a live check of a domain's DNS records found.
+// DomainDNSCheck is what a domain must publish in DNS, and what a live check found (#1703).
 type DomainDNSCheck struct {
 	Domain  string           `json:"domain"`
 	Records []DNSRecordCheck `json:"records"`
@@ -385,26 +406,30 @@ type DomainDNSCheck struct {
 	Summary string `json:"summary"`
 }
 
-// DNSRecordCheck is one record the check looked for.
+// DNSRecordCheck is one record the domain must publish, and what the check found there.
 type DNSRecordCheck struct {
-	// Type is DOMAIN, MX, SPF, DMARC, DKIM, MTA-STS or TLS-RPT.
+	// Type is DOMAIN, MX, SPF, DMARC, DKIM, MTA-STS, CNAME (MTA-STS's policy host), TLS-RPT,
+	// SRV, A or PTR.
 	Type string `json:"type"`
 	Name string `json:"name"`
-	// Status is ok, missing or error.
-	Status  string `json:"status" enums:"ok,missing,error"`
-	Value   string `json:"value,omitempty"`
-	Message string `json:"message,omitempty"`
+	// Status is ok when what is published matches expected, missing when nothing is, different
+	// when it does not match, and error when it could not be compared.
+	Status string `json:"status" enums:"ok,missing,different,error"`
+	// Value is what the lookup found.
+	Value string `json:"value,omitempty"`
+	// Expected is the value to publish: the list `restmail-api dns` prints. It is empty when
+	// the domain has nothing to publish here, or the server cannot say what it should be.
+	Expected string `json:"expected,omitempty"`
+	Message  string `json:"message,omitempty"`
 }
 
-// dnsCheck verifies DNS records for a domain (MX, SPF, DKIM, DMARC, MTA-STS, TLS-RPT).
+// dnsCheck lists the records a domain must publish, with their values, and compares each with
+// what a live lookup finds.
 func (h *DomainHandler) dnsCheck(r *http.Request, in domainPath) (DomainDNSCheck, error) {
 	domain, err := h.find(r.Context(), in.ID)
 	if err != nil {
 		return DomainDNSCheck{}, err
 	}
-
-	type recordCheck = DNSRecordCheck
-	var checks []recordCheck
 
 	// DNS holds the A-label (punycode) form of an internationalized name: look
 	// up, and report the owner names to publish, in that form. A stored name
@@ -413,7 +438,7 @@ func (h *DomainHandler) dnsCheck(r *http.Request, in domainPath) (DomainDNSCheck
 	if err != nil {
 		return DomainDNSCheck{
 			Domain: domain.Name,
-			Records: []recordCheck{{
+			Records: []DNSRecordCheck{{
 				Type: "DOMAIN", Name: domain.Name, Status: "error",
 				Message: "The domain name is not a valid DNS name, so its records cannot be checked",
 			}},
@@ -421,155 +446,15 @@ func (h *DomainHandler) dnsCheck(r *http.Request, in domainPath) (DomainDNSCheck
 		}, nil
 	}
 
-	// MX records
-	mxs, err := h.lookupMX(r.Context(), name)
+	checks, err := h.checkPublishedRecords(r.Context(), domain, name)
 	if err != nil {
-		checks = append(checks, recordCheck{
-			Type: "MX", Name: name, Status: "missing",
-			Message: fmt.Sprintf("MX lookup failed: %v", err),
-		})
-	} else if len(mxs) == 0 {
-		checks = append(checks, recordCheck{
-			Type: "MX", Name: name, Status: "missing",
-			Message: "No MX records found",
-		})
-	} else {
-		hosts := make([]string, len(mxs))
-		for i, mx := range mxs {
-			hosts[i] = fmt.Sprintf("%s (pri %d)", mx.Host, mx.Pref)
-		}
-		checks = append(checks, recordCheck{
-			Type: "MX", Name: name, Status: "ok",
-			Value: strings.Join(hosts, ", "),
-		})
-	}
-
-	// SPF (TXT record)
-	spfFound := false
-	txts, err := h.lookupTXT(r.Context(), name)
-	if err == nil {
-		for _, txt := range txts {
-			if strings.HasPrefix(txt, "v=spf1") {
-				spfFound = true
-				checks = append(checks, recordCheck{
-					Type: "SPF", Name: name, Status: "ok",
-					Value: txt,
-				})
-				break
-			}
-		}
-	}
-	if !spfFound {
-		checks = append(checks, recordCheck{
-			Type: "SPF", Name: name, Status: "missing",
-			Message: "No SPF record (v=spf1...) found in TXT records",
-		})
-	}
-
-	// DMARC
-	dmarcFound := false
-	dmarcTxts, err := h.lookupTXT(r.Context(), "_dmarc."+name)
-	if err == nil {
-		for _, txt := range dmarcTxts {
-			if strings.HasPrefix(txt, "v=DMARC1") {
-				dmarcFound = true
-				checks = append(checks, recordCheck{
-					Type: "DMARC", Name: "_dmarc." + name, Status: "ok",
-					Value: txt,
-				})
-				break
-			}
-		}
-	}
-	if !dmarcFound {
-		checks = append(checks, recordCheck{
-			Type: "DMARC", Name: "_dmarc." + name, Status: "missing",
-			Message: "No DMARC record found",
-		})
-	}
-
-	// DKIM, under the selector the domain signs with (domains.dkim_selector).
-	if domain.DKIMSelector == "" || domain.DKIMPrivateKey == "" {
-		checks = append(checks, recordCheck{
-			Type: "DKIM", Name: name, Status: "missing",
-			Message: "The domain has no DKIM key, so its mail is not signed",
-		})
-	} else {
-		dkimName := domain.DKIMSelector + "._domainkey." + name
-		dkimTxts, err := h.lookupTXT(r.Context(), dkimName)
-		if err != nil || len(dkimTxts) == 0 {
-			checks = append(checks, recordCheck{
-				Type: "DKIM", Name: dkimName, Status: "missing",
-				Message: fmt.Sprintf("No DKIM record found for selector %q", domain.DKIMSelector),
-			})
-		} else {
-			checks = append(checks, recordCheck{
-				Type: "DKIM", Name: dkimName, Status: "ok",
-				Value: dkimTxts[0],
-			})
-		}
-	}
-
-	// MTA-STS
-	mtaSTSName := "_mta-sts." + name
-	mtaSTSTxts, err := h.lookupTXT(r.Context(), mtaSTSName)
-	if err != nil || len(mtaSTSTxts) == 0 {
-		checks = append(checks, recordCheck{
-			Type: "MTA-STS", Name: mtaSTSName, Status: "missing",
-			Message: "No MTA-STS TXT record found",
-		})
-	} else {
-		found := false
-		for _, txt := range mtaSTSTxts {
-			if strings.HasPrefix(txt, "v=STSv1") {
-				found = true
-				checks = append(checks, recordCheck{
-					Type: "MTA-STS", Name: mtaSTSName, Status: "ok",
-					Value: txt,
-				})
-				break
-			}
-		}
-		if !found {
-			checks = append(checks, recordCheck{
-				Type: "MTA-STS", Name: mtaSTSName, Status: "missing",
-				Message: "TXT records exist but none start with v=STSv1",
-			})
-		}
-	}
-
-	// TLS-RPT
-	tlsRPTName := "_smtp._tls." + name
-	tlsRPTTxts, err := h.lookupTXT(r.Context(), tlsRPTName)
-	if err != nil || len(tlsRPTTxts) == 0 {
-		checks = append(checks, recordCheck{
-			Type: "TLS-RPT", Name: tlsRPTName, Status: "missing",
-			Message: "No TLS-RPT TXT record found",
-		})
-	} else {
-		found := false
-		for _, txt := range tlsRPTTxts {
-			if strings.HasPrefix(txt, "v=TLSRPTv1") {
-				found = true
-				checks = append(checks, recordCheck{
-					Type: "TLS-RPT", Name: tlsRPTName, Status: "ok",
-					Value: txt,
-				})
-				break
-			}
-		}
-		if !found {
-			checks = append(checks, recordCheck{
-				Type: "TLS-RPT", Name: tlsRPTName, Status: "missing",
-				Message: "TXT records exist but none start with v=TLSRPTv1",
-			})
-		}
+		return DomainDNSCheck{}, err
 	}
 
 	// Count results
 	okCount := 0
 	for _, c := range checks {
-		if c.Status == "ok" {
+		if c.Status == statusOK {
 			okCount++
 		}
 	}

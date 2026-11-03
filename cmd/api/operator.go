@@ -20,6 +20,7 @@ import (
 	"github.com/rest-mail/rest-mail-server/internal/db/models"
 	"github.com/rest-mail/rest-mail-server/internal/dkimrotate"
 	"github.com/rest-mail/rest-mail-server/internal/dns"
+	"github.com/rest-mail/rest-mail-server/internal/domainrecords"
 	"github.com/rest-mail/rest-mail-server/internal/mail"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
@@ -357,63 +358,15 @@ func dnsRecords(args []string, stdout, stderr io.Writer) int {
 	return exitOK
 }
 
-type domainRecords struct {
-	Domain  string          `json:"domain"`
-	Records []dns.DNSRecord `json:"records"`
-	// Problem says why a record is missing or publication needs care: no DKIM key,
-	// unreadable material, an invalid DNS name, or unverified policy-host HTTPS.
-	Problem string `json:"problem,omitempty"`
-}
+// domainRecords is what one domain must publish, as the API's DNS check lists it too.
+type domainRecords = domainrecords.List
 
-// recordsForDomain lists one domain's records under its A-label name, so an
-// internationalized domain's records can be pasted into a zone and checked
-// with dig. The heading keeps the name as the domain was added.
 func recordsForDomain(d models.Domain, mailHost, ip, masterKey string, ports dns.ClientPorts) domainRecords {
-	entry := domainRecords{Domain: d.Name, Records: []dns.DNSRecord{}}
-	name, err := mail.DomainASCII(d.Name)
-	if err != nil {
-		entry.Problem = "not a valid domain name: it cannot be published in DNS"
-		return entry
-	}
-	var dkimValue string
-	switch {
-	case d.DKIMPrivateKey == "" || d.DKIMSelector == "":
-		entry.Problem = "no DKIM key: mail from this domain goes out unsigned"
-	default:
-		value, err := dkimRecordValue(d.DKIMPrivateKey, masterKey)
-		if err != nil {
-			entry.Problem = "DKIM key unreadable: " + err.Error()
-		}
-		dkimValue = value
-	}
-	entry.Records = dns.MailRecords(name, mailHost, ip, d.DKIMSelector, dkimValue, d.DMARCPolicy, ports)
-	return entry
+	return domainrecords.ForDomain(d, mailHost, ip, masterKey, ports)
 }
 
-// addMTASTSRecord adds the policy-derived TXT and policy-host CNAME for an active policy
-// (#727). It cannot verify ingress or certificate readiness, so publication carries a note.
-// A policy with an invalid mx host gets neither record, and the problem says why.
 func addMTASTSRecord(entry *domainRecords, d models.Domain, policy models.MTASTSPolicy, mailHost string) {
-	name, err := mail.DomainASCII(d.Name)
-	if err != nil {
-		return // the entry already says the name cannot be published
-	}
-	id, err := policy.RecordID()
-	if err != nil {
-		problem := "MTA-STS policy cannot be served (" + err.Error() + "): its record is left out"
-		if entry.Problem != "" {
-			problem = entry.Problem + "; " + problem
-		}
-		entry.Problem = problem
-		return
-	}
-	entry.Records = append(entry.Records, dns.MTASTSRecord(name, id), dns.DNSRecord{
-		Type: "CNAME", Name: "mta-sts." + name, Value: mailHost, TTL: 3600,
-	})
-	if entry.Problem != "" {
-		entry.Problem += "; "
-	}
-	entry.Problem += "MTA-STS policy host mta-sts." + name + ": HTTPS route and certificate are unverified; do not publish _mta-sts until both are ready"
+	domainrecords.AddMTASTS(entry, d, policy, mailHost)
 }
 
 // clientPorts are the client listeners the gateways bind, from the same
@@ -426,25 +379,8 @@ func dkimRecordValue(stored, masterKey string) (string, error) {
 	return dkimrotate.PublicRecord(stored, masterKey)
 }
 
-// rotationRecords are the records a key rotation needs beside the signing key's (#728): the
-// staged key's, to publish before signing moves to it, and the previous key's, kept until it
-// retires so mail it signed before the switch still verifies. A key this server cannot read
-// is left out: its rotation stops until it is reconciled.
 func rotationRecords(d models.Domain, keys []models.DKIMRotationKey, masterKey string) []dns.DNSRecord {
-	name, err := mail.DomainASCII(d.Name)
-	if err != nil {
-		return nil
-	}
-	var records []dns.DNSRecord
-	for _, key := range keys {
-		value, err := dkimrotate.RotationRecord(key, masterKey)
-		if err != nil {
-			continue
-		}
-		records = append(records, dns.DNSRecord{Type: "TXT", Name: key.Selector + "._domainkey." + name,
-			Value: value, TTL: int(key.TTLSeconds)})
-	}
-	return records
+	return domainrecords.Rotation(d, keys, masterKey)
 }
 
 func fail(stderr io.Writer, status int, code, message string) int {

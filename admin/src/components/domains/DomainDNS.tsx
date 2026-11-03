@@ -11,6 +11,25 @@ interface DomainDNSProps {
   accessToken: string;
 }
 
+function RecordValue({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="mt-2">
+      <p className="text-xs mb-1" style={{ color: "var(--gray-secondary)" }}>
+        {label}
+      </p>
+      <div
+        className="p-3 rounded text-sm font-mono break-all"
+        style={{
+          backgroundColor: "var(--bg-surface)",
+          color: "var(--gray-secondary)",
+        }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
 export function DomainDNS({ domainId, accessToken }: DomainDNSProps) {
   const [dnsData, setDnsData] = useState<DNSCheckResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -51,7 +70,7 @@ export function DomainDNS({ domainId, accessToken }: DomainDNSProps) {
           style={{ color: "var(--green-success)" }}
         />
       );
-    } else if (status === "error") {
+    } else if (status === "error" || status === "different") {
       return (
         <XCircle className="w-5 h-5" style={{ color: "var(--red-primary)" }} />
       );
@@ -76,6 +95,18 @@ export function DomainDNS({ domainId, accessToken }: DomainDNSProps) {
           }}
         >
           Verified
+        </span>
+      );
+    } else if (status === "different") {
+      return (
+        <span
+          className="px-2 py-1 text-xs rounded"
+          style={{
+            backgroundColor: "rgba(228, 35, 19, 0.1)",
+            color: "var(--red-primary)",
+          }}
+        >
+          Different
         </span>
       );
     } else if (status === "error") {
@@ -185,6 +216,13 @@ export function DomainDNS({ domainId, accessToken }: DomainDNSProps) {
           >
             DNS Configuration
           </h3>
+          <p
+            style={{ color: "var(--gray-secondary)" }}
+            className="text-sm mt-1"
+          >
+            Publish these records at your DNS provider. Verified means the
+            published value matches the one shown here.
+          </p>
           {lastChecked && (
             <p
               style={{ color: "var(--gray-secondary)" }}
@@ -243,17 +281,14 @@ export function DomainDNS({ domainId, accessToken }: DomainDNSProps) {
                 {getStatusBadge(record.status)}
               </div>
 
-              {record.value && (
-                <div
-                  className="p-3 rounded text-sm font-mono break-all"
-                  style={{
-                    backgroundColor: "var(--bg-surface)",
-                    color: "var(--gray-secondary)",
-                  }}
-                >
-                  {record.value}
-                </div>
+              {record.expected && (
+                <RecordValue label="Publish this value" value={record.expected} />
               )}
+
+              {record.value &&
+                (!record.expected || record.status !== "ok") && (
+                  <RecordValue label="Found" value={record.value} />
+                )}
 
               {record.message && (
                 <p
