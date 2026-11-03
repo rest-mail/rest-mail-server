@@ -57,7 +57,17 @@ func (s *Session) handleSelect(tag, args string, readOnly bool) {
 	// A well-formed SELECT/EXAMINE begins a new selection (RFC 3501 §6.3.1/§6.3.2):
 	// drop any prior selection now so that a failure below leaves no mailbox
 	// selected.
+	hadSelection := s.selected != nil
 	s.deselect()
+	// "When deselecting a selected mailbox, the server MUST return an untagged
+	// OK response with the "[CLOSED]" response code when the currently selected
+	// mailbox is closed" (RFC 9051 §6.3.2), before any response about the new
+	// mailbox: CLOSED "serves as a boundary" between the two (RFC 9051 §7.1).
+	// It is sent even when the new selection then fails, because the old one is
+	// closed all the same. A rev1 session is not sent it; see closedCode.
+	if hadSelection && s.closedCode() {
+		s.send("* OK [CLOSED] Previous mailbox is now closed")
+	}
 
 	folder, ok = s.folderName(folder)
 	if !ok {
@@ -175,9 +185,21 @@ func (s *Session) handleStatus(tag, args string) {
 	s.tagged(tag, "OK", "STATUS completed")
 }
 
+// closedCode reports whether this session is sent the CLOSED response code.
+// RFC 3501 has no CLOSED, and asks that a response code outside the protocol
+// "SHOULD be prefixed with an "X" until they are added to a revision of this
+// protocol" (§7.1). For an IMAP4rev1 client it comes from RFC 7162 §3.2.11,
+// which ties it to the server that "advertises "QRESYNC" or "CONDSTORE""; this
+// engine advertises neither. So only an IMAP4rev2 session gets it, and no
+// command turns rev2 on yet: ENABLE IMAP4rev2 (RFC 9051 Appendix A) is
+// rest-mail/rest-mail-server#718.
+func (s *Session) closedCode() bool {
+	return s.imap4rev2
+}
+
 // statusItems are the STATUS data items (RFC 3501 §6.3.10), with RFC 8438's
-// SIZE.
-var statusItems = map[string]bool{"MESSAGES": true, "RECENT": true, "UNSEEN": true, "UIDNEXT": true, "UIDVALIDITY": true, "SIZE": true}
+// SIZE and RFC 9051's DELETED.
+var statusItems = map[string]bool{"MESSAGES": true, "RECENT": true, "UNSEEN": true, "UIDNEXT": true, "UIDVALIDITY": true, "SIZE": true, "DELETED": true}
 
 // statusData is the inside of a STATUS response's parentheses for folder: the
 // requested items, in the order asked, read fresh from the store so neither
@@ -189,13 +211,16 @@ func (s *Session) statusData(folder string, items []string) (string, error) {
 	}
 
 	total := len(messages)
-	var unseen int
+	var unseen, deleted int
 	var maxUID uint32
 	var size int64
 	sizeValid := true
 	for _, m := range messages {
 		if !m.Seen {
 			unseen++
+		}
+		if m.Deleted {
+			deleted++
 		}
 		if m.UID > maxUID {
 			maxUID = m.UID
@@ -233,6 +258,11 @@ func (s *Session) statusData(folder string, items []string) (string, error) {
 			// The mailbox's real UIDVALIDITY when the backend supports UIDPLUS,
 			// else the legacy constant 1 — matching SELECT/EXAMINE.
 			fmt.Fprintf(&b, "UIDVALIDITY %d", s.resolveUIDValidity(folder))
+		case "DELETED":
+			// "The number of messages that have the \Deleted flag set" (RFC
+			// 9051 §6.3.11). STORE writes \Deleted through to the backend, so
+			// the stored flags are the count, selected mailbox or not.
+			fmt.Fprintf(&b, "DELETED %d", deleted)
 		case "SIZE":
 			if !sizeValid {
 				return "", fmt.Errorf("invalid mailbox message sizes")

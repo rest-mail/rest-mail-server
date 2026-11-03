@@ -256,8 +256,18 @@ func newIMAPHarness(t *testing.T, mock *mockBackend) *imapHarness {
 // optional UIDPLUS/Mover interfaces). user/pass are the credentials login uses.
 func newIMAPHarnessWith(t *testing.T, backend imap.Backend, user, pass string) *imapHarness {
 	t.Helper()
+	return newIMAPHarnessSession(t, backend, user, pass, nil)
+}
+
+// newIMAPHarnessSession is newIMAPHarnessWith with configure applied to the
+// Session before it serves, for session state no command sets yet.
+func newIMAPHarnessSession(t *testing.T, backend imap.Backend, user, pass string, configure func(*Session)) *imapHarness {
+	t.Helper()
 	client, server := net.Pipe()
 	sess := NewSession(server, backend, "imap.test", nil, imap.NopLimiter{})
+	if configure != nil {
+		configure(sess)
+	}
 
 	done := make(chan struct{})
 	go func() {

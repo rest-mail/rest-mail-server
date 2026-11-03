@@ -30,3 +30,27 @@ found by the RFC 3501 inventory in rest-mail/rest-mail-server#374.
   keyword spelled `Recent` is unaffected. `TestStoreLeavesRecentAlone` asserted
   that the flag was accepted and ignored, so it is corrected in the same way.
   Under EXAMINE, read-only NO still comes before this check.
+
+## RFC 9051 additions
+
+These add IMAP4rev2 behaviour from RFC 9051 ahead of the `IMAP4rev2`
+capability, for rest-mail/rest-mail-server#718. `IMAP4rev2` is still not
+advertised.
+
+- STATUS, and LIST's STATUS return option, take `DELETED`: "the number of
+  messages that have the \Deleted flag set" (RFC 9051 §6.3.11). It counts the
+  stored `Deleted` flag, which STORE writes through to the backend. Other
+  unknown STATUS items are still refused with BAD. A rev1 client never asks
+  for it, so it is accepted in every session.
+- SELECT and EXAMINE can send `* OK [CLOSED] Previous mailbox is now closed`
+  before any response about the new mailbox, because "when deselecting a
+  selected mailbox, the server MUST return an untagged OK response with the
+  "[CLOSED]" response code" (RFC 9051 §6.3.2). It is sent when a well-formed
+  selection replaces one, even if the new selection then fails; never after a
+  BAD, CLOSE or UNSELECT ("There is no need to return the CLOSED response code
+  on completion of the CLOSE or the UNSELECT command", §7.1). It is sent only
+  to an IMAP4rev2 session, and no command makes one yet: RFC 3501 has no
+  CLOSED and asks that other codes "SHOULD be prefixed with an "X" until they
+  are added to a revision of this protocol" (§7.1), and RFC 7162 §3.2.11
+  requires CLOSED of a server that "advertises "QRESYNC" or "CONDSTORE"",
+  which this one does not. ENABLE IMAP4rev2 will turn it on.
