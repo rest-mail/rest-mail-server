@@ -638,22 +638,12 @@ func bind(r *http.Request, dst interface{}, s shape) error {
 	}
 	var body []byte
 	if s.body && r.Body != nil {
-		read, err := io.ReadAll(r.Body)
+		read, err := readBoundBody(r, reflect.TypeOf(dst).Elem())
 		if err != nil {
-			var tooLarge *http.MaxBytesError
-			if errors.As(err, &tooLarge) {
-				return Refuse(http.StatusRequestEntityTooLarge, "request_too_large", "Request body too large")
-			}
-			return Refuse(http.StatusBadRequest, "bad_request", "Invalid request body")
+			return err
 		}
 		body = read
 		r.Body = io.NopCloser(bytes.NewReader(body))
-	}
-
-	if s.body && len(body) > 0 {
-		if err := checkBodyMedia(r, reflect.TypeOf(dst).Elem()); err != nil {
-			return err
-		}
 	}
 	textual := stringParams(reflect.TypeOf(dst))
 	err := oapifly.Bind(dst, func(in, name string) (string, bool) {
