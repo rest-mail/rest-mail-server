@@ -1,0 +1,317 @@
+package api
+
+import (
+	"context"
+	"database/sql/driver"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"sort"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/rest-mail/rest-mail-server/internal/auth"
+	"github.com/rest-mail/rest-mail-server/internal/config"
+	"github.com/rest-mail/rest-mail-server/internal/db/models"
+	"github.com/rest-mail/rest-mail-server/internal/examplepairs"
+	"github.com/rest-mail/rest-mail-server/internal/grants"
+	"gorm.io/gorm"
+)
+
+func quietHoursExamples(t *testing.T) {
+	t.Helper()
+	previousSessionCheck := sessionCheck
+	sessionCheck = cachedSessionCheck
+	defer func() { sessionCheck = previousSessionCheck }()
+	f := newCredentialFixture(t)
+	pairs, err := examplepairs.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const path = "/api/v1/accounts/{id}/quiet-hours"
+	for _, operation := range []string{"getQuietHours", "setQuietHours"} {
+		method := http.MethodGet
+		capability := models.CapMailWrite
+		if operation == "setQuietHours" {
+			method = http.MethodPut
+			capability = models.CapMailRead
+		}
+		key, public, hash, err := auth.NewAPIKey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		credential := models.Credential{AccountID: f.accountID, Kind: models.CredentialKindAPIKey, Name: operation, PublicID: public, SecretHash: hash,
+			Scope: models.CredentialScope{Permissions: []auth.ScopedPermission{{Capability: capability, Scope: grants.Mailbox(f.address)}}}}
+		if err := f.db.Create(&credential).Error; err != nil {
+			t.Fatal(err)
+		}
+		names := make([]string, 0, len(pairs[operation]))
+		for name := range pairs[operation] {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			pair := pairs[operation][name]
+			t.Run(operation+"/"+name, func(t *testing.T) {
+				examplepairs.Proven(t, operation, name)
+				if err := f.db.Model(&models.Mailbox{}).Where("id = ?", f.mailboxID).Update("quiet_hours_enabled", false).Error; err != nil {
+					t.Fatal(err)
+				}
+				cfg := &config.Config{Environment: "test", APIMaxBodyBytes: 256}
+				if name == "rate_limited" {
+					cfg.AuthRateLimitEnabled = true
+					cfg.AuthRateLimitRPS = 1.0 / 3600
+					cfg.AuthRateLimitBurst = 1
+				}
+				routers := NewRouters(f.db, f.jwt, cfg, nil)
+				t.Cleanup(routers.Close)
+				handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					r.RemoteAddr = "192.0.2.1:12345"
+					routers.Public.ServeHTTP(w, r)
+				})
+				uri := strings.ReplaceAll(path, "{id}", fmt.Sprint(f.mailboxID))
+				if name == "invalid_id" || name == "missing" {
+					uri = strings.ReplaceAll(path, "{id}", fmt.Sprintf("%.0f", pair.Request.Path["id"]))
+				}
+				token := f.session
+				if name == "unauthenticated" {
+					token = ""
+				}
+				if name == "without_capability" {
+					token = "Bearer " + key
+				}
+				if name == "rate_limited" {
+					token = "Bearer rmk_invalid"
+				}
+				body := string(pair.Request.Body)
+				if name == "malformed_json" {
+					body = "{"
+				}
+				if name == "request_too_large" {
+					body = strings.Repeat("x", 257)
+				}
+				if name == "internal_error" || name == "session_unavailable" {
+					reads := 0
+					const callback = "quiet_hours_example_fault"
+					if err := f.db.Callback().Query().Before("gorm:query").Register(callback, func(query *gorm.DB) {
+						if query.Statement.Table == "mailboxes" {
+							reads++
+							if name == "session_unavailable" || reads > 1 {
+								_ = query.AddError(errors.New("private quiet hours storage fault"))
+							}
+						}
+					}); err != nil {
+						t.Fatal(err)
+					}
+					t.Cleanup(func() { _ = f.db.Callback().Query().Remove(callback) })
+				}
+				send := func() *httptest.ResponseRecorder {
+					rr := httptest.NewRecorder()
+					req := httptest.NewRequest(method, uri, strings.NewReader(body))
+					req.Header.Set("Content-Type", "application/json")
+					if token != "" {
+						req.Header.Set("Authorization", token)
+					}
+					handler.ServeHTTP(rr, req)
+					return rr
+				}
+				if name == "rate_limited" {
+					send()
+				}
+				rr := send()
+				if rr.Code != pair.Response.Status {
+					t.Fatalf("want %d: %d %s", pair.Response.Status, rr.Code, rr.Body)
+				}
+				assertPublicExampleBody(t, pair.Response.Body, rr.Body.Bytes())
+			})
+		}
+	}
+}
+
+func TestQuietHoursExamples(t *testing.T) { quietHoursExamples(t) }
+
+func TestQuietHoursDoNotDelayMailRead(t *testing.T) {
+	fixture := newCredentialFixture(t)
+	now := time.Now().UTC()
+	setting := fmt.Sprintf(`{"enabled":true,"start":%q,"end":%q,"time_zone":"UTC"}`, now.Add(-time.Hour).Format("15:04"), now.Add(time.Hour).Format("15:04"))
+	path := fmt.Sprintf("/api/v1/accounts/%d", fixture.mailboxID)
+	if response := fixture.do(http.MethodPut, path+"/quiet-hours", fixture.session, setting); response.Code != 200 {
+		t.Fatalf("enable quiet hours: %d %s", response.Code, response.Body)
+	}
+	message := models.Message{MailboxID: fixture.mailboxID, Folder: "INBOX", Sender: "sender@example.test", Subject: "Readable during quiet hours", BodyText: "Delivered immediately"}
+	if err := fixture.db.Create(&message).Error; err != nil {
+		t.Fatal(err)
+	}
+	var pending int64
+	if err := fixture.db.Model(&models.QuietNotification{}).Where("mailbox_id = ? AND message_id = ?", fixture.mailboxID, message.ID).Count(&pending).Error; err != nil || pending != 1 {
+		t.Fatalf("notification not durably held: %d, %v", pending, err)
+	}
+	for _, request := range []struct{ path, want string }{
+		{path + "/folders/INBOX/messages", "Readable during quiet hours"},
+		{fmt.Sprintf("/api/v1/messages/%d", message.ID), "Delivered immediately"},
+	} {
+		response := fixture.do(http.MethodGet, request.path, fixture.session, "")
+		if response.Code != 200 || !strings.Contains(response.Body.String(), request.want) {
+			t.Fatalf("mail unreadable during quiet hours: %d %s", response.Code, response.Body)
+		}
+	}
+}
+
+func TestQuietHoursWithVertrag(t *testing.T) {
+	binary := os.Getenv("RESTMAIL_VERTRAG_BINARY")
+	if binary == "" {
+		t.Skip("set RESTMAIL_VERTRAG_BINARY for quiet hours exchange proof")
+	}
+	quietHoursContractExamples(t, binary)
+}
+
+func TestQuietHoursCoverageWithVertrag(t *testing.T) {
+	binary := os.Getenv("RESTMAIL_VERTRAG_BINARY")
+	if binary == "" {
+		t.Skip("set RESTMAIL_VERTRAG_BINARY for quiet-hours coverage proof")
+	}
+	fixture := newCredentialFixture(t)
+	document := contractDocument(t, describedRouters(t).pairGenerator(t, "quiet-hours coverage"))
+	path := "/api/v1/accounts/{id}/quiet-hours"
+	operations := document["paths"].(map[string]any)[path].(map[string]any)
+	for _, method := range []string{"get", "put"} {
+		operation := operations[method].(map[string]any)
+		responses := operation["responses"].(map[string]any)
+		operation["responses"] = map[string]any{"200": responses["200"]}
+		if body, ok := operation["requestBody"].(map[string]any); ok {
+			for _, content := range body["content"].(map[string]any) {
+				media := content.(map[string]any)
+				examples := media["examples"].(map[string]any)
+				media["examples"] = map[string]any{"enabled": examples["enabled"], "turned_off": examples["turned_off"]}
+			}
+		}
+	}
+	document["paths"] = map[string]any{path: operations}
+	directory := t.TempDir()
+	data, err := marshalPairDescription(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "openapi.json"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	hooks, err := filepath.Abs("../../tests/contract/quiet_hours_hooks.py")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hook := fmt.Sprintf("import runpy\nloaded = runpy.run_path(%q)\nloaded['register_quiet_hours_hooks'](lambda _: %q)\n", hooks, strings.TrimPrefix(fixture.session, "Bearer "))
+	if err := os.WriteFile(filepath.Join(directory, "quiet.py"), []byte(hook), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "vertrag.yml"), []byte("language: python\nhookfiles: ./quiet.py\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(fixture.router)
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	defer cancel()
+	command := exec.CommandContext(ctx, binary, "run", "--endpoint", server.URL, "--phases", "examples,coverage", "--fail-on-skipped-probes", "--header", "Authorization: "+fixture.session, "--reporter", "json", "--output", "report.json", "openapi.json")
+	command.Dir = directory
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("quiet-hours coverage failed: %v\n%s", err, output)
+	}
+	data, err = os.ReadFile(filepath.Join(directory, "report.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var report struct {
+		Summary struct{ Total, Passing, Failing, Errors, Skipped int }
+	}
+	if err := json.Unmarshal(data, &report); err != nil {
+		t.Fatal(err)
+	}
+	if report.Summary.Total <= 3 || report.Summary.Failing != 0 || report.Summary.Errors != 0 || report.Summary.Skipped != 0 {
+		t.Fatalf("coverage did not execute without skips: %s", data)
+	}
+}
+
+type quietHoursExampleConnection struct{ mailRemovalConnection }
+
+func (connection quietHoursExampleConnection) Connect(context.Context) (driver.Conn, error) {
+	return connection, nil
+}
+
+func (connection quietHoursExampleConnection) Driver() driver.Driver { return connection }
+
+func (connection quietHoursExampleConnection) Open(string) (driver.Conn, error) {
+	return connection, nil
+}
+
+func (connection quietHoursExampleConnection) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
+	if strings.Contains(query, `FROM "mailboxes"`) && len(args) != 0 && args[0].Value == int64(3) {
+		return nil, errors.New("private quiet hours lookup fault")
+	}
+	return connection.mailRemovalConnection.QueryContext(ctx, query, args)
+}
+
+func (connection quietHoursExampleConnection) ExecContext(_ context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
+	if !strings.HasPrefix(query, `UPDATE "mailboxes" SET`) {
+		return nil, errors.New("unexpected quiet hours setting write")
+	}
+	fields, err := sieveInstallationFields(query, args)
+	if err != nil {
+		return nil, err
+	}
+	if fields["id"] != int64(1) || len(fields) != 6 {
+		return nil, errors.New("quiet hours setting lost account selector or wrote unrelated fields")
+	}
+	if _, ok := fields["quiet_hours_enabled"].(bool); !ok {
+		return nil, errors.New("quiet hours setting lost boolean value")
+	}
+	connection.record(query, args)
+	return driver.RowsAffected(1), nil
+}
+
+func quietHoursContractExamples(t *testing.T, binary string) {
+	t.Helper()
+	fixture := newMailRulesWriteScenarios(t, func(base mailRemovalConnection) driver.Connector {
+		return quietHoursExampleConnection{base}
+	})
+	pairs, err := examplepairs.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const path = "/api/v1/accounts/{id}/quiet-hours"
+	for _, operation := range []string{"getQuietHours", "setQuietHours"} {
+		method := http.MethodGet
+		if operation == "setQuietHours" {
+			method = http.MethodPut
+		}
+		for name, pair := range pairs[operation] {
+			t.Run(operation+"/"+name, func(t *testing.T) {
+				examplepairs.Proven(t, operation, name)
+				scenario := fixture.scenarios["found"]
+				if name == "without_capability" {
+					scenario = fixture.scenarios["key_write_only"]
+					if method == http.MethodPut {
+						scenario = fixture.scenarios["key_read"]
+					}
+				}
+				if name == "unauthenticated" || name == "session_unavailable" || name == "rate_limited" {
+					scenario = fixture.scenarios[name]
+				}
+				body := string(pair.Request.Body)
+				if name == "malformed_json" {
+					body = "{"
+				}
+				if name == "request_too_large" {
+					body = strings.Repeat("x", 257)
+				}
+				uri := domainAliasReadURI(path, pair)
+				checkNamedPairWithVertrag(t, binary, scenario.handler, namedPairExchange{method: method, path: path, uri: uri, name: name, status: pair.Response.Status, body: body, token: scenario.token})
+			})
+		}
+	}
+}

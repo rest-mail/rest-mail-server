@@ -5786,6 +5786,94 @@ paths:
   # ═══════════════════════════════════════════════════════════════
   # Contacts
   # ═══════════════════════════════════════════════════════════════
+  /api/v1/accounts/{id}/quiet-hours:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    get:
+      operationId: getQuietHours
+      tags: [Notifications]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - APIKeyAuth: [mail:read]
+        - BasicAuth: [mail:read]
+      summary: Get the account's notification quiet hours
+      description: Off by default. Daily local HH:MM start inclusive and end exclusive in an IANA time zone; start later than end crosses midnight. Mail delivery and reading are unaffected.
+      responses:
+        "200":
+          description: Account notification quiet hours
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/QuietHoursSetting"
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: setQuietHours
+      tags: [Notifications]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - APIKeyAuth: [mail:write]
+        - BasicAuth: [mail:write]
+      summary: Set the account's notification quiet hours
+      description: Hold push notifications during quiet hours and send one account summary of arrival and unread counts when they end. No message content is sent. Enabled schedules require distinct HH:MM times and a valid IANA time zone. Skipped local times end at the first real instant outside the range; repeated local times are quiet whenever the local clock is inside the range.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetQuietHoursSetting"
+      responses:
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "200":
+          description: Saved account notification quiet hours
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/QuietHoursSetting"
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/accounts/{id}/contact-reply-time:
     parameters:
       - $ref: "#/components/parameters/AccountId"
@@ -16100,6 +16188,58 @@ components:
     # ─────────────────────────────────────────────────────────────
     # Contact
     # ─────────────────────────────────────────────────────────────
+    QuietHoursSetting:
+      type: object
+      required: [enabled, start, end, time_zone]
+      properties:
+        enabled:
+          type: boolean
+        start:
+          type: string
+          pattern: '^$|^([01][0-9]|2[0-3]):[0-5][0-9]$'
+          example: '22:00'
+        end:
+          type: string
+          pattern: '^$|^([01][0-9]|2[0-3]):[0-5][0-9]$'
+          example: '08:00'
+        time_zone:
+          type: string
+          format: iana-time-zone
+          example: Europe/Berlin
+
+    SetQuietHoursSetting:
+      type: object
+      required: [enabled, start, end, time_zone]
+      anyOf:
+        - properties:
+            enabled:
+              enum: [false]
+        - required: [start, end, time_zone]
+          properties:
+            enabled:
+              enum: [true]
+            start:
+              minLength: 5
+            end:
+              minLength: 5
+            time_zone:
+              minLength: 1
+      properties:
+        enabled:
+          type: boolean
+        start:
+          type: string
+          pattern: '^$|^([01][0-9]|2[0-3]):[0-5][0-9]$'
+          example: '22:00'
+        end:
+          type: string
+          pattern: '^$|^([01][0-9]|2[0-3]):[0-5][0-9]$'
+          example: '08:00'
+        time_zone:
+          type: string
+          format: iana-time-zone
+          example: Europe/Berlin
+
     ContactReplyTimeSetting:
       type: object
       required: [enabled]

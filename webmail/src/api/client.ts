@@ -340,6 +340,17 @@ export interface ContactSuggestion {
 
 type ContactReplyTimeSetting = paths['/api/v1/accounts/{id}/contact-reply-time']['get']['responses'][200]['content']['application/json'];
 
+type QuietHoursResponse = paths['/api/v1/accounts/{id}/quiet-hours']['get']['responses'][200]['content']['application/json'];
+export type QuietHoursSetting = QuietHoursResponse['data'];
+
+export async function getQuietHours(accountId: number): Promise<QuietHoursResponse> {
+  return request(`${BASE}/accounts/${accountId}/quiet-hours`);
+}
+
+export async function setQuietHours(accountId: number, setting: QuietHoursSetting): Promise<QuietHoursResponse> {
+  return request(`${BASE}/accounts/${accountId}/quiet-hours`, { method: 'PUT', body: JSON.stringify(setting) });
+}
+
 export async function getContactReplyTimeSetting(accountId: number): Promise<ContactReplyTimeSetting> {
   return request(`${BASE}/accounts/${accountId}/contact-reply-time`);
 }

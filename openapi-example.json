@@ -16790,6 +16790,188 @@
       }
     }
   },
+  "getQuietHours": {
+    "disabled": {
+      "summary": "Account-local notification quiet hours, off by default",
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "enabled": false,
+            "start": "",
+            "end": "",
+            "time_zone": ""
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 3
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "without_capability": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
   "getQuota": {
     "count_unavailable": {
       "summary": "A failed message count cannot silently become zero",
@@ -36607,6 +36789,405 @@
           "error": {
             "code": "unauthorized",
             "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    }
+  },
+  "setQuietHours": {
+    "enabled": {
+      "summary": "Account-local notification quiet hours, off by default",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": true,
+          "start": "22:00",
+          "end": "08:00",
+          "time_zone": "Europe/Berlin"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "enabled": true,
+            "start": "22:00",
+            "end": "08:00",
+            "time_zone": "Europe/Berlin"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "enabled_invalid": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": "yes",
+          "start": "22:00",
+          "end": "08:00",
+          "time_zone": "Europe/Berlin"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "enabled": "must be a boolean"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "enabled_missing": {
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "start": "22:00",
+          "end": "08:00",
+          "time_zone": "Europe/Berlin"
+        },
+        "invalid": true
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "enabled": "required"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "equal_times": {
+      "summary": "Account-local notification quiet hours, off by default",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": true,
+          "start": "22:00",
+          "end": "22:00",
+          "time_zone": "Europe/Berlin"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "end": "must differ from start"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "internal_error": {
+      "requires": {
+        "fault": "database"
+      },
+      "request": {
+        "path": {
+          "id": 3
+        },
+        "body": {
+          "enabled": false,
+          "start": "22:00",
+          "end": "08:00",
+          "time_zone": "Europe/Berlin"
+        }
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": {
+            "code": "internal_error",
+            "message": "Internal server error"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_id": {
+      "request": {
+        "path": {
+          "id": 0
+        },
+        "body": {
+          "enabled": false,
+          "start": "22:00",
+          "end": "08:00",
+          "time_zone": "Europe/Berlin"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Path parameters failed validation",
+            "details": {
+              "fields": {
+                "id": "must be at least 1"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "invalid_zone": {
+      "summary": "Account-local notification quiet hours, off by default",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": true,
+          "start": "22:00",
+          "end": "08:00",
+          "time_zone": "Mars/Olympus"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "time_zone": "must be an IANA time zone name"
+              }
+            }
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "malformed_json": {
+      "description": "The wire body is the raw truncated JSON byte {, with application/json content type. The route and Vertrag transport hook send those exact bytes rather than JSON-quoting them.",
+      "requires": {
+        "body": "malformed"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": "{",
+        "invalid": true
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "bad_request",
+            "message": "Invalid request body"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "missing": {
+      "request": {
+        "path": {
+          "id": 2147483647
+        },
+        "body": {
+          "enabled": false,
+          "start": "22:00",
+          "end": "08:00",
+          "time_zone": "Europe/Berlin"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Account not found"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "rate_limited": {
+      "requires": {
+        "limit": "rate"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": false,
+          "start": "22:00",
+          "end": "08:00",
+          "time_zone": "Europe/Berlin"
+        }
+      },
+      "response": {
+        "status": 429,
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "Too many requests; please slow down"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "request_too_large": {
+      "requires": {
+        "body": "over_cap"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": false,
+          "start": "22:00",
+          "end": "08:00",
+          "time_zone": "Europe/Berlin"
+        }
+      },
+      "response": {
+        "status": 413,
+        "body": {
+          "error": {
+            "code": "request_too_large",
+            "message": "Request body too large"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "session_unavailable": {
+      "requires": {
+        "fault": "session_store"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": false,
+          "start": "22:00",
+          "end": "08:00",
+          "time_zone": "Europe/Berlin"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "code": "unavailable",
+            "message": "Could not verify the session"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "turned_off": {
+      "summary": "Account-local notification quiet hours, off by default",
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": false,
+          "start": "22:00",
+          "end": "08:00",
+          "time_zone": "Europe/Berlin"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "enabled": false,
+            "start": "22:00",
+            "end": "08:00",
+            "time_zone": "Europe/Berlin"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "unauthenticated": {
+      "requires": {
+        "principal": "anonymous"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": false,
+          "start": "22:00",
+          "end": "08:00",
+          "time_zone": "Europe/Berlin"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "unauthorized",
+            "message": "Missing authorization header"
+          }
+        },
+        "mediaType": "application/json"
+      }
+    },
+    "without_capability": {
+      "requires": {
+        "principal": "without_capability"
+      },
+      "request": {
+        "path": {
+          "id": 1
+        },
+        "body": {
+          "enabled": false,
+          "start": "22:00",
+          "end": "08:00",
+          "time_zone": "Europe/Berlin"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Access denied"
           }
         },
         "mediaType": "application/json"

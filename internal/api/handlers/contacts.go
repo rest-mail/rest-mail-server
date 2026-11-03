@@ -81,6 +81,7 @@ type contactPath struct {
 // the handler checks the account is reachable with mail:read to read and mail:write to change,
 // and answers 403 forbidden when it is not.
 func (h *ContactHandler) RegisterContacts(rs endpoint.Routes) {
+	h.registerQuietHours(rs)
 	schemes := []string{"CookieAuth", "BearerAuth", "APIKeyAuth", "BasicAuth"}
 	reads := handlerChecked(models.CapMailRead, schemes...)
 	writes := handlerChecked(models.CapMailWrite, schemes...)

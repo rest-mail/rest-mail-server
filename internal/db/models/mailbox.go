@@ -12,6 +12,10 @@ type Mailbox struct {
 	Address                 string `gorm:"size:255;not null;uniqueIndex" json:"address"`
 	DisplayName             string `gorm:"size:255" json:"display_name"`
 	ContactReplyTimeEnabled bool   `gorm:"not null;default:false" json:"-"`
+	QuietHoursEnabled       bool   `gorm:"not null;default:false" json:"-"`
+	QuietHoursStart         string `gorm:"size:5;not null;default:''" json:"-"`
+	QuietHoursEnd           string `gorm:"size:5;not null;default:''" json:"-"`
+	QuietHoursTimeZone      string `gorm:"size:255;not null;default:''" json:"-"`
 	// QuotaBytes is an explicit cap. Zero inherits the live owner's ceiling
 	// for owned accounts; without an owner, zero means unlimited.
 	QuotaBytes     int64      `gorm:"default:1073741824" json:"quota_bytes"`

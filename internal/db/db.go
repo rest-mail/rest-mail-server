@@ -178,6 +178,9 @@ func autoMigrate(db *gorm.DB) error {
 	if err := MigrateAuditLog(db); err != nil {
 		return err
 	}
+	if err := MigrateQuietNotifications(db); err != nil {
+		return fmt.Errorf("quiet notification outbox: %w", err)
+	}
 
 	// Create composite unique index for mailboxes (domain_id, local_part)
 	if !db.Migrator().HasIndex(&models.Mailbox{}, "idx_mailboxes_domain_localpart") {

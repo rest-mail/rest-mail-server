@@ -129,6 +129,9 @@ func newPushEnv(t *testing.T) *pushEnv {
 	if err := rmdb.MigrateAuditLog(db); err != nil {
 		t.Skipf("push DB test skipped: audit log migrate failed (%v)", err)
 	}
+	if err := rmdb.MigrateQuietNotifications(db); err != nil {
+		t.Fatalf("quiet notification outbox migrate failed: %v", err)
+	}
 	tx := db.Begin()
 	t.Cleanup(func() { tx.Rollback() })
 
