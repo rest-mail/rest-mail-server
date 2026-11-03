@@ -1267,15 +1267,16 @@ Tenant ids are keyed by parameter name, and the account run already declares
 
 A fourth run, `ownership-messages` (`ownership.py --messages`), sends the two
 account tenants each other's messages, drafts, scheduled sends and attachments
-(#1163): `getMessage`, `updateMessage`, `deleteMessage`, `getRawMessage`,
-`forwardMessage`, `listAttachments`, `respondToCalendar`, `updateDraft`,
-`sendDraft`, `cancelScheduledMessage` and `getAttachment`, with the creates
-their links start from. Their ids are not an account's, so the run declares
-none: for each cell the victim tenant's signed-in owner sends the chain the
-links lead from (`sendMessage`, `saveDraft`, `updateDraft`, `getRawMessage`),
-and the attacker is sent the id it made. An operation no link leads to, and
-whose success needs state the run does not make, is reported unsent rather than
-sent with an id that names nothing. Every answer must be 404: someone else's
+(#1163), with the creates their links start from. Their ids are not an
+account's, so the run declares none: for each cell the victim tenant's
+signed-in owner sends the chain the links lead from (`sendMessage`,
+`saveDraft`, `updateDraft`, `getRawMessage`), and the attacker is sent the id
+it made. That covers `getMessage`, `updateMessage`, `deleteMessage`,
+`getRawMessage`, `listAttachments`, `updateDraft` and `sendDraft`. No link
+leads to `cancelScheduledMessage` or `getAttachment`, so their cells are
+reported unsent rather than sent with an id that names nothing.
+`forwardMessage` and `respondToCalendar` are selected too, but have no row
+until the run can send their success. Every answer must be 404: someone else's
 account, or an object in it, is answered as if it did not exist
 (`docs/api-conventions.md`, rows 11 and 12). The examples send from the fixture
 administrator, which an account may not, so `ownership_hooks.py`, loaded after
