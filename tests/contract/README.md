@@ -6,10 +6,10 @@ status, headers and body schema (#376). Every phase uses the generated
 `/api/docs/openapi.json`, saved with that run’s reports. The handwritten
 `openapi.yaml` remains the independent comparison oracle, not the runtime input.
 
-The additional [live requirement proofs](live-requirements-findings.md) exercise
+The additional [live requirement proofs](#live-requirement-proofs-1237) exercise
 anonymous callers, real over-cap bodies and a bounded real-principal matrix
-with the pinned Vertrag. Their findings distinguish local evidence from the
-in-process proof union and the still-outstanding full-topology acceptance.
+with the pinned Vertrag. They are local evidence, separate from the in-process
+proof union and from full-topology acceptance, which #1237 tracks.
 
 Bad input follows the owner's decision on #672 (2026-10-28). A body that is not
 valid JSON, or is not the declared media type, gets 400 `bad_request`. Parsed
@@ -1504,6 +1504,47 @@ and unchanged stored pipeline state for all three registered routes. The
 configured-entrypoint hook regressions and `test_gate.py` keep all twenty-two
 missing-resource operations in the required examples gate.
 
+### Live requirement proofs (#1237)
+
+`live_requirements.py` proves named anonymous and over-cap examples, and
+`live_principals.py` a bounded matrix of real credentials, against a running
+API. Use a disposable seeded `restmail.test` database, the repository's API
+build, and the pinned binary from `scripts/vertrag_pin.py ensure`, not a Vertrag
+found on PATH. Prepare the MFA admin and contract principals first;
+`CONTRACT_MFA_ADMIN` selects their disposable enrollment file.
+
+```sh
+python3 -B tests/contract/live_requirements.py anonymous "$CONTRACT_ENDPOINT" "$work/anonymous" \
+  --vertrag "$CONTRACT_VERTRAG"
+python3 -B tests/contract/live_requirements.py over-cap "$CONTRACT_ENDPOINT" "$work/over-cap" \
+  --vertrag "$CONTRACT_VERTRAG"
+go run ./tests/contract/fixtures --test-domain=restmail.test --api-keys > "$work/fixture.log"
+sed -n 's/^API_KEY_FIXTURE=//p' "$work/fixture.log" > "$work/api-key.json"
+python3 -B tests/contract/live_principals.py "$CONTRACT_ENDPOINT" "$work/principals" \
+  --vertrag "$CONTRACT_VERTRAG" --principals "$CONTRACT_PRINCIPALS" --fixture "$work/api-key.json"
+```
+
+- A pair counts only with exactly one passing exchange, the expected status and
+  a clean runner exit. A missing route, skipped exchange or tool failure is
+  unproven. `--operation-id` narrows the run for local use and is no gate result.
+- The over-cap hook sends 33,554,433 real bytes, above the default API and
+  delivery caps. A deployment with larger limits must pass a larger `--body-bytes`.
+- The `--api-keys` fixture must be fresh, because the runner enrols it in MFA.
+- Push pairs need the real API started with a disposable P-256 APNs key and all
+  three APNs settings. These refusals send no notification.
+- The owner refusals need one registered owner key (`restmail-api owner-key add`).
+  Without one, the API correctly answers 409 before checking the challenge.
+
+### In-process example proofs
+
+Give `RESTMAIL_EXAMPLE_PROOFS` a fresh path for each run. The Go writer merges an
+existing file, so reusing one can hide a skipped or failing proof. Then check it
+with `python3 scripts/example_proofs.py openapi-example.json <proofs.json>`.
+
+Run database-backed Go packages through `tools/testdb-exec`, as CI does. Against
+the seeded database a live run uses, tests that expect an empty one fail, such as
+`TestAuthLogin_DocumentedCredentialExamples`, and that says nothing about the code.
+
 ### How to read a failure
 
 1. Find the step that failed. The command's output names it, and the summary
@@ -1562,8 +1603,18 @@ must be exactly one complete object. Empty HEAD/204/304 responses, non-JSON
 errors and streaming event responses keep their distinct handling. Errors never
 include server-supplied error-code values. Local fixtures also inject malformed,
 trailing and oversized JSON and safe-method CSRF enforcement faults; these must
-fail the gate. See `browser-session-findings.md` for the precise proof boundary.
+fail the gate. These fixtures test the proof checker. They are no claim that the
+live API returns malformed bodies or refuses safe CSRF variants.
 Live topology and broader mutation workflows still run in GitHub.
+
+Reset and recovery are public sign-in routes, so they rely on `SameSite=Strict`
+rather than the CSRF guard. The command sends a refused reset (an unknown token)
+and a refused recovery (a throwaway `restmail.test` address) from a browser
+carrying a session but no CSRF header. Each must answer 401 with its fixed code,
+not 403 `csrf_failed`, and must set or clear no session cookie. A wrong token
+spends nothing, and the refused recovery is charged only to the throwaway
+address. A successful reset or recovery runs only with `--session-starts`, which
+the contract run does not pass yet (#1565).
 
 ### Contract changes in pull requests (#653)
 

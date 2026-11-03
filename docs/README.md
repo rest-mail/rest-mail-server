@@ -38,7 +38,7 @@ of their date only.
 
 | Path | What it is |
 |------|------------|
-| `review/2026-04-29-deep-review/**` | The 2026-04-29 deep review (architecture assessment, feature gaps, the "ugly side", security and compliance, operations gaps). |
+| `review/2026-04-29-deep-review/**` | The 2026-04-29 deep review (architecture assessment, the "ugly side", security and compliance). Its feature gaps and operations gaps moved to the issue tracker (#1563). |
 | `security-review/**` | The Instant Mail Check security review. Point-in-time findings; check current code before acting on any item. |
 
 ## Ecosystem
