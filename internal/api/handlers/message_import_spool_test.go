@@ -31,10 +31,10 @@ import (
 	"gorm.io/gorm"
 )
 
-// importRandomCases is how many random inputs a comparison below runs: a tenth of them in a routine
-// run, the same ones first, and all of them with RESTMAIL_IMPORT_LONG_PROOF=1. Under the race
-// detector and coverage the rest are more than the package can afford on every run. The tests' own
-// tables hold an input for every statement the rest reach, in the scanner and the binder.
+// importRandomCases is how many random inputs a comparison below runs: a tenth of them by
+// default, the same ones first, and all of them with RESTMAIL_IMPORT_LONG_PROOF=1, which CI
+// sets. The default keeps a local run quick. The tests' tables hold an input for every
+// statement the rest reach, in the scanner and the binder.
 func importRandomCases(all int) int {
 	if os.Getenv("RESTMAIL_IMPORT_LONG_PROOF") == "1" {
 		return all
