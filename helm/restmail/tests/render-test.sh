@@ -109,7 +109,7 @@ echo "== no workload mounts a CA private key (#193) =="
 # another kind appears, so it cannot slip past these checks.
 workloads='select(.kind == "Deployment" or .kind == "DaemonSet" or .kind == "StatefulSet")'
 # garage.toml is Garage's own config, holding its own secrets and no certificate key.
-MOUNTABLE=" tls.crt tls.key ca.crt server.crt server.key client-imap.crt client-imap.key client-pop3.crt client-pop3.key client-smtp-delivery.crt client-smtp-delivery.key AuthKey.p8 garage.toml "
+MOUNTABLE=" tls.crt tls.key ca.crt server.crt server.key client-imap.crt client-imap.key client-pop3.crt client-pop3.key client-smtp-delivery.crt client-smtp-delivery.key client-smtp-submission.crt client-smtp-submission.key AuthKey.p8 garage.toml "
 # One line per Secret volume: <workload> <volume> <key,key,...>.
 secret_volumes() {
   yq -N e "$workloads"' | .metadata.name as $w | .spec.template.spec.volumes[] | select(has("secret"))
@@ -148,11 +148,15 @@ check_no_ca_key "an internal CA of yours" "$tmp/byo-mtls.yaml"
 # Who gets which keypair: a gateway its own service's client keypair (#1586) and
 # the mail host's, the API its server keypair and no mail key at all.
 secret_volumes "$tmp/prod.yaml" > "$tmp/volumes.txt"
-for gw in smtp:smtp-delivery imap:imap pop3:pop3; do
+for gw in imap:imap pop3:pop3; do
   service=${gw#*:}; gw=${gw%%:*}
   assert_contains "$gw gateway: the mail host's keypair"   "$tmp/volumes.txt" "restmail-$gw-gateway tls tls.crt,tls.key"
   assert_contains "$gw gateway: its own client keypair"    "$tmp/volumes.txt" "restmail-$gw-gateway internal-mtls ca.crt,client-$service.crt,client-$service.key"
 done
+# The SMTP gateway is two services: inbound delivery and submission, each with its own keypair.
+assert_contains "smtp gateway: the mail host's keypair"   "$tmp/volumes.txt" "restmail-smtp-gateway tls tls.crt,tls.key"
+assert_contains "smtp gateway: its delivery and submission keypairs" "$tmp/volumes.txt" \
+  "restmail-smtp-gateway internal-mtls ca.crt,client-smtp-delivery.crt,client-smtp-delivery.key,client-smtp-submission.crt,client-smtp-submission.key"
 # One client certificate per gateway service, and no shared one.
 mtls_keys=$(yq -N e 'select(.kind == "Secret" and .metadata.name == "restmail-internal-mtls") | .data | keys | .[]' "$tmp/prod.yaml" | sort | tr '\n' ' ')
 [ "$mtls_keys" = "ca.crt client-imap.crt client-imap.key client-pop3.crt client-pop3.key client-smtp-delivery.crt client-smtp-delivery.key client-smtp-submission.crt client-smtp-submission.key server.crt server.key " ] ||

@@ -28,7 +28,7 @@ func (quietHoursBody) AnyOf() oapifly.AnyOfRule {
 }
 
 func (h *ContactHandler) registerQuietHours(rs endpoint.Routes) {
-	schemes := []string{"CookieAuth", "BearerAuth", "APIKeyAuth", "BasicAuth"}
+	schemes := []string{"CookieAuth", "BearerAuth", "APIKeyAuth", "GatewaySessionAuth"}
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/quiet-hours",
 		OperationID: "getQuietHours", Summary: "Get the account's notification quiet hours", Tags: []string{"Notifications"},
 		Description: "Off by default. Local HH:MM start (inclusive) and end (exclusive), with an IANA time zone. A start later than end crosses midnight. Mail delivery and reading are unaffected.",

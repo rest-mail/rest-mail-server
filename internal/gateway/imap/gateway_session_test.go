@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -20,7 +21,9 @@ import (
 // Authorization header of every call made after it (#1586).
 type sessionAPI struct {
 	mu      sync.Mutex
-	openedW string   // the Authorization the open call carried
+	opened  int      // open calls
+	openedW string   // the Authorization the open call carried (none)
+	openedB string   // the body the open call carried
 	after   []string // the Authorization of every call after it
 	closed  int
 }
@@ -37,8 +40,11 @@ func (a *sessionAPI) handler(t *testing.T) http.Handler {
 		a.mu.Unlock()
 	}
 	mux.HandleFunc("POST /api/v1/gateway-sessions", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
 		a.mu.Lock()
+		a.opened++
 		a.openedW = r.Header.Get("Authorization")
+		a.openedB = string(body)
 		a.mu.Unlock()
 		w.WriteHeader(http.StatusCreated)
 		reply(w, `{"data":{"token":"rmgs_conn","protocol":"imap","credential_id":3,"credential_kind":"app_password","user":{"id":1,"email":"dana@example.test"}}}`)
@@ -83,9 +89,10 @@ func runSession(t *testing.T, api *apiclient.Client, idlePoll time.Duration, scr
 	<-done
 }
 
-// A connection signs in once and then sends only its session's token: the
-// address and password never go to the API again, and the session is closed at
-// LOGOUT.
+// A connection signs in once, with the address and password in the open
+// call's body (never HTTP Basic), and then sends only its session's token: the
+// address and password never go to the API again, and the session is closed
+// at LOGOUT.
 func TestIMAPConnectionUsesItsSessionNotBasic(t *testing.T) {
 	a := &sessionAPI{}
 	srv := httptest.NewServer(a.handler(t))
@@ -100,8 +107,12 @@ func TestIMAPConnectionUsesItsSessionNotBasic(t *testing.T) {
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.openedW == "" || a.openedW[:6] != "Basic " {
-		t.Fatalf("the session was not opened with the client's credential: %q", a.openedW)
+	if a.opened != 1 || a.openedW != "" {
+		t.Fatalf("the session was opened %d times, with Authorization %q (want once, with none)", a.opened, a.openedW)
+	}
+	if !strings.Contains(a.openedB, `"address":"dana@example.test"`) || !strings.Contains(a.openedB, `"password":"app-password"`) ||
+		!strings.Contains(a.openedB, `"protocol":"imap"`) {
+		t.Fatalf("the open call's body does not carry the client's credential: %s", a.openedB)
 	}
 	if len(a.after) < 3 {
 		t.Fatalf("expected the LIST, SELECT and close calls, got %d", len(a.after))

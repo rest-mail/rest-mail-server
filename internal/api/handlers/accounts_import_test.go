@@ -71,9 +71,9 @@ func TestAccountImportPasswordHashAndProtocolSignIn(t *testing.T) {
 			if err != nil || len(before) != 1 || before[0].SecretHash != tc.hash {
 				t.Fatalf("import did not preserve the hash: %v", err)
 			}
-			// Every protocol gateway signs in through VerifyBasic; IMAP does
+			// Every protocol gateway signs in through VerifyPassword; IMAP does
 			// not maintain another password store.
-			cred, mb, err := repo.VerifyBasic(account.Address, tc.password, time.Now(), nil)
+			cred, mb, err := repo.VerifyPassword(account.Address, tc.password, time.Now(), nil)
 			if err != nil || mb == nil || cred == nil {
 				t.Fatalf("protocol sign-in: %v", err)
 			}
@@ -84,7 +84,7 @@ func TestAccountImportPasswordHashAndProtocolSignIn(t *testing.T) {
 			if err := db.First(&stored, cred.ID).Error; err != nil || stored.SecretHash != cred.SecretHash {
 				t.Fatalf("upgraded hash not persisted: %v", err)
 			}
-			if _, _, err := repo.VerifyBasic(account.Address, "wrong-password", time.Now(), nil); err == nil {
+			if _, _, err := repo.VerifyPassword(account.Address, "wrong-password", time.Now(), nil); err == nil {
 				t.Fatal("wrong password signed in")
 			}
 		})

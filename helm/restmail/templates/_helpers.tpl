@@ -493,7 +493,8 @@ smtp-delivery: rest-mail-smtp-delivery
 Internal mTLS volume projecting only the keys a role needs (least privilege):
 "server" → ca+server; a gateway service (imap, pop3, smtp-delivery, ...) → ca
 and that service's own client keypair (client-<service>.*), mounted as
-client.crt/client.key. Usage:
+client.crt/client.key; "smtp" → ca, smtp-delivery's pair as client.* and
+smtp-submission's as submission.* (the SMTP gateway is both services). Usage:
 {{ include "restmail.internalMtls.volume" (list . "server") }}
 {{ include "restmail.internalMtls.volume" (list . "imap") }}
 */}}
@@ -511,6 +512,15 @@ client.crt/client.key. Usage:
         path: server.crt
       - key: server.key
         path: server.key
+{{- else if eq $role "smtp" }}
+      - key: client-smtp-delivery.crt
+        path: client.crt
+      - key: client-smtp-delivery.key
+        path: client.key
+      - key: client-smtp-submission.crt
+        path: submission.crt
+      - key: client-smtp-submission.key
+        path: submission.key
 {{- else }}
 {{- if not (hasKey (fromYaml (include "restmail.internalMtls.gateways" $root)) $role) }}
 {{- fail (printf "restmail.internalMtls.volume: %q is not a gateway service" $role) }}

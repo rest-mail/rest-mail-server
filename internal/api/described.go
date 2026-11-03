@@ -21,8 +21,6 @@ var securitySchemes = map[string]oapifly.SecurityScheme{
 	"CookieAuth": {Type: "apiKey", In: "cookie", Name: "restmail_access",
 		Description: "httpOnly session cookie set by POST /api/v1/auth/login and /api/v1/auth/refresh. " +
 			"State-changing requests (POST/PUT/PATCH/DELETE) additionally require the double-submit CSRF header."},
-	"BasicAuth": {Type: "http", Scheme: "basic",
-		Description: "A mailbox's address and one of its app passwords, as HTTP Basic. Accepted only by the operations that list it."},
 	"BearerAuth": {Type: "http", Scheme: "bearer", BearerFormat: "JWT",
 		Description: "JWT access token as an Authorization: Bearer header. Exempt from the CSRF check."},
 	"GatewaySessionAuth": {Type: "http", Scheme: "bearer", BearerFormat: "rmgs",
@@ -50,7 +48,7 @@ var refusedBeforeTheHandler = refusal(http.StatusForbidden,
 
 var (
 	// describedAdminSession is the admin group's authentication: a session or a scoped API
-	// key, never HTTP Basic, whose token is current. Refused API keys are throttled at
+	// key, whose token is current. Refused API keys are throttled at
 	// login's rate.
 	describedAdminSession = oapifly.Middleware{
 		Security: []oapifly.SecurityRequirement{{"CookieAuth": nil}, {"BearerAuth": nil}, {"APIKeyAuth": nil}},
@@ -69,7 +67,7 @@ var (
 
 var (
 	// describedPersonSession is the authentication of the routes that need a person: a
-	// session from signing in, never a scoped API key or HTTP Basic, whose token is current.
+	// session from signing in, never a scoped API key, whose token is current.
 	describedPersonSession = oapifly.Middleware{
 		Security: defaultSecurity,
 		Responses: []oapifly.EndpointResponse{
@@ -78,12 +76,12 @@ var (
 		},
 	}
 	// describedMailSession is the mail routes' authentication: a session, a scoped API key,
-	// or a credential sent with HTTP Basic, whose refusals are throttled at login's rate.
+	// or a protocol gateway's connection session. Refused API keys are throttled at login's rate.
 	describedMailSession = oapifly.Middleware{
-		Security: []oapifly.SecurityRequirement{{"CookieAuth": nil}, {"BearerAuth": nil}, {"APIKeyAuth": nil}, {"BasicAuth": nil}, {"GatewaySessionAuth": nil}},
+		Security: []oapifly.SecurityRequirement{{"CookieAuth": nil}, {"BearerAuth": nil}, {"APIKeyAuth": nil}, {"GatewaySessionAuth": nil}},
 		Responses: []oapifly.EndpointResponse{
-			refusal(http.StatusUnauthorized, "unauthorized, app_password_required or setup_required: a refused session, gateway session or HTTP Basic credential"),
-			rateLimited("rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate"),
+			refusal(http.StatusUnauthorized, "unauthorized: no token, a bad one, a session that has ended, or a gateway session that has ended"),
+			rateLimited("rate_limited: refused API keys, throttled at login's rate"),
 			refusal(http.StatusServiceUnavailable, "unavailable: the credential or session check could not be made"),
 		},
 	}
@@ -275,4 +273,16 @@ func describedSecurityHeaders(cfg middleware.SecurityHeadersConfig) func(string)
 		}
 		return headers
 	}
+}
+
+// describedSessionPasswords is the gateway session open route's check of the
+// mail client's address and password (middleware.SessionPasswords): refusals
+// are recorded and throttled at login's rate.
+var describedSessionPasswords = oapifly.Middleware{
+	Responses: []oapifly.EndpointResponse{
+		refusal(http.StatusBadRequest, "credential_required: the body holds no address or no password"),
+		refusal(http.StatusUnauthorized, "unauthorized, app_password_required or setup_required: the address and password were refused"),
+		rateLimited("rate_limited: refused passwords, throttled at login's rate"),
+		refusal(http.StatusServiceUnavailable, "unavailable: the password could not be checked"),
+	},
 }
