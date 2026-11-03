@@ -270,6 +270,14 @@ func (a *APNs) Send(ctx context.Context, n Notification) (Result, error) {
 // alone, so nothing of a message (a sender, a subject, an address, an id, any
 // text) can ever be in it.
 func Payload(device string, account uint, unread int64) []byte {
+	return notificationPayload(device, account, unread, nil)
+}
+
+func SummaryPayload(device string, account uint, unread, arrived int64) []byte {
+	return notificationPayload(device, account, unread, &arrived)
+}
+
+func notificationPayload(device string, account uint, unread int64, arrived *int64) []byte {
 	type aps struct {
 		ContentAvailable int `json:"content-available"`
 	}
@@ -278,13 +286,14 @@ func Payload(device string, account uint, unread int64) []byte {
 		Device  string `json:"device"`
 		Account uint   `json:"account"`
 		Unread  int64  `json:"unread"`
+		Arrived *int64 `json:"arrived,omitempty"`
 	}
 	body, _ := json.Marshal(struct {
 		APS      aps    `json:"aps"`
 		RestMail signal `json:"restmail"`
 	}{
 		APS:      aps{ContentAvailable: 1},
-		RestMail: signal{V: 1, Device: device, Account: account, Unread: unread},
+		RestMail: signal{V: 1, Device: device, Account: account, Unread: unread, Arrived: arrived},
 	})
 	return body
 }

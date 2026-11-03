@@ -134,9 +134,10 @@ func (d *Dispatcher) Close() {
 func (d *Dispatcher) run() {
 	defer close(d.done)
 
-	timer := time.NewTimer(time.Hour)
-	timer.Stop()
+	timer := time.NewTimer(0)
 	defer timer.Stop()
+	quiet := time.NewTicker(DefaultCoalesceWindow)
+	defer quiet.Stop()
 	sweep := time.NewTicker(d.sweep)
 	defer sweep.Stop()
 	for {
@@ -145,6 +146,7 @@ func (d *Dispatcher) run() {
 			return
 		case <-d.wake:
 		case <-timer.C:
+		case <-quiet.C:
 		case <-sweep.C:
 			if n, err := d.store.Sweep(time.Now()); err != nil {
 				slog.Warn("push: failed to remove the devices of ended sessions", "error", err)
@@ -175,6 +177,9 @@ func (d *Dispatcher) Step(ctx context.Context, now time.Time) time.Time {
 	// while its push waited gets none.
 	found := map[uint][]target{}
 	for mailbox := range arrived {
+		if d.hold(mailbox, now) {
+			continue
+		}
 		targets, err := d.store.targets(mailbox, now)
 		if err != nil {
 			slog.Warn("push: failed to find the devices for new mail", "mailbox_id", mailbox, "error", err)
@@ -189,6 +194,9 @@ func (d *Dispatcher) Step(ctx context.Context, now time.Time) time.Time {
 			at := now
 			if sent, ok := d.last[k]; ok && now.Sub(sent) < d.window {
 				at = sent.Add(d.window)
+			}
+			if at.After(now) && d.hold(mailbox, at) {
+				continue
 			}
 			d.waiting[k] = pending{mailbox: mailbox, at: at}
 		}
@@ -211,6 +219,9 @@ func (d *Dispatcher) Step(ctx context.Context, now time.Time) time.Time {
 	}
 
 	for mailbox, keys := range due {
+		if d.hold(mailbox, now) {
+			continue
+		}
 		targets, ok := found[mailbox]
 		if !ok {
 			var err error
@@ -240,17 +251,48 @@ func (d *Dispatcher) Step(ctx context.Context, now time.Time) time.Time {
 			delete(d.last, k)
 		}
 	}
+	if store, ok := d.store.(*Store); ok {
+		quietNext, err := store.dispatchQuiet(ctx, now, func(ctx context.Context, device target, unread, arrived int64) {
+			payload := Payload(strconv.FormatUint(uint64(device.DeviceID), 10), device.Account, unread)
+			if arrived > 0 {
+				payload = SummaryPayload(strconv.FormatUint(uint64(device.DeviceID), 10), device.Account, unread, arrived)
+			}
+			d.sendPayload(ctx, device, payload, now)
+		})
+		if err != nil {
+			slog.Warn("push: could not dispatch quiet-hours summaries", "error", err)
+		}
+		if !quietNext.IsZero() && (next.IsZero() || quietNext.Before(next)) {
+			next = quietNext
+		}
+	}
 	return next
+}
+
+func (d *Dispatcher) hold(mailbox uint, now time.Time) bool {
+	if store, ok := d.store.(*Store); ok {
+		held, err := store.hold(mailbox, now)
+		if err != nil {
+			slog.Warn("push: could not read quiet hours", "mailbox_id", mailbox, "error", err)
+			return true
+		}
+		return held
+	}
+	return false
 }
 
 // send pushes one signal, and deletes the device when APNs says its token is
 // gone.
 func (d *Dispatcher) send(ctx context.Context, t target, unread int64, now time.Time) {
 	device := strconv.FormatUint(uint64(t.DeviceID), 10)
+	d.sendPayload(ctx, t, Payload(device, t.Account, unread), now)
+}
+
+func (d *Dispatcher) sendPayload(ctx context.Context, t target, payload []byte, now time.Time) {
 	res, err := d.sender.Send(ctx, Notification{
 		Token:       t.Token,
 		Environment: t.Environment,
-		Payload:     Payload(device, t.Account, unread),
+		Payload:     payload,
 	})
 	if err != nil {
 		slog.Warn("push: APNs not reached", "device_id", t.DeviceID, "error", err)

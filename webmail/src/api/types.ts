@@ -667,6 +667,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/accounts/{id}/quiet-hours": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the account's notification quiet hours
+         * @description Off by default. Local HH:MM start (inclusive) and end (exclusive), with an IANA time zone. A start later than end crosses midnight. Mail delivery and reading are unaffected.
+         */
+        get: operations["getQuietHours"];
+        /**
+         * Set the account's notification quiet hours
+         * @description Hold push notifications during this daily local-time range, then send one account summary containing arrival and unread counts only. Nothing is sent if nothing arrived. Start and end must differ; enabled schedules require both times and an IANA time zone. Empty times and zone are allowed only while disabled. Skipped local times end at the first real instant outside the range; repeated local times are quiet whenever the local clock is inside the range. Mail still arrives and is readable normally.
+         */
+        put: operations["setQuietHours"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/accounts/{id}/quota": {
         parameters: {
             query?: never;
@@ -3380,6 +3404,9 @@ export interface components {
         "Data-ServerStatus": {
             data: components["schemas"]["ServerStatus"];
         };
+        "Data-Setting": {
+            data: components["schemas"]["Setting"];
+        };
         "Data-SieveDeleted": {
             data: components["schemas"]["SieveDeleted"];
         };
@@ -4361,6 +4388,18 @@ export interface components {
             started_at: string;
             version: string;
         };
+        Setting: {
+            enabled: boolean;
+            /** @example 08:00 */
+            end: string;
+            /** @example 22:00 */
+            start: string;
+            /**
+             * Format: iana-time-zone
+             * @example Europe/Berlin
+             */
+            time_zone: string;
+        };
         SieveDeleted: {
             /** @enum {string} */
             status: "deleted";
@@ -5159,6 +5198,27 @@ export interface components {
         putSieveBody: {
             active?: boolean | null;
             script: string | null;
+        };
+        quietHoursBody: {
+            enabled: boolean;
+            /** @example 08:00 */
+            end: string;
+            /** @example 22:00 */
+            start: string;
+            /**
+             * Format: iana-time-zone
+             * @example Europe/Berlin
+             */
+            time_zone: string;
+        } | {
+            /** @enum {unknown} */
+            enabled?: false;
+        } | {
+            /** @enum {unknown} */
+            enabled?: true;
+            end: unknown;
+            start: unknown;
+            time_zone: unknown;
         };
         recoverRequest: {
             client?: string;
@@ -9514,6 +9574,211 @@ export interface operations {
                 };
             };
             /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getQuietHours: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-Setting"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description request_too_large: the body is over the API's size cap */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description rate_limited: refused API keys or HTTP Basic credentials, throttled at login's rate */
+            429: {
+                headers: {
+                    /** @description Seconds until a request may be made again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unavailable: the credential or session check could not be made */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setQuietHours: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["quietHoursBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Data-Setting"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
             413: {
                 headers: {
                     [name: string]: unknown;
