@@ -46,7 +46,9 @@ func Serialize(email *pipeline.EmailJSON) ([]byte, error) {
 		writeHeader(&b, "Cc", formatAddresses(email.Headers.Cc))
 	}
 	if email.Headers.Subject != "" {
-		writeHeader(&b, "Subject", headerEncoder.Encode("utf-8", email.Headers.Subject))
+		// Sanitized before it is encoded: encoded, a line break would no longer
+		// look like one to writeHeader, and would come back when it is decoded.
+		writeHeader(&b, "Subject", headerEncoder.Encode("utf-8", sanitizeHeaderValue(email.Headers.Subject)))
 	}
 	if email.Headers.Date != "" {
 		writeHeader(&b, "Date", email.Headers.Date)

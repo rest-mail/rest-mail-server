@@ -2078,9 +2078,6 @@ func (h *MessageHandler) respondToCalendar(r *http.Request, in calendarReplyRequ
 		return CalendarReplied{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "You are not authorized to send from this address")
 	}
 
-	// Build the iCalendar REPLY body
-	icsReply := rmime.BuildCalendarReply(event, req.From, response)
-
 	// Build the MIME message with the calendar reply
 	organizer := event.Organizer.Address
 	if organizer == "" {
@@ -2094,10 +2091,30 @@ func (h *MessageHandler) respondToCalendar(r *http.Request, in calendarReplyRequ
 	if err := rmail.ValidateAddress(organizer); err != nil {
 		return CalendarReplied{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "invalid organizer address in calendar event")
 	}
+	// A display name around the address belongs in neither the To: header nor
+	// the envelope. The serializer quotes a local part that needs it; the
+	// envelope and the lookup below take the address already quoted.
+	organizerAddress, err := mail.ParseAddress(organizer)
+	if err != nil {
+		return CalendarReplied{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "invalid organizer address in calendar event")
+	}
+	organizer = strings.Trim((&mail.Address{Address: organizerAddress.Address}).String(), "<>")
+	if event.Organizer.Address != "" {
+		event.Organizer.Address = organizer
+	}
 
-	subject := event.Summary
+	// Build the iCalendar REPLY body
+	icsReply := rmime.BuildCalendarReply(event, req.From, response)
+
+	// The invitation's sender chooses the summary, the subject and the
+	// Message-ID, and iCalendar lets a summary hold line breaks (#1594). Each is
+	// put on one line here, so the message, the Sent copy and a hosted
+	// organizer's copy all carry the same text.
+	summary := rmail.SanitizeHeaderValue(event.Summary)
+	inReplyTo := rmail.SanitizeHeaderValue(msg.MsgID)
+	subject := summary
 	if subject == "" {
-		subject = msg.Subject
+		subject = rmail.SanitizeHeaderValue(msg.Subject)
 	}
 	switch response {
 	case "ACCEPTED":
@@ -2116,40 +2133,25 @@ func (h *MessageHandler) respondToCalendar(r *http.Request, in calendarReplyRequ
 		return CalendarReplied{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to look up the reply thread")
 	}
 
-	// Build raw RFC 2822 message with calendar reply
-	var b strings.Builder
-	fromAddr := &mail.Address{Name: senderMailbox.DisplayName, Address: req.From}
-	b.WriteString("From: " + fromAddr.String() + "\r\n")
-	b.WriteString("To: " + organizer + "\r\n")
-	b.WriteString("Subject: " + subject + "\r\n")
-	b.WriteString("Date: " + now.Format(time.RFC1123Z) + "\r\n")
-	b.WriteString("Message-ID: " + messageID + "\r\n")
-	if msg.MsgID != "" {
-		b.WriteString("In-Reply-To: " + msg.MsgID + "\r\n")
+	note := fmt.Sprintf("Calendar invite %s: %s", strings.ToLower(response), summary)
+
+	// The reply is rendered by the serializer all other outgoing mail goes
+	// through, so its headers are encoded, folded and on one line each (#146).
+	rawMessage, rawErr := buildOutboundRaw(outboundMessage{
+		FromName:      senderMailbox.DisplayName,
+		From:          req.From,
+		To:            []string{organizerAddress.Address},
+		Subject:       subject,
+		BodyText:      note,
+		CalendarReply: icsReply,
+		MessageID:     messageID,
+		InReplyTo:     inReplyTo,
+		References:    references,
+		Date:          now,
+	})
+	if rawErr != nil {
+		return CalendarReplied{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to build the calendar reply")
 	}
-	if references != "" {
-		b.WriteString("References:\r\n " + strings.Join(strings.Fields(references), "\r\n ") + "\r\n")
-	}
-	b.WriteString("MIME-Version: 1.0\r\n")
-
-	boundary := fmt.Sprintf("=_restmail_cal_%d", now.UnixNano())
-	b.WriteString("Content-Type: multipart/alternative; boundary=\"" + boundary + "\"\r\n")
-	b.WriteString("\r\n")
-
-	// Text part
-	b.WriteString("--" + boundary + "\r\n")
-	b.WriteString("Content-Type: text/plain; charset=utf-8\r\n\r\n")
-	b.WriteString(fmt.Sprintf("Calendar invite %s: %s\r\n", strings.ToLower(response), event.Summary))
-	b.WriteString("\r\n")
-
-	// Calendar reply part
-	b.WriteString("--" + boundary + "\r\n")
-	b.WriteString("Content-Type: text/calendar; charset=utf-8; method=REPLY\r\n\r\n")
-	b.WriteString(icsReply)
-	b.WriteString("\r\n")
-	b.WriteString("--" + boundary + "--\r\n")
-
-	rawMessage := b.String()
 	// OSI-8: fail closed if the DKIM key cannot sign (see signOutboundDKIM).
 	signedRaw, signErr := h.signOutboundDKIM(rmail.DomainFromAddress(req.From), rawMessage)
 	if signErr != nil {
@@ -2163,7 +2165,7 @@ func (h *MessageHandler) respondToCalendar(r *http.Request, in calendarReplyRequ
 		MailboxID:    senderMailbox.ID,
 		Folder:       "Sent",
 		MsgID:        messageID,
-		InReplyTo:    msg.MsgID,
+		InReplyTo:    inReplyTo,
 		References:   references,
 		ThreadID:     threadID,
 		Sender:       req.From,
@@ -2171,7 +2173,7 @@ func (h *MessageHandler) respondToCalendar(r *http.Request, in calendarReplyRequ
 		RecipientsTo: models.JSONB(toJSON),
 		RecipientsCc: models.JSONB([]byte("[]")),
 		Subject:      subject,
-		BodyText:     fmt.Sprintf("Calendar invite %s: %s", strings.ToLower(response), event.Summary),
+		BodyText:     note,
 		IsRead:       true,
 		SizeBytes:    len(rawMessage),
 		ReceivedAt:   now,
@@ -2200,7 +2202,7 @@ func (h *MessageHandler) respondToCalendar(r *http.Request, in calendarReplyRequ
 			Subject:      subject,
 			BodyText:     sentMsg.BodyText,
 			MessageID:    messageID,
-			InReplyTo:    msg.MsgID,
+			InReplyTo:    inReplyTo,
 			References:   references,
 			RawMessage:   rawMessage,
 		})
