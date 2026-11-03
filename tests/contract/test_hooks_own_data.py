@@ -125,12 +125,18 @@ class OwnDataHooks(unittest.TestCase):
         return sum(call[1] == "/api/v1/admin/test/reset" for call in self.server.calls)
 
     def test_each_moved_operation_starts_clean(self):
-        for operation in own_data.MOVED:
-            hook = (
-                "get_a_domain_of_its_own"
-                if operation == "getDomain"
-                else "prepare_mta_sts_policy_example"
-            )
+        # The hook each moved operation resets in.
+        hooks = {
+            "getDomain": "get_a_domain_of_its_own",
+            "setMtaStsPolicy": "prepare_mta_sts_policy_example",
+            "getMtaStsPolicy": "prepare_mta_sts_policy_example",
+            "deleteMtaStsPolicy": "prepare_mta_sts_policy_example",
+            "createPipeline": "a_pipeline_on_the_created_domain",
+            "testPipeline": "test_the_created_pipeline",
+            "deletePipeline": "delete_a_pipeline_of_its_own",
+        }
+        self.assertEqual(set(hooks), set(own_data.MOVED))
+        for operation, hook in hooks.items():
             self.assertIn((operation, hook), self.registered)
 
     def test_each_unmoved_follower_gets_a_live_domain(self):
