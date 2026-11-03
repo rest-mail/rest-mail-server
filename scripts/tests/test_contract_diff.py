@@ -79,10 +79,6 @@ class ContractDiff(unittest.TestCase):
             for name, value in (
                 ("base", base or description()),
                 ("revision", revision),
-                (
-                    "event",
-                    {"pull_request": {"labels": [{"name": label} for label in labels]}},
-                ),
             ):
                 (root / (name + ".json")).write_text(json.dumps(value))
             result = subprocess.run(
@@ -93,8 +89,7 @@ class ContractDiff(unittest.TestCase):
                     str(root / "revision.json"),
                     "--oasdiff",
                     BINARY,
-                    "--event",
-                    str(root / "event.json"),
+                    *(arg for label in labels for arg in ("--label", label)),
                     "--output",
                     str(root / "report"),
                 ],

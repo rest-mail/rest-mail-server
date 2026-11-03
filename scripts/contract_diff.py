@@ -153,21 +153,15 @@ def main(argv=None):
     parser.add_argument("revision", type=Path)
     parser.add_argument("--oasdiff", default="oasdiff")
     parser.add_argument(
-        "--event", type=Path, help="GitHub pull_request event containing current labels"
-    )
-    parser.add_argument(
         "--label",
         action="append",
         default=[],
-        help="A deliberate-change label, for local replay",
+        help="A label the pull request carries (repeat for each)",
     )
     parser.add_argument("--output", type=Path, default=Path(".cache/contract-diff"))
     args = parser.parse_args(argv)
     try:
         labels = set(args.label)
-        if args.event:
-            event = json.loads(args.event.read_text())
-            labels.update(label["name"] for label in event["pull_request"]["labels"])
         changes = compare(args.oasdiff, args.base, args.revision)
         markdown, missing = report(changes, labels)
         args.output.mkdir(parents=True, exist_ok=True)
