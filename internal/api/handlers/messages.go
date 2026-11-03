@@ -633,6 +633,9 @@ func (h *MessageHandler) sendComposedMessage(r *http.Request, req sendMessageReq
 	// Own sending and the two delegated identities require distinct capabilities.
 	sender, err := maySendFrom(h.db.WithContext(r.Context()), claims, req.From, req.OnBehalf)
 	if err != nil {
+		if errors.Is(err, errNoAccess) {
+			return zero, errAccountNotFound
+		}
 		if refusedAccount(err) {
 			return zero, endpoint.Refuse(http.StatusForbidden, "forbidden", "You are not authorized to send from this address")
 		}
@@ -664,11 +667,9 @@ func (h *MessageHandler) sendComposedMessage(r *http.Request, req sendMessageReq
 	}
 	switch {
 	case senderDomain.SendingPolicy == models.SendingPolicyBulk && req.ListUnsubscribe == nil:
-		return zero, endpoint.Refuse(http.StatusUnprocessableEntity, "list_unsubscribe_required",
-			"The sender domain sends bulk mail, so every message needs list_unsubscribe")
+		return zero, endpoint.Invalid(map[string]string{"list_unsubscribe": "The sender domain sends bulk mail, so every message needs list_unsubscribe"})
 	case senderDomain.SendingPolicy == models.SendingPolicyTransactional && req.ListUnsubscribe != nil:
-		return zero, endpoint.Refuse(http.StatusUnprocessableEntity, "list_unsubscribe_not_allowed",
-			"The sender domain sends transactional mail, which carries no List-Unsubscribe field: omit list_unsubscribe")
+		return zero, endpoint.Invalid(map[string]string{"list_unsubscribe": "The sender domain sends transactional mail, which carries no List-Unsubscribe field: omit list_unsubscribe"})
 	}
 
 	// RFC 8058 §4: a one-click claim counts only under a DKIM signature that
@@ -682,8 +683,7 @@ func (h *MessageHandler) sendComposedMessage(r *http.Request, req sendMessageReq
 			return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to check the sender domain's DKIM key")
 		}
 		if !signs {
-			return zero, endpoint.Refuse(http.StatusUnprocessableEntity, "dkim_required",
-				"list_unsubscribe.https needs the sender domain to have a DKIM key: one-click unsubscribe must be DKIM signed")
+			return zero, endpoint.Invalid(map[string]string{"list_unsubscribe.https": "list_unsubscribe.https needs the sender domain to have a DKIM key: one-click unsubscribe must be DKIM signed"})
 		}
 	}
 
@@ -695,12 +695,10 @@ func (h *MessageHandler) sendComposedMessage(r *http.Request, req sendMessageReq
 		at := req.ScheduledAt.UTC()
 		now := time.Now().UTC()
 		if at.Before(now.Add(time.Minute)) {
-			return zero, endpoint.Refuse(http.StatusUnprocessableEntity, "validation_failed",
-				"scheduled_at must be at least a minute in the future")
+			return zero, endpoint.Invalid(map[string]string{"scheduled_at": "must be at least a minute in the future"})
 		}
 		if at.After(now.Add(365 * 24 * time.Hour)) {
-			return zero, endpoint.Refuse(http.StatusUnprocessableEntity, "validation_failed",
-				"scheduled_at must be within a year")
+			return zero, endpoint.Invalid(map[string]string{"scheduled_at": "must be within a year"})
 		}
 		stored := req
 		stored.ScheduledAt = nil

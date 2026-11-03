@@ -154,7 +154,7 @@ func TestReceiveReport_Refused(t *testing.T) {
 	}
 	passed := func(t *testing.T, rr *httptest.ResponseRecorder) {
 		t.Helper()
-		if rr.Code != http.StatusUnprocessableEntity || !strings.Contains(rr.Body.String(), "no_matching_domains") {
+		if rr.Code != http.StatusUnprocessableEntity || !strings.Contains(rr.Body.String(), `"code":"validation_failed"`) || !strings.Contains(rr.Body.String(), `"fields":{"policies":`) {
 			t.Fatalf("got %d %s, want the report to pass its checks", rr.Code, rr.Body)
 		}
 	}

@@ -3862,7 +3862,10 @@ paths:
         while still charging them. Domain/server budgets, live sender permissions and outbound policies
         remain enforced. Returns the retained record: 200 after release, or 202 if budgets or policies defer
         and keep the same hold. Concurrent releases cannot send twice. The real releasing actor/session
-        and original submitting account are audited.'
+        and original submitting account are audited. An unknown or unlinked sender answers the same 404
+        not_found; a visible sender without the sending capability answers 403 forbidden. Live sender
+        policy refusals answer 422 validation_failed with details.fields naming list_unsubscribe or
+        list_unsubscribe.https.'
       operationId: releaseHeldMessage
       tags:
       - Messages
@@ -4118,9 +4121,14 @@ paths:
         credential, represented mailbox and sending mode.
         The sender domain's `sending_policy` decides whether the message
         carries `list_unsubscribe`: a `bulk` domain's message without it is
-        refused with 422 `list_unsubscribe_required`, and a `transactional`
-        domain's message with it is refused with 422
-        `list_unsubscribe_not_allowed`. With no policy, either is sent.
+        refused with 422 `validation_failed` on `list_unsubscribe`, and a
+        `transactional` domain's message with it is refused the same way.
+        With no policy, either is sent. A one-click HTTPS target without a
+        signing key is 422 `validation_failed` on `list_unsubscribe.https`;
+        scheduling refusals name `scheduled_at` in `details.fields`.
+        An unknown sender and a sender with no link to the caller return
+        identical 404 `not_found` answers. A visible sender without the
+        selected sending capability returns 403 `forbidden`.
       requestBody:
         required: true
         content:
@@ -4229,6 +4237,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               examples: {}
+        '404':
+          description: The sender is missing or the caller has no link to it
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '422':
           description: Request failed validation (validation_failed), with details.fields naming each failing field
           content:
@@ -4239,9 +4253,11 @@ paths:
                 unsubscribe_not_allowed:
                   value:
                     error:
-                      code: list_unsubscribe_not_allowed
-                      message: 'The sender domain sends transactional mail, which carries no List-Unsubscribe field: omit
-                        list_unsubscribe'
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          list_unsubscribe: 'The sender domain sends transactional mail, which carries no List-Unsubscribe field: omit list_unsubscribe'
                 from_missing:
                   value:
                     error:
@@ -7043,7 +7059,8 @@ paths:
         keepalive: once the account's sessions end, the stream ends without
         sending anything more, and opening it again with the same token
         answers 401. Access lookup failures return 500 before any stream opens;
-        missing or inaccessible accounts retain 403.
+        a missing account, or one the caller may not know of, answers 404.
+        An account the caller can see without mail:read answers 403.
       responses:
         "404":
           $ref: "#/components/responses/NotFound"
@@ -12036,32 +12053,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required:
-                - error
-                properties:
-                  error:
-                    type: object
-                    required:
-                    - code
-                    - message
-                    properties:
-                      code:
-                        type: string
-                        enum:
-                        - validation_failed
-                        - no_matching_domains
-                      message:
-                        type: string
-                      details:
-                        type: object
-                        required:
-                        - fields
-                        properties:
-                          fields:
-                            type: object
-                            additionalProperties:
-                              type: string
+                $ref: '#/components/schemas/ValidationErrorResponse'
               examples:
                 organization_missing:
                   value:

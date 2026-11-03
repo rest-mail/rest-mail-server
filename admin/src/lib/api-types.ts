@@ -75,7 +75,7 @@ export interface paths {
         put?: never;
         /**
          * TLS-RPT report ingestion (RFC 8460)
-         * @description Receives TLS-RPT reports from external MTAs, as JSON or gzip-compressed. No auth by design. A body sent with Content-Encoding: gzip, or gzip-compressed under a JSON media type, is inflated first.
+         * @description Receives TLS-RPT reports from external MTAs, as JSON or gzip-compressed. No auth by design. A body sent with Content-Encoding: gzip, or gzip-compressed under a JSON media type, is inflated first. Parsed reports that break a rule return 422 validation_failed with details.fields; if no policy domain is hosted, the failing field is policies.
          */
         post: operations["receiveTlsReport"];
         delete?: never;
@@ -503,7 +503,7 @@ export interface paths {
         };
         /**
          * Server-Sent Events stream for real-time updates
-         * @description A stream of the account's events, new_message, message_updated, message_deleted, message_sent or folder_update, each an id, the event's name and its JSON data. A Last-Event-ID header asks for the events after it that the server still holds. The session is checked when the stream opens, and again before every event and keepalive: once the account's sessions end, the stream ends without sending anything more. Access lookup failures return 500 before a stream opens; missing or inaccessible accounts retain 403.
+         * @description A stream of the account's events, new_message, message_updated, message_deleted, message_sent or folder_update, each an id, the event's name and its JSON data. A Last-Event-ID header asks for the events after it that the server still holds. The session is checked when the stream opens, and again before every event and keepalive: once the account's sessions end, the stream ends without sending anything more. Access lookup failures return 500 before a stream opens; a missing account, or one the caller may not know of, answers 404, and one the caller can see without mail:read answers 403.
          */
         get: operations["accountEvents"];
         put?: never;
@@ -2591,7 +2591,7 @@ export interface paths {
         put?: never;
         /**
          * Send a draft
-         * @description The draft (mail:write) is sent as sendMessage sends, and deleted once it is; a refused send keeps it. Draft lookup/access dependency failures return 500 and follow request cancellation. Sending from your own mailbox requires mail:send. From another mailbox requires mail:send_as on that mailbox. Set on_behalf to true to require mail:send_on_behalf instead: From stays the represented mailbox and RFC 5322 Sender is the authenticated account's own address. Read access grants neither mode. Both modes audit the real account, credential and represented mailbox.
+         * @description The draft (mail:write) is sent as sendMessage sends, and deleted once it is; a refused send keeps it. Draft lookup/access dependency failures return 500 and follow request cancellation. Sending from your own mailbox requires mail:send. From another mailbox requires mail:send_as on that mailbox. Set on_behalf to true to require mail:send_on_behalf instead: From stays the represented mailbox and RFC 5322 Sender is the authenticated account's own address. Read access grants neither mode. An unknown sender and a sender the caller has no link to return the same 404 not_found. A visible sender without the selected sending capability returns 403 forbidden. Parsed fields that break sender policy or scheduling rules return 422 validation_failed with details.fields naming them. Both modes audit the real account, credential and represented mailbox.
          */
         post: operations["sendDraft"];
         delete?: never;
@@ -2651,7 +2651,7 @@ export interface paths {
         put?: never;
         /**
          * Release held mail with a two-factor session
-         * @description Requires a two-factor person session, mailbox:manage on the submitting account and mail:send on the sender. Releases one retained message, bypassing account budgets for this deliberate send while still charging them. Domain/server budgets, live sender permissions and outbound policies remain enforced. Returns the retained record: 200 after release, or 202 if budgets or policies defer and keep the same hold. Concurrent releases cannot send twice. The real releasing actor/session and original submitting account are audited.
+         * @description Requires a two-factor person session, mailbox:manage on the submitting account and mail:send on the sender. Releases one retained message, bypassing account budgets for this deliberate send while still charging them. Domain/server budgets, live sender permissions and outbound policies remain enforced. Returns the retained record: 200 after release, or 202 if budgets or policies defer and keep the same hold. Concurrent releases cannot send twice. The real releasing actor/session and original submitting account are audited. An unknown or unlinked sender answers the same 404 not_found; a visible sender without the sending capability answers 403 forbidden. Live sender policy refusals answer 422 validation_failed with details.fields naming list_unsubscribe or list_unsubscribe.https.
          */
         post: operations["releaseHeldMessage"];
         delete?: never;
@@ -2671,7 +2671,7 @@ export interface paths {
         put?: never;
         /**
          * Send a message
-         * @description Sent at once (201), or with scheduled_at stored and sent then (202); the outbound pipeline may discard it (200). to needs at least one address. from, to, cc and bcc are described as bare addresses, internationalized or not; the handler also accepts an RFC 5322 display name around one. scheduled_at must be at least a minute ahead and within a year; null or omitted sends at once. Sending from your own mailbox requires mail:send. From another mailbox requires mail:send_as on that mailbox. Set on_behalf to true to require mail:send_on_behalf instead: From stays the represented mailbox and RFC 5322 Sender is the authenticated account's own address. Read access grants neither mode. Both modes audit the real account, credential and represented mailbox.
+         * @description Sent at once (201), or with scheduled_at stored and sent then (202); the outbound pipeline may discard it (200). to needs at least one address. from, to, cc and bcc are described as bare addresses, internationalized or not; the handler also accepts an RFC 5322 display name around one. scheduled_at must be at least a minute ahead and within a year; null or omitted sends at once. Sending from your own mailbox requires mail:send. From another mailbox requires mail:send_as on that mailbox. Set on_behalf to true to require mail:send_on_behalf instead: From stays the represented mailbox and RFC 5322 Sender is the authenticated account's own address. Read access grants neither mode. An unknown sender and a sender the caller has no link to return the same 404 not_found. A visible sender without the selected sending capability returns 403 forbidden. Parsed fields that break sender policy or scheduling rules return 422 validation_failed with details.fields naming them. Both modes audit the real account, credential and represented mailbox.
          */
         post: operations["sendMessage"];
         delete?: never;
@@ -2747,7 +2747,7 @@ export interface paths {
         put?: never;
         /**
          * Forward a message
-         * @description The message (mail:read) is forwarded through the normal sender authorization, rate limit and outbound policy, with Fwd: and the note above its original header. Stored attachments, including empty and inline parts, are re-attached; the Sent copy owns independent attachment objects. The final signed MIME message is bounded by SMTP_MAX_MESSAGE_SIZE, and sender quota includes the copied parts. Sent, attachment references, quota and recipient work commit together. Unavailable or changed source objects fail the forward instead of dropping parts. Sending from your own mailbox requires mail:send. From another mailbox requires mail:send_as on that mailbox. Set on_behalf to true to require mail:send_on_behalf instead: From stays the represented mailbox and RFC 5322 Sender is the authenticated account's own address. Read access grants neither mode. Both modes audit the real account, credential and represented mailbox.
+         * @description The message (mail:read) is forwarded through the normal sender authorization, rate limit and outbound policy, with Fwd: and the note above its original header. Stored attachments, including empty and inline parts, are re-attached; the Sent copy owns independent attachment objects. The final signed MIME message is bounded by SMTP_MAX_MESSAGE_SIZE, and sender quota includes the copied parts. Sent, attachment references, quota and recipient work commit together. Unavailable or changed source objects fail the forward instead of dropping parts. Sending from your own mailbox requires mail:send. From another mailbox requires mail:send_as on that mailbox. Set on_behalf to true to require mail:send_on_behalf instead: From stays the represented mailbox and RFC 5322 Sender is the authenticated account's own address. Read access grants neither mode. An unknown sender and a sender the caller has no link to return the same 404 not_found. A visible sender without the selected sending capability returns 403 forbidden. Parsed fields that break sender policy or scheduling rules return 422 validation_failed with details.fields naming them. Both modes audit the real account, credential and represented mailbox.
          */
         post: operations["forwardMessage"];
         delete?: never;
@@ -5510,15 +5510,6 @@ export interface components {
         tlsReportStored: {
             stored: number;
         };
-        tlsReportUnprocessable: {
-            error: components["schemas"]["tlsReportUnprocessableError"];
-        };
-        tlsReportUnprocessableError: {
-            /** @enum {string} */
-            code: "validation_failed" | "no_matching_domains";
-            details?: components["schemas"]["ValidationDetails"];
-            message: string;
-        };
         twoFactorStatusResponse: {
             enabled: boolean;
             pending: boolean;
@@ -5839,7 +5830,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["tlsReportUnprocessable"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
             /** @description rate_limited: too many reports from one address */
@@ -23336,6 +23327,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Request Entity Too Large */
             413: {
                 headers: {
@@ -23345,13 +23345,13 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Binding validation, sender policy or scheduling refusal */
+            /** @description validation_failed with details.fields for binding, sender policy or scheduling rules */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ForwardRefusalResponse"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
             /** @description Too Many Requests */

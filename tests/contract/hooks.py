@@ -1453,12 +1453,12 @@ def a_sending_policy_for_the_send(transaction):
     paired = " > 422 > " in transaction.get("name", "")
     set_the_admin_domains_policy(transaction, "transactional" if paired else "")
     # Coverage probes send from a generated address (someone@example.com)
-    # that no mailbox holds, which the handler rightly refuses (403). The
+    # that no mailbox holds, which the handler rightly refuses (404). The
     # sender gets a hosted, signing domain and a mailbox; the request's bytes
     # and credentials stay as generated.
     body = hooks.get_json(transaction)
     # foreign_sender sends from an address no mailbox holds, which the
-    # handler refuses (403): it gets none.
+    # handler refuses (404): it gets none.
     if isinstance(body, dict) and body.get("from") != "someone@other.test":
         a_signing_mailbox_at(transaction, body.get("from"))
         # A recipient with a mailbox here is delivered here; one without is

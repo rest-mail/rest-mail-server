@@ -30318,8 +30318,13 @@
         "status": 422,
         "body": {
           "error": {
-            "code": "no_matching_domains",
-            "message": "None of the policy domains in the report match a known domain"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "policies": "None of the policy domains in the report match a known domain"
+              }
+            }
           }
         }
       }
@@ -35867,7 +35872,7 @@
       }
     },
     "foreign_sender": {
-      "summary": "The caller cannot send as that address",
+      "summary": "An unknown sender and a sender with no link to the caller are indistinguishable",
       "request": {
         "body": {
           "from": "someone@other.test",
@@ -35879,11 +35884,11 @@
         }
       },
       "response": {
-        "status": 403,
+        "status": 404,
         "body": {
           "error": {
-            "code": "forbidden",
-            "message": "You are not authorized to send from this address"
+            "code": "not_found",
+            "message": "Account not found"
           }
         },
         "mediaType": "application/json"
@@ -36156,7 +36161,12 @@
         "body": {
           "error": {
             "code": "validation_failed",
-            "message": "scheduled_at must be at least a minute in the future"
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "scheduled_at": "must be at least a minute in the future"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -36180,7 +36190,12 @@
         "body": {
           "error": {
             "code": "validation_failed",
-            "message": "scheduled_at must be within a year"
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "scheduled_at": "must be within a year"
+              }
+            }
           }
         },
         "mediaType": "application/json"
@@ -36399,8 +36414,13 @@
         "status": 422,
         "body": {
           "error": {
-            "code": "list_unsubscribe_not_allowed",
-            "message": "The sender domain sends transactional mail, which carries no List-Unsubscribe field: omit list_unsubscribe"
+            "code": "validation_failed",
+            "message": "Request body failed validation",
+            "details": {
+              "fields": {
+                "list_unsubscribe": "The sender domain sends transactional mail, which carries no List-Unsubscribe field: omit list_unsubscribe"
+              }
+            }
           }
         },
         "mediaType": "application/json"

@@ -239,8 +239,8 @@ func TestSendMessage_OneClickNeedsDKIM(t *testing.T) {
 	claims := &auth.Claims{AccountID: sender.ID, CredentialKind: "app_password"}
 
 	rr := sendAs(h, claims, sendBody(sender.Address, `{"https":"https://`+domain+`/u"}`))
-	if rr.Code != http.StatusUnprocessableEntity || errorCodeOf(rr) != "dkim_required" {
-		t.Fatalf("status = %d, body %s; want 422 dkim_required", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusUnprocessableEntity || errorCodeOf(rr) != "validation_failed" || !strings.Contains(rr.Body.String(), `"fields":{"list_unsubscribe.https":`) {
+		t.Fatalf("status = %d, body %s; want 422 validation_failed on list_unsubscribe.https", rr.Code, rr.Body.String())
 	}
 	var queued int64
 	h.db.Model(&models.OutboundQueue{}).Where("sender = ?", sender.Address).Count(&queued)

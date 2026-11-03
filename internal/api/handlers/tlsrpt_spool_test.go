@@ -253,7 +253,7 @@ func TestReceiveReport_StoresTheSameRowsHoweverSent(t *testing.T) {
 		r := httptest.NewRequest(http.MethodPost, tlsReportPath, strings.NewReader(strings.ReplaceAll(raw, hosted, "not-hosted.invalid")))
 		rr := httptest.NewRecorder()
 		tlsReportRoutes(NewTLSReportHandler(tx), passThrough).ServeHTTP(rr, r)
-		want := `{"error":{"code":"no_matching_domains","message":"None of the policy domains in the report match a known domain"}}`
+		want := `{"error":{"code":"validation_failed","message":"Request body failed validation","details":{"fields":{"policies":"None of the policy domains in the report match a known domain"}}}}`
 		if rr.Code != http.StatusUnprocessableEntity || strings.TrimSpace(rr.Body.String()) != want {
 			t.Fatalf("answered %d %s", rr.Code, rr.Body)
 		}
@@ -272,7 +272,7 @@ func TestStoreReport_ReadsTheReportOnlyToStoreIt(t *testing.T) {
 		return nil, nil
 	})
 	var refusal *endpoint.Error
-	if !errors.As(err, &refusal) || refusal.Code != "no_matching_domains" {
+	if !errors.As(err, &refusal) || refusal.Code != "validation_failed" || refusal.Fields["policies"] == "" {
 		t.Fatalf("got %v", err)
 	}
 

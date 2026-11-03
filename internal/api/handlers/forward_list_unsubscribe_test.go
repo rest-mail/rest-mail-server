@@ -60,7 +60,7 @@ func TestForward_FollowsTheDomainSendingPolicy(t *testing.T) {
 		return rr
 	}
 
-	if rr := forward(""); rr.Code != http.StatusUnprocessableEntity || errorCodeOf(rr) != "list_unsubscribe_required" {
+	if rr := forward(""); rr.Code != http.StatusUnprocessableEntity || errorCodeOf(rr) != "validation_failed" || !strings.Contains(rr.Body.String(), `"fields":{"list_unsubscribe":`) {
 		t.Fatalf("forward without list_unsubscribe: %d %s", rr.Code, rr.Body.String())
 	}
 	rr := forward(fmt.Sprintf(`,"list_unsubscribe":{"mailto":"unsub@%s"}`, domain))

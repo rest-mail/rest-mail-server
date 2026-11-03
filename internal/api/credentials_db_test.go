@@ -770,7 +770,7 @@ func TestAppPasswords_ReachOnlyTheirOwnMailbox(t *testing.T) {
 		t.Errorf("accounts listed for the app password: %d %s", rr.Code, rr.Body.String())
 	}
 	rr = f.do(http.MethodPost, "/api/v1/messages/send", appPassword, `{"from":"receipts@example.test","to":["x@example.org"],"subject":"s","body_text":"b"}`)
-	if rr.Code != http.StatusForbidden || !strings.Contains(rr.Body.String(), "not authorized to send from this address") {
+	if rr.Code != http.StatusNotFound || rr.Body.String() != `{"error":{"code":"not_found","message":"Account not found"}}`+"\n" {
 		t.Errorf("sending as a linked mailbox with the app password: %d %s", rr.Code, rr.Body.String())
 	}
 	// An app password never makes credentials; the session of an owner
