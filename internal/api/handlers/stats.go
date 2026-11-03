@@ -140,22 +140,12 @@ func (h *StatsHandler) dashboardStats(r *http.Request, _ struct{}) (DashboardSta
 	return stats, nil
 }
 
-// inboundTransportSecuritySQL is a single DB aggregate over inbound-MX mail.
-// The predicates are deliberately portable (SUM(CASE ...) rather than the
-// Postgres-only COUNT(*) FILTER) so the exact query the server runs is also
-// exercisable against a lightweight test database.
-//
-// "Auth pass" is defined as a stored message carrying spf=pass or dkim=pass —
-// the tokens the Authentication-Results this server prepends holds for the SPF
-// and DKIM verdicts, which are DMARC's inputs, so the split answers "did this
-// plaintext message carry a passing sender authentication result, or none at
-// all?". It is a dashboard count: no filter or decision reads it.
 const inboundTransportSecuritySQL = `SELECT
 	COUNT(*) AS total_inbound_mx,
 	COALESCE(SUM(CASE WHEN received_tls THEN 1 ELSE 0 END), 0) AS over_tls,
 	COALESCE(SUM(CASE WHEN NOT received_tls THEN 1 ELSE 0 END), 0) AS plaintext,
-	COALESCE(SUM(CASE WHEN NOT received_tls AND (raw_message LIKE '%spf=pass%' OR raw_message LIKE '%dkim=pass%') THEN 1 ELSE 0 END), 0) AS plaintext_auth_pass,
-	COALESCE(SUM(CASE WHEN NOT received_tls AND NOT (raw_message LIKE '%spf=pass%' OR raw_message LIKE '%dkim=pass%') THEN 1 ELSE 0 END), 0) AS plaintext_auth_fail
+	COALESCE(SUM(CASE WHEN NOT received_tls AND COALESCE(auth_results @> '[{"method":"spf","result":"pass"}]' OR auth_results @> '[{"method":"dkim","result":"pass"}]', false) THEN 1 ELSE 0 END), 0) AS plaintext_auth_pass,
+	COALESCE(SUM(CASE WHEN NOT received_tls AND NOT COALESCE(auth_results @> '[{"method":"spf","result":"pass"}]' OR auth_results @> '[{"method":"dkim","result":"pass"}]', false) THEN 1 ELSE 0 END), 0) AS plaintext_auth_fail
 FROM messages
 WHERE received_tls IS NOT NULL`
 

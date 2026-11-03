@@ -17,12 +17,13 @@ import (
 func TestMessage_JSONSerialization_RawSize(t *testing.T) {
 	raw := "From: a@example.com\r\nSubject: hi\r\n\r\nbody\r\n"
 	msg := Message{
-		ID:         42,
-		Sender:     "a@example.com",
-		Subject:    "hi",
-		RawMessage: raw,
-		RawSize:    len(raw),
-		SizeBytes:  7,
+		ID:          42,
+		Sender:      "a@example.com",
+		Subject:     "hi",
+		RawMessage:  raw,
+		AuthResults: JSONB(`[{"method":"spf","result":"pass"}]`),
+		RawSize:     len(raw),
+		SizeBytes:   7,
 	}
 
 	data, err := json.Marshal(msg)
@@ -49,6 +50,9 @@ func TestMessage_JSONSerialization_RawSize(t *testing.T) {
 	// detail responses (it is served only via the dedicated /raw endpoint).
 	if _, leaked := out["raw_message"]; leaked {
 		t.Errorf("raw_message leaked into serialized message: %s", data)
+	}
+	if _, leaked := out["auth_results"]; leaked {
+		t.Errorf("internal auth_results leaked into serialized message: %s", data)
 	}
 	for k := range out {
 		if k == "RawMessage" {

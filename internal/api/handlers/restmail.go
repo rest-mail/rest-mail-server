@@ -469,6 +469,10 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 	if rawMessage != "" {
 		rawMessage = pipeline.AuthResultsHeader(authResults) + rawMessage
 	}
+	storedAuthResults, err := json.Marshal(authResults)
+	if err != nil {
+		return RestmailDelivery{}, fmt.Errorf("encode authentication verdicts: %w", err)
+	}
 
 	// Each recipient's own Sieve script runs on its own copy of the message, after the domain's
 	// pipeline ran once for all of them (#787). Every script runs before anything is stored,
@@ -573,6 +577,7 @@ func (h *RestmailHandler) deliver(r *http.Request, in restmailDeliverInput) (Res
 			BodyHTML:     req.BodyHTML,
 			Headers:      models.JSONB(headers),
 			RawMessage:   rcptRaw,
+			AuthResults:  models.JSONB(storedAuthResults),
 			SizeBytes:    sizeBytes,
 			RawSize:      len(rcptRaw), // exact stored-raw octet count for IMAP/POP3 size reporting
 		}

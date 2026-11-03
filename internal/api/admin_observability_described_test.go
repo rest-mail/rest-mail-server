@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -51,5 +52,11 @@ func TestAdminObservabilityIsDescribedFromItsTypes(t *testing.T) {
 	}
 	if props["body_type"] == nil || props["failure_category"] == nil {
 		t.Error("delivery log lost existing fields")
+	}
+	description := paths["/api/v1/admin/stats"]["get"].Description
+	for _, phrase := range []string{"plaintextAuthPass", "saved typed SPF or DKIM pass", "plaintextAuthFail", "mail stored before typed verdict persistence", "not a count of explicit authentication failures", "Message headers and bodies are never consulted"} {
+		if !strings.Contains(description, phrase) {
+			t.Errorf("dashboard description is missing %q: %s", phrase, description)
+		}
 	}
 }

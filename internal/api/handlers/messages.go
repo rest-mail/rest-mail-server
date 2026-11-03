@@ -2549,6 +2549,10 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	if params.RawMessage != "" {
 		params.RawMessage = pipeline.AuthResultsHeader(authResults) + params.RawMessage
 	}
+	storedAuthResults, err := json.Marshal(authResults)
+	if err != nil {
+		return nil, fmt.Errorf("encode authentication verdicts: %w", err)
+	}
 
 	// ── Ensure Message-ID exists ────────────────────────────────────
 	if params.MessageID == "" {
@@ -2594,6 +2598,7 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		BodyText:     params.BodyText,
 		BodyHTML:     params.BodyHTML,
 		RawMessage:   params.RawMessage,
+		AuthResults:  models.JSONB(storedAuthResults),
 		SizeBytes:    sizeBytes,
 		// Exact octet count of the stored raw (IMAP RFC822.SIZE / POP3 LIST
 		// report this; it must equal the bytes served verbatim). Zero when no
