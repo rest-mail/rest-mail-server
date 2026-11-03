@@ -69,7 +69,7 @@ func TestWebPushDevicesQuietHoursAndGone(t *testing.T) {
 		t.Fatalf("the gone subscription is still there (%d, %v)", left, err)
 	}
 	var entry models.AuditEntry
-	if err := database.Where("action = ?", ActionDeviceRemove).Order("id desc").First(&entry).Error; err != nil {
+	if err := database.Where("action = ?", ActionDeviceRemove).Order("seq desc").First(&entry).Error; err != nil {
 		t.Fatal(err)
 	}
 	if entry.Target["reason"] != RemovedByWebPush || entry.Target["webpush_reason"] != "Unregistered" || entry.Target["platform"] != models.PushPlatformWebPush {
