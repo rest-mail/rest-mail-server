@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"slices"
 	"strings"
 
@@ -46,6 +47,11 @@ func (s *Session) handleStore(tag, args string) {
 		return
 	}
 
+	flags, ok = s.storeKeywords(tag, mode, flags)
+	if !ok {
+		return
+	}
+
 	seqNums := s.seqNumbers(parts[0])
 
 	for _, seq := range seqNums {
@@ -53,12 +59,38 @@ func (s *Session) handleStore(tag, args string) {
 			continue
 		}
 		if err := s.applyStore(seq, mode, flags, silent, false); err != nil {
-			s.tagged(tag, "NO", "STORE failed: "+err.Error())
+			s.tagged(tag, "NO", storeRefusal(err, "STORE failed: "+err.Error()))
 			return
 		}
 	}
 
 	s.tagged(tag, "OK", "STORE completed")
+}
+
+// storeKeywords is the flags a STORE applies once the store's keyword support
+// is taken into account. A store that keeps no keywords ignores them (RFC 3501
+// §6.4.6; PERMANENTFLAGS never offered \* for them). A STORE that would take
+// the selected folder past the store's keyword limit is answered NO [LIMIT]
+// (RFC 5530 §3) and ok is false.
+func (s *Session) storeKeywords(tag string, mode storeMode, flags []string) (_ []string, ok bool) {
+	if stores, _ := s.keywordStore(); !stores {
+		return withoutKeywords(flags), true
+	}
+	if mode != storeRemove && s.overKeywordLimit(flags) {
+		s.tagged(tag, "NO", keywordLimitRefusal)
+		return nil, false
+	}
+	return flags, true
+}
+
+// storeRefusal is the NO text for a STORE the message refused: a message over
+// [imap.MaxKeywords] keywords carries RFC 5530's LIMIT code; any other failure
+// is other.
+func storeRefusal(err error, other string) string {
+	if errors.Is(err, imap.ErrTooManyKeywords) {
+		return keywordLimitRefusal + ": " + err.Error()
+	}
+	return other
 }
 
 // recentRefusal is the response text for a STORE that names \Recent.
@@ -125,6 +157,12 @@ func (s *Session) applyStore(seq int, mode storeMode, flags []string, silent, wi
 	}
 
 	update := s.applyStoreFlags(msg, mode, flags)
+	if stores, _ := s.keywordStore(); !stores {
+		// A store that keeps no keywords is never asked to change them, even
+		// by a FLAGS replace that lists none.
+		msg.Keywords = before.Keywords
+		update.Keywords, update.KeywordsSet = nil, false
+	}
 	if update.KeywordsSet {
 		normalized, err := imap.NormalizeImportFlags(update.Keywords)
 		if err != nil {
@@ -314,13 +352,18 @@ func (s *Session) handleUIDStore(tag, args string) {
 		return
 	}
 
+	flags, ok = s.storeKeywords(tag, mode, flags)
+	if !ok {
+		return
+	}
+
 	seqNums := s.parseUIDSet(parts[0])
 	for _, seq := range seqNums {
 		if seq < 1 || seq > len(s.messages) {
 			continue
 		}
 		if err := s.applyStore(seq, mode, flags, silent, true); err != nil {
-			s.tagged(tag, "NO", "UID STORE failed")
+			s.tagged(tag, "NO", storeRefusal(err, "UID STORE failed"))
 			return
 		}
 	}

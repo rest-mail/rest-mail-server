@@ -8,7 +8,10 @@ upstream. No installed module cache is modified.
 
 Import permits at most 100 distinct case-insensitive keywords per message,
 255 ASCII bytes each, and five system flags. Keywords use RFC 3501 atom syntax
-and cannot contain a backslash. FLAGS reports existing mailbox keywords; PERMANENTFLAGS also advertises `\*`.
+and cannot contain a backslash. FLAGS reports existing mailbox keywords; PERMANENTFLAGS also advertises `\*`
+when the store implements `imap.KeywordMailbox` and the selected folder is
+under the store's `KeywordLimit`. A STORE or APPEND over either bound is
+answered `NO [LIMIT]` (RFC 5530 §3).
 Keyword STORE is included only because imapsync filters out keywords before
 APPEND unless this wildcard is advertised, and RFC 3501 requires the advertised
 capability to work. The same syntax, count and length bounds apply to STORE.

@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Keyword storage is now opt-in: a Mailbox that implements the new optional
+  `imap.KeywordMailbox` interface keeps keywords, and only then does SELECT's
+  PERMANENTFLAGS end with `\*`. Without it a keyword in STORE is ignored and
+  APPEND drops keywords. `KeywordLimit` caps the distinct keywords of one
+  folder: once the selected folder reaches it, PERMANENTFLAGS drops `\*`
+  (RFC 9051 §7.1). A STORE or APPEND over that limit, or over
+  `imap.MaxKeywords` (100) keywords on one message, is answered `NO [LIMIT]`
+  (RFC 5530 §3).
 - Folder management (RFC 9051 §§6.3.4-6.3.6): a Mailbox that implements the new
   optional `imap.FolderMailbox` interface (`CreateFolder`, `DeleteFolder`,
   `RenameFolder`) keeps folders apart from their messages. CREATE then answers
