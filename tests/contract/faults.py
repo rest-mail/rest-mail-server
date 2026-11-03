@@ -15,6 +15,9 @@ Reports land in .cache/contract/: faults.md and faults-<name>-<phase>.xml.
 Limit phases send their own login probes, not Vertrag examples. The secret_scan
 phase runs the same narrowed gate and judges its recording with secret_scan.py,
 because a secret in a free string fits the schema and passes the examples phase.
+The browser_session phase runs the same narrowed gate, whose first step is the
+browser-session checker (tests/contract/browser_sessions), and judges only that
+checker: its output line and its receipt (browser-sessions.json).
 Known gaps remain until live proof is reviewed; a newly caught gap deliberately
 fails.
 
@@ -27,6 +30,7 @@ import argparse
 import http.client
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -44,9 +48,19 @@ OUT = ROOT / ".cache/contract"
 ACTIVE = "fault injection active"
 
 # Each phase a fault can name: the run.sh phase that runs it, and its report.
-PHASES = {"examples": ("gate", "examples.xml"), "body_cap": None, "auth_throttle": None, "secret_scan": ("gate", "examples.har")}
+PHASES = {
+    "examples": ("gate", "examples.xml"), "body_cap": None, "auth_throttle": None,
+    "secret_scan": ("gate", "examples.har"), "browser_session": ("gate", "browser-sessions.json"),
+}
 LIMIT_PHASES = {"body_cap", "auth_throttle"}
 SCAN_PHASE = "secret_scan"
+SESSION_PHASE = "browser_session"
+# The phases whose report is the one case this runner writes for the route.
+OWN_CASE_PHASES = {SCAN_PHASE, SESSION_PHASE}
+# What the browser-session checker prints, and the requests it sends a cookie
+# session's unsafe operation lacking a matching CSRF token (browser_sessions/main.go).
+SESSION_CHECKER = "browser session contract: "
+CSRF_VARIANTS = ("cookie-without-csrf", "cookie-mismatched-csrf", "cookie-without-csrf-cookie")
 LOGIN = "/api/v1/auth/login"
 BODY_BYTES = 32 << 20
 THROTTLE_ATTEMPTS = 200
@@ -94,9 +108,9 @@ def probe_transactions_of(report, path, phase):
     """(1, failures) for the one case a limit probe or the scan writes. A case
     that errored or was skipped could not judge, so it is no verdict at all."""
     cases = list(ET.parse(report).getroot().iter("testcase"))
-    if phase == SCAN_PHASE:
+    if phase in OWN_CASE_PHASES:
         if len(cases) != 1 or cases[0].get("name") != f"{path} > {phase}":
-            raise ValueError("no unique secret scan verdict for the route")
+            raise ValueError(f"no unique {phase} verdict for the route")
     elif len(cases) != 1 or cases[0].get("name") != f"{path} > {phase}" or cases[0].get("classname") != "login":
         raise ValueError("no unique login limit probe for the operation and reason")
     case = cases[0]
@@ -120,11 +134,11 @@ def judge(report, path, faulted, known_gap=None, phase="examples", expected_fail
     """
     if not Path(report).exists():
         return False, "the phase did not run: no report"
-    if phase in LIMIT_PHASES or phase == SCAN_PHASE:
+    if phase in LIMIT_PHASES or phase in OWN_CASE_PHASES:
         try:
             sent, failed = probe_transactions_of(report, path, phase)
         except (ValueError, ET.ParseError) as error:
-            kind = "scan" if phase == SCAN_PHASE else "limit"
+            kind = {SCAN_PHASE: "scan", SESSION_PHASE: "session"}.get(phase, "limit")
             return False, f"invalid {kind} proof: {error}"
     else:
         sent, failed = transactions_of(report, path)
@@ -281,10 +295,59 @@ def scan_recording(har_path, operation, path, keep_as):
     return report
 
 
+def session_verdict(output, receipt_path, operation, path, keep_as):
+    """Judge the browser-session checker's run, as a report the run can read: a
+    failure only when it failed this operation's CSRF refusal. A pass that never
+    saw the operation refuse each request lacking CSRF, or a failure anywhere or
+    for any other reason, is an error, so it neither catches nor clears."""
+    report = OUT / keep_as
+    report.parent.mkdir(parents=True, exist_ok=True)
+    suite = ET.Element("testsuite", name=SESSION_PHASE)
+    case = ET.SubElement(suite, "testcase", classname=operation, name=f"{path} > {SESSION_PHASE}")
+    try:
+        verdicts = [line[len(SESSION_CHECKER):] for line in output.splitlines() if line.startswith(SESSION_CHECKER)]
+        if len(verdicts) != 1:
+            raise ValueError(f"{len(verdicts)} browser-session checker verdicts in the output, wanted one")
+        verdict = verdicts[0]
+        receipt = json.loads(Path(receipt_path).read_text())
+        checks = receipt["checks"]
+        if receipt["passed"] is True:
+            if not re.fullmatch(r"\d+ checks passed", verdict):
+                raise ValueError("the receipt passed but the checker said: " + verdict)
+            refused = sorted(c["principal"] for c in checks if c["operation"] == operation and c["status"] == 403)
+            if refused != sorted(CSRF_VARIANTS):
+                raise ValueError(f"the checker passed without refusing each request to {operation} lacking CSRF")
+        else:
+            failed = re.fullmatch(
+                re.escape(operation) + r" \((" + "|".join(map(re.escape, CSRF_VARIANTS)) + r")\): "
+                r"(expected 403 csrf_failed, got status (\d+) or a different error code)",
+                verdict,
+            )
+            if not failed:
+                raise ValueError("the checker failed for another reason: " + verdict)
+            if not checks or checks[-1] != {"operation": operation, "principal": failed[1], "status": int(failed[3])}:
+                raise ValueError("the receipt does not end with the check that failed")
+            ET.SubElement(case, "failure", type=SESSION_PHASE, message=f"{operation} ({failed[1]}): {failed[2]}")
+        ET.SubElement(case, "system-out").text = f"{len(checks)} browser-session checks: {verdict}"
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        ET.SubElement(case, "error", message=str(error)).text = str(error)
+    ET.ElementTree(suite).write(report, encoding="utf-8", xml_declaration=True)
+    return report
+
+
 def run_phase(phase, operation, keep_as, path=None):
     if phase in LIMIT_PHASES:
         return run_limits(phase, operation, keep_as)
     runner, report = PHASES[phase]
+    if phase == SESSION_PHASE:
+        # The checker's verdict is its output line, so keep the output as well.
+        done = subprocess.run(
+            ["tests/contract/run.sh", runner, "--operation-id", operation], cwd=ROOT, check=False,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+        )
+        print(done.stdout, end="")
+        print(f"run.sh {runner} --operation-id {operation} exited {done.returncode}")
+        return session_verdict(done.stdout, OUT / report, operation, path, keep_as)
     code = subprocess.run(
         ["tests/contract/run.sh", runner, "--operation-id", operation], cwd=ROOT, check=False
     ).returncode

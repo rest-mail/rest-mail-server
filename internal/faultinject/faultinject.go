@@ -33,7 +33,10 @@ type Fault struct {
 	// BreakSeeing is Break for a fault that needs what the client sent: it is
 	// given the request body as well. The route still receives that body.
 	BreakSeeing func(sent []byte, rec *httptest.ResponseRecorder)
-	Configure   func(*config.Config)
+	// BreakRequest changes the request before the router sees it, for a fault
+	// that gets a request past a guard the route sits behind.
+	BreakRequest func(*http.Request)
+	Configure    func(*config.Config)
 	// Example is an answer the route gives without the fault, for the
 	// package's own test that the fault changes it. ExampleRequest is the body
 	// sent for it, which a BreakSeeing needs.
@@ -102,6 +105,11 @@ func wrap(next http.Handler, faults []Fault) http.Handler {
 		if slices.ContainsFunc(matched, func(f Fault) bool { return f.BreakSeeing != nil }) {
 			sent, _ = io.ReadAll(r.Body)
 			r.Body = io.NopCloser(bytes.NewReader(sent))
+		}
+		for _, f := range matched {
+			if f.BreakRequest != nil {
+				f.BreakRequest(r)
+			}
 		}
 		rec := httptest.NewRecorder()
 		next.ServeHTTP(rec, r)

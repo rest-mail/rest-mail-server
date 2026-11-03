@@ -28,7 +28,7 @@ type catalogueEntry struct {
 }
 
 // The phases tests/contract/faults.py can run and judge.
-var judgedPhases = map[string]bool{"examples": true, "body_cap": true, "auth_throttle": true, "secret_scan": true}
+var judgedPhases = map[string]bool{"examples": true, "body_cap": true, "auth_throttle": true, "secret_scan": true, "browser_session": true}
 
 func readCatalogue(t *testing.T) []catalogueEntry {
 	t.Helper()

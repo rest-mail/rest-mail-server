@@ -457,6 +457,122 @@ class SecretScan(unittest.TestCase):
                     restart.assert_not_called()
 
 
+class BrowserSession(unittest.TestCase):
+    OPERATION = "createAccount"
+    PATH = "/api/v1/accounts"
+    REFUSED = [{"operation": "createAccount", "principal": variant, "status": 403} for variant in faults.CSRF_VARIANTS]
+    BEFORE = [{"operation": "login", "principal": "cookie", "status": 200}]
+
+    def verdict(self, directory, output, receipt):
+        receipt_path = Path(directory) / "browser-sessions.json"
+        if receipt is not None:
+            receipt_path.write_text(json.dumps(receipt))
+        with patch.object(faults, "OUT", Path(directory)):
+            return faults.session_verdict(output, receipt_path, self.OPERATION, self.PATH, "sessions.xml")
+
+    def judged(self, output, receipt, **options):
+        with tempfile.TemporaryDirectory() as directory:
+            report_path = self.verdict(directory, output, receipt)
+            return faults.judge(report_path, self.PATH, phase="browser_session", **options)
+
+    def passing(self):
+        checks = self.BEFORE + self.REFUSED
+        return f"browser session contract: {len(checks)} checks passed\n", {"passed": True, "checks": checks}
+
+    def skipped(self, variant="cookie-without-csrf", status=400, operation=OPERATION):
+        line = f"browser session contract: {operation} ({variant}): expected 403 csrf_failed, got status {status} or a different error code"
+        checks = self.BEFORE + [{"operation": operation, "principal": variant, "status": status}]
+        return "go: downloading\n" + line + "\n", {"passed": False, "checks": checks}
+
+    def test_the_catalogue_entry_is_judged_by_the_checker_for_its_reason(self):
+        fault = next(fault for fault in faults.load() if fault["phase"] == "browser_session")
+        self.assertEqual((fault["operation"], fault["path"]), (self.OPERATION, self.PATH))
+        self.assertEqual(fault["expected_failure"], "expected 403 csrf_failed")
+        self.assertNotIn("known_gap", fault)
+        self.assertEqual(faults.PHASES["browser_session"], ("gate", "browser-sessions.json"))
+
+    def test_a_csrf_refusal_the_operation_skipped_catches_the_fault(self):
+        for variant in faults.CSRF_VARIANTS:
+            with self.subTest(variant=variant):
+                passed, why = self.judged(*self.skipped(variant), faulted=True, expected_failure="expected 403 csrf_failed")
+                self.assertTrue(passed, why)
+                self.assertIn(f"caught: {self.OPERATION} ({variant}): expected 403 csrf_failed, got status 400", why)
+
+    def test_a_passing_checker_is_green_on_the_baseline_and_catches_nothing(self):
+        self.assertEqual(self.judged(*self.passing(), faulted=False), (True, "green"))
+        passed, why = self.judged(*self.passing(), faulted=True)
+        self.assertFalse(passed)
+        self.assertIn("not caught", why)
+
+    def test_a_skipped_csrf_refusal_on_the_baseline_is_red(self):
+        passed, why = self.judged(*self.skipped(), faulted=False)
+        self.assertFalse(passed)
+        self.assertIn("red without a fault", why)
+
+    def test_a_known_gap_fails_once_the_checker_catches_it(self):
+        passed, why = self.judged(*self.skipped(), faulted=True, known_gap="#654")
+        self.assertFalse(passed)
+        self.assertIn("now caught, so remove known_gap #654", why)
+
+    def test_a_checker_failing_for_another_reason_neither_catches_nor_clears(self):
+        output, receipt = self.skipped()
+        scenarios = {
+            "another operation's CSRF refusal": self.skipped(operation="saveDraft"),
+            "another assertion": (
+                "browser session contract: refresh (cookie-with-csrf): expected 200 , got status 401 or a different error code\n",
+                {"passed": False, "checks": self.BEFORE + [{"operation": "refresh", "principal": "cookie-with-csrf", "status": 401}]},
+            ),
+            "a safe read": (
+                f"browser session contract: {self.OPERATION} (cookie-without-csrf): safe response error code differs from control (status 404)\n",
+                receipt,
+            ),
+            "a valid token refused": self.skipped(variant="cookie-with-csrf"),
+            "a run that could not start": ("browser session contract: open .cache/contract/openapi.json: no such file\n", {"passed": False, "checks": []}),
+            "no checker verdict": ("run.sh: description.py failed\n", None),
+            "no receipt": (output, None),
+            "a receipt from another check": (output, {"passed": False, "checks": self.REFUSED}),
+            "two verdicts": (output + output, receipt),
+            "a pass without the operation's refusals": ("browser session contract: 1 checks passed\n", {"passed": True, "checks": self.BEFORE}),
+            "a pass the output contradicts": (output, {"passed": True, "checks": self.BEFORE + self.REFUSED}),
+        }
+        for name, (out, rec) in scenarios.items():
+            for faulted in (False, True):
+                for known_gap in (None, "#654"):
+                    with self.subTest(name, faulted=faulted, known_gap=known_gap):
+                        passed, why = self.judged(out, rec, faulted=faulted, known_gap=known_gap)
+                        self.assertFalse(passed, why)
+                        self.assertIn("invalid session proof", why)
+
+    def test_run_judges_the_checker_of_each_gate_run_and_restores_the_api(self):
+        fault = next(fault for fault in faults.load() if fault["phase"] == "browser_session")
+        for runs, expected_code, verdict in [
+            ([self.passing(), self.skipped()], 0, "caught:"),
+            ([self.passing(), self.passing()], 1, "not caught"),
+            ([self.skipped(), self.skipped()], 1, "red without a fault"),
+        ]:
+            with self.subTest(verdict=verdict), tempfile.TemporaryDirectory() as directory, patch.object(
+                faults, "OUT", Path(directory)
+            ), patch.object(faults, "load", return_value=[fault]), patch.object(
+                faults, "restart_api"
+            ) as restart, patch.object(faults, "fault_active", return_value=True):
+                answers = iter(runs)
+
+                def gate(command, **options):
+                    self.assertEqual(command, ["tests/contract/run.sh", "gate", "--operation-id", self.OPERATION])
+                    self.assertEqual(options.get("stderr"), faults.subprocess.STDOUT)
+                    output, receipt = next(answers)
+                    (Path(directory) / "browser-sessions.json").write_text(json.dumps(receipt))
+                    return SimpleNamespace(returncode=0 if receipt["passed"] else 1, stdout=output)
+
+                with patch.object(faults.subprocess, "run", side_effect=gate), patch("builtins.print"):
+                    self.assertEqual(faults.run("api"), expected_code)
+                self.assertIn(verdict, (Path(directory) / "faults.md").read_text())
+                if verdict != "red without a fault":
+                    self.assertEqual([call.args for call in restart.call_args_list], [(fault["build_tags"],), ("",)])
+                else:
+                    restart.assert_not_called()
+
+
 class LimitRun(unittest.TestCase):
     def test_baseline_is_required_before_any_fault_build(self):
         fault = next(fault for fault in faults.load() if fault["phase"] == "body_cap")
