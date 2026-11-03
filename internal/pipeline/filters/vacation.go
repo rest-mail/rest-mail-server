@@ -294,9 +294,11 @@ func buildVacationReply(from, to, subject, body, inReplyTo string) string {
 	// it originates from the caller-supplied req.MessageID and is attacker-
 	// influenced. Strip control characters so a CRLF cannot inject extra headers
 	// (e.g. a Bcc:) into this outbound reply (issue #201). Subject also flows from
-	// the mailbox config, so sanitize it for the same reason.
+	// the mailbox config, so sanitize it for the same reason, and encode it for
+	// its header (RFC 2047) as buildSieveVacationReply does: an ASCII subject
+	// is left as it is.
 	inReplyTo = sanitizeHeaderValue(inReplyTo)
-	subject = sanitizeHeaderValue(subject)
+	subject = mime.QEncoding.Encode("utf-8", sanitizeHeaderValue(subject))
 
 	var b strings.Builder
 	b.WriteString("From: " + from + "\r\n")

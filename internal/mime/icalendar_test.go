@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
@@ -673,5 +674,53 @@ func TestGenerateICS_RoundTrip(t *testing.T) {
 	}
 	if !parsed.DTEnd.Equal(original.DTEnd) {
 		t.Errorf("DTEnd = %v, want %v", parsed.DTEnd, original.DTEnd)
+	}
+}
+
+// Every content line a calendar reply writes is folded at 75 octets: CRLF and
+// one space, never inside a UTF-8 sequence (RFC 5545 §3.1). Unfolded, the
+// reply reads back as what was put in (#1609).
+func TestBuildCalendarReply_FoldsLongLines(t *testing.T) {
+	long := strings.TrimSuffix(strings.Repeat("Quarterly planning review, ", 8), ", ")
+	multibyte := strings.TrimSuffix(strings.Repeat("Überprüfung – 会議 – ", 10), " – ")
+	for name, summary := range map[string]string{"long": long, "multibyte": multibyte} {
+		event := pipeline.CalendarEvent{
+			UID:       "fold-" + name + "@example.com",
+			Summary:   summary,
+			DTStart:   time.Date(2024, 3, 15, 14, 0, 0, 0, time.UTC),
+			Organizer: pipeline.CalendarAddress{Address: "organizer@example.com", Name: strings.TrimSpace(strings.Repeat("Organizer Name ", 6))},
+		}
+		reply := BuildCalendarReply(event, "a.very.long.attendee.address.that.goes.past.the.limit@example.com", "ACCEPTED")
+		if !strings.HasSuffix(reply, "\r\n") {
+			t.Fatalf("%s: reply does not end in CRLF", name)
+		}
+		for i, line := range strings.Split(strings.TrimSuffix(reply, "\r\n"), "\r\n") {
+			if len(line) > 75 {
+				t.Errorf("%s: line %d is %d octets: %q", name, i, len(line), line)
+			}
+			if !utf8.ValidString(line) {
+				t.Errorf("%s: line %d splits a UTF-8 sequence: %q", name, i, line)
+			}
+			if strings.Contains(line, "\r") || strings.Contains(line, "\n") {
+				t.Errorf("%s: line %d holds a bare line break: %q", name, i, line)
+			}
+		}
+		unfolded := unfoldLines(reply)
+		for _, want := range []string{
+			"SUMMARY:" + escapeValue(summary) + "\r\n",
+			"ORGANIZER;CN=" + event.Organizer.Name + ":mailto:organizer@example.com\r\n",
+			"ATTENDEE;PARTSTAT=ACCEPTED:mailto:a.very.long.attendee.address.that.goes.past.the.limit@example.com\r\n",
+		} {
+			if !strings.Contains(unfolded, want) {
+				t.Errorf("%s: unfolded reply lacks %q", name, want)
+			}
+		}
+		events, err := ParseCalendar(reply)
+		if err != nil || len(events) != 1 {
+			t.Fatalf("%s: parse back: %v, %d events", name, err, len(events))
+		}
+		if events[0].Summary != summary || events[0].UID != event.UID || events[0].Organizer.Address != "organizer@example.com" {
+			t.Errorf("%s: round trip %+v", name, events[0])
+		}
 	}
 }

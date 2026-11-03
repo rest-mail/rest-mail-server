@@ -122,6 +122,7 @@ func TestParseTLSRPTRecord(t *testing.T) {
 		{[]string{"v=TLSRPTv1; rua=mailto:a@example.com", "v=TLSRPTv1; rua=mailto:b@example.com"}, nil},
 		{[]string{"v=TLSRPTv2; rua=mailto:a@example.com"}, nil},
 		{[]string{"rua=mailto:a@example.com; v=TLSRPTv1"}, nil},
+		{[]string{"v=TLSRPTv1; rua=mailto:a%0D%0ABcc:b@example.com,mailto:ok@example.com"}, []string{"mailto:ok@example.com"}},
 		{nil, nil},
 	}
 	for _, c := range cases {
@@ -209,5 +210,30 @@ func TestTLSReportExpired(t *testing.T) {
 	end := time.Date(2026, 10, 24, 0, 0, 0, 0, time.UTC)
 	if tlsReportExpired("2026-10-23", end.Add(47*time.Hour)) || !tlsReportExpired("2026-10-23", end.Add(49*time.Hour)) || !tlsReportExpired("bad", end) {
 		t.Error("the give-up time is wrong")
+	}
+}
+
+// A rua= mailto: address is percent-decoded (RFC 6068 §2) and must then be
+// one bare address that can go into a To: header and an SMTP envelope; one
+// that is not gets no report queued, since it could only fail (#1609).
+func TestTLSRPTMailto(t *testing.T) {
+	cases := []struct {
+		rua, want string
+		ok        bool
+	}{
+		{"mailto:reports@example.com", "reports@example.com", true},
+		{"mailto:tls%2Brpt@example.com?subject=report", "tls+rpt@example.com", true},
+		{"mailto:a%0D%0ABcc:b@example.com", "", false},
+		{"mailto:a%0A@example.com", "", false},
+		{"mailto:nobody", "", false},
+		{"mailto:a@example.com%2Cb@example.com", "", false},
+		{"mailto:Name%20%3Ca@example.com%3E", "", false},
+		{"mailto:a%ZZ@example.com", "", false},
+	}
+	for _, c := range cases {
+		got, err := tlsrptMailto(c.rua)
+		if (err == nil) != c.ok || got != c.want {
+			t.Errorf("%q: %q, %v; want %q, ok %v", c.rua, got, err, c.want, c.ok)
+		}
 	}
 }

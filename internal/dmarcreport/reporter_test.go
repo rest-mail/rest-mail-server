@@ -25,6 +25,9 @@ func TestMailtoRUAs(t *testing.T) {
 		{"scheme in any case", []string{"MAILTO:agg@example.test"}, []string{"agg@example.test"}},
 		{"non-mailto skipped", []string{"https://example.test/report", "mailto:agg@example.test"}, []string{"agg@example.test"}},
 		{"headers dropped", []string{"mailto:agg@example.test?subject=dmarc"}, []string{"agg@example.test"}},
+		{"percent-decoded", []string{"mailto:dmarc%2Brua@example.test"}, []string{"dmarc+rua@example.test"}},
+		{"line break skipped", []string{"mailto:agg%0D%0ABcc:evil@example.test", "mailto:ok@example.test"}, []string{"ok@example.test"}},
+		{"not one address skipped", []string{"mailto:a@example.test%2Cb@example.test", "mailto:nobody"}, nil},
 		{"none", nil, nil},
 	}
 	for _, c := range cases {

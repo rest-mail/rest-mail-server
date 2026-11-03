@@ -10,6 +10,7 @@ package filters
 
 import (
 	"context"
+	"mime"
 	"strings"
 	"testing"
 
@@ -135,5 +136,31 @@ func TestVacation_NullEnvelopeSenderGetsNoReply(t *testing.T) {
 		if res.Log.Result != "skip" || res.Log.Detail != "empty or null sender" {
 			t.Errorf("MAIL FROM %q: %+v, want skipped for a null sender", mailFrom, res.Log)
 		}
+	}
+}
+
+// The mailbox's configured subject is written into the reply's Subject:
+// header, so a non-ASCII one is encoded (RFC 2047) as buildSieveVacationReply
+// does; an ASCII one is written as it is (#1609).
+func TestBuildVacationReply_EncodesNonASCIISubject(t *testing.T) {
+	reply := buildVacationReply("me@example.com", "them@example.com", "Abwesenheit: zurück am Montag", "away", "")
+	want := "Subject: " + mime.QEncoding.Encode("utf-8", "Abwesenheit: zurück am Montag") + "\r\n"
+	if !strings.Contains(reply, want) {
+		t.Fatalf("reply lacks %q:\n%s", want, reply)
+	}
+	head, _, _ := strings.Cut(reply, "\r\n\r\n")
+	for i := 0; i < len(head); i++ {
+		if head[i] >= 0x80 {
+			t.Fatalf("header block has a non-ASCII byte at %d:\n%s", i, head)
+		}
+	}
+	dec, err := new(mime.WordDecoder).DecodeHeader(strings.TrimSuffix(strings.TrimPrefix(want, "Subject: "), "\r\n"))
+	if err != nil || dec != "Abwesenheit: zurück am Montag" {
+		t.Errorf("decoded subject %q, %v", dec, err)
+	}
+
+	ascii := buildVacationReply("me@example.com", "them@example.com", "Out of office", "away", "")
+	if !strings.Contains(ascii, "Subject: Out of office\r\n") {
+		t.Errorf("ASCII subject changed:\n%s", ascii)
 	}
 }

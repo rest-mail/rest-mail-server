@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/rest-mail/rest-mail-server/internal/pipeline"
 )
@@ -349,24 +350,24 @@ func unescapeValue(s string) string {
 // can escape is escaped; a UID or a parameter has no escape for a line break, so
 // it loses it.
 func BuildCalendarReply(event pipeline.CalendarEvent, attendeeEmail string, partstat string) string {
-	var b strings.Builder
-	b.WriteString("BEGIN:VCALENDAR\r\n")
-	b.WriteString("VERSION:2.0\r\n")
-	b.WriteString("PRODID:-//RESTmail//Calendar//EN\r\n")
-	b.WriteString("METHOD:REPLY\r\n")
-	b.WriteString("BEGIN:VEVENT\r\n")
-	b.WriteString("UID:" + sanitizeHeaderValue(event.UID) + "\r\n")
-	b.WriteString("DTSTAMP:" + time.Now().UTC().Format("20060102T150405Z") + "\r\n")
+	var b calendarWriter
+	b.line("BEGIN:VCALENDAR")
+	b.line("VERSION:2.0")
+	b.line("PRODID:-//RESTmail//Calendar//EN")
+	b.line("METHOD:REPLY")
+	b.line("BEGIN:VEVENT")
+	b.line("UID:" + sanitizeHeaderValue(event.UID))
+	b.line("DTSTAMP:" + time.Now().UTC().Format("20060102T150405Z"))
 
 	if !event.DTStart.IsZero() {
-		b.WriteString("DTSTART:" + event.DTStart.UTC().Format("20060102T150405Z") + "\r\n")
+		b.line("DTSTART:" + event.DTStart.UTC().Format("20060102T150405Z"))
 	}
 	if !event.DTEnd.IsZero() {
-		b.WriteString("DTEND:" + event.DTEnd.UTC().Format("20060102T150405Z") + "\r\n")
+		b.line("DTEND:" + event.DTEnd.UTC().Format("20060102T150405Z"))
 	}
 
 	if event.Summary != "" {
-		b.WriteString("SUMMARY:" + escapeValue(event.Summary) + "\r\n")
+		b.line("SUMMARY:" + escapeValue(event.Summary))
 	}
 
 	if event.Organizer.Address != "" {
@@ -375,15 +376,49 @@ func BuildCalendarReply(event pipeline.CalendarEvent, attendeeEmail string, part
 			orgLine += ";CN=" + sanitizeHeaderValue(event.Organizer.Name)
 		}
 		orgLine += ":mailto:" + event.Organizer.Address
-		b.WriteString(orgLine + "\r\n")
+		b.line(orgLine)
 	}
 
 	attendeeLine := "ATTENDEE;PARTSTAT=" + partstat + ":mailto:" + attendeeEmail
-	b.WriteString(attendeeLine + "\r\n")
+	b.line(attendeeLine)
 
-	b.WriteString("SEQUENCE:" + intToStr(event.Sequence) + "\r\n")
-	b.WriteString("END:VEVENT\r\n")
-	b.WriteString("END:VCALENDAR\r\n")
+	b.line("SEQUENCE:" + intToStr(event.Sequence))
+	b.line("END:VEVENT")
+	b.line("END:VCALENDAR")
+	return b.String()
+}
+
+// calendarWriter writes iCalendar content lines, each ended by CRLF and
+// folded so that no line is longer than 75 octets (RFC 5545 §3.1).
+type calendarWriter struct {
+	strings.Builder
+}
+
+// line writes one content line, folded.
+func (w *calendarWriter) line(s string) {
+	w.WriteString(foldContentLine(s))
+}
+
+// foldContentLine returns a content line ended by CRLF, with a CRLF and one
+// space inserted wherever it would pass 75 octets (RFC 5545 §3.1). A fold never
+// falls inside a UTF-8 sequence: a continuation line's leading space counts
+// toward its 75.
+func foldContentLine(s string) string {
+	const limit = 75
+	var b strings.Builder
+	room := limit
+	for len(s) > room {
+		cut := room
+		for cut > 0 && !utf8.RuneStart(s[cut]) {
+			cut--
+		}
+		b.WriteString(s[:cut])
+		b.WriteString("\r\n ")
+		s = s[cut:]
+		room = limit - 1
+	}
+	b.WriteString(s)
+	b.WriteString("\r\n")
 	return b.String()
 }
 
